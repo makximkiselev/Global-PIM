@@ -1,0 +1,956 @@
+/* =========================
+   SOURCES MAPPING SHELL
+========================= */
+
+.sm-shell{
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.sm-pageRoot{
+  --page-content-width: 1280px;
+}
+
+.sm-pageRoot > .page-header,
+.sm-pageRoot > .page-tabs,
+.sm-pageRoot > .card{
+  max-width:var(--page-content-width);
+  width:100%;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.sm-pageTabs{
+  margin-bottom:2px;
+}
+
+.sm-pageTabs.page-tabs{
+  justify-content:flex-start;
+  flex-wrap:wrap;
+}
+
+.sm-pageTabs .page-tab{
+  background:rgba(255,255,255,.9);
+  min-height:38px;
+  padding:9px 13px;
+  border-radius:13px;
+}
+
+.sm-shellHead,
+.sm-sectionHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.sm-shellTitle,
+.sm-sectionTitle{
+  font-size:17px;
+  line-height:1.1;
+  font-weight:1000;
+}
+
+.sm-shellSub,
+.sm-sectionSub{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.4;
+}
+
+.sm-stack{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.sm-section{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.sm-sectionBordered{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(255,255,255,.58);
+  padding:14px;
+}
+
+@media (max-width: 900px){
+  .sm-topHead{
+    flex-direction:column;
+  }
+}
+
+/* competitor-mapping.css (COMPACT v2 — polished) */
+/* Цели:
+   - плотнее, но “дорого”
+   - ровные размеры кнопок/инпутов
+   - нормальные отступы (особенно между "Редактировать" и "Сохранить")
+   - аккуратные тени/фокусы
+*/
+
+.cm-page{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.cm-pageEmbedded{
+  gap:0;
+  width:100%;
+  max-width:none;
+  padding:0;
+  min-width:0;
+  --page-content-width: 100%;
+}
+
+.cm-layout{
+  display:grid;
+  grid-template-columns:320px minmax(0,1fr);
+  gap:14px;
+}
+
+.cm-layout.isCategoryDriven{
+  grid-template-columns:minmax(0,1fr);
+}
+
+.cm-layout.isEmbedded{
+  gap:12px;
+}
+
+.cm-panel{
+  padding:14px;
+  border-radius:16px;
+}
+
+.cm-pageEmbedded .cm-panel{
+  width:100%;
+  min-width:0;
+}
+
+.cm-panelRight{
+  padding:16px;
+}
+
+.cm-pageEmbedded .cm-panelRight{
+  padding:0;
+}
+
+.cm-pageEmbedded .cm-rightHeader{
+  margin-bottom:2px;
+}
+
+.cm-pageEmbedded .cm-title{
+  font-size:15px;
+  line-height:1.1;
+}
+
+.cm-pageEmbedded .cm-sub{
+  margin-top:2px;
+  font-size:11px;
+  line-height:1.3;
+}
+
+.cm-panelHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.cm-panelTitle{
+  font-weight:1000;
+  font-size:14px;
+}
+
+.cm-templateList,
+.cm-groupList{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.cm-templateBtn{
+  text-align:left;
+  justify-content:space-between;
+  display:flex;
+  gap:10px;
+  border:1px solid var(--line);
+  background:#fff;
+  padding:12px;
+  border-radius:14px;
+}
+
+.cm-templateBtn[data-active="true"]{
+  border-color:var(--brand);
+  background:rgba(37,99,235,.06);
+}
+
+.cm-templateBtnMain{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+}
+
+.cm-templateBtnName{
+  font-weight:1000;
+  font-size:15px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.cm-templateBtnMark{
+  font-size:14px;
+  opacity:.6;
+}
+
+.cm-emptyText{
+  color:var(--muted);
+  line-height:1.45;
+}
+
+.cm-spaceSm{ height:12px; }
+.cm-spaceMd{ height:14px; }
+.cm-spaceLg{ height:22px; }
+
+.cm-blockHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.cm-blockTitle{
+  font-weight:1100;
+  font-size:22px;
+  line-height:1.1;
+}
+
+.cm-loadRowLeft{
+  justify-content:flex-start;
+}
+
+/* =========================
+   RIGHT HEADER
+========================= */
+
+.cm-rightHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.cm-pageEmbedded .cm-rightHeader{
+  align-items:flex-start;
+  gap:10px;
+  margin-bottom:0;
+}
+
+.cm-pageEmbedded .cm-rightHeader .cm-title{
+  margin-bottom:0;
+}
+
+.cm-title{
+  font-weight:1100;
+  font-size:18px;
+  line-height:1.15;
+  letter-spacing:-0.01em;
+}
+
+.cm-sub{
+  color:var(--muted);
+  margin-top:4px;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.cm-actions{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+
+  /* ✅ фикс “липнут” */
+  gap:10px;                 /* общий gap */
+  row-gap:8px;
+}
+
+/* ✅ если у тебя в JSX/HTML есть отдельные классы на контейнере кнопок —
+   можно использовать один из них. Если нет — этот блок не навредит */
+.cm-actions > *{
+  margin-left:0;
+}
+
+.cm-pageEmbedded .cm-actions{
+  justify-content:flex-start;
+  width:auto;
+  gap:8px;
+}
+
+.cm-mirrorPanel{
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:0;
+}
+
+/* =========================
+   BUTTONS
+========================= */
+
+/* Общая база для кнопок (подровнять размеры) */
+.cm-saveBtn,
+.cm-editBtn,
+.cm-cancelBtn,
+.cm-loadAllBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  white-space:nowrap;
+  user-select:none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+
+/* ✅ Главная кнопка */
+.cm-saveBtn{
+  min-width:110px;
+  height:32px;
+  padding:0 12px;
+  border-radius:999px;
+  border:1px solid rgba(59,130,246,.18);
+  color:#fff;
+  font-weight:1000;
+  font-size:12px;
+  gap:8px;
+
+  background:linear-gradient(135deg, #3b82f6, #6366f1);
+  box-shadow:none;
+  transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease, filter .12s ease, background .12s ease;
+}
+
+.cm-saveBtn[disabled]{
+  opacity:.55;
+  cursor:not-allowed;
+  filter:saturate(.9);
+}
+
+.cm-saveBtn:not([disabled]):hover{
+  transform:translateY(-1px);
+  background:linear-gradient(135deg, #2563eb, #4f46e5);
+  box-shadow:0 8px 18px rgba(59,130,246,.14);
+}
+
+.cm-saveBtn:not([disabled]):active{
+  transform:translateY(1px);
+  box-shadow:none;
+}
+
+.cm-saveBtn:focus-visible{
+  outline:none;
+  box-shadow:
+    0 0 0 3px rgba(255,255,255,.22),
+    0 0 0 6px rgba(37,99,235,.18),
+    0 10px 22px rgba(37,99,235,.16);
+}
+
+/* Иконка внутри Save */
+.cm-saveIcon{
+  width:18px;
+  height:18px;
+  border-radius:6px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.22);
+  font-size:11px;
+  line-height:1;
+}
+
+/* ✅ Вторичные кнопки */
+.cm-editBtn,
+.cm-cancelBtn{
+  height:36px;
+  padding:0 12px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:#fff;
+  font-weight:950;
+  font-size:12.5px;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease, background .12s ease;
+}
+
+.cm-editBtn:hover,
+.cm-cancelBtn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 10px 18px rgba(17,24,39,.06);
+  background:rgba(17,24,39,.01);
+}
+
+.cm-editBtn:active,
+.cm-cancelBtn:active{
+  transform:translateY(1px);
+  box-shadow:none;
+}
+
+.cm-editBtn:focus-visible,
+.cm-cancelBtn:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(37,99,235,.14);
+  border-color:rgba(37,99,235,.45);
+}
+
+.cm-editBtn[disabled],
+.cm-cancelBtn[disabled]{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+}
+
+/* ✅ Доп. фикс: если вдруг кнопки реально “липнут” из-за отсутствия gap в разметке */
+.cm-editBtn{ margin-right:2px; }   /* минимальный “воздух” даже без gap */
+.cm-saveBtn{ margin-left:2px; }
+
+/* =========================
+   LOAD ALL ROW
+========================= */
+
+.cm-loadRow{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:10px;
+  row-gap:8px;
+}
+
+.cm-loadHint{
+  font-size:11px;
+  color:var(--muted);
+  font-weight:800;
+}
+
+.cm-loadAllBtn{
+  height:32px;
+  padding:0 12px;
+  border-radius:999px;
+  border:1px solid rgba(59,130,246,.22);
+  background:#fff;
+  color:#2563eb;
+  font-weight:1000;
+  font-size:12px;
+  gap:8px;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.cm-loadAllBtn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 18px rgba(59,130,246,.08);
+  background:rgba(244,247,255,.9);
+  border-color:rgba(59,130,246,.34);
+}
+
+.cm-loadAllBtn:active{
+  transform:translateY(1px);
+  box-shadow:none;
+}
+
+.cm-loadAllBtn:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(37,99,235,.14);
+  border-color:rgba(37,99,235,.45);
+}
+
+.cm-loadAllBtn[disabled]{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+}
+
+.cm-loadIcon{
+  width:20px;
+  height:20px;
+  border-radius:8px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--line);
+  background:rgba(17,24,39,.03);
+  font-size:11px;
+  color:rgba(17,24,39,.55);
+}
+
+/* spinner */
+.cm-spinner{
+  width:16px;
+  height:16px;
+  border-radius:999px;
+  border:2px solid rgba(17,24,39,.18);
+  border-top-color: rgba(37,99,235,.9);
+  animation: cmSpin .8s linear infinite;
+}
+@keyframes cmSpin{ to { transform: rotate(360deg); } }
+
+/* =========================
+   LINK CARDS (STACKED)
+========================= */
+
+.cm-linksGrid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:8px;
+  align-items:stretch;
+}
+
+.cm-pageEmbedded .cm-linksGrid{
+  gap:8px;
+}
+
+.cm-linkCard{
+  border:1px solid rgba(11,18,32,.08);
+  border-radius:14px;
+  padding:10px;
+  min-height:auto;
+  box-shadow:none;
+  overflow:hidden;
+  transition:opacity .12s ease, filter .12s ease, background .12s ease, border-color .12s ease;
+  background:#fff;
+}
+
+.cm-pageEmbedded .cm-linkCard{
+  min-height:auto;
+  padding:10px;
+  border-radius:14px;
+  box-shadow:none;
+}
+
+.cm-linkCard:hover{
+  transform:none;
+  box-shadow:none;
+  border-color:rgba(59,130,246,.16);
+  background:rgba(248,250,255,.9);
+}
+
+.cm-linkCard.isDisabled{
+  opacity:.65;
+  filter:saturate(.85);
+}
+
+.cm-linkCard--restore{
+  background:#fff;
+}
+
+.cm-linkCard--store77{
+  background:#fff;
+}
+
+.cm-linkCardHeader{
+  display:flex;
+  justify-content:flex-start;
+  gap:8px;
+  align-items:center;
+}
+
+.cm-linkTitleRow{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  min-width:0;
+}
+
+.cm-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  box-shadow:0 6px 14px rgba(37,99,235,.22);
+  flex:0 0 auto;
+}
+
+.cm-dot--restore{ background:rgba(37,99,235,1); }
+.cm-dot--store77{
+  background:rgba(124,58,237,1);
+  box-shadow:0 6px 14px rgba(124,58,237,.22);
+}
+
+.cm-linkTitle{
+  font-weight:1100;
+  font-size:15px;
+  line-height:1.1;
+}
+
+.cm-pageEmbedded .cm-linkTitle{
+  font-size:15px;
+  font-weight:1000;
+}
+
+.cm-linkHint{
+  color:var(--muted);
+  font-size:11.5px;
+  margin-top:1px;
+  font-weight:800;
+  line-height:1.35;
+}
+
+.cm-pageEmbedded .cm-linkHint{
+  font-size:10.5px;
+}
+
+.cm-sep{
+  margin-top:8px;
+  border-top:1px dashed rgba(17,24,39,.10);
+}
+
+.cm-pageEmbedded .cm-sep{
+  margin-top:8px;
+}
+
+.cm-fieldLabel{
+  margin-top:8px;
+  font-size:11px;
+  color:var(--muted);
+  font-weight:900;
+  margin-bottom:4px;
+}
+
+.cm-pageEmbedded .cm-fieldLabel{
+  margin-top:8px;
+  margin-bottom:4px;
+}
+
+/* =========================
+   INPUT / SELECT (unified)
+========================= */
+
+/* ✅ единые бордер/фокус для всех контролов */
+.cm-inputBig,
+.cm-selectBig{
+  width:100%;
+  height:42px;
+  border-radius:12px;
+  padding:0 12px;
+  font-size:13px;
+  font-weight:750;
+
+  background:#fff;
+  border:1px solid var(--line);
+  transition:box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.cm-pageEmbedded .cm-inputBig,
+.cm-pageEmbedded .cm-selectBig{
+  height:38px;
+  font-size:12.5px;
+}
+
+.cm-inputBig::placeholder{
+  color:rgba(107,114,128,.75);
+  font-weight:650;
+}
+
+.cm-inputBig:focus,
+.cm-selectBig:focus{
+  outline:none;
+  border-color:rgba(37,99,235,.45);
+  box-shadow:0 0 0 3px rgba(37,99,235,.14);
+}
+
+/* Big link input already compact */
+.cm-linkActions{
+  margin-top:8px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.cm-pageEmbedded .cm-linkActions{
+  margin-top:8px;
+  gap:6px;
+}
+
+.cm-pill{
+  height:32px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:rgba(17,24,39,.03);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+}
+
+/* =========================
+   SELECT (caret)
+========================= */
+
+.cm-selectWrap{ position:relative; }
+.cm-selectWrap.isDisabled{ opacity:.75; }
+
+.cm-selectBig{
+  padding:0 40px 0 12px;
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+}
+
+.cm-caret{
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  width:24px;
+  height:24px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:rgba(17,24,39,.03);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  font-size:11px;
+  color:rgba(17,24,39,.55);
+}
+
+/* =========================
+   TOGGLE
+========================= */
+
+.cm-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:0;
+  border-radius:999px;
+}
+
+.cm-toggleTrack{
+  width:34px;
+  height:18px;
+  border-radius:999px;
+  position:relative;
+  border:1px solid var(--line);
+  background:rgba(17,24,39,.10);
+  transition:background .15s ease, opacity .15s ease;
+}
+.cm-toggleTrack.isOn{ background:rgba(37,99,235,.25); }
+.cm-toggleTrack.isDisabled{ opacity:.55; }
+
+.cm-toggleKnob{
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  position:absolute;
+  top:1px;
+  left:2px;
+  background:#fff;
+  border:1px solid var(--line);
+  transition:left .15s ease, background .15s ease, opacity .15s ease;
+}
+.cm-toggleKnob.isOn{ left:18px; background:var(--brand); }
+.cm-toggleKnob.isDisabled{ opacity:.7; }
+
+.cm-toggleLabel{
+  font-weight:900;
+  font-size:12px;
+}
+
+/* =========================
+   BADGES
+========================= */
+
+.cm-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  font-weight:900;
+  font-size:11px;
+}
+
+/* ✅ Готово (зелёный) */
+.cm-badgeOk{
+  background:rgba(16,185,129,.14);
+  color:rgb(16,185,129);
+}
+
+/* 🟡 Частично настроен (жёлтый) */
+.cm-badgeWarn{
+  background:rgba(245,158,11,.18);
+  color:rgb(245,158,11);
+}
+
+/* 🔴 Не настроен (красный) */
+.cm-badgeBad{
+  background:rgba(239,68,68,.14);
+  color:rgb(239,68,68);
+}
+
+
+/* =========================
+   MAPPING ROWS / SOURCE CHIPS
+========================= */
+
+.cm-mapRow{
+  display:grid;
+  grid-template-columns: 1.2fr 2fr;
+  gap:12px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#fff;
+}
+
+.cm-mapField{
+  min-width:0;
+}
+
+.cm-mapFieldNameRow{
+  font-weight:1100;
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+
+.cm-mapFieldName{
+  font-size:18px;
+  line-height:1.2;
+}
+
+.cm-mapFieldMeta{
+  margin-top:6px;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.cm-colLabel{
+  font-size:13px;
+  color:var(--muted);
+  font-weight:1000;
+  margin-bottom:8px;
+}
+
+.cm-groupBlock{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(255,255,255,.64);
+  padding:10px;
+}
+
+.cm-groupHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  font-size:14px;
+  font-weight:1100;
+  margin-bottom:10px;
+  padding:6px 8px;
+  border-radius:10px;
+  background:rgba(148,163,184,.12);
+}
+
+.cm-groupCount{
+  font-size:12px;
+  font-weight:1000;
+  color:var(--muted);
+}
+
+.cm-mapCols{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+}
+
+.cm-sourceRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.cm-sourceLabel{
+  font-size:11px;
+  color:var(--muted);
+  font-weight:900;
+}
+
+.cm-sourceBtns{ display:inline-flex; gap:8px; } /* ✅ чуть больше, чтобы не липло */
+
+.cm-chip{
+  height:30px;
+  padding:0 10px;
+  border-radius:999px;
+  font-weight:900;
+  font-size:12px;
+  border:1px solid var(--line);
+  background:#fff;
+  transition:background .12s ease, border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+}
+
+.cm-chip:hover{
+  transform:translateY(-1px);
+  box-shadow:0 10px 16px rgba(17,24,39,.06);
+}
+
+.cm-chip.isActive{
+  border-color:rgba(37,99,235,.65);
+  background:rgba(37,99,235,.06);
+}
+
+.cm-help{
+  margin-top:6px;
+  font-size:12px;
+  color:#b91c1c;
+  font-weight:800;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 980px){
+  .cm-layout{
+    grid-template-columns:1fr;
+  }
+  .cm-rightHeader{
+    flex-direction:column;
+    align-items:stretch;
+    gap:10px;
+  }
+  .cm-actions{
+    justify-content:flex-start;
+    gap:10px;
+  }
+  .cm-mapRow{
+    grid-template-columns: 1fr;
+  }
+  .cm-mapCols{
+    grid-template-columns: 1fr;
+  }
+
+  .cm-title{ font-size:17px; }
+  .cm-sub{ font-size:12px; }
+}

@@ -1,0 +1,743 @@
+/* =========================================
+   Templates page overrides (fix layout)
+   Работает ТОЛЬКО внутри .templates-page
+========================================= */
+
+.templates-page{
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+}
+
+/* =========================================
+   TOPBAR (кнопки не слипаются)
+========================================= */
+.templates-page .page-header{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.templates-page .page-header .page-header-actions{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.templates-page .page-header .btn{
+  margin: 0;
+}
+
+/* --- GRID --- */
+.templates-page .catalog-grid{
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.templates-page .catalog-left,
+.templates-page .catalog-right{
+  min-width: 0;
+  width: 100%;
+}
+
+/* =========================
+   TREE FIX (без DnD-шума)
+========================= */
+.templates-page .tree,
+.templates-page .tree *{
+  transform: none !important;
+}
+
+.templates-page .tree-row{ width: 100%; }
+.templates-page .tpl-row{
+  padding-left: calc(6px + (var(--depth, 0) * 16px));
+}
+.templates-page .tpl-item{
+  width: 100%;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:9px 11px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 10px 28px rgba(15,23,42,.05);
+  cursor:pointer;
+  transition: border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease;
+}
+.templates-page .tpl-item:hover{
+  border-color: rgba(37,99,235,.18);
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 14px 32px rgba(15,23,42,.08);
+  transform: translateY(-1px);
+}
+.templates-page .tpl-item.is-locked{
+  border-style:dashed;
+}
+.templates-page .tpl-item.is-selected{
+  border-color: rgba(37,99,235,.34);
+  background: linear-gradient(180deg, rgba(239,246,255,.96) 0%, rgba(255,255,255,.98) 100%);
+  box-shadow: 0 16px 34px rgba(37,99,235,.12);
+}
+.templates-page .tpl-item.is-own:not(.is-selected){
+  border-color: rgba(16,185,129,.18);
+}
+.templates-page .tpl-item.is-inherit:not(.is-selected){
+  border-color: rgba(249,115,22,.16);
+}
+
+.templates-page .caret-btn{
+  flex: 0 0 var(--caret, 26px);
+  width: var(--caret, 26px);
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.9);
+  cursor: pointer;
+}
+.templates-page .caret-btn:hover:not(:disabled){
+  border-color: rgba(37,99,235,.18);
+  background: rgba(239,246,255,.78);
+}
+.templates-page .caret-btn:disabled{ opacity: .55; cursor: default; }
+
+.templates-page .tpl-main{
+  min-width:0;
+  flex:1;
+}
+.templates-page .tpl-title{
+  font-weight:800;
+  font-size:13px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.templates-page .tpl-sub{
+  font-size:11px;
+  color: var(--muted);
+  margin-top:4px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.templates-page .tpl-meta{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:0 0 auto;
+}
+.templates-page .tpl-pill{
+  font-size:10px;
+  padding:4px 7px;
+  border-radius:999px;
+  border:1px solid rgba(11,18,32,.12);
+  background: rgba(11,18,32,.04);
+  font-weight:800;
+}
+.templates-page .tpl-pill.is-own{
+  border-color: rgba(16,185,129,.35);
+  background: rgba(16,185,129,.10);
+  color:#0f766e;
+}
+.templates-page .tpl-pill.is-inherit{
+  border-color: rgba(255,107,61,.35);
+  background: rgba(255,107,61,.10);
+  color:#9a3412;
+}
+
+.templates-page .tpl-ok{
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 1000;
+  font-size: 12px;
+  color: #0f766e;
+  background: rgba(16,185,129,.14);
+  border: 1px solid rgba(16,185,129,.22);
+}
+
+/* =========================
+   RIGHT HEADER (кнопки)
+========================= */
+.templates-page .card-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.templates-page .card-head > div:first-child{
+  min-width: 260px;
+  flex: 1 1 auto;
+}
+
+.templates-page .templates-panel{
+  padding:14px;
+}
+.templates-page .tree{
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+.templates-page .tree::-webkit-scrollbar{
+  width: 10px;
+}
+.templates-page .tree::-webkit-scrollbar-thumb{
+  background: rgba(148,163,184,.28);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.templates-page .templates-grid{
+  display:grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap:14px;
+  align-items:start;
+}
+.templates-page .templates-preview{
+  padding:14px;
+  min-height: 620px;
+}
+
+.templates-page .tpl-sourceStrip{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+
+.templates-page .tpl-sourceCard{
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,255,.92));
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.templates-page .tpl-sourceTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.templates-page .tpl-sourceTitle{
+  font-size:13px;
+  font-weight:900;
+  line-height:1.15;
+}
+
+.templates-page .tpl-sourcePath{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.35;
+}
+
+.templates-page .tpl-sourceStats{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+}
+
+.templates-page .tpl-sourceStat{
+  border:1px solid rgba(11,18,32,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.82);
+  padding:8px 10px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.templates-page .tpl-sourceStat strong{
+  font-size:16px;
+  line-height:1;
+}
+.templates-page .templates-previewHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.templates-page .tpl-attrs{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.templates-page .tpl-attrRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.9);
+}
+.templates-page .tpl-attrMain{
+  min-width:0;
+  flex:1;
+}
+.templates-page .tpl-attrName{
+  font-weight:900;
+  font-size:13px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+}
+.templates-page .tpl-attrSub{
+  margin-top:4px;
+  font-size:11px;
+  color: var(--muted);
+}
+.templates-page .tpl-attrReq{
+  color:#b91c1c;
+  margin-left:8px;
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  border:1px solid rgba(185,28,28,.25);
+  background: rgba(185,28,28,.08);
+  padding:2px 6px;
+  border-radius:999px;
+}
+
+@media(max-width:1100px){
+  .templates-page .templates-grid{
+    grid-template-columns: 1fr;
+  }
+  .templates-page .tpl-sourceStrip{
+    grid-template-columns:1fr;
+  }
+}
+.templates-page .templates-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+.templates-page .templates-toolbar{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-bottom:12px;
+}
+.templates-page .templates-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background: rgba(255,255,255,.95);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:7px 10px;
+  min-width: 0;
+  flex:1;
+  box-shadow: var(--shadow-soft);
+}
+.templates-page .templates-search input{
+  border:0;
+  outline:0;
+  background:transparent;
+  width:100%;
+  font-size:13px;
+}
+
+.templates-page .btn.sm{
+  padding:6px 9px;
+  border-radius:10px;
+  font-size:12px;
+  box-shadow:none;
+}
+
+/* =========================
+   ATTR TABLE (final layout)
+   drag | required | name | type | delete
+========================= */
+
+.templates-page .attr-head,
+.templates-page .attr-row{
+  display: grid;
+
+  /* ✅ Обяз. шире
+     ✅ Тип данных уже (ещё -10px относительно прошлых вариантов)
+  */
+  grid-template-columns: 44px 84px minmax(340px, 1fr) 140px 140px 44px;
+
+  gap: 10px;
+  align-items: center;
+}
+
+/* ✅ шапку выровняли по карточкам (карточка имеет padding:12px) */
+.templates-page .attr-head{
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .01em;
+}
+
+/* header cells with help icon */
+.templates-page .attr-head-required,
+.templates-page .attr-head-type,
+.templates-page .attr-head-scope{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* карточка параметра */
+.templates-page .attr-card{ padding: 12px; }
+
+/* name cell with pick button */
+.templates-page .attr-name-cell{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.templates-page .attr-name-input{
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.templates-page .attr-name-input .attr-name{
+  width: 100%;
+}
+
+.templates-page .attr-name-pick{
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* drag icon */
+.templates-page .attr-drag{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  user-select:none;
+  opacity:.75;
+  cursor: grab;
+}
+.templates-page .attr-drag:hover{ opacity:1; }
+.templates-page .attr-drag:active{ cursor: grabbing; }
+
+/* =========================
+   REQUIRED TOGGLE (switch)
+   ВАЖНО: у тебя разметка:
+   <label class="attr-required">
+     <input type="checkbox" />
+   </label>
+   поэтому селектор: .attr-required > input
+========================= */
+.templates-page .attr-required{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-start;
+  user-select:none;
+}
+
+/* ✅ toggle 55x26 */
+.templates-page .attr-required > input[type="checkbox"]{
+  -webkit-appearance: none;
+  appearance: none;
+
+  width: 55px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+
+  background: #eef2ff;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: .15s ease;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.65);
+}
+
+.templates-page .attr-required > input[type="checkbox"]::after{
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+
+  transform: translateY(-50%);
+  box-shadow: 0 8px 18px rgba(17,24,39,.14);
+  transition: .15s ease;
+}
+
+.templates-page .attr-required > input[type="checkbox"]:checked{
+  background: rgba(37,99,235,.20);
+  border-color: rgba(37,99,235,.35);
+}
+
+.templates-page .attr-required > input[type="checkbox"]:checked::after{
+  left: 32px; /* 55 - 20 - 3 */
+}
+
+.templates-page .attr-required > input[type="checkbox"]:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* ✅ название жирнее если required */
+.templates-page .attr-name.is-required{
+  font-weight: 900;
+}
+
+/* =========================
+   Inputs / Selects
+========================= */
+.templates-page input,
+.templates-page select{
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+}
+
+.templates-page input:focus,
+.templates-page select:focus{
+  border-color: rgba(37,99,235,.35);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.10);
+}
+
+/* ✅ Select: своя стрелка, не липнет к краю */
+.templates-page select{
+  -webkit-appearance: none;
+  appearance: none;
+
+  padding-right: 42px;      /* место под стрелку */
+  background-color: var(--card);
+
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20'%3E%3Cpath fill='%236b7280' d='M5.6 7.8a1 1 0 0 1 1.4 0L10 10.8l3-3a1 1 0 1 1 1.4 1.4l-3.7 3.7a1 1 0 0 1-1.4 0L5.6 9.2a1 1 0 0 1 0-1.4Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+
+  /* ✅ стрелку чуть левее (можешь играть: 14..22) */
+  background-position: calc(100% - 18px) 50%;
+}
+
+/* Кнопка удаления */
+.templates-page .attr-row .icon-btn{
+  height: 38px;
+  width: 38px;
+  border-radius: 12px;
+}
+
+/* =========================
+   HELP TOOLTIP (вниз — без скролла)
+========================= */
+.templates-page .help-tip{
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor: help;
+  user-select:none;
+  position: relative;
+}
+
+.templates-page .help-tip::after{
+  content: attr(data-tip);
+  position: absolute;
+
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%) translateY(-2px);
+
+  width: 340px;
+  max-width: calc(100vw - 24px); /* ✅ железно не вылезает */
+  white-space: pre-line;
+
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(229,231,235,.9);
+  background: #fff;
+  color: var(--text);
+
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+
+  box-shadow: 0 16px 40px rgba(17,24,39,.14);
+  opacity: 0;
+  pointer-events: none;
+  transition: .12s ease;
+  z-index: 200;
+}
+
+.templates-page .help-tip:hover::after{
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* стрелочка вверх */
+.templates-page .help-tip::before{
+  content:"";
+  position:absolute;
+  left: 50%;
+  top: calc(100% + 6px);
+  width: 8px;
+  height: 8px;
+  transform: translateX(-50%) rotate(45deg);
+  background:#fff;
+  border-left: 1px solid rgba(229,231,235,.9);
+  border-top: 1px solid rgba(229,231,235,.9);
+  opacity: 0;
+  transition: .12s ease;
+  z-index: 201;
+}
+.templates-page .help-tip:hover::before{ opacity: 1; }
+
+/* =========================
+   TOAST ("Сохранено")
+========================= */
+.templates-page .tpl-toast{
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9999;
+  background: rgba(17,24,39,.92);
+  color: #fff;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 18px 50px rgba(0,0,0,.20);
+  backdrop-filter: blur(10px);
+  animation: tplToastIn .14s ease-out;
+}
+@keyframes tplToastIn{
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+@media (max-width: 1100px){
+  .templates-page .catalog-grid{
+    grid-template-columns: 1fr;
+  }
+
+  .templates-page .tree{
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .templates-page .attr-head{
+    display: none;
+  }
+
+  .templates-page .attr-row{
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+/* =========================
+   MODAL (Import / Export)
+========================= */
+.templates-page .modal-backdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 24, 39, .38);
+  backdrop-filter: blur(8px);
+}
+
+.templates-page .modal{
+  width: min(720px, calc(100vw - 32px));
+  background: var(--card);
+  border: 1px solid rgba(229, 231, 235, .9);
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(17,24,39,.25);
+  padding: 18px;
+  animation: tplModalIn .16s ease-out;
+}
+
+@keyframes tplModalIn{
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+.templates-page .modal-title{
+  font-size: 16px;
+  font-weight: 1000;
+  margin: 0;
+}
+
+.templates-page .modal-sub{
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.templates-page .modal-actions{
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.templates-page .modal-actions .btn{
+  border-radius: 999px;
+  padding: 10px 14px;
+}
+
+@media (max-width: 520px){
+  .templates-page .modal-actions{
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

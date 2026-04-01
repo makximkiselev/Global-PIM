@@ -1,0 +1,361 @@
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+from urllib.parse import urlparse
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"  # backend/data
+SQLITE_PATH = DATA_DIR / "pim.db"
+
+
+class JsonStoreError(RuntimeError):
+    pass
+
+
+@dataclass
+class FileLock:
+    path: Path | None = None
+    stale_seconds: int = 30
+
+    def acquire(self, timeout: float = 5.0, poll: float = 0.05) -> None:
+        return None
+
+    def release(self) -> None:
+        return None
+
+
+def _env_path() -> Path:
+    return DATA_DIR.parent / ".env"
+
+
+def _env_file_value(key: str) -> str:
+    env_path = _env_path()
+    if not env_path.exists():
+        return ""
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, v = s.split("=", 1)
+            if k.strip() != key:
+                continue
+            val = v.strip()
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                val = val[1:-1]
+            return val.strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _database_url() -> str:
+    return (
+        os.getenv("DATABASE_URL", "").strip()
+        or os.getenv("PIM_DATABASE_URL", "").strip()
+        or _env_file_value("DATABASE_URL")
+        or _env_file_value("PIM_DATABASE_URL")
+    )
+
+
+def _storage_backend() -> str:
+    explicit = (
+        os.getenv("PIM_STORAGE_BACKEND", "").strip().lower()
+        or _env_file_value("PIM_STORAGE_BACKEND").lower()
+    )
+    if explicit == "postgres":
+        return explicit
+    if explicit == "sqlite":
+        return explicit
+    dsn = _database_url()
+    if dsn.startswith("postgres://") or dsn.startswith("postgresql://"):
+        return "postgres"
+    return "postgres"
+
+
+def _assert_postgres_runtime() -> None:
+    backend = _storage_backend()
+    if backend != "postgres":
+        raise JsonStoreError(
+            f"POSTGRES_REQUIRED: runtime backend '{backend}' is not supported. Configure PIM_STORAGE_BACKEND=postgres and DATABASE_URL."
+        )
+    if not _database_url():
+        raise JsonStoreError("DATABASE_URL_MISSING")
+
+
+def _load_psycopg():
+    try:
+        import psycopg  # type: ignore
+        return psycopg, "psycopg"
+    except Exception:
+        pass
+    try:
+        import psycopg2  # type: ignore
+        from psycopg2.extras import Json  # type: ignore
+        return (psycopg2, Json), "psycopg2"
+    except Exception:
+        pass
+    raise JsonStoreError("POSTGRES_DRIVER_MISSING: install psycopg[binary] or psycopg2-binary")
+
+
+def _db_connect_sqlite() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(SQLITE_PATH), timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def _pg_connect():
+    dsn = _database_url()
+    if not dsn:
+        raise JsonStoreError("DATABASE_URL_MISSING")
+    driver, kind = _load_psycopg()
+    if kind == "psycopg":
+        conn = driver.connect(dsn, autocommit=True)
+        return conn, kind, None
+    psycopg2_mod, Json = driver
+    conn = psycopg2_mod.connect(dsn)
+    conn.autocommit = True
+    return conn, kind, Json
+
+
+def _ensure_pg_table(conn: Any) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS json_documents (
+              path TEXT PRIMARY KEY,
+              payload JSONB NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+
+
+def _is_under_data_dir(path: Path) -> bool:
+    try:
+        path.resolve().relative_to(DATA_DIR.resolve())
+        return True
+    except Exception:
+        return False
+
+
+def _table_name_for_path(path: Path) -> str:
+    rel = path.resolve().relative_to(DATA_DIR.resolve())
+    parts = [str(x) for x in rel.parts]
+    joined = "__".join(parts)
+    base = joined.replace(".", "_").replace("-", "_").replace(" ", "_").lower()
+    safe = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in base).strip("_")
+    if not safe:
+        safe = "root"
+    return f"doc_{safe}"
+
+
+def _doc_key_for_path(path: Path) -> str:
+    return str(path.resolve().relative_to(DATA_DIR.resolve())).replace("\\", "/")
+
+
+def _ensure_doc_table(conn: sqlite3.Connection, table: str) -> None:
+    conn.execute(
+        f'''
+        CREATE TABLE IF NOT EXISTS "{table}" (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        '''
+    )
+
+
+def _load_legacy_file(path: Path, default: Optional[Any]) -> Any:
+    if not path.exists():
+        return default if default is not None else {}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        return json.loads(raw)
+    except Exception:
+        return default if default is not None else {}
+
+
+def migrate_legacy_json_files_to_sql(remove_after: bool = False) -> int:
+    moved = 0
+    if _storage_backend() == "postgres":
+        conn, _, Json = _pg_connect()
+        try:
+            _ensure_pg_table(conn)
+            with conn.cursor() as cur:
+                for path in DATA_DIR.rglob("*.json"):
+                    if ".locks" in path.parts:
+                        continue
+                    key = _doc_key_for_path(path)
+                    cur.execute("SELECT 1 FROM json_documents WHERE path = %s", (key,))
+                    if cur.fetchone():
+                        continue
+                    try:
+                        payload = json.loads(path.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+                    if Json is not None:
+                        cur.execute(
+                            "INSERT INTO json_documents (path, payload, updated_at) VALUES (%s, %s, NOW()) ON CONFLICT (path) DO NOTHING",
+                            (key, Json(payload)),
+                        )
+                    else:
+                        cur.execute(
+                            "INSERT INTO json_documents (path, payload, updated_at) VALUES (%s, %s::jsonb, NOW()) ON CONFLICT (path) DO NOTHING",
+                            (key, json.dumps(payload, ensure_ascii=False)),
+                        )
+                    moved += 1
+                    if remove_after:
+                        path.unlink(missing_ok=True)
+            return moved
+        finally:
+            conn.close()
+
+    with _db_connect_sqlite() as conn:
+        for path in DATA_DIR.rglob("*.json"):
+            if ".locks" in path.parts:
+                continue
+            table = _table_name_for_path(path)
+            _ensure_doc_table(conn, table)
+            cur = conn.execute(f'SELECT payload FROM "{table}" WHERE id=1')
+            row = cur.fetchone()
+            if row:
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            conn.execute(
+                f'INSERT OR REPLACE INTO "{table}" (id, payload, updated_at) VALUES (1, ?, datetime("now"))',
+                (json.dumps(payload, ensure_ascii=False),),
+            )
+            moved += 1
+            if remove_after:
+                path.unlink(missing_ok=True)
+        conn.commit()
+    return moved
+
+
+def migrate_sqlite_docs_to_postgres(remove_after: bool = False) -> int:
+    if _storage_backend() != "postgres":
+        return 0
+    if not SQLITE_PATH.exists():
+        return 0
+    conn_pg, _, Json = _pg_connect()
+    moved = 0
+    try:
+        _ensure_pg_table(conn_pg)
+        with sqlite3.connect(str(SQLITE_PATH)) as conn_sqlite:
+            conn_sqlite.row_factory = sqlite3.Row
+            rows = conn_sqlite.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'doc_%'"
+            ).fetchall()
+            with conn_pg.cursor() as cur_pg:
+                for row in rows:
+                    table = row[0] if not isinstance(row, sqlite3.Row) else row["name"]
+                    cur = conn_sqlite.execute(f'SELECT payload FROM "{table}" WHERE id=1')
+                    doc_row = cur.fetchone()
+                    if not doc_row:
+                        continue
+                    raw = doc_row[0] if not isinstance(doc_row, sqlite3.Row) else doc_row["payload"]
+                    try:
+                        payload = json.loads(raw)
+                    except Exception:
+                        continue
+                    rel_key = table.removeprefix("doc_").replace("__", "/")
+                    rel_key = rel_key.replace("_json", ".json")
+                    if Json is not None:
+                        cur_pg.execute(
+                            "INSERT INTO json_documents (path, payload, updated_at) VALUES (%s, %s, NOW()) ON CONFLICT (path) DO NOTHING",
+                            (rel_key, Json(payload)),
+                        )
+                    else:
+                        cur_pg.execute(
+                            "INSERT INTO json_documents (path, payload, updated_at) VALUES (%s, %s::jsonb, NOW()) ON CONFLICT (path) DO NOTHING",
+                            (rel_key, json.dumps(payload, ensure_ascii=False)),
+                        )
+                    moved += 1
+        if remove_after:
+            SQLITE_PATH.unlink(missing_ok=True)
+        return moved
+    finally:
+        conn_pg.close()
+
+
+def read_doc(path: Path, default: Optional[Any] = None) -> Any:
+    p = Path(path)
+    if not _is_under_data_dir(p):
+        raise JsonStoreError(f"SQL_ONLY_MODE_PATH_NOT_ALLOWED: {p}")
+
+    _assert_postgres_runtime()
+    conn, _, _ = _pg_connect()
+    try:
+        _ensure_pg_table(conn)
+        key = _doc_key_for_path(p)
+        with conn.cursor() as cur:
+            cur.execute("SELECT payload FROM json_documents WHERE path = %s", (key,))
+            row = cur.fetchone()
+            if not row:
+                return default if default is not None else {}
+            raw = row[0]
+            if isinstance(raw, (dict, list)):
+                return raw
+            if raw is None:
+                return default if default is not None else {}
+            try:
+                return json.loads(raw) if isinstance(raw, str) else raw
+            except Exception:
+                return default if default is not None else {}
+    finally:
+        conn.close()
+
+
+def write_doc(path: Path, data: Any) -> None:
+    p = Path(path)
+    if not _is_under_data_dir(p):
+        raise JsonStoreError(f"SQL_ONLY_MODE_PATH_NOT_ALLOWED: {p}")
+
+    _assert_postgres_runtime()
+    conn, _, Json = _pg_connect()
+    try:
+        _ensure_pg_table(conn)
+        key = _doc_key_for_path(p)
+        with conn.cursor() as cur:
+            if Json is not None:
+                cur.execute(
+                    """
+                    INSERT INTO json_documents (path, payload, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (path)
+                    DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                    """,
+                    (key, Json(data)),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO json_documents (path, payload, updated_at)
+                    VALUES (%s, %s::jsonb, NOW())
+                    ON CONFLICT (path)
+                    DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                    """,
+                    (key, json.dumps(data, ensure_ascii=False)),
+                )
+    finally:
+        conn.close()
+
+
+def with_lock(filename: str) -> FileLock:
+    return FileLock(None)
+
+
+read_json = read_doc
+write_json = write_doc

@@ -1,0 +1,271 @@
+.dict-kpis{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(180px,1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+
+.dict-kpi{
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  padding:10px 12px;
+}
+
+.dict-kpiLabel{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+
+.dict-kpiValue{
+  margin-top:4px;
+  font-size:28px;
+  line-height:1;
+  font-weight:900;
+}
+
+.dict-searchCard{
+  margin-bottom:10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.dict-searchInput{
+  width:100%;
+  max-width:none;
+}
+
+.dict-tabsWrap{
+  margin-bottom:12px;
+}
+
+.dict-tabs{
+  display:inline-flex;
+  gap:4px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:4px;
+  background:#fff;
+  flex-wrap:wrap;
+}
+
+.dict-tab{
+  border:none;
+  background:transparent;
+  color:var(--muted);
+  font-weight:700;
+  padding:8px 12px;
+  border-radius:9px;
+  cursor:pointer;
+}
+
+.dict-tab.active{
+  background:rgba(61,107,255,.10);
+  color:#1d4ed8;
+}
+
+.dict-list{
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  overflow:hidden;
+}
+
+.dict-listHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:12px;
+  border-bottom:1px solid var(--line);
+  font-weight:800;
+}
+
+.dict-listBody{
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.dict-rowCard{
+  padding:12px;
+  cursor:pointer;
+  border:1px solid rgba(11,18,32,.08);
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+
+.dict-rowCard:hover{
+  border-color:rgba(61,107,255,.35);
+  box-shadow:0 8px 22px rgba(61,107,255,.12);
+}
+
+.dict-rowTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.dict-rowTitleWrap{
+  min-width:0;
+}
+
+.dict-rowTitle{
+  font-size:20px;
+  line-height:1.2;
+  font-weight:800;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.dict-rowBadges{
+  margin-top:6px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.dict-badge{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid rgba(11,18,32,.14);
+  background:rgba(11,18,32,.04);
+  color:#334155;
+  border-radius:999px;
+  padding:2px 8px;
+  font-size:11px;
+  font-weight:800;
+}
+
+.dict-badgeRequired{
+  border-color:rgba(61,107,255,.3);
+  background:rgba(61,107,255,.1);
+  color:#1d4ed8;
+}
+
+.dict-rowActions{
+  opacity:.65;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.dict-rowCard:hover .dict-rowActions{
+  opacity:1;
+}
+
+.dict-rowMeta{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px dashed rgba(11,18,32,.12);
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.dict-rowMeta b{
+  color:var(--text);
+  font-weight:700;
+}
+
+.dict-createValues{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.dict-createValueRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+}
+
+.dict-requiredRow{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+  padding:10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.dict-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  cursor:pointer;
+  user-select:none;
+}
+
+.dict-toggle input{
+  position:absolute;
+  opacity:0;
+  width:0;
+  height:0;
+}
+
+.dict-toggleTrack{
+  width:42px;
+  height:24px;
+  border-radius:999px;
+  background:rgba(11,18,32,.18);
+  border:1px solid rgba(11,18,32,.16);
+  padding:2px;
+  display:inline-flex;
+  align-items:center;
+  transition:background .15s ease, border-color .15s ease;
+}
+
+.dict-toggleThumb{
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  background:#fff;
+  box-shadow:0 1px 2px rgba(0,0,0,.25);
+  transform:translateX(0);
+  transition:transform .15s ease;
+}
+
+.dict-toggle input:checked + .dict-toggleTrack{
+  background:#3d6bff;
+  border-color:#3d6bff;
+}
+
+.dict-toggle input:checked + .dict-toggleTrack .dict-toggleThumb{
+  transform:translateX(18px);
+}
+
+.dict-toggleLabel{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:700;
+}
+
+@media (max-width: 980px){
+  .dict-kpis{
+    grid-template-columns:1fr;
+  }
+  .dict-searchCard{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .dict-createValueRow{
+    grid-template-columns:1fr;
+  }
+  .dict-requiredRow{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+}
