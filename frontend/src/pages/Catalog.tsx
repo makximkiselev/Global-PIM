@@ -848,7 +848,7 @@ export default function Catalog() {
       </div>
 
       <div className="card catalog-searchbar" ref={topbarRef}>
-        <div className="catalog-searchbarLabel">Поиск товара по каталогу</div>
+        <div className="catalog-searchbarLabel">Поиск по каталогу</div>
         <div className="catalog-searchbarField">
           <div className="search catalog-pageSearch">
             <span style={{ color: "var(--muted)" }}>🔎</span>
@@ -886,6 +886,16 @@ export default function Catalog() {
               )}
             </div>
           )}
+        </div>
+        <div className="catalog-searchbarMeta">
+          <div className="catalog-statChip">
+            <span className="catalog-statLabel">Категорий</span>
+            <span className="catalog-statValue">{nodes.length}</span>
+          </div>
+          <div className="catalog-statChip">
+            <span className="catalog-statLabel">Товаров</span>
+            <span className="catalog-statValue">{products.length}</span>
+          </div>
         </div>
       </div>
 
@@ -1063,44 +1073,62 @@ export default function Catalog() {
         </div>
 
         <div className="card catalog-right">
-          <div className="category-hero">
-            <div className="category-title">
-              {selected ? selected.name : "Выберите категорию"}
+          <div className="catalog-rightHead">
+            <div className="catalog-rightMain">
+              <div className="catalog-rightTitle">
+                {selected ? selected.name : "Выберите категорию"}
+              </div>
+              {selected ? (
+                <>
+                  <div className="crumbs">
+                    {crumbsArr.map((c, i) => (
+                      <span className={`crumb ${i === crumbsArr.length - 1 ? "" : "muted"}`} key={`${c}-${i}`}>
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="catalog-inlineMeta">
+                    <span className="catalog-inlineChip">Товаров: {selectedCount}</span>
+                    <span className="catalog-inlineChip">Выбрано: {selectedProductsCount}</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <div className="catalog-rightActions">
+              {selectedProductsCount === 1 ? (
+                <button className="btn" type="button" onClick={editSelected}>
+                  Редактировать
+                </button>
+              ) : null}
+              {selectedProductsCount > 0 ? (
+                <button className="btn danger" type="button" onClick={deleteSelected}>
+                  Удалить
+                </button>
+              ) : null}
+              <button
+                className="btn primary"
+                onClick={goCreateProduct}
+                type="button"
+                disabled={!selectedId}
+                style={{ opacity: selectedId ? 1 : 0.55 }}
+                title={!selectedId ? "Сначала выбери категорию" : "Добавить товар"}
+              >
+                + Товар
+              </button>
+              <button className="btn" type="button" onClick={() => setBulkOpen(true)}>
+                Массовая загрузка
+              </button>
+              <Link className="btn" to="/catalog/groups">
+                Группы товаров
+              </Link>
             </div>
           </div>
 
           {!selected ? null : (
             <div className="catalog-productsSection">
               <div className="products-head">
-                <div className="card-title">Товары</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {selectedProductsCount === 1 ? (
-                    <button className="btn" type="button" onClick={editSelected}>
-                      Редактировать
-                    </button>
-                  ) : null}
-                  {selectedProductsCount > 0 ? (
-                    <button className="btn danger" type="button" onClick={deleteSelected}>
-                      Удалить
-                    </button>
-                  ) : null}
-                  <button
-                    className="btn primary"
-                    onClick={goCreateProduct}
-                    type="button"
-                    disabled={!selectedId}
-                    style={{ opacity: selectedId ? 1 : 0.55 }}
-                    title={!selectedId ? "Сначала выбери категорию" : "Добавить товар"}
-                  >
-                    + Товар
-                  </button>
-                  <button className="btn" type="button" onClick={() => setBulkOpen(true)}>
-                    Массовая загрузка
-                  </button>
-                  <Link className="btn" to="/catalog/groups">
-                    Группы товаров
-                  </Link>
-                </div>
+                <div className="card-title">Товары в категории</div>
+                <div className="muted">С выбранной веткой каталога</div>
               </div>
               {pListLoading ? (
                 <div className="muted">Загрузка товаров…</div>
