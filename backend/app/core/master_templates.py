@@ -16,15 +16,6 @@ BASE_TEMPLATE_FIELDS: List[Dict[str, Any]] = [
         "param_group": "Артикулы",
     },
     {
-        "key": "sku_ids",
-        "name": "SKU IDS",
-        "code": "sku_id",
-        "type": "number",
-        "required": True,
-        "scope": "variant",
-        "param_group": "Артикулы",
-    },
-    {
         "key": "barcode",
         "name": "Штрихкод",
         "code": "barcode",
@@ -215,7 +206,6 @@ BASE_FIELD_BY_KEY: Dict[str, Dict[str, Any]] = {str(item["key"]): item for item 
 BASE_FIELD_BY_CODE: Dict[str, Dict[str, Any]] = {str(item["code"]).lower(): item for item in BASE_TEMPLATE_FIELDS}
 BASE_FIELD_BY_NAME: Dict[str, Dict[str, Any]] = {_norm_name(item["name"]): item for item in BASE_TEMPLATE_FIELDS}
 BASE_FIELD_CODE_ALIASES: Dict[str, str] = {
-    "sku_ids": "sku_id",
     "group": "group_id",
     "media": "media_images",
 }

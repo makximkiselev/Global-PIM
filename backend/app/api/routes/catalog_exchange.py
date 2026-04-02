@@ -586,7 +586,6 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
             "title": str(product.get("title") or product_id),
             "category_id": str(product.get("category_id") or ""),
             "sku_gt": str(product.get("sku_gt") or ""),
-            "sku_id": str(product.get("sku_id") or ""),
             "filled_features": filled,
             "source_summary": source_summary,
             "competitor_results": competitor_compact,

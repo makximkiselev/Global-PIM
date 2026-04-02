@@ -321,6 +321,27 @@ def admin_update_role(role_id: str, payload: RoleReq, _auth=Depends(require_acti
     return {"ok": True, "role": _role_public(role)}
 
 
+@router.delete("/admin/roles/{role_id}")
+def admin_delete_role(role_id: str, _auth=Depends(require_action("roles.manage"))):
+    db = load_auth_db()
+    roles = db.get("roles") if isinstance(db.get("roles"), dict) else {}
+    users = db.get("users") if isinstance(db.get("users"), dict) else {}
+    role = roles.get(role_id)
+    if not isinstance(role, dict):
+      raise HTTPException(status_code=404, detail="ROLE_NOT_FOUND")
+    _assert_role_manageable(_auth, role)
+    for user in users.values():
+        if not isinstance(user, dict):
+            continue
+        role_ids = [str(x) for x in (user.get("role_ids") or []) if str(x).strip()]
+        if role_id in role_ids:
+            raise HTTPException(status_code=409, detail="ROLE_IN_USE")
+    roles.pop(role_id, None)
+    db["roles"] = roles
+    save_auth_db(db)
+    return {"ok": True}
+
+
 @router.get("/admin/users")
 def admin_users(_auth=Depends(require_action("users.manage"))):
     db = load_auth_db()

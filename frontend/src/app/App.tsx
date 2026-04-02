@@ -85,6 +85,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={authenticated ? <Navigate to={firstAllowedPath(user?.pages || [])} replace /> : <Login />} />
+      <Route path="/auth" element={<Navigate to="/login" replace />} />
       <Route path="/*" element={authenticated ? <ProtectedApp /> : <Navigate to="/login" replace />} />
     </Routes>
   );

@@ -10,8 +10,6 @@ from app.storage.json_store import load_dictionaries_db, save_dictionaries_db, n
 
 PRODUCTS_PATH = DATA_DIR / "products.json"
 GT_INDEX_PATH = DATA_DIR / "sku_gt_index.json"
-ID_INDEX_PATH = DATA_DIR / "sku_id_index.json"
-
 # ✅ NEW: PIM SKU index (digits-only)
 PIM_INDEX_PATH = DATA_DIR / "sku_pim_index.json"
 
@@ -29,7 +27,6 @@ SKU_PIM_RE = re.compile(r"^[0-9]{1,32}$")
 SERVICE_DICT_META: Dict[str, Dict[str, str]] = {
     "sku_pim": {"title": "SKU PIM", "type": "number", "scope": "variant"},
     "sku_gt": {"title": "SKU GT", "type": "number", "scope": "variant"},
-    "sku_id": {"title": "SKU IDS", "type": "number", "scope": "variant"},
     "title": {"title": "Наименование товара", "type": "text", "scope": "feature"},
     "barcode": {"title": "Штрихкод", "type": "number", "scope": "both"},
 }
@@ -94,13 +91,10 @@ def _build_service_value_counters(products: List[Dict[str, Any]]) -> Dict[str, D
     for p in products:
         sku_pim = str(p.get("sku_pim") or "").strip()
         sku_gt = str(p.get("sku_gt") or "").strip()
-        sku_id = str(p.get("sku_id") or "").strip()
         if sku_pim:
             counters["sku_pim"][sku_pim] = int(counters["sku_pim"].get(sku_pim, 0)) + 1
         if sku_gt:
             counters["sku_gt"][sku_gt] = int(counters["sku_gt"].get(sku_gt, 0)) + 1
-        if sku_id:
-            counters["sku_id"][sku_id] = int(counters["sku_id"].get(sku_id, 0)) + 1
         title = str(p.get("title") or "").strip()
         if title:
             counters["title"][title] = int(counters["title"].get(title, 0)) + 1
@@ -191,7 +185,6 @@ def _find_service_dict(items: List[Dict[str, Any]], field_code: str) -> Optional
     aliases: Dict[str, set[str]] = {
         "sku_pim": {"sku_pim", "sku_pim", "sku_pim"},
         "sku_gt": {"sku_gt", "sku_gt"},
-        "sku_id": {"sku_id", "sku_ids"},
         "title": {"title", "naimenovanie_tovara", "наименование_товара"},
         "barcode": {"barcode", "штрихкод"},
     }
@@ -336,7 +329,6 @@ def _next_product_id() -> str:
                 "next_variant_id": 1,
                 "next_sku_pim": 1,
                 "next_sku_gt": 1,
-                "next_sku_id": 1,
             },
         )
         n = int(counters.get("next_product_id", 1))
@@ -347,9 +339,9 @@ def _next_product_id() -> str:
         lock.release()
 
 
-def allocate_sku_triplets(count: int) -> List[Dict[str, str]]:
+def allocate_sku_pairs(count: int) -> List[Dict[str, str]]:
     """
-    Резервирует N триплетов (PIM/GT/ID). ID монотонны, не переиспользуются.
+    Резервирует N пар (PIM/GT).
     """
     if count <= 0:
         return []
@@ -364,12 +356,10 @@ def allocate_sku_triplets(count: int) -> List[Dict[str, str]]:
                 "next_variant_id": 1,
                 "next_sku_pim": 1,
                 "next_sku_gt": 1,
-                "next_sku_id": 1,
             },
         )
         pim = int(counters.get("next_sku_pim", 1))
         gt = int(counters.get("next_sku_gt", 1))
-        sid = int(counters.get("next_sku_id", 1))
 
         out: List[Dict[str, str]] = []
         for i in range(count):
@@ -377,13 +367,11 @@ def allocate_sku_triplets(count: int) -> List[Dict[str, str]]:
                 {
                     "sku_pim": str(pim + i),
                     "sku_gt": str(gt + i),
-                    "sku_id": str(sid + i),
                 }
             )
 
         counters["next_sku_pim"] = pim + count
         counters["next_sku_gt"] = gt + count
-        counters["next_sku_id"] = sid + count
         write_doc(COUNTERS_PATH, counters)
         return out
     finally:
@@ -404,14 +392,6 @@ def load_gt_index() -> Dict[str, Any]:
 
 def save_gt_index(doc: Dict[str, Any]) -> None:
     write_doc(GT_INDEX_PATH, doc)
-
-
-def load_id_index() -> Dict[str, Any]:
-    return read_doc(ID_INDEX_PATH, default={"version": 1, "id_to_product_id": {}})
-
-
-def save_id_index(doc: Dict[str, Any]) -> None:
-    write_doc(ID_INDEX_PATH, doc)
 
 
 def load_pim_index() -> Dict[str, Any]:
@@ -492,9 +472,6 @@ def _norm_sku(s: Optional[str]) -> str:
 
 
 def _validate_sku(field: str, sku: str) -> None:
-    """
-    sku_gt / sku_id
-    """
     if not sku:
         return
     if not SKU_RE.match(sku):
@@ -540,13 +517,11 @@ def create_product(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         products_doc = load_products()
         gt_doc = load_gt_index()
-        id_doc = load_id_index()
         pim_doc = load_pim_index()
         cat_doc = load_category_index()
 
         items: List[Dict[str, Any]] = products_doc.get("items", []) or []
         gt_map: Dict[str, str] = gt_doc.get("gt_to_product_id", {}) or {}
-        id_map: Dict[str, str] = id_doc.get("id_to_product_id", {}) or {}
         pim_map: Dict[str, str] = pim_doc.get("pim_to_product_id", {}) or {}
 
         category_id = (payload.get("category_id") or "").strip()
@@ -569,15 +544,11 @@ def create_product(payload: Dict[str, Any]) -> Dict[str, Any]:
             raise JsonStoreError("DUPLICATE_SKU_PIM")
 
         sku_gt = _norm_sku(payload.get("sku_gt"))
-        sku_id = _norm_sku(payload.get("sku_id"))
 
         _validate_sku("sku_gt", sku_gt)
-        _validate_sku("sku_id", sku_id)
 
         if sku_gt and sku_gt in gt_map:
             raise JsonStoreError("DUPLICATE_SKU_GT")
-        if sku_id and sku_id in id_map:
-            raise JsonStoreError("DUPLICATE_SKU_ID")
 
         selected_params = payload.get("selected_params") or []
         if not isinstance(selected_params, list):
@@ -607,10 +578,9 @@ def create_product(payload: Dict[str, Any]) -> Dict[str, Any]:
             "status": "draft",          # draft|active|archived
             "title": title,
 
-            # ✅ 3 SKU:
+            # ✅ 2 SKU:
             "sku_pim": sku_pim,         # digits-only
             "sku_gt": sku_gt,           # GT
-            "sku_id": sku_id,           # ID
 
             "selected_params": selected_params,
             "feature_params": feature_params,
@@ -630,19 +600,15 @@ def create_product(payload: Dict[str, Any]) -> Dict[str, Any]:
             pim_map[sku_pim] = pid
         if sku_gt:
             gt_map[sku_gt] = pid
-        if sku_id:
-            id_map[sku_id] = pid
 
         pim_doc["pim_to_product_id"] = pim_map
         gt_doc["gt_to_product_id"] = gt_map
-        id_doc["id_to_product_id"] = id_map
 
         _add_to_category_index(cat_doc, category_id, pid)
 
         save_products(products_doc)
         save_pim_index(pim_doc)
         save_gt_index(gt_doc)
-        save_id_index(id_doc)
         save_category_index(cat_doc)
 
         # ✅ синхронизируем с catalog.py (catalog_products.json)
@@ -669,13 +635,11 @@ def update_product(product_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     try:
         products_doc = load_products()
         gt_doc = load_gt_index()
-        id_doc = load_id_index()
         pim_doc = load_pim_index()
         cat_doc = load_category_index()
 
         items: List[Dict[str, Any]] = products_doc.get("items", []) or []
         gt_map: Dict[str, str] = gt_doc.get("gt_to_product_id", {}) or {}
-        id_map: Dict[str, str] = id_doc.get("id_to_product_id", {}) or {}
         pim_map: Dict[str, str] = pim_doc.get("pim_to_product_id", {}) or {}
 
         p = next((x for x in items if x.get("id") == product_id), None)
@@ -684,7 +648,6 @@ def update_product(product_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
 
         old_pim = _norm_sku(p.get("sku_pim"))
         old_gt = _norm_sku(p.get("sku_gt"))
-        old_id = _norm_sku(p.get("sku_id"))
         old_cat = (p.get("category_id") or "").strip()
 
         if "title" in patch:
@@ -756,13 +719,6 @@ def update_product(product_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
                 raise JsonStoreError("DUPLICATE_SKU_GT")
             p["sku_gt"] = new_gt
 
-        if "sku_id" in patch:
-            new_id = _norm_sku(patch.get("sku_id"))
-            _validate_sku("sku_id", new_id)
-            if new_id and id_map.get(new_id) not in (None, product_id):
-                raise JsonStoreError("DUPLICATE_SKU_ID")
-            p["sku_id"] = new_id
-
         # reindex pim
         new_pim_final = _norm_sku(p.get("sku_pim"))
         if old_pim and pim_map.get(old_pim) == product_id and old_pim != new_pim_final:
@@ -777,13 +733,6 @@ def update_product(product_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
         if new_gt_final:
             gt_map[new_gt_final] = product_id
 
-        # reindex id
-        new_id_final = _norm_sku(p.get("sku_id"))
-        if old_id and id_map.get(old_id) == product_id and old_id != new_id_final:
-            id_map.pop(old_id, None)
-        if new_id_final:
-            id_map[new_id_final] = product_id
-
         # category index
         new_cat_final = (p.get("category_id") or "").strip()
         if old_cat and old_cat != new_cat_final:
@@ -797,12 +746,10 @@ def update_product(product_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
         products_doc["items"] = items
         pim_doc["pim_to_product_id"] = pim_map
         gt_doc["gt_to_product_id"] = gt_map
-        id_doc["id_to_product_id"] = id_map
 
         save_products(products_doc)
         save_pim_index(pim_doc)
         save_gt_index(gt_doc)
-        save_id_index(id_doc)
         save_category_index(cat_doc)
 
         # ✅ синхронизируем с catalog.py
@@ -838,16 +785,11 @@ def list_products_by_category(category_id: str) -> List[Dict[str, Any]]:
 def find_product_by_sku(
     sku_pim: Optional[str] = None,
     sku_gt: Optional[str] = None,
-    sku_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Поиск по любому из трёх SKU.
-    """
     sku_pim = _norm_sku(sku_pim)
     sku_gt = _norm_sku(sku_gt)
-    sku_id = _norm_sku(sku_id)
 
-    if not sku_pim and not sku_gt and not sku_id:
+    if not sku_pim and not sku_gt:
         return None
 
     if sku_pim:
@@ -862,15 +804,6 @@ def find_product_by_sku(
     if sku_gt:
         gt_doc = load_gt_index()
         pid = (gt_doc.get("gt_to_product_id", {}) or {}).get(sku_gt)
-        if pid:
-            try:
-                return get_product(pid)
-            except JsonStoreError:
-                return None
-
-    if sku_id:
-        id_doc = load_id_index()
-        pid = (id_doc.get("id_to_product_id", {}) or {}).get(sku_id)
         if pid:
             try:
                 return get_product(pid)
@@ -897,7 +830,6 @@ def delete_products_bulk(product_ids: List[str]) -> int:
             return 0
 
         gt_map: Dict[str, str] = {}
-        id_map: Dict[str, str] = {}
         pim_map: Dict[str, str] = {}
         cat_map: Dict[str, List[str]] = {}
 
@@ -907,14 +839,11 @@ def delete_products_bulk(product_ids: List[str]) -> int:
                 continue
             sku_pim = _norm_sku(p.get("sku_pim"))
             sku_gt = _norm_sku(p.get("sku_gt"))
-            sku_id = _norm_sku(p.get("sku_id"))
             cat = str(p.get("category_id") or "").strip()
             if sku_pim and sku_pim not in pim_map:
                 pim_map[sku_pim] = pid
             if sku_gt and sku_gt not in gt_map:
                 gt_map[sku_gt] = pid
-            if sku_id and sku_id not in id_map:
-                id_map[sku_id] = pid
             if cat:
                 cat_map.setdefault(cat, [])
                 cat_map[cat].append(pid)
@@ -923,7 +852,6 @@ def delete_products_bulk(product_ids: List[str]) -> int:
         save_products(products_doc)
         save_pim_index({"version": 1, "pim_to_product_id": pim_map})
         save_gt_index({"version": 1, "gt_to_product_id": gt_map})
-        save_id_index({"version": 1, "id_to_product_id": id_map})
         save_category_index({"version": 1, "category_to_product_ids": cat_map})
         _remove_catalog_products_by_ids(list(delete_ids))
         sync_service_dictionaries_from_products(next_items)

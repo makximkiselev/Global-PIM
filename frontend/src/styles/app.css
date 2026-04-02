@@ -158,25 +158,45 @@ a{color:inherit;text-decoration:none}
 .accessPage{
   --page-content-width: 1320px;
 }
+.accessPage .page-header{
+  margin-bottom:8px;
+}
+.accessPage .page-tabs{
+  gap:6px;
+  margin-bottom:8px;
+}
+.accessPage .page-tab{
+  min-height:34px;
+  padding:0 12px;
+  border-radius:10px;
+  background:rgba(255,255,255,.72);
+  font-size:12px;
+  font-weight:800;
+}
+.accessPage .page-tab.active{
+  background:rgba(255,107,61,.10);
+  border-color:rgba(255,107,61,.20);
+  color:#7f3419;
+}
 .accessWorkspace{
   display:grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap:18px;
+  grid-template-columns: 278px minmax(0, 1fr);
+  gap:16px;
   align-items:start;
 }
-.accessSidebar{padding:18px}
-.accessContent{display:flex;flex-direction:column;gap:18px}
-.accessHero,.accessPanel{padding:18px}
+.accessSidebar{padding:12px 12px 10px}
+.accessContent{display:flex;flex-direction:column;gap:16px}
+.accessHero,.accessPanel{padding:16px}
 .accessListHeader{
   display:flex;
   justify-content:space-between;
   align-items:center;
   gap:12px;
-  margin-bottom:14px;
+  margin-bottom:8px;
 }
-.accessListTitle,.accessEditorHeader{font-size:22px;font-weight:900}
+.accessListTitle,.accessEditorHeader{font-size:17px;font-weight:900}
 .accessListHint{
-  margin:-4px 0 12px;
+  margin:-2px 0 10px;
   font-size:12px;
   color:var(--muted);
   font-weight:700;
@@ -184,29 +204,34 @@ a{color:inherit;text-decoration:none}
 .accessListGroup{
   display:flex;
   flex-direction:column;
-  gap:10px;
-  border:1px solid var(--line);
-  border-radius:16px;
-  background:#fff;
-  padding:10px;
+  gap:6px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:0;
 }
 .accessListGroup + .accessListGroup{
-  margin-top:2px;
+  margin-top:6px;
 }
 .accessListGroupToggle{
   width:100%;
   display:flex;
   align-items:center;
   gap:10px;
-  border:0;
-  background:transparent;
+  border:1px solid transparent;
+  background:rgba(255,255,255,.52);
   border-radius:12px;
-  padding:4px 2px;
+  padding:8px 10px;
   text-align:left;
   cursor:pointer;
 }
+.accessListGroupToggle:hover{
+  background:rgba(255,255,255,.82);
+  border-color:rgba(11,18,32,.06);
+}
 .accessListGroupToggle.isOpen{
-  background:transparent;
+  background:rgba(255,255,255,.9);
+  border-color:rgba(11,18,32,.06);
 }
 .accessListGroupCaret{
   width:12px;
@@ -239,26 +264,33 @@ a{color:inherit;text-decoration:none}
 .accessListGroupRows{
   display:flex;
   flex-direction:column;
-  gap:10px;
-  padding-top:2px;
+  gap:4px;
+  padding:2px 0 0 12px;
+  margin-left:8px;
+  border-left:1px solid rgba(11,18,32,.06);
 }
-.accessList{display:flex;flex-direction:column;gap:10px;max-height:720px;overflow:auto}
+.accessList{display:flex;flex-direction:column;gap:6px;max-height:720px;overflow:auto}
 .accessRow{
   text-align:left;
   width:100%;
-  border:1px solid var(--line);
-  background:#fff;
-  border-radius:14px;
-  padding:12px 14px;
+  border:1px solid transparent;
+  background:rgba(255,255,255,.66);
+  border-radius:10px;
+  padding:8px 9px;
   cursor:pointer;
+  transition:border-color .16s ease, background .16s ease, transform .16s ease;
+}
+.accessRow:hover{
+  background:#fff;
+  border-color:rgba(11,18,32,.06);
 }
 .accessRow.active{
   border-color:rgba(61,107,255,.28);
-  box-shadow:0 0 0 1px rgba(61,107,255,.18);
+  box-shadow:0 0 0 1px rgba(61,107,255,.14);
   background:rgba(61,107,255,.04);
 }
-.accessRowTitle{font-weight:800;font-size:14px}
-.accessRowSub{font-size:12px;color:var(--muted);margin-top:4px}
+.accessRowTitle{font-weight:800;font-size:13px}
+.accessRowSub{font-size:11px;color:var(--muted);margin-top:3px}
 .accessHero{
   display:flex;
   justify-content:space-between;
@@ -266,10 +298,15 @@ a{color:inherit;text-decoration:none}
   align-items:flex-start;
 }
 .accessHeroMain{display:flex;flex-direction:column;gap:4px}
-.accessHeroName{font-size:28px;font-weight:900;line-height:1.05}
-.accessHeroSub{font-size:13px;color:var(--muted);font-weight:700}
-.accessHeroMeta{display:flex;flex-direction:column;gap:10px;align-items:flex-end;max-width:340px}
+.accessHeroName{font-size:22px;font-weight:900;line-height:1.05}
+.accessHeroSub{font-size:12px;color:var(--muted);font-weight:800}
+.accessHeroMeta{display:flex;flex-direction:column;gap:8px;align-items:flex-end;max-width:340px}
 .accessHeroHint{font-size:13px;color:var(--muted);font-weight:700;text-align:right}
+.accessHeroSaveBtn{
+  min-height:32px;
+  padding:0 12px;
+  border-radius:10px;
+}
 .accessStatusChip{
   display:inline-flex;
   align-items:center;
@@ -304,10 +341,10 @@ a{color:inherit;text-decoration:none}
 .accessPanels{
   display:grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap:18px;
+  gap:16px;
 }
 .accessPanelsUsers{
-  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
 }
 .accessPanelsRoles{
   grid-template-columns: minmax(360px, .82fr) minmax(0, 1.18fr);
@@ -317,10 +354,19 @@ a{color:inherit;text-decoration:none}
   grid-template-columns: minmax(360px, .78fr) minmax(0, 1.22fr);
   align-items:start;
 }
+.accessPanelsRolesModern{
+  grid-template-columns: 1fr;
+  align-items:start;
+}
+.accessRoleAccordionStack{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
 .accessPanel{
   display:flex;
   flex-direction:column;
-  gap:14px;
+  gap:12px;
 }
 .accessPanelWide{grid-column:1 / -1}
 .accessField{display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:700}
@@ -352,17 +398,17 @@ a{color:inherit;text-decoration:none}
 .accessRoleGrid{
   display:grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap:10px;
+  gap:8px;
 }
 .accessRoleCard{
   display:flex;
   align-items:center;
   gap:10px;
   border:1px solid var(--line);
-  border-radius:14px;
-  padding:12px 14px;
+  border-radius:12px;
+  padding:10px 12px;
   background:#fff;
-  font-size:13px;
+  font-size:12px;
   font-weight:700;
 }
 .accessPermissionBlock{
@@ -371,13 +417,227 @@ a{color:inherit;text-decoration:none}
   padding:14px;
   background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,249,255,.9));
 }
-.accessPermissionTitle{font-size:16px;font-weight:900;margin-bottom:12px}
+.accessPermissionTitle{font-size:14px;font-weight:900;margin-bottom:8px}
 .accessMeta{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:700}
 .accessMetaStack{flex-direction:column;gap:8px}
 .accessActions{display:flex;justify-content:flex-end}
 .accessHeroCompact{
   padding:16px 18px;
   align-items:center;
+}
+.accessRoleHero{
+  padding:14px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(250,251,255,.96));
+  box-shadow:var(--shadow-soft);
+}
+.accessRoleHeroTop{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:flex-start;
+}
+.accessRoleHeroAside{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:10px;
+}
+.accessRoleHeroActions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.accessIconBtn{
+  width:34px;
+  height:34px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+  border:1px solid rgba(11,18,32,.08);
+  background:#fff;
+  color:var(--text);
+  font-size:14px;
+  font-weight:800;
+  cursor:pointer;
+  box-shadow:var(--shadow-soft);
+  transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.accessIconBtn:hover{
+  border-color:rgba(61,107,255,.2);
+  transform:translateY(-1px);
+}
+.accessIconBtnDanger{
+  color:#b42318;
+  border-color:rgba(180,35,24,.12);
+  background:rgba(180,35,24,.04);
+}
+.accessIconBtn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  transform:none;
+}
+.accessRoleMetaInline{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.accessRoleMetricPill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:30px;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid rgba(11,18,32,.08);
+  background:rgba(247,248,252,.95);
+  color:var(--text);
+  box-shadow:none;
+}
+.accessRoleMetricPill span{
+  font-size:10px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:var(--muted);
+}
+.accessRoleMetricPill strong{
+  font-size:12px;
+  font-weight:900;
+}
+.accessRoleHeroText{
+  max-width:760px;
+  font-size:12px;
+  line-height:1.45;
+  color:var(--muted);
+  font-weight:700;
+}
+.accessPanelHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+.accessPanelSubtle{
+  margin-top:4px;
+  font-size:12px;
+  color:var(--muted);
+  font-weight:700;
+  line-height:1.45;
+}
+.accessMatrixCount{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:28px;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid rgba(61,107,255,.14);
+  background:rgba(61,107,255,.08);
+  color:#284fce;
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.accessRoleIdentityCard{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(249,250,255,.95));
+}
+.accessRoleMatrixCard{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,248,255,.94));
+}
+.accessCapabilityGrid{
+  gap:6px;
+}
+.accessCapabilityGridPages{
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.accessCapabilityGridActions{
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.accessAccordionCard{
+  gap:0;
+  padding:0;
+  overflow:hidden;
+}
+.accessAccordionHeader{
+  width:100%;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 14px;
+  border:0;
+  background:transparent;
+  text-align:left;
+  cursor:pointer;
+}
+.accessAccordionHeaderMeta{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+}
+.accessAccordionCaret{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:24px;
+  height:24px;
+  border-radius:999px;
+  background:rgba(11,18,32,.05);
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+}
+.accessAccordionBody{
+  padding:0 14px 14px;
+}
+.accessCapabilityCard{
+  align-items:center;
+  gap:8px;
+  min-height:40px;
+  padding:8px 10px;
+  border-radius:10px;
+  background:rgba(252,253,255,.96);
+  box-shadow:none;
+  transition:border-color .16s ease, background .16s ease;
+}
+.accessCapabilityCard:hover{
+  border-color:rgba(61,107,255,.18);
+  background:rgba(247,249,255,.98);
+}
+.accessCapabilityCard input{
+  margin-top:0;
+  flex:0 0 auto;
+}
+.accessCapabilityCard span{
+  font-size:11px;
+  font-weight:800;
+  line-height:1.2;
+}
+.accessCapabilityCard.isChecked{
+  border-color:rgba(61,107,255,.26);
+  background:linear-gradient(180deg, rgba(61,107,255,.08), rgba(255,255,255,.99));
+  box-shadow:none;
+}
+.accessSidebar .accessRow{
+  border-radius:10px;
+  padding:8px 9px;
+}
+.accessSidebar .accessRowTitle{
+  font-size:13px;
+}
+.accessSidebar .accessRowSub{
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.05em;
 }
 .accessHeroMetaInline{
   max-width:none;
@@ -392,41 +652,41 @@ a{color:inherit;text-decoration:none}
 }
 .accessResetBox{
   border:1px solid var(--line);
-  border-radius:16px;
-  padding:14px;
-  background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,249,255,.9));
+  border-radius:14px;
+  padding:12px;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,249,252,.94));
 }
-.accessResetLabel{font-size:15px;font-weight:900;margin-bottom:10px}
+.accessResetLabel{font-size:14px;font-weight:900;margin-bottom:8px}
 .accessResetRow{display:flex;gap:10px;align-items:center}
 .accessResetInput{
   flex:1 1 auto;
   min-width:0;
   border:1px solid var(--line);
-  border-radius:14px;
-  padding:12px 14px;
+  border-radius:12px;
+  padding:10px 12px;
   font:inherit;
   background:#fff;
 }
 .accessResetResult{
-  margin-top:10px;
-  font-size:13px;
+  margin-top:8px;
+  font-size:12px;
   font-weight:700;
   color:#166534;
 }
-.accessEvents{display:flex;flex-direction:column;gap:10px;max-height:320px;overflow:auto}
+.accessEvents{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto}
 .accessEmpty{
   border:1px dashed var(--line);
-  border-radius:14px;
-  padding:18px;
+  border-radius:12px;
+  padding:14px;
   color:var(--muted);
-  font-size:13px;
+  font-size:12px;
   font-weight:700;
   background:rgba(11,18,32,.02);
 }
 .accessEvent{
   border:1px solid var(--line);
-  border-radius:14px;
-  padding:10px 12px;
+  border-radius:12px;
+  padding:9px 10px;
   background:#fff;
 }
 .accessEvent-success{border-color:rgba(22,163,74,.18)}
@@ -437,8 +697,8 @@ a{color:inherit;text-decoration:none}
   justify-content:space-between;
   gap:12px;
 }
-.accessEventMain{font-size:13px}
-.accessEventMeta{margin-top:6px;font-size:12px;color:var(--muted);font-weight:700}
+.accessEventMain{font-size:12px}
+.accessEventMeta{margin-top:4px;font-size:11px;color:var(--muted);font-weight:700}
 .accessCreateUserGrid{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -491,6 +751,23 @@ a{color:inherit;text-decoration:none}
   .accessHeroMeta{
     align-items:flex-start;
     max-width:none;
+  }
+  .accessRoleHeroTop,
+  .accessPanelHeader{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .accessRoleHeroAside{
+    align-items:flex-start;
+  }
+  .accessRoleSummaryGrid,
+  .accessCapabilityGridPages,
+  .accessCapabilityGridActions{
+    grid-template-columns: 1fr;
+  }
+  .accessAccordionHeader,
+  .accessAccordionHeaderMeta{
+    align-items:flex-start;
   }
   .accessResetRow,
   .accessEventMain,

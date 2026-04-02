@@ -15,7 +15,7 @@ router = APIRouter(prefix="/product-groups", tags=["product-groups"])
 GROUPS_PATH = DATA_DIR / "product_groups.json"
 COUNTERS_PATH = DATA_DIR / "counters.json"
 CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
-SERVICE_CODES = {"sku_pim", "sku_gt", "sku_id", "barcode", "group_id", "title"}
+SERVICE_CODES = {"sku_pim", "sku_gt", "barcode", "group_id", "title"}
 PRODUCTS_PATH = DATA_DIR / "products.json"
 
 
@@ -43,7 +43,6 @@ def _next_group_id() -> str:
                 "next_variant_id": 1,
                 "next_sku_pim": 1,
                 "next_sku_gt": 1,
-                "next_sku_id": 1,
                 "next_group_id": 1,
             },
         )
@@ -61,7 +60,6 @@ def _product_summary(p: Dict[str, Any]) -> Dict[str, Any]:
         "title": str(p.get("title") or p.get("name") or ""),
         "sku_pim": str(p.get("sku_pim") or ""),
         "sku_gt": str(p.get("sku_gt") or ""),
-        "sku_id": str(p.get("sku_id") or ""),
         "group_id": str(p.get("group_id") or ""),
         "category_id": str(p.get("category_id") or ""),
     }

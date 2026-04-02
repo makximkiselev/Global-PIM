@@ -145,10 +145,7 @@ def _load_state() -> Dict[str, Any]:
             }
         prow["methods"] = methods
         if pcode == "yandex_market":
-            offer_id_source = str(settings.get("offer_id_source") or "sku_gt").strip().lower()
-            if offer_id_source not in {"sku_gt", "sku_id"}:
-                offer_id_source = "sku_gt"
-            settings["offer_id_source"] = offer_id_source
+            settings["offer_id_source"] = "sku_gt"
             normalized_stores: List[Dict[str, Any]] = []
             for raw in import_stores:
                 if not isinstance(raw, dict):
@@ -463,7 +460,6 @@ def _state_payload(state: Dict[str, Any]) -> Dict[str, Any]:
         "yandex_market": {
             "offer_id_source": [
                 {"code": "sku_gt", "label": "SKU GT"},
-                {"code": "sku_id", "label": "SKU IDS"},
             ]
         }
     }
@@ -536,10 +532,7 @@ def connectors_update_provider_settings(req: UpdateProviderSettingsReq) -> Dict[
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}})
         settings = prow.get("settings") if isinstance(prow.get("settings"), dict) else {}
         if provider == "yandex_market":
-            offer_id_source = str((req.settings or {}).get("offer_id_source") or settings.get("offer_id_source") or "sku_gt").strip().lower()
-            if offer_id_source not in {"sku_gt", "sku_id"}:
-                raise HTTPException(status_code=400, detail="YANDEX_OFFER_ID_SOURCE_INVALID")
-            settings["offer_id_source"] = offer_id_source
+            settings["offer_id_source"] = "sku_gt"
         prow["settings"] = settings
         state["providers"][provider] = prow
         _save_state(state)

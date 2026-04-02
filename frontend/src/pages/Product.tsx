@@ -20,7 +20,6 @@ type CatalogProductItem = {
   category_id?: string;
   sku_pim?: string;
   sku_gt?: string;
-  sku_id?: string;
 };
 
 type ProductFeature = {
@@ -34,7 +33,6 @@ type ProductRelation = {
   sku?: string;
   name: string;
   sku_gt?: string;
-  sku_id?: string;
 };
 
 type ProductT = {
@@ -46,7 +44,6 @@ type ProductT = {
   group_id?: string;
   sku_pim?: string;
   sku_gt?: string;
-  sku_id?: string;
   created_at?: string;
   updated_at?: string;
   exports_enabled?: Record<string, boolean>;
@@ -199,7 +196,6 @@ type GroupProductItem = {
   title?: string;
   name?: string;
   sku_gt?: string;
-  sku_id?: string;
   category_id?: string;
 };
 type GroupDetailsResp = {
@@ -291,8 +287,8 @@ function toDisplayTitle(p: { title?: string; name?: string; id?: string }) {
   return (p.title || p.name || "").trim() || p.id || "";
 }
 
-function toSkuLine(p: { sku_gt?: string; sku_id?: string }) {
-  return `GT: ${p.sku_gt || "-"} | IDS: ${p.sku_id || "-"}`;
+function toSkuLine(p: { sku_gt?: string }) {
+  return `GT: ${p.sku_gt || "-"}`;
 }
 
 function qnorm(s: string) {
@@ -304,7 +300,7 @@ function isFeatureAttr(attr: { code?: string; options?: { layer?: string; param_
   const layer = qnorm(attr.options?.layer || "");
   const group = qnorm(attr.options?.param_group || "");
   if (layer === "base" && ["описание", "медиа"].includes(group)) return false;
-  if (["description", "media_images", "media_videos", "media_cover", "title", "group_id", "sku_pim", "sku_gt", "sku_id"].includes(code)) {
+  if (["description", "media_images", "media_videos", "media_cover", "title", "group_id", "sku_pim", "sku_gt"].includes(code)) {
     return false;
   }
   return true;
@@ -364,7 +360,6 @@ export default function Product() {
   const [status, setStatus] = useState<ProductT["status"]>("draft");
   const [skuPim, setSkuPim] = useState("");
   const [skuGt, setSkuGt] = useState("");
-  const [skuId, setSkuId] = useState("");
   const [content, setContent] = useState<ProductContent>(emptyContent);
   const [originalRelatedIds, setOriginalRelatedIds] = useState<string[]>([]);
 
@@ -593,7 +588,7 @@ export default function Product() {
       .filter((p) => p.id !== product?.id)
       .filter((p) => {
         if (!q) return true;
-        return [toDisplayTitle(p), p.sku_gt || "", p.sku_id || "", buildPath(nodesById, p.category_id || "")]
+        return [toDisplayTitle(p), p.sku_gt || "", buildPath(nodesById, p.category_id || "")]
           .join(" ")
           .toLowerCase()
           .includes(q);
@@ -705,7 +700,6 @@ export default function Product() {
         setStatus(nextStatus);
         setSkuPim(prod.product.sku_pim || "");
         setSkuGt(prod.product.sku_gt || "");
-        setSkuId(prod.product.sku_id || "");
 
         const merged = normalizeContent(prod.product.content || {});
         const normalizedRelations = (arr: ProductRelation[]) =>
@@ -714,7 +708,6 @@ export default function Product() {
             name: String(x?.name || "").trim(),
             sku: String(x?.sku || "").trim(),
             sku_gt: String((x as any)?.sku_gt || "").trim() || undefined,
-            sku_id: String((x as any)?.sku_id || "").trim() || undefined,
           }));
 
         merged.analogs = normalizedRelations(merged.analogs || []);
@@ -1002,9 +995,8 @@ export default function Product() {
             {
               id: productCurrent.id,
               name: productCurrent.title || productCurrent.id,
-              sku: productCurrent.sku_gt || productCurrent.sku_id || "",
+              sku: productCurrent.sku_gt || "",
               sku_gt: productCurrent.sku_gt || "",
-              sku_id: productCurrent.sku_id || "",
             },
           ];
         }
@@ -1165,9 +1157,8 @@ export default function Product() {
         {
           id: p.id,
           name: toDisplayTitle(p),
-          sku: p.sku_gt || p.sku_id || "",
+          sku: p.sku_gt || "",
           sku_gt: p.sku_gt || "",
-          sku_id: p.sku_id || "",
         },
       ];
     }
@@ -1293,7 +1284,7 @@ export default function Product() {
           <div className="pn-heroCategory">{categoryPath || "—"}</div>
           <input className="pn-heroTitleInput" value={title} onChange={(e) => setTitle(e.target.value)} />
           <div className="pn-heroSkuLine">
-            GT ID: {skuGt || "-"} · IDs ID: {skuId || "-"} · PIM ID: {skuPim || "-"}{" "}
+            GT SKU: {skuGt || "-"} · PIM ID: {skuPim || "-"}{" "}
             <span className="pn-heroSkuPipe">|</span> Группа товара:{" "}
             {product.group_id ? (
               <button className="pn-inlineLinkBtn" type="button" onClick={openVariantsSection}>
@@ -2039,7 +2030,7 @@ export default function Product() {
               <div key={`${a.id || a.sku || "a"}-${idx}`} className="pn-relCard">
                 <div className="pn-relMetaBlock">
                   <div className="pn-relName">{a.name || a.id || "Товар"}</div>
-                  <div className="pn-relMeta">GT: {a.sku_gt || "-"} | IDS: {a.sku_id || "-"}</div>
+                  <div className="pn-relMeta">GT: {a.sku_gt || "-"}</div>
                 </div>
                 <div className="pn-relActions">
                   {a.id ? <Link className="pn-editBtn" to={`/products/${encodeURIComponent(a.id)}`}>Открыть</Link> : <span />}
@@ -2068,7 +2059,7 @@ export default function Product() {
               <div key={`${r.id || r.sku || "r"}-${idx}`} className="pn-relCard">
                 <div className="pn-relMetaBlock">
                   <div className="pn-relName">{r.name || r.id || "Товар"}</div>
-                  <div className="pn-relMeta">GT: {r.sku_gt || "-"} | IDS: {r.sku_id || "-"}</div>
+                  <div className="pn-relMeta">GT: {r.sku_gt || "-"}</div>
                 </div>
                 <div className="pn-relActions">
                   {r.id ? <Link className="pn-editBtn" to={`/products/${encodeURIComponent(r.id)}`}>Открыть</Link> : <span />}

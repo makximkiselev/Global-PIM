@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Set, Tuple
 
@@ -12,8 +13,17 @@ from app.storage.json_store import load_templates_db, save_templates_db
 from app.core.json_store import read_doc, write_doc
 from app.core.products.service import (
     create_product_service,
-    allocate_sku_triplets_service,
+    allocate_sku_pairs_service,
     delete_products_bulk_service,
+)
+from app.api.routes.products import (
+    YANDEX_OFFER_CARDS_PATH,
+    OZON_PRODUCT_RATING_PATH,
+    OZON_IMPORT_INFO_PATH,
+    _normalize_market_status,
+    _normalize_ozon_status,
+    _offer_ids_for_product,
+    _load_connectors_state,
 )
 
 router = APIRouter(tags=["Catalog"])
@@ -24,6 +34,9 @@ DATA_DIR = BASE_DIR / "data"
 CATALOG_PATH = DATA_DIR / "catalog_nodes.json"
 PRODUCTS_PATH = DATA_DIR / "catalog_products.json"
 FULL_PRODUCTS_PATH = DATA_DIR / "products.json"
+
+_PRODUCTS_PAGE_CACHE_TTL_SECONDS = 20.0
+_products_page_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 
 
 # =========================
@@ -61,6 +74,191 @@ def _load_full_products() -> List[Dict[str, Any]]:
 
 def _save_full_products(items: List[Dict[str, Any]]) -> None:
     _save_json(FULL_PRODUCTS_PATH, {"items": items})
+
+
+def _serialize_product_list_item(product: Dict[str, Any]) -> Dict[str, Any]:
+    title = str(product.get("title") or product.get("name") or "")
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+    media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
+    media_pool = media_images if media_images else media_legacy
+    preview_url = ""
+    for item in media_pool:
+        if isinstance(item, dict) and str(item.get("url") or "").strip():
+            preview_url = str(item.get("url") or "").strip()
+            break
+    return {
+        "id": str(product.get("id") or ""),
+        "name": title,
+        "title": title,
+        "category_id": str(product.get("category_id") or ""),
+        "sku_pim": str(product.get("sku_pim") or ""),
+        "sku_gt": str(product.get("sku_gt") or ""),
+        "group_id": str(product.get("group_id") or ""),
+        "preview_url": preview_url,
+        "exports_enabled": product.get("exports_enabled") if isinstance(product.get("exports_enabled"), dict) else {},
+    }
+
+
+def _products_page_meta() -> Dict[str, Any]:
+    now = time.monotonic()
+    cached_payload = _products_page_cache.get("payload")
+    cached_ts = float(_products_page_cache.get("ts") or 0.0)
+    if cached_payload and now - cached_ts < _PRODUCTS_PAGE_CACHE_TTL_SECONDS:
+        return cached_payload
+
+    nodes = _load_nodes()
+    groups_doc = read_doc(DATA_DIR / "product_groups.json", default={"items": []})
+    group_items = groups_doc.get("items") if isinstance(groups_doc, dict) else []
+    groups = group_items if isinstance(group_items, list) else []
+
+    templates_db = load_templates_db()
+    templates_map = templates_db.get("templates") if isinstance(templates_db.get("templates"), dict) else {}
+    template_items = []
+    for tid, row in templates_map.items():
+        if not isinstance(row, dict):
+            continue
+        template_items.append(
+            {
+                "id": str(row.get("id") or tid),
+                "category_id": str(row.get("category_id") or ""),
+                "name": str(row.get("name") or ""),
+            }
+        )
+    template_items.sort(key=lambda x: x["name"].lower())
+
+    payload = {
+        "nodes": nodes,
+        "groups": groups,
+        "templates": template_items,
+        "templates_db": templates_db,
+    }
+    _products_page_cache["ts"] = now
+    _products_page_cache["payload"] = payload
+    return payload
+
+
+def _gt_sort_key(value: Any) -> Tuple[int, int, str]:
+    v = str(value or "").strip()
+    if not v:
+        return 1, 2**31 - 1, ""
+    if v.isdigit():
+        return 0, int(v), v
+    return 0, 2**31 - 1, v.lower()
+
+
+def _build_marketplace_status_context() -> Dict[str, Any]:
+    state = _load_connectors_state()
+    providers = state.get("providers") if isinstance(state, dict) else {}
+    if not isinstance(providers, dict):
+        providers = {}
+
+    yandex_provider = providers.get("yandex_market") if isinstance(providers.get("yandex_market"), dict) else {}
+    ozon_provider = providers.get("ozon") if isinstance(providers.get("ozon"), dict) else {}
+
+    yandex_stores = yandex_provider.get("import_stores") if isinstance(yandex_provider.get("import_stores"), list) else []
+    ozon_stores = ozon_provider.get("import_stores") if isinstance(ozon_provider.get("import_stores"), list) else []
+
+    cards_doc = read_doc(YANDEX_OFFER_CARDS_PATH, default={"items": {}})
+    card_items = cards_doc.get("items") if isinstance(cards_doc, dict) else {}
+    if not isinstance(card_items, dict):
+        card_items = {}
+
+    rating_doc = read_doc(OZON_PRODUCT_RATING_PATH, default={"items": {}})
+    rating_items = rating_doc.get("items") if isinstance(rating_doc, dict) else {}
+    if not isinstance(rating_items, dict):
+        rating_items = {}
+
+    import_doc = read_doc(OZON_IMPORT_INFO_PATH, default={"items": {}})
+    import_items = import_doc.get("items") if isinstance(import_doc, dict) else {}
+    if not isinstance(import_items, dict):
+        import_items = {}
+
+    return {
+        "yandex_stores": yandex_stores,
+        "ozon_stores": ozon_stores,
+        "card_items": card_items,
+        "rating_items": rating_items,
+        "import_items": import_items,
+    }
+
+
+def _marketplace_statuses_for_product(product: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    offer_ids = _offer_ids_for_product(product)
+
+    yandex_stores_by_id: Dict[str, Dict[str, Any]] = {}
+    for store in ctx.get("yandex_stores") or []:
+        if not isinstance(store, dict):
+            continue
+        store_id = str(store.get("id") or "").strip()
+        if not store_id:
+            continue
+        yandex_stores_by_id[store_id] = {
+            "store_id": store_id,
+            "status_code": "",
+            "status": "Нет данных",
+        }
+
+    for offer_id in offer_ids:
+        row = ctx.get("card_items", {}).get(offer_id)
+        if not isinstance(row, dict):
+            continue
+        sources = row.get("sources") if isinstance(row.get("sources"), dict) else {}
+        for source_key, src in sources.items():
+            if not isinstance(src, dict):
+                continue
+            store_id = str(src.get("store_id") or source_key or "").strip()
+            if not store_id or store_id.isdigit():
+                continue
+            card = src.get("card") if isinstance(src.get("card"), dict) else {}
+            status_code = str(card.get("cardStatus") or "").strip()
+            yandex_stores_by_id[store_id] = {
+                "store_id": store_id,
+                "status_code": status_code,
+                "status": _normalize_market_status(status_code),
+            }
+
+    yandex_stores = list(yandex_stores_by_id.values())
+    yandex_codes = {str(x.get("status_code") or "") for x in yandex_stores if str(x.get("status_code") or "").strip()}
+    yandex_summary = "Нет данных" if not yandex_stores else ("Есть расхождения" if len(yandex_codes) > 1 else (yandex_stores[0].get("status") or "Нет данных"))
+    yandex_present = any(str(x.get("status_code") or "").strip() for x in yandex_stores)
+
+    ozon_rows: List[Dict[str, Any]] = []
+    for store in ctx.get("ozon_stores") or []:
+        if not isinstance(store, dict):
+            continue
+        store_id = str(store.get("id") or "").strip()
+        if not store_id:
+            continue
+        import_row = None
+        rating_row = None
+        for offer_id in offer_ids:
+            maybe_import = ctx.get("import_items", {}).get(f"{store_id}:{offer_id}")
+            if isinstance(maybe_import, dict):
+                import_row = maybe_import
+            maybe_rating = ctx.get("rating_items", {}).get(f"{store_id}:{offer_id}")
+            if isinstance(maybe_rating, dict):
+                rating_row = maybe_rating
+            if import_row or rating_row:
+                break
+        status_code = str((import_row or {}).get("status") or (import_row or {}).get("state") or "").strip()
+        ozon_rows.append(
+            {
+                "store_id": store_id,
+                "status_code": status_code,
+                "status": (str((import_row or {}).get("status") or "").strip() or _normalize_ozon_status(status_code) or "Нет данных"),
+                "has_rating": bool(rating_row),
+            }
+        )
+
+    ozon_codes = {str(x.get("status_code") or "") for x in ozon_rows if str(x.get("status_code") or "").strip()}
+    ozon_summary = "Нет данных" if not ozon_rows else ("Есть расхождения" if len(ozon_codes) > 1 else (ozon_rows[0].get("status") or "Нет данных"))
+    ozon_present = any(str(x.get("status_code") or "").strip() or bool(x.get("has_rating")) for x in ozon_rows)
+
+    return {
+        "yandex_market": {"status": yandex_summary, "present": yandex_present},
+        "ozon": {"status": ozon_summary, "present": ozon_present},
+    }
 
 
 def _cleanup_templates_for_deleted_categories(deleted_category_ids: set[str]) -> None:
@@ -459,13 +657,10 @@ def search_products(q: str = ""):
         title = str(p.get("title") or p.get("name") or "")
         sku_pim = str(p.get("sku_pim") or "")
         sku_gt = str(p.get("sku_gt") or "")
-        sku_id = str(p.get("sku_id") or "")
-
         haystack = [
             title.lower(),
             sku_pim.lower(),
             sku_gt.lower(),
-            sku_id.lower(),
         ]
         if not any(query in x for x in haystack):
             continue
@@ -493,23 +688,152 @@ def list_products(category_id: Optional[str] = None, include_descendants: bool =
         else:
             products = [p for p in products if p.get("category_id") == category_id]
 
-    items = []
-    for p in products:
-        title = str(p.get("title") or p.get("name") or "")
-        items.append(
-            {
-                "id": str(p.get("id") or ""),
-                "name": title,
-                "title": title,
-                "category_id": str(p.get("category_id") or ""),
-                "sku_pim": str(p.get("sku_pim") or ""),
-                "sku_gt": str(p.get("sku_gt") or ""),
-                "sku_id": str(p.get("sku_id") or ""),
-                "group_id": str(p.get("group_id") or ""),
-                "exports_enabled": p.get("exports_enabled") if isinstance(p.get("exports_enabled"), dict) else {},
-            }
+    return {"items": [_serialize_product_list_item(p) for p in products]}
+
+
+@router.get("/catalog/products-page-data")
+def products_page_data(
+    q: str = Query(""),
+    parent: str = Query(""),
+    sub: str = Query(""),
+    group: str = Query(""),
+    template: str = Query(""),
+    ym: str = Query("all"),
+    oz: str = Query("all"),
+    view: str = Query("all"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    refresh: bool = Query(False),
+):
+    if refresh:
+        _products_page_cache["ts"] = 0.0
+        _products_page_cache["payload"] = None
+
+    meta = _products_page_meta()
+    nodes = meta["nodes"]
+    groups = meta["groups"]
+    templates = meta["templates"]
+    templates_db = meta["templates_db"]
+
+    group_name_by_id = {str(g.get("id") or ""): str(g.get("name") or "") for g in groups if isinstance(g, dict)}
+    templates_by_category = _templates_by_category(templates_db)
+    subtree_parent = _collect_subtree_ids(nodes, parent) if parent else None
+    subtree_sub = _collect_subtree_ids(nodes, sub) if sub else None
+    q_normalized = (q or "").strip().lower()
+    ym_filter = (ym or "all").strip().lower()
+    oz_filter = (oz or "all").strip().lower()
+    view_filter = (view or "all").strip().lower()
+    template_cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+    path_cache: Dict[str, str] = {}
+
+    def category_path(category_id: str) -> str:
+        if category_id in path_cache:
+            return path_cache[category_id]
+        path = " / ".join(part["name"] for part in _build_category_path(nodes, category_id) if part.get("name"))
+        path_cache[category_id] = path
+        return path
+
+    def resolved_template(category_id: str) -> Tuple[str, str, str]:
+        if category_id in template_cache:
+            tid, source_cid = template_cache[category_id]
+        else:
+            tid, source_cid = _resolve_template_for_category(nodes, category_id, templates_by_category)
+            template_cache[category_id] = (tid, source_cid)
+        if not tid:
+            return "", "", ""
+        template_name = ""
+        for row in templates:
+            if str(row.get("id") or "") == str(tid):
+                template_name = str(row.get("name") or "")
+                break
+        return str(tid), template_name, str(source_cid or "")
+
+    marketplace_ctx = _build_marketplace_status_context()
+    filtered_items: List[Dict[str, Any]] = []
+    for product in _load_full_products():
+        item = _serialize_product_list_item(product)
+        category_id = str(item.get("category_id") or "")
+        if subtree_parent and category_id not in subtree_parent:
+            continue
+        if subtree_sub and category_id not in subtree_sub:
+            continue
+
+        group_id = str(item.get("group_id") or "").strip()
+        if group == "__ungrouped__" and group_id:
+            continue
+        if group and group != "__ungrouped__" and group_id != group:
+            continue
+
+        template_id, template_name, template_source_category_id = resolved_template(category_id)
+        if template == "__without__" and template_id:
+            continue
+        if template and template != "__without__" and template_id != template:
+            continue
+
+        marketplace_statuses = _marketplace_statuses_for_product(product, marketplace_ctx)
+        export_ym = bool(((marketplace_statuses.get("yandex_market") or {}).get("present")))
+        export_oz = bool(((marketplace_statuses.get("ozon") or {}).get("present")))
+        if ym_filter == "on" and not export_ym:
+            continue
+        if ym_filter == "off" and export_ym:
+            continue
+        if oz_filter == "on" and not export_oz:
+            continue
+        if oz_filter == "off" and export_oz:
+            continue
+
+        if view_filter == "issues" and template_id and export_ym and export_oz:
+            continue
+        if view_filter == "no_template" and template_id:
+            continue
+        if view_filter == "no_ym" and export_ym:
+            continue
+        if view_filter == "no_oz" and export_oz:
+            continue
+
+        cat_path = category_path(category_id)
+        if q_normalized:
+            haystack = " ".join(
+                [
+                    str(item.get("title") or ""),
+                    str(item.get("sku_gt") or ""),
+                    cat_path,
+                ]
+            ).lower()
+            if q_normalized not in haystack:
+                continue
+
+        item["category_path"] = cat_path
+        item["group_name"] = group_name_by_id.get(group_id, "")
+        item["effective_template_id"] = template_id
+        item["effective_template_name"] = template_name
+        item["effective_template_source_category_id"] = template_source_category_id
+        item["marketplace_statuses"] = marketplace_statuses
+        filtered_items.append(item)
+
+    filtered_items.sort(
+        key=lambda item: (
+            _gt_sort_key(item.get("sku_gt"))[0],
+            _gt_sort_key(item.get("sku_gt"))[1],
+            _gt_sort_key(item.get("sku_gt"))[2],
+            str(item.get("title") or item.get("name") or "").lower(),
         )
-    return {"items": items}
+    )
+
+    total = len(filtered_items)
+    start = max(0, (page - 1) * page_size)
+    end = start + page_size
+
+    return {
+        "ok": True,
+        "products": filtered_items[start:end],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "nodes": nodes,
+        "groups": groups,
+        "templates": templates,
+    }
 
 
 @router.get("/catalog/products/template.xlsx")
@@ -569,8 +893,8 @@ def export_products_template(category_id: str = Query(..., min_length=1)):
 
     header_categories_ru = [f"Категория {i}" for i in range(1, max_depth + 2)]
     header_categories = [f"category_{i}" for i in range(1, max_depth + 2)]
-    header_skus_ru = ["ID PIM", "ID GT", "ID IDS"]
-    header_skus = ["sku_pim", "sku_gt", "sku_id"]
+    header_skus_ru = ["ID PIM", "ID GT"]
+    header_skus = ["sku_pim", "sku_gt"]
     header_base_ru = ["Название товара"]
     header_base = ["title"]
 
@@ -605,12 +929,11 @@ def export_products_template(category_id: str = Query(..., min_length=1)):
     base_start = len(header_categories) + 1
     ws.column_dimensions[get_column_letter(base_start)].width = 16  # sku_pim
     ws.column_dimensions[get_column_letter(base_start + 1)].width = 16  # sku_gt
-    ws.column_dimensions[get_column_letter(base_start + 2)].width = 16  # sku_id
-    ws.column_dimensions[get_column_letter(base_start + 3)].width = 40  # title
-    for i in range(base_start + 4, base_start + 4 + len(attr_headers)):
+    ws.column_dimensions[get_column_letter(base_start + 2)].width = 40  # title
+    for i in range(base_start + 3, base_start + 3 + len(attr_headers)):
         ws.column_dimensions[get_column_letter(i)].width = 24
 
-    list_col = base_start + 4 + len(attr_headers) + 1
+    list_col = base_start + 3 + len(attr_headers) + 1
     data_start_row = 3
     data_end_row = 1000
 
@@ -668,7 +991,7 @@ def export_products_template(category_id: str = Query(..., min_length=1)):
                     dict_values = _load_values(alt_id)
 
         if dict_values:
-            target_col = base_start + 4 + idx_attr
+            target_col = base_start + 3 + idx_attr
             _add_validation(target_col, sorted(set(dict_values)))
 
     import io
@@ -712,7 +1035,7 @@ async def import_products_xlsx(
 
     def _looks_like_code_row(row: List[str]) -> bool:
         row_l = [r.lower() for r in row if r]
-        keys = {"title", "sku_pim", "sku_gt", "sku_id", "category_1", "category_id"}
+        keys = {"title", "sku_pim", "sku_gt", "category_1", "category_id"}
         return any(k in row_l for k in keys)
 
     if header2 and _looks_like_code_row(header2):
@@ -733,7 +1056,6 @@ async def import_products_xlsx(
     idx_cat = header_l.index("category_id") if "category_id" in header_l else -1
     idx_sku_pim = header_l.index("sku_pim") if "sku_pim" in header_l else -1
     idx_sku_gt = header_l.index("sku_gt") if "sku_gt" in header_l else -1
-    idx_sku_id = header_l.index("sku_id") if "sku_id" in header_l else -1
 
     cat_cols = [i for i, h in enumerate(header_l) if h.startswith("category_")]
 
@@ -793,27 +1115,25 @@ async def import_products_xlsx(
             raise HTTPException(status_code=400, detail="category_id is required")
         sku_pim = str((r[idx_sku_pim] if idx_sku_pim >= 0 and idx_sku_pim < len(r) else "") or "").strip()
         sku_gt = str((r[idx_sku_gt] if idx_sku_gt >= 0 and idx_sku_gt < len(r) else "") or "").strip()
-        sku_id = str((r[idx_sku_id] if idx_sku_id >= 0 and idx_sku_id < len(r) else "") or "").strip()
         prepared.append(
             {
                 "title": title,
                 "category_id": cid,
                 "sku_pim": sku_pim,
                 "sku_gt": sku_gt,
-                "sku_id": sku_id,
             }
         )
 
     if not prepared:
         return {"ok": True, "created": 0, "items": []}
 
-    auto_needed = [p for p in prepared if not (p.get("sku_pim") and p.get("sku_gt") and p.get("sku_id"))]
-    sku_items = allocate_sku_triplets_service(len(auto_needed)).get("items") or []
+    auto_needed = [p for p in prepared if not (p.get("sku_pim") and p.get("sku_gt"))]
+    sku_items = allocate_sku_pairs_service(len(auto_needed)).get("items") or []
     sku_iter = iter(sku_items)
     created_items = []
     for row in prepared:
         sku = {}
-        if not (row.get("sku_pim") and row.get("sku_gt") and row.get("sku_id")):
+        if not (row.get("sku_pim") and row.get("sku_gt")):
             sku = next(sku_iter, {})
         payload = {
             "category_id": row["category_id"],
@@ -821,7 +1141,6 @@ async def import_products_xlsx(
             "title": row["title"],
             "sku_pim": row.get("sku_pim") or sku.get("sku_pim"),
             "sku_gt": row.get("sku_gt") or sku.get("sku_gt"),
-            "sku_id": row.get("sku_id") or sku.get("sku_id"),
             "selected_params": [],
             "feature_params": [],
             "exports_enabled": {},

@@ -12,6 +12,7 @@
 
 /* Catalog-only overrides for a bolder look */
 .catalog-page{
+  --page-content-width: 1440px;
   --row-h: 38px;
   --indent: 16px;
   --grip-w: 18px;
@@ -25,8 +26,8 @@
 .catalog-page .catalog-grid,
 .templates-page .catalog-grid{
   display:grid;
-  grid-template-columns: 420px 1fr;
-  gap:18px;
+  grid-template-columns: 390px minmax(0, 1fr);
+  gap:16px;
   align-items:start;
 }
 
@@ -39,15 +40,44 @@
 
 /* Keep products panel visible while scrolling long category tree */
 .catalog-page .catalog-right{
-  position: sticky;
-  top: 12px;
-  max-height: calc(100vh - 24px);
-  overflow: auto;
+  position: static;
+  max-height: none;
+  overflow: visible;
 }
 
 /* catalog header */
 .catalog-page .catalog-topbar{
-  margin-bottom: 14px;
+  margin-bottom: 0;
+}
+
+.catalog-page .catalog-searchbar{
+  position:relative;
+  display:grid;
+  grid-template-columns:220px minmax(0, 1fr);
+  gap:16px;
+  align-items:center;
+  padding:14px 16px;
+}
+
+.catalog-page .catalog-searchbarLabel{
+  font-size:13px;
+  font-weight:900;
+  color:var(--muted);
+}
+
+.catalog-page .catalog-searchbarField{
+  position:relative;
+}
+
+.catalog-page .catalog-pageSearch{
+  max-width:none;
+}
+
+.catalog-page .catalog-pageDropdown{
+  right:0;
+  left:0;
+  width:auto;
+  max-width:none;
 }
 
 .catalog-page .tree-panel-head{
@@ -97,9 +127,10 @@
 
 .catalog-page .category-hero{
   display:flex;
+  align-items:center;
   justify-content:space-between;
   gap:12px;
-  padding:8px 10px;
+  padding:10px 12px;
   border-radius:12px;
   border:1px solid var(--line);
   background: rgba(255,255,255,.9);
@@ -147,6 +178,10 @@
   align-items:center;
   justify-content:space-between;
   margin-bottom:8px;
+}
+
+.catalog-page .catalog-productsSection{
+  margin-top:10px;
 }
 .catalog-page .empty-state{
   padding:12px;
@@ -642,5 +677,10 @@
     top: auto;
     max-height: none;
     overflow: visible;
+  }
+
+  .catalog-page .catalog-searchbar{
+    grid-template-columns:1fr;
+    gap:10px;
   }
 }

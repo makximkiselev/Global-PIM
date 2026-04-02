@@ -26,7 +26,6 @@ class CreateProductReq(BaseModel):
 
     sku_pim: Optional[str] = None
     sku_gt: Optional[str] = None
-    sku_id: Optional[str] = None
 
     selected_params: List[str] = Field(default_factory=list)
     feature_params: List[str] = Field(default_factory=list)
@@ -49,7 +48,7 @@ class CreateProductReq(BaseModel):
             raise ValueError("BAD_TYPE")
         return s
 
-    @field_validator("sku_pim", "sku_gt", "sku_id", mode="before")
+    @field_validator("sku_pim", "sku_gt", mode="before")
     @classmethod
     def _strip_optional_skus(cls, v: Any) -> Optional[str]:
         return _strip_or_none(v)
@@ -79,7 +78,6 @@ class PatchProductReq(BaseModel):
     title: Optional[str] = None
 
     sku_gt: Optional[str] = None
-    sku_id: Optional[str] = None
 
     selected_params: Optional[List[str]] = None
     feature_params: Optional[List[str]] = None
@@ -110,7 +108,7 @@ class PatchProductReq(BaseModel):
             raise ValueError("BAD_STATUS")
         return s
 
-    @field_validator("sku_gt", "sku_id", mode="before")
+    @field_validator("sku_gt", mode="before")
     @classmethod
     def _strip_optional_skus(cls, v: Any) -> Optional[str]:
         return _strip_or_none(v)
@@ -196,12 +194,11 @@ class BulkVariantRow(BaseModel):
     sku: Optional[str] = None
     sku_pim: Optional[str] = None
     sku_gt: Optional[str] = None
-    sku_id: Optional[str] = None
     title: Optional[str] = None
     links: Optional[List[Dict[str, Any]]] = None
     content: Optional[Dict[str, Any]] = None
 
-    @field_validator("variant_key", "sku", "sku_pim", "sku_gt", "sku_id", "title", mode="before")
+    @field_validator("variant_key", "sku", "sku_pim", "sku_gt", "title", mode="before")
     @classmethod
     def _strip_optional_strings(cls, v: Any) -> Optional[str]:
         return _strip_or_none(v)

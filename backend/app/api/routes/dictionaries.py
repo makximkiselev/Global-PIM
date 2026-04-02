@@ -284,7 +284,7 @@ def list_dictionaries(include_service: bool = Query(False)):
     dict_to_categories: Dict[str, set] = {}
     dict_title_hints: Dict[str, str] = {}
 
-    service_codes = {"sku_gt", "sku_id", "barcode"}
+    service_codes = {"sku_gt", "barcode"}
 
     if isinstance(tpl_attrs, dict):
         for tid, attrs in tpl_attrs.items():

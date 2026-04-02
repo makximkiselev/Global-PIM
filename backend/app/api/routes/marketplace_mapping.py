@@ -493,8 +493,6 @@ def _humanize_catalog_name(name_raw: Any) -> str:
     key = s[5:].strip().lower()
     known = {
         "sku_gt": "SKU GT",
-        "sku_ids": "SKU IDS",
-        "sku_id": "SKU IDS",
         "barcode": "Штрихкод",
         "штрихкод": "Штрихкод",
         "партномер": "Партномер",

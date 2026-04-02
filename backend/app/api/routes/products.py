@@ -16,7 +16,7 @@ from app.core.products.service import (
     patch_product_service,  # ✅ вместо update_product
     list_products_by_category_service,
     find_product_by_sku_service,
-    allocate_sku_triplets_service,
+    allocate_sku_pairs_service,
 )
 from app.core.products.repo import load_products as load_products_repo
 from app.core.json_store import JsonStoreError, read_doc, DATA_DIR
@@ -36,7 +36,6 @@ class CreateProductReq(BaseModel):
     title: str
     sku_pim: Optional[str] = None
     sku_gt: Optional[str] = None
-    sku_id: Optional[str] = None
     group_id: Optional[str] = None
     selected_params: List[str] = Field(default_factory=list)
     feature_params: List[str] = Field(default_factory=list)
@@ -50,7 +49,6 @@ class PatchProductReq(BaseModel):
     title: Optional[str] = None
     sku_pim: Optional[str] = None
     sku_gt: Optional[str] = None
-    sku_id: Optional[str] = None
     group_id: Optional[str] = None
     selected_params: Optional[List[str]] = None
     feature_params: Optional[List[str]] = None
@@ -61,7 +59,7 @@ class PatchProductReq(BaseModel):
 def _http_from_store_error(code: str) -> HTTPException:
     if code in ("PRODUCT_NOT_FOUND",):
         return HTTPException(status_code=404, detail=code)
-    if code in ("DUPLICATE_SKU_GT", "DUPLICATE_SKU_ID"):
+    if code in ("DUPLICATE_SKU_GT",):
         return HTTPException(status_code=409, detail=code)
     if code in ("CATEGORY_REQUIRED", "TITLE_REQUIRED", "BAD_TYPE", "BAD_STATUS", "BAD_SKU"):
         return HTTPException(status_code=400, detail=code)
@@ -70,7 +68,7 @@ def _http_from_store_error(code: str) -> HTTPException:
 
 def _offer_ids_for_product(product: Dict[str, Any]) -> List[str]:
     out: List[str] = []
-    for key in ("sku_gt", "sku_id"):
+    for key in ("sku_gt",):
         value = str(product.get(key) or "").strip()
         if value and value not in out:
             out.append(value)
@@ -325,8 +323,8 @@ def products_by_cat(category_id: str):
 
 
 @router.get("/find")
-def products_find(sku_gt: Optional[str] = None, sku_id: Optional[str] = None):
-    out = find_product_by_sku_service(sku_gt=sku_gt, sku_id=sku_id)
+def products_find(sku_gt: Optional[str] = None):
+    out = find_product_by_sku_service(sku_gt=sku_gt)
     if not out:
         raise HTTPException(status_code=404, detail="NOT_FOUND")
     return out
@@ -338,7 +336,7 @@ class AllocateSkusReq(BaseModel):
 
 @router.post("/allocate-skus")
 def products_allocate_skus(req: AllocateSkusReq):
-    return allocate_sku_triplets_service(req.count)
+    return allocate_sku_pairs_service(req.count)
 
 
 def _sanitize_filename(name: str) -> str:

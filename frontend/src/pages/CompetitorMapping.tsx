@@ -20,7 +20,7 @@ type MasterField = {
 const PARAM_GROUPS = ["Артикулы", "Описание", "Медиа", "О товаре", "Логистика", "Гарантия", "Прочее"] as const;
 type ParamGroup = (typeof PARAM_GROUPS)[number];
 
-const FALLBACK_SERVICE_CODES = new Set(["sku_gt", "sku_id", "barcode"]);
+const FALLBACK_SERVICE_CODES = new Set(["sku_gt", "barcode"]);
 
 type DictionaryItem = {
   id?: string | null;

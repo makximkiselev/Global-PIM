@@ -545,7 +545,7 @@ def ensure_global_attribute(
     final_code = (code or "").strip() or slugify_code(title)
     canonical_dict_id = f"dict_{final_code}"
     tn = _norm_title(title)
-    service_codes = {"sku_pim", "sku_gt", "sku_id", "barcode"}
+    service_codes = {"sku_pim", "sku_gt", "barcode"}
 
     for it in items:
         if not isinstance(it, dict):

@@ -16,7 +16,7 @@ type MethodRow = {
   next_run_at?: string | null;
 };
 type ProviderRow = { code: string; title: string; methods: MethodRow[] };
-type ProviderSettings = { offer_id_source?: "sku_gt" | "sku_id" };
+type ProviderSettings = { offer_id_source?: "sku_gt" };
 type ProviderSettingOption = { code: string; label: string };
 type ImportStore = {
   id: string;
@@ -347,15 +347,7 @@ export default function ConnectorsStatus() {
                       {p.code === "yandex_market" ? (
                         <label className="cs-selectLabel" style={{ marginTop: 10, maxWidth: 260 }}>
                           ID для offerId
-                          <select
-                            value={p.settings?.offer_id_source || "sku_gt"}
-                            onChange={(e) => updateProviderSettings(p.code, { offer_id_source: e.target.value as "sku_gt" | "sku_id" })}
-                            disabled={saving || !!runningProvider}
-                          >
-                            {(providerSettingOptions?.[p.code]?.offer_id_source || []).map((o) => (
-                              <option key={o.code} value={o.code}>{o.label}</option>
-                            ))}
-                          </select>
+                          <input value="SKU GT" disabled />
                         </label>
                       ) : null}
                       <div className="cs-storeHead">

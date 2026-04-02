@@ -267,7 +267,6 @@ const MAPPING_PROVIDER_CODES = Object.keys(PROVIDER_SLOTS);
 
 const DEFAULT_SERVICE_PARAM_DEFS: ServiceParamDef[] = [
   { key: "sku_gt", title: "SKU GT" },
-  { key: "sku_ids", title: "SKU IDS" },
   { key: "barcode", title: "Штрихкод" },
   { key: "group", title: "Группа товара" },
   { key: "title", title: "Наименование товара" },
@@ -292,7 +291,6 @@ const DEFAULT_SERVICE_PARAM_DEFS: ServiceParamDef[] = [
 
 const SERVICE_GROUP_BY_KEY: Record<string, ParamGroup> = {
   sku_gt: "Артикулы",
-  sku_ids: "Артикулы",
   barcode: "Артикулы",
   brand: "О товаре",
   line: "О товаре",
@@ -659,8 +657,6 @@ function humanizeCatalogName(nameRaw?: string): string {
   const key = s.slice(5).trim().toLowerCase();
   const known: Record<string, string> = {
     sku_gt: "SKU GT",
-    sku_ids: "SKU IDS",
-    sku_id: "SKU IDS",
     barcode: "Штрихкод",
     штрихкод: "Штрихкод",
     партномер: "Партномер",

@@ -13,9 +13,12 @@ from fastapi import Request
 
 from app.core.json_store import DATA_DIR, read_doc, write_doc
 
-AUTH_PATH = DATA_DIR / "auth" / "access.json"
+AUTH_BASE_PATH = DATA_DIR / "auth" / "access.json"
+AUTH_SESSIONS_PATH = DATA_DIR / "auth" / "sessions.json"
+AUTH_EVENTS_PATH = DATA_DIR / "auth" / "login_events.json"
 SESSION_COOKIE = "pim_session"
 SESSION_TTL_DAYS = 30
+SESSION_TOUCH_INTERVAL_SECONDS = 600
 
 PAGE_CATALOG: List[Dict[str, str]] = [
     {"code": "dashboard", "title": "Дашборд"},
@@ -106,12 +109,10 @@ SYSTEM_ROLES: List[Dict[str, Any]] = [
     },
 ]
 
-DEFAULT_AUTH_DB: Dict[str, Any] = {
+DEFAULT_AUTH_BASE_DB: Dict[str, Any] = {
     "version": 1,
     "roles": {},
     "users": {},
-    "sessions": {},
-    "login_events": [],
 }
 
 PUBLIC_API_PATHS = {
@@ -134,6 +135,51 @@ def _clone(v: Any) -> Any:
     import json
 
     return json.loads(json.dumps(v))
+
+
+def _load_auth_base() -> Dict[str, Any]:
+    db = read_doc(AUTH_BASE_PATH, default=_clone(DEFAULT_AUTH_BASE_DB))
+    if not isinstance(db, dict):
+        db = _clone(DEFAULT_AUTH_BASE_DB)
+    if not isinstance(db.get("roles"), dict):
+        db["roles"] = {}
+    if not isinstance(db.get("users"), dict):
+        db["users"] = {}
+    return db
+
+
+def _save_auth_base(db: Dict[str, Any]) -> None:
+    payload = {
+        "version": db.get("version", 1),
+        "roles": db.get("roles") if isinstance(db.get("roles"), dict) else {},
+        "users": db.get("users") if isinstance(db.get("users"), dict) else {},
+    }
+    write_doc(AUTH_BASE_PATH, payload)
+
+
+def _load_auth_sessions() -> Dict[str, Any]:
+    doc = read_doc(AUTH_SESSIONS_PATH, default={"sessions": {}})
+    if not isinstance(doc, dict):
+        return {}
+    sessions = doc.get("sessions")
+    return sessions if isinstance(sessions, dict) else {}
+
+
+def _save_auth_sessions(sessions: Dict[str, Any]) -> None:
+    write_doc(AUTH_SESSIONS_PATH, {"sessions": sessions if isinstance(sessions, dict) else {}})
+
+
+def _load_auth_login_events() -> List[Dict[str, Any]]:
+    doc = read_doc(AUTH_EVENTS_PATH, default={"login_events": []})
+    if not isinstance(doc, dict):
+        return []
+    rows = doc.get("login_events")
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _save_auth_login_events(events: List[Dict[str, Any]]) -> None:
+    rows = [row for row in events if isinstance(row, dict)]
+    write_doc(AUTH_EVENTS_PATH, {"login_events": rows[-300:]})
 
 
 def _normalize_text(value: Any) -> str:
@@ -192,17 +238,9 @@ def _ensure_system_roles(db: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_auth_db() -> Dict[str, Any]:
-    db = read_doc(AUTH_PATH, default=_clone(DEFAULT_AUTH_DB))
-    if not isinstance(db, dict):
-        db = _clone(DEFAULT_AUTH_DB)
-    if not isinstance(db.get("roles"), dict):
-        db["roles"] = {}
-    if not isinstance(db.get("users"), dict):
-        db["users"] = {}
-    if not isinstance(db.get("sessions"), dict):
-        db["sessions"] = {}
-    if not isinstance(db.get("login_events"), list):
-        db["login_events"] = []
+    db = _load_auth_base()
+    db["sessions"] = _load_auth_sessions()
+    db["login_events"] = _load_auth_login_events()
     db = _ensure_system_roles(db)
     users = db.get("users") if isinstance(db.get("users"), dict) else {}
     changed = False
@@ -220,12 +258,14 @@ def load_auth_db() -> Dict[str, Any]:
             changed = True
     if changed:
         db["users"] = users
-        write_doc(AUTH_PATH, db)
+        _save_auth_base(db)
     return db
 
 
 def save_auth_db(db: Dict[str, Any]) -> None:
-    write_doc(AUTH_PATH, db)
+    _save_auth_base(db)
+    _save_auth_sessions(db.get("sessions") if isinstance(db.get("sessions"), dict) else {})
+    _save_auth_login_events(db.get("login_events") if isinstance(db.get("login_events"), list) else [])
 
 
 def list_permission_catalog() -> Dict[str, Any]:
@@ -379,13 +419,15 @@ def _append_login_event(
 
 
 def record_login_failure(login: str, ip: str = "", user_agent: str = "") -> None:
-    db = load_auth_db()
+    events = _load_auth_login_events()
+    db = {"login_events": events}
     _append_login_event(db, login=login, status="failed", ip=ip, user_agent=user_agent)
-    save_auth_db(db)
+    _save_auth_login_events(db.get("login_events") if isinstance(db.get("login_events"), list) else [])
 
 
 def record_login_success(user_id: str, ip: str = "", user_agent: str = "") -> Optional[Dict[str, Any]]:
-    db = load_auth_db()
+    db = _load_auth_base()
+    db = _ensure_system_roles(db)
     users = db.get("users") if isinstance(db.get("users"), dict) else {}
     user = users.get(str(user_id or ""))
     if not isinstance(user, dict):
@@ -396,8 +438,10 @@ def record_login_success(user_id: str, ip: str = "", user_agent: str = "") -> Op
     user["updated_at"] = _iso()
     users[str(user_id)] = user
     db["users"] = users
+    _save_auth_base(db)
+    events_db = {"login_events": _load_auth_login_events()}
     _append_login_event(
-        db,
+        events_db,
         login=_normalize_text(user.get("login")) or _normalize_text(user.get("email")),
         user_id=str(user_id),
         user_name=_normalize_text(user.get("name")),
@@ -405,13 +449,12 @@ def record_login_success(user_id: str, ip: str = "", user_agent: str = "") -> Op
         ip=ip,
         user_agent=user_agent,
     )
-    save_auth_db(db)
+    _save_auth_login_events(events_db.get("login_events") if isinstance(events_db.get("login_events"), list) else [])
     return user
 
 
 def recent_login_events(limit: int = 100) -> List[Dict[str, Any]]:
-    db = load_auth_db()
-    events = db.get("login_events") if isinstance(db.get("login_events"), list) else []
+    events = _load_auth_login_events()
     rows = [row for row in events if isinstance(row, dict)]
     return list(reversed(rows[-max(1, min(limit, 300)) :]))
 
@@ -452,10 +495,9 @@ def admin_reset_password(user_id: str, new_password: Optional[str] = None) -> Di
 
 
 def create_session(user_id: str) -> str:
-    db = load_auth_db()
+    sessions = _load_auth_sessions()
     token = secrets.token_urlsafe(32)
     token_hash = _hash_session_token(token)
-    sessions = db.get("sessions") if isinstance(db.get("sessions"), dict) else {}
     sessions[token_hash] = {
         "id": token_hash,
         "user_id": user_id,
@@ -463,27 +505,35 @@ def create_session(user_id: str) -> str:
         "last_seen_at": _iso(),
         "expires_at": _iso(_now() + timedelta(days=SESSION_TTL_DAYS)),
     }
-    db["sessions"] = sessions
-    save_auth_db(db)
+    _save_auth_sessions(sessions)
     return token
 
 
 def drop_session(token: str) -> None:
-    db = load_auth_db()
+    sessions = _load_auth_sessions()
     token_hash = _hash_session_token(token)
-    sessions = db.get("sessions") if isinstance(db.get("sessions"), dict) else {}
     if token_hash in sessions:
         sessions.pop(token_hash, None)
-        db["sessions"] = sessions
-        save_auth_db(db)
+        _save_auth_sessions(sessions)
+
+
+def _should_touch_session(last_seen_at: str) -> bool:
+    if not _normalize_text(last_seen_at):
+        return True
+    try:
+        last_seen = datetime.fromisoformat(last_seen_at)
+    except Exception:
+        return True
+    return (_now() - last_seen).total_seconds() >= SESSION_TOUCH_INTERVAL_SECONDS
 
 
 def auth_from_request(request: Request) -> AuthContext:
     token = _normalize_text(request.cookies.get(SESSION_COOKIE))
     if not token:
         return AuthContext(None, [], set(), set())
-    db = load_auth_db()
-    sessions = db.get("sessions") if isinstance(db.get("sessions"), dict) else {}
+    db = _load_auth_base()
+    db = _ensure_system_roles(db)
+    sessions = _load_auth_sessions()
     token_hash = _hash_session_token(token)
     session = sessions.get(token_hash)
     if not isinstance(session, dict):
@@ -494,22 +544,20 @@ def auth_from_request(request: Request) -> AuthContext:
             expires = datetime.fromisoformat(expires_at)
             if expires <= _now():
                 sessions.pop(token_hash, None)
-                db["sessions"] = sessions
-                save_auth_db(db)
+                _save_auth_sessions(sessions)
                 return AuthContext(None, [], set(), set())
         except Exception:
             sessions.pop(token_hash, None)
-            db["sessions"] = sessions
-            save_auth_db(db)
+            _save_auth_sessions(sessions)
             return AuthContext(None, [], set(), set())
     users = db.get("users") if isinstance(db.get("users"), dict) else {}
     user = users.get(str(session.get("user_id") or ""))
     if not isinstance(user, dict) or not bool(user.get("is_active", True)):
         return AuthContext(None, [], set(), set())
-    session["last_seen_at"] = _iso()
-    sessions[token_hash] = session
-    db["sessions"] = sessions
-    save_auth_db(db)
+    if _should_touch_session(str(session.get("last_seen_at") or "")):
+        session["last_seen_at"] = _iso()
+        sessions[token_hash] = session
+        _save_auth_sessions(sessions)
     return build_auth_context(db, user, session_id=token_hash)
 
 

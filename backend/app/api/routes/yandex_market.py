@@ -271,12 +271,7 @@ def _load_attr_value_refs() -> Dict[str, Dict[str, Any]]:
 
 
 def _yandex_offer_id_source() -> str:
-    doc = read_doc(CONNECTORS_STATE_PATH, default={})
-    providers = doc.get("providers") if isinstance(doc, dict) else {}
-    prow = providers.get("yandex_market") if isinstance(providers, dict) else {}
-    settings = prow.get("settings") if isinstance(prow, dict) else {}
-    source = str(settings.get("offer_id_source") or "sku_gt").strip().lower() if isinstance(settings, dict) else "sku_gt"
-    return source if source in {"sku_gt", "sku_id"} else "sku_gt"
+    return "sku_gt"
 
 
 def _default_import_business_id() -> str:
@@ -928,8 +923,6 @@ def _extract_product_value(product: Dict[str, Any], catalog_name: str) -> str:
     n = _norm(catalog_name)
     if n in {"sku gt", "gt id", "sku_gt"}:
         return str(product.get("sku_gt") or "").strip()
-    if n in {"sku ids", "ids id", "sku id", "sku_id"}:
-        return str(product.get("sku_id") or "").strip()
     if n in {"sku pim", "pim id", "sku_pim"}:
         return str(product.get("sku_pim") or "").strip()
     if n in {"наименование товара", "name", "title"}:
@@ -980,10 +973,7 @@ def _extract_product_value(product: Dict[str, Any], catalog_name: str) -> str:
 
 
 def _preferred_offer_id(product: Dict[str, Any]) -> str:
-    source = _yandex_offer_id_source()
-    if source == "sku_id":
-        return str(product.get("sku_id") or "").strip() or str(product.get("sku_gt") or "").strip()
-    return str(product.get("sku_gt") or "").strip() or str(product.get("sku_id") or "").strip()
+    return str(product.get("sku_gt") or "").strip()
 
 
 def _dict_id_for_catalog_param(
@@ -1993,7 +1983,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         if status == "archived":
             missing.append("status=archived (товар в архиве)")
         if not offer_id:
-            missing.append(f"{'SKU IDS' if _yandex_offer_id_source() == 'sku_id' else 'SKU GT'} (offerId) не заполнен")
+            missing.append("SKU GT (offerId) не заполнен")
         if not name:
             missing.append("Наименование товара не заполнено")
         if not yandex_category_id:

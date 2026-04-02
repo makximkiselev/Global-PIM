@@ -3,10 +3,18 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import urlparse
+
+_PG_CONN: Any = None
+_PG_KIND: str = ""
+_PG_JSON_ADAPTER: Any = None
+_PG_TABLE_READY = False
+_DOC_CACHE_TTL_SECONDS = 15.0
+_DOC_CACHE: dict[str, tuple[float, Any]] = {}
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"  # backend/data
 SQLITE_PATH = DATA_DIR / "pim.db"
@@ -113,20 +121,40 @@ def _db_connect_sqlite() -> sqlite3.Connection:
 
 
 def _pg_connect():
+    global _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
     dsn = _database_url()
     if not dsn:
         raise JsonStoreError("DATABASE_URL_MISSING")
+    if _PG_CONN is not None:
+        try:
+            if _PG_KIND == "psycopg":
+                if not getattr(_PG_CONN, "closed", True):
+                    return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
+            elif _PG_KIND == "psycopg2":
+                if getattr(_PG_CONN, "closed", 1) == 0:
+                    return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
+        except Exception:
+            _PG_CONN = None
+            _PG_KIND = ""
+            _PG_JSON_ADAPTER = None
     driver, kind = _load_psycopg()
     if kind == "psycopg":
-        conn = driver.connect(dsn, autocommit=True)
-        return conn, kind, None
+        _PG_CONN = driver.connect(dsn, autocommit=True)
+        _PG_KIND = kind
+        _PG_JSON_ADAPTER = None
+        return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
     psycopg2_mod, Json = driver
-    conn = psycopg2_mod.connect(dsn)
-    conn.autocommit = True
-    return conn, kind, Json
+    _PG_CONN = psycopg2_mod.connect(dsn)
+    _PG_CONN.autocommit = True
+    _PG_KIND = kind
+    _PG_JSON_ADAPTER = Json
+    return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
 
 
 def _ensure_pg_table(conn: Any) -> None:
+    global _PG_TABLE_READY
+    if _PG_TABLE_READY:
+        return
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -137,6 +165,7 @@ def _ensure_pg_table(conn: Any) -> None:
             )
             """
         )
+    _PG_TABLE_READY = True
 
 
 def _is_under_data_dir(path: Path) -> bool:
@@ -160,6 +189,25 @@ def _table_name_for_path(path: Path) -> str:
 
 def _doc_key_for_path(path: Path) -> str:
     return str(path.resolve().relative_to(DATA_DIR.resolve())).replace("\\", "/")
+
+
+def _cache_get(key: str) -> Any | None:
+    entry = _DOC_CACHE.get(key)
+    if not entry:
+        return None
+    expires_at, payload = entry
+    if expires_at <= time.monotonic():
+        _DOC_CACHE.pop(key, None)
+        return None
+    return deepcopy(payload)
+
+
+def _cache_set(key: str, payload: Any) -> None:
+    _DOC_CACHE[key] = (time.monotonic() + _DOC_CACHE_TTL_SECONDS, deepcopy(payload))
+
+
+def _cache_invalidate(key: str) -> None:
+    _DOC_CACHE.pop(key, None)
 
 
 def _ensure_doc_table(conn: sqlite3.Connection, table: str) -> None:
@@ -296,26 +344,28 @@ def read_doc(path: Path, default: Optional[Any] = None) -> Any:
         raise JsonStoreError(f"SQL_ONLY_MODE_PATH_NOT_ALLOWED: {p}")
 
     _assert_postgres_runtime()
+    key = _doc_key_for_path(p)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
     conn, _, _ = _pg_connect()
-    try:
-        _ensure_pg_table(conn)
-        key = _doc_key_for_path(p)
-        with conn.cursor() as cur:
-            cur.execute("SELECT payload FROM json_documents WHERE path = %s", (key,))
-            row = cur.fetchone()
-            if not row:
-                return default if default is not None else {}
-            raw = row[0]
-            if isinstance(raw, (dict, list)):
-                return raw
-            if raw is None:
-                return default if default is not None else {}
-            try:
-                return json.loads(raw) if isinstance(raw, str) else raw
-            except Exception:
-                return default if default is not None else {}
-    finally:
-        conn.close()
+    _ensure_pg_table(conn)
+    with conn.cursor() as cur:
+        cur.execute("SELECT payload FROM json_documents WHERE path = %s", (key,))
+        row = cur.fetchone()
+        if not row:
+            return default if default is not None else {}
+        raw = row[0]
+        if isinstance(raw, (dict, list)):
+            return raw
+        if raw is None:
+            return default if default is not None else {}
+        try:
+            payload = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            return default if default is not None else {}
+        _cache_set(key, payload)
+        return deepcopy(payload)
 
 
 def write_doc(path: Path, data: Any) -> None:
@@ -325,32 +375,31 @@ def write_doc(path: Path, data: Any) -> None:
 
     _assert_postgres_runtime()
     conn, _, Json = _pg_connect()
-    try:
-        _ensure_pg_table(conn)
-        key = _doc_key_for_path(p)
-        with conn.cursor() as cur:
-            if Json is not None:
-                cur.execute(
-                    """
-                    INSERT INTO json_documents (path, payload, updated_at)
-                    VALUES (%s, %s, NOW())
-                    ON CONFLICT (path)
-                    DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
-                    """,
-                    (key, Json(data)),
-                )
-            else:
-                cur.execute(
-                    """
-                    INSERT INTO json_documents (path, payload, updated_at)
-                    VALUES (%s, %s::jsonb, NOW())
-                    ON CONFLICT (path)
-                    DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
-                    """,
-                    (key, json.dumps(data, ensure_ascii=False)),
-                )
-    finally:
-        conn.close()
+    _ensure_pg_table(conn)
+    key = _doc_key_for_path(p)
+    _cache_invalidate(key)
+    with conn.cursor() as cur:
+        if Json is not None:
+            cur.execute(
+                """
+                INSERT INTO json_documents (path, payload, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (path)
+                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                """,
+                (key, Json(data)),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO json_documents (path, payload, updated_at)
+                VALUES (%s, %s::jsonb, NOW())
+                ON CONFLICT (path)
+                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                """,
+                (key, json.dumps(data, ensure_ascii=False)),
+            )
+    _cache_set(key, data)
 
 
 def with_lock(filename: str) -> FileLock:

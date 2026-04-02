@@ -90,32 +90,27 @@ def _default_content() -> Dict[str, Any]:
     }
 
 
-def _ensure_unique_sku(items: List[Dict[str, Any]], *, sku_gt: str = "", sku_id: str = "", exclude_id: str = "") -> None:
+def _ensure_unique_sku(items: List[Dict[str, Any]], *, sku_gt: str = "", exclude_id: str = "") -> None:
     for item in items:
         pid = _norm(item.get("id"))
         if exclude_id and pid == exclude_id:
             continue
         if sku_gt and _norm(item.get("sku_gt")) == sku_gt:
             raise JsonStoreError("DUPLICATE_SKU_GT")
-        if sku_id and _norm(item.get("sku_id")) == sku_id:
-            raise JsonStoreError("DUPLICATE_SKU_ID")
 
-
-def allocate_sku_triplets_service(count: int) -> Dict[str, Any]:
+def allocate_sku_pairs_service(count: int) -> Dict[str, Any]:
     qty = int(count or 0)
     if qty < 1:
         raise JsonStoreError("BAD_SKU")
     items = _items()
     next_pim = _max_numeric(items, "sku_pim", 0) + 1
     next_gt = _max_numeric(items, "sku_gt", 50000) + 1
-    next_ids = _max_numeric(items, "sku_id", 8000) + 1
     out: List[Dict[str, str]] = []
     for idx in range(qty):
         out.append(
             {
                 "sku_pim": str(next_pim + idx),
                 "sku_gt": str(next_gt + idx),
-                "sku_id": str(next_ids + idx),
             }
         )
     return {"items": out, "count": len(out)}
@@ -135,16 +130,13 @@ def create_product_service(payload: Dict[str, Any]) -> Dict[str, Any]:
     items = _items()
     sku_pim = _norm(payload.get("sku_pim"))
     sku_gt = _norm(payload.get("sku_gt"))
-    sku_id = _norm(payload.get("sku_id"))
+    if not sku_pim or not sku_gt:
+        allocated = allocate_sku_pairs_service(1).get("items") or [{}]
+        pair = allocated[0] if allocated else {}
+        sku_pim = sku_pim or _norm(pair.get("sku_pim"))
+        sku_gt = sku_gt or _norm(pair.get("sku_gt"))
 
-    if not sku_pim or not sku_gt or not sku_id:
-        allocated = allocate_sku_triplets_service(1).get("items") or [{}]
-        triplet = allocated[0] if allocated else {}
-        sku_pim = sku_pim or _norm(triplet.get("sku_pim"))
-        sku_gt = sku_gt or _norm(triplet.get("sku_gt"))
-        sku_id = sku_id or _norm(triplet.get("sku_id"))
-
-    _ensure_unique_sku(items, sku_gt=sku_gt, sku_id=sku_id)
+    _ensure_unique_sku(items, sku_gt=sku_gt)
 
     product = {
         "id": _next_product_id(items),
@@ -154,7 +146,6 @@ def create_product_service(payload: Dict[str, Any]) -> Dict[str, Any]:
         "title": title,
         "sku_pim": sku_pim,
         "sku_gt": sku_gt,
-        "sku_id": sku_id,
         "group_id": _norm(payload.get("group_id")) or None,
         "selected_params": list(payload.get("selected_params") or []),
         "feature_params": list(payload.get("feature_params") or []),
@@ -223,10 +214,9 @@ def patch_product_service(product_id: str, patch: Dict[str, Any]) -> Dict[str, A
         target["title"] = title
 
     sku_gt = _norm(patch.get("sku_gt")) if "sku_gt" in patch else _norm(target.get("sku_gt"))
-    sku_id = _norm(patch.get("sku_id")) if "sku_id" in patch else _norm(target.get("sku_id"))
-    _ensure_unique_sku(items, sku_gt=sku_gt, sku_id=sku_id, exclude_id=pid)
+    _ensure_unique_sku(items, sku_gt=sku_gt, exclude_id=pid)
 
-    for key in ("category_id", "sku_pim", "sku_gt", "sku_id", "group_id"):
+    for key in ("category_id", "sku_pim", "sku_gt", "group_id"):
         if key in patch:
             target[key] = _norm(patch.get(key)) or None
 
@@ -252,13 +242,10 @@ def list_products_by_category_service(category_id: str) -> Dict[str, Any]:
     return {"items": items, "count": len(items)}
 
 
-def find_product_by_sku_service(sku_gt: Optional[str] = None, sku_id: Optional[str] = None) -> Dict[str, Any]:
+def find_product_by_sku_service(sku_gt: Optional[str] = None) -> Dict[str, Any]:
     gt = _norm(sku_gt)
-    sid = _norm(sku_id)
     for item in _items():
         if gt and _norm(item.get("sku_gt")) == gt:
-            return {"product": item}
-        if sid and _norm(item.get("sku_id")) == sid:
             return {"product": item}
     return {}
 

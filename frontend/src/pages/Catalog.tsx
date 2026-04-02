@@ -39,7 +39,6 @@ type ProductT = {
   title?: string;
   sku_pim?: string;
   sku_gt?: string;
-  sku_id?: string;
 };
 
 function buildChildrenMap(nodes: NodeT[]) {
@@ -846,34 +845,22 @@ export default function Catalog() {
             Перетаскивай: между (сортировка) или внутрь (сделать подкатегорией).
           </div>
         </div>
+      </div>
 
-        <div
-          style={{
-            position: "relative",
-            flex: 1,
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <div className="search" style={{ maxWidth: 560 }}>
+      <div className="card catalog-searchbar" ref={topbarRef}>
+        <div className="catalog-searchbarLabel">Поиск товара по каталогу</div>
+        <div className="catalog-searchbarField">
+          <div className="search catalog-pageSearch">
             <span style={{ color: "var(--muted)" }}>🔎</span>
             <input
               value={pq}
               onChange={(e) => setPq(e.target.value)}
-              placeholder="Поиск товара… (например: iPhone 16 Pro Max)"
+              placeholder="Например: iPhone 16 Pro Max"
             />
           </div>
 
           {(pLoading || pHits.length > 0) && pq.trim() && (
-            <div
-              className="dropdown"
-              style={{
-                right: 0,
-                left: "auto",
-                width: 560,
-                maxWidth: "100%",
-              }}
-            >
+            <div className="dropdown catalog-pageDropdown">
               {pLoading ? (
                 <div style={{ padding: 10, color: "var(--muted)", fontSize: 13 }}>
                   Ищу…
@@ -1083,7 +1070,7 @@ export default function Catalog() {
           </div>
 
           {!selected ? null : (
-            <div style={{ marginTop: 10 }}>
+            <div className="catalog-productsSection">
               <div className="products-head">
                 <div className="card-title">Товары</div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1130,13 +1117,11 @@ export default function Catalog() {
                         aria-label="Выбрать все товары"
                       />
                     </div>
-                    <div className="product-article">GT ID</div>
-                    <div className="product-article">IDs ID</div>
+                    <div className="product-article">GT SKU</div>
                     <div className="product-name">Наименование</div>
                   </div>
                   {products.map((p) => {
                     const skuGt = (p.sku_gt || "").trim() || "—";
-                    const skuId = (p.sku_id || "").trim() || "—";
                     const title = p.title || p.name || "";
                     const checked = selectedProducts.includes(p.id);
                     return (
@@ -1151,9 +1136,6 @@ export default function Catalog() {
                         </div>
                         <Link className="product-article" to={`/products/${p.id}`} title={skuGt}>
                           {skuGt}
-                        </Link>
-                        <Link className="product-article" to={`/products/${p.id}`} title={skuId}>
-                          {skuId}
                         </Link>
                         <Link className="product-name" to={`/products/${p.id}`} title={title}>
                           {title}

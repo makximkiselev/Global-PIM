@@ -988,7 +988,7 @@ async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
         pid = str(product.get("id") or "").strip()
         if target_ids and pid not in target_ids:
             continue
-        candidates = [str(product.get("sku_gt") or "").strip(), str(product.get("sku_id") or "").strip()]
+        candidates = [str(product.get("sku_gt") or "").strip()]
         has_any = False
         for offer_id in candidates:
             if not offer_id:

@@ -953,7 +953,7 @@ type CompetitorContentResp = {
   };
 };
 
-type SkuTriplet = { sku_pim: string; sku_gt: string; sku_id: string };
+type SkuTriplet = { sku_pim: string; sku_gt: string };
 
 type VariantContent = {
   features: {
@@ -979,7 +979,6 @@ type Variant = {
   params: Record<string, string>;
   sku_pim: string;
   sku_gt: string;
-  sku_id: string;
   links: { source: "restore" | "store77"; url: string }[];
   content: VariantContent;
 };
@@ -1425,7 +1424,6 @@ export default function ProductNew() {
           params: {},
           sku_pim: "",
           sku_gt: "",
-          sku_id: "",
           links: [
             { source: "restore", url: "" },
             { source: "store77", url: "" },
@@ -1458,15 +1456,15 @@ export default function ProductNew() {
   }
 
   async function ensureSkusForVariants(next: Variant[]) {
-    const missing = next.filter((v) => !v.sku_pim || !v.sku_gt || !v.sku_id);
+    const missing = next.filter((v) => !v.sku_pim || !v.sku_gt);
     if (!missing.length) return next;
     const triplets = await allocateSkus(missing.length);
     const tripletQueue = triplets.slice();
     return next.map((v) => {
-      if (v.sku_pim && v.sku_gt && v.sku_id) return v;
+      if (v.sku_pim && v.sku_gt) return v;
       const t = tripletQueue.shift();
       if (!t) return v;
-      return { ...v, sku_pim: t.sku_pim, sku_gt: t.sku_gt, sku_id: t.sku_id };
+      return { ...v, sku_pim: t.sku_pim, sku_gt: t.sku_gt };
     });
   }
 
@@ -1503,7 +1501,6 @@ export default function ProductNew() {
           params: p,
           sku_pim: "",
           sku_gt: "",
-          sku_id: "",
           links: [
             { source: "restore", url: "" },
             { source: "store77", url: "" },
@@ -1735,7 +1732,6 @@ export default function ProductNew() {
       if (productType === "single" && vFirst) {
         payload.sku_pim = vFirst.sku_pim;
         payload.sku_gt = vFirst.sku_gt;
-        payload.sku_id = vFirst.sku_id;
       }
 
       let productId = created?.id || "";
@@ -1756,7 +1752,6 @@ export default function ProductNew() {
             sku: "",
             sku_pim: v.sku_pim,
             sku_gt: v.sku_gt,
-            sku_id: v.sku_id,
             title: v.title,
             links: v.links,
             content: v.content,
@@ -1960,7 +1955,6 @@ export default function ProductNew() {
               <div className="pn-variantSkus">
                 <span>ПИМ: {variants[0]?.sku_pim || "—"}</span>
                 <span>GT: {variants[0]?.sku_gt || "—"}</span>
-                <span>IDS: {variants[0]?.sku_id || "—"}</span>
               </div>
             </div>
           )}
@@ -2009,7 +2003,6 @@ export default function ProductNew() {
                     <div className="pn-variantSkus">
                       <span>ПИМ: {v.sku_pim || "—"}</span>
                       <span>GT: {v.sku_gt || "—"}</span>
-                      <span>IDS: {v.sku_id || "—"}</span>
                     </div>
                   </div>
                 ))}
@@ -2032,7 +2025,6 @@ export default function ProductNew() {
                 <div className="pn-variantSkus">
                   <span>ПИМ: {v.sku_pim || "—"}</span>
                   <span>GT: {v.sku_gt || "—"}</span>
-                  <span>IDS: {v.sku_id || "—"}</span>
                 </div>
               </div>
               <div className="pn-form pn-formLinks">

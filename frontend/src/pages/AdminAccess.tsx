@@ -73,8 +73,15 @@ export default function AdminAccess() {
   const [createUserDraft, setCreateUserDraft] = useState(EMPTY_CREATE_USER);
   const [createUserPassword, setCreateUserPassword] = useState("");
   const [expandedRoleGroups, setExpandedRoleGroups] = useState<string[]>([]);
+  const [expandedRolePanels, setExpandedRolePanels] = useState<{ profile: boolean; pages: boolean; actions: boolean }>({
+    profile: false,
+    pages: true,
+    actions: true,
+  });
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordResult, setResetPasswordResult] = useState("");
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showDeleteRoleModal, setShowDeleteRoleModal] = useState(false);
   const [saving, setSaving] = useState(false);
 
   function updateSelectionParams(patch: Partial<{ tab: AdminTab; user: string; role: string }>) {
@@ -264,6 +271,21 @@ export default function AdminAccess() {
     }
   }
 
+  async function deleteRole() {
+    if (!editingRole.id) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api(`/auth/admin/roles/${encodeURIComponent(editingRole.id)}`, { method: "DELETE" });
+      setShowDeleteRoleModal(false);
+      await load();
+    } catch (e) {
+      setError((e as Error).message || "Ошибка удаления роли");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveUser() {
     setSaving(true);
     setError("");
@@ -362,6 +384,7 @@ export default function AdminAccess() {
                   setShowCreateUserModal(true);
                 } else {
                   setEditingRole(EMPTY_ROLE);
+                  setShowRoleModal(true);
                 }
               }}
               disabled={tab === "users" ? !canAction("users.manage") : !canAction("roles.manage")}
@@ -420,6 +443,7 @@ export default function AdminAccess() {
                 <div className="accessHeroSub">{editingUser.login || "Логин не задан"}</div>
               </div>
               <div className="accessHeroMeta">
+                <button className="btn primary accessHeroSaveBtn" onClick={saveUser} disabled={!canAction("users.manage") || saving || loading}>Сохранить</button>
                 <div className={`accessStatusChip${editingUser.is_active ? " isActive" : ""}`}>{editingUser.is_active ? "Активен" : "Отключен"}</div>
                 {selectedUserRoleNames.length ? (
                   <div className="accessRolePills">
@@ -502,70 +526,124 @@ export default function AdminAccess() {
                 </div>
               </div>
             </div>
-
-            <div className="accessActions">
-              <button className="btn primary" onClick={saveUser} disabled={!canAction("users.manage") || saving || loading}>Сохранить</button>
-            </div>
           </section>
         ) : (
           <section className="accessContent">
-            <div className="card accessHero accessHeroCompact">
-              <div className="accessHeroMain">
-                <div className="accessEditorHeader">Роль</div>
-                <div className="accessHeroName">{editingRole.name || "Новая роль"}</div>
-                <div className="accessHeroSub">{editingRole.code || "Код не задан"}</div>
-              </div>
-              <div className="accessHeroMeta accessHeroMetaInline">
-                <div className={`accessStatusChip${editingRole.is_system ? " isNeutral" : ""}`}>{editingRole.is_system ? "Системная" : "Пользовательская"}</div>
-                {editingRole.description ? <div className="accessHeroHint accessHeroHintInline">{editingRole.description}</div> : null}
-              </div>
-            </div>
-
-            <div className="accessPanels accessPanelsRolesRebuilt">
-              <div className="card accessPanel">
-                <div className="accessPermissionTitle">Основное</div>
-                <label className="accessField"><span>Код</span><input value={editingRole.code} onChange={(e) => setEditingRole((cur) => ({ ...cur, code: e.target.value }))} disabled={!!editingRole.is_system} /></label>
-                <label className="accessField"><span>Название</span><input value={editingRole.name} onChange={(e) => setEditingRole((cur) => ({ ...cur, name: e.target.value }))} /></label>
-                <label className="accessField"><span>Описание</span><textarea rows={4} value={editingRole.description || ""} onChange={(e) => setEditingRole((cur) => ({ ...cur, description: e.target.value }))} /></label>
-              </div>
-
-              <div className="card accessPanel">
-                <div className="accessPermissionTitle">Страницы</div>
-                <div className="accessRoleGrid">
-                  {catalog.pages.map((page) => (
-                    <label key={page.code} className="accessRoleCard">
-                      <input
-                        type="checkbox"
-                        checked={editingRole.pages.includes(page.code) || editingRole.pages.includes("*")}
-                        onChange={() => setEditingRole((cur) => ({ ...cur, pages: toggleCode(cur.pages, page.code) }))}
-                        disabled={!!editingRole.is_system && editingRole.code === "owner"}
-                      />
-                      <span>{page.title}</span>
-                    </label>
-                  ))}
+            <div className="card accessRoleHero">
+              <div className="accessRoleHeroTop">
+                <div className="accessHeroMain">
+                  <div className="accessHeroName">{editingRole.name || "Новая роль"}</div>
+                  <div className="accessHeroSub">@{editingRole.code || "role_code"}</div>
+                </div>
+                <div className="accessRoleHeroAside">
+                  <div className="accessRoleHeroActions">
+                    <button
+                      className="accessIconBtn"
+                      type="button"
+                      aria-label="Редактировать роль"
+                      title="Редактировать роль"
+                      onClick={() => setShowRoleModal(true)}
+                      disabled={!canAction("roles.manage")}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      className="accessIconBtn accessIconBtnDanger"
+                      type="button"
+                      aria-label="Удалить роль"
+                      title="Удалить роль"
+                      onClick={() => setShowDeleteRoleModal(true)}
+                      disabled={!canAction("roles.manage") || !editingRole.id || !!editingRole.is_system}
+                    >
+                      🗑
+                    </button>
+                  </div>
+                  <div className="accessRoleMetaInline">
+                    <div className={`accessStatusChip${editingRole.is_system ? " isNeutral" : ""}`}>{editingRole.is_system ? "Системная" : "Пользовательская"}</div>
+                    <div className="accessRoleMetricPill">
+                      <span>Страницы</span>
+                      <strong>{editingRole.pages.includes("*") ? "Все" : editingRole.pages.length}</strong>
+                    </div>
+                    <div className="accessRoleMetricPill">
+                      <span>Действия</span>
+                      <strong>{editingRole.actions.includes("*") ? "Все" : editingRole.actions.length}</strong>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <div className="card accessPanel accessPanelWide accessPanelActionsRow">
-                <div className="accessPermissionTitle">Действия</div>
-                <div className="accessRoleGrid">
-                  {catalog.actions.map((action) => (
-                    <label key={action.code} className="accessRoleCard">
-                      <input
-                        type="checkbox"
-                        checked={editingRole.actions.includes(action.code) || editingRole.actions.includes("*")}
-                        onChange={() => setEditingRole((cur) => ({ ...cur, actions: toggleCode(cur.actions, action.code) }))}
-                        disabled={!!editingRole.is_system && editingRole.code === "owner"}
-                      />
-                      <span>{action.title}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              {editingRole.description ? <div className="accessRoleHeroText">{editingRole.description}</div> : null}
             </div>
 
-            <div className="accessActions">
-              <button className="btn primary" onClick={saveRole} disabled={!canAction("roles.manage") || saving || loading}>Сохранить</button>
+            <div className="accessPanels accessPanelsRolesModern">
+              <div className="accessRoleAccordionStack">
+                <section className={`card accessPanel accessAccordionCard${expandedRolePanels.pages ? " isOpen" : ""}`}>
+                  <button
+                    type="button"
+                    className="accessAccordionHeader"
+                    onClick={() => setExpandedRolePanels((cur) => ({ ...cur, pages: !cur.pages }))}
+                  >
+                    <div>
+                      <div className="accessPermissionTitle">Страницы</div>
+                      <div className="accessPanelSubtle">Разделы, которые может открывать роль.</div>
+                    </div>
+                    <div className="accessAccordionHeaderMeta">
+                      <div className="accessMatrixCount">{editingRole.pages.includes("*") ? "Все страницы" : `${editingRole.pages.length} выбрано`}</div>
+                      <span className="accessAccordionCaret">{expandedRolePanels.pages ? "▾" : "▸"}</span>
+                    </div>
+                  </button>
+                  {expandedRolePanels.pages ? (
+                    <div className="accessAccordionBody">
+                      <div className="accessRoleGrid accessCapabilityGrid accessCapabilityGridPages">
+                        {catalog.pages.map((page) => (
+                          <label key={page.code} className={`accessRoleCard accessCapabilityCard${editingRole.pages.includes(page.code) || editingRole.pages.includes("*") ? " isChecked" : ""}`}>
+                            <input
+                              type="checkbox"
+                              checked={editingRole.pages.includes(page.code) || editingRole.pages.includes("*")}
+                              onChange={() => setEditingRole((cur) => ({ ...cur, pages: toggleCode(cur.pages, page.code) }))}
+                              disabled={!!editingRole.is_system && editingRole.code === "owner"}
+                            />
+                            <span>{page.title}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className={`card accessPanel accessAccordionCard${expandedRolePanels.actions ? " isOpen" : ""}`}>
+                  <button
+                    type="button"
+                    className="accessAccordionHeader"
+                    onClick={() => setExpandedRolePanels((cur) => ({ ...cur, actions: !cur.actions }))}
+                  >
+                    <div>
+                      <div className="accessPermissionTitle">Действия</div>
+                      <div className="accessPanelSubtle">Операции, которые роль может выполнять в системе.</div>
+                    </div>
+                    <div className="accessAccordionHeaderMeta">
+                      <div className="accessMatrixCount">{editingRole.actions.includes("*") ? "Все действия" : `${editingRole.actions.length} выбрано`}</div>
+                      <span className="accessAccordionCaret">{expandedRolePanels.actions ? "▾" : "▸"}</span>
+                    </div>
+                  </button>
+                  {expandedRolePanels.actions ? (
+                    <div className="accessAccordionBody">
+                      <div className="accessRoleGrid accessCapabilityGrid accessCapabilityGridActions">
+                        {catalog.actions.map((action) => (
+                          <label key={action.code} className={`accessRoleCard accessCapabilityCard${editingRole.actions.includes(action.code) || editingRole.actions.includes("*") ? " isChecked" : ""}`}>
+                            <input
+                              type="checkbox"
+                              checked={editingRole.actions.includes(action.code) || editingRole.actions.includes("*")}
+                              onChange={() => setEditingRole((cur) => ({ ...cur, actions: toggleCode(cur.actions, action.code) }))}
+                              disabled={!!editingRole.is_system && editingRole.code === "owner"}
+                            />
+                            <span>{action.title}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+              </div>
             </div>
           </section>
         )}
@@ -633,6 +711,58 @@ export default function AdminAccess() {
                 disabled={!canAction("users.manage") || saving || !createUserDraft.login.trim() || !createUserPassword.trim()}
               >
                 Создать
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRoleModal ? (
+        <div className="modalBackdrop" onClick={() => !saving && setShowRoleModal(false)}>
+          <div className="modalCard modalCardCompact" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div className="modalTitle">{editingRole.id ? "Редактирование роли" : "Новая роль"}</div>
+                <div className="modalSubtitle">Измени базовые поля роли в отдельном компактном окне.</div>
+              </div>
+              <button className="btn" onClick={() => setShowRoleModal(false)} disabled={saving}>Закрыть</button>
+            </div>
+
+            <div className="accessPanel">
+              <label className="accessField"><span>Код</span><input value={editingRole.code} onChange={(e) => setEditingRole((cur) => ({ ...cur, code: e.target.value }))} disabled={!!editingRole.is_system} /></label>
+              <label className="accessField"><span>Название</span><input value={editingRole.name} onChange={(e) => setEditingRole((cur) => ({ ...cur, name: e.target.value }))} /></label>
+              <label className="accessField"><span>Описание</span><textarea rows={6} value={editingRole.description || ""} onChange={(e) => setEditingRole((cur) => ({ ...cur, description: e.target.value }))} /></label>
+            </div>
+
+            <div className="accessActions" style={{ marginTop: 16 }}>
+              <button className="btn" onClick={() => setShowRoleModal(false)} disabled={saving}>Отмена</button>
+              <button className="btn primary" onClick={async () => { await saveRole(); setShowRoleModal(false); }} disabled={!canAction("roles.manage") || saving || loading}>
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showDeleteRoleModal ? (
+        <div className="modalBackdrop" onClick={() => !saving && setShowDeleteRoleModal(false)}>
+          <div className="modalCard modalCardCompact" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div className="modalTitle">Удалить роль</div>
+                <div className="modalSubtitle">Роль будет удалена только если она не системная и не назначена пользователям.</div>
+              </div>
+              <button className="btn" onClick={() => setShowDeleteRoleModal(false)} disabled={saving}>Закрыть</button>
+            </div>
+
+            <div className="accessEmpty">
+              Будет удалена роль <strong>{editingRole.name || editingRole.code}</strong>.
+            </div>
+
+            <div className="accessActions" style={{ marginTop: 16 }}>
+              <button className="btn" onClick={() => setShowDeleteRoleModal(false)} disabled={saving}>Отмена</button>
+              <button className="btn danger" onClick={deleteRole} disabled={!canAction("roles.manage") || saving || !editingRole.id || !!editingRole.is_system}>
+                Удалить
               </button>
             </div>
           </div>

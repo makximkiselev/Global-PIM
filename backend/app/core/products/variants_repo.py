@@ -143,15 +143,11 @@ def bulk_create_variants(
 
             sku_pim = str(r.get("sku_pim") or "").strip()
             sku_gt = str(r.get("sku_gt") or "").strip()
-            sku_id = str(r.get("sku_id") or "").strip()
             if sku_pim and not SKU_RE.match(sku_pim):
                 errors.append({"row": idx, "code": "BAD_SKU_PIM", "message": f"SKU PIM должен быть цифрами: {sku_pim}"})
                 continue
             if sku_gt and not SKU_RE.match(sku_gt):
                 errors.append({"row": idx, "code": "BAD_SKU_GT", "message": f"SKU GT должен быть цифрами: {sku_gt}"})
-                continue
-            if sku_id and not SKU_RE.match(sku_id):
-                errors.append({"row": idx, "code": "BAD_SKU_ID", "message": f"SKU ID должен быть цифрами: {sku_id}"})
                 continue
 
             variant_id = _next_variant_id()
@@ -161,7 +157,6 @@ def bulk_create_variants(
                 "sku": sku_str,
                 "sku_pim": sku_pim,
                 "sku_gt": sku_gt,
-                "sku_id": sku_id,
                 "title": str(r.get("title") or "").strip(),
                 "links": r.get("links") or [],
                 "content": r.get("content") or {},

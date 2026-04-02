@@ -13,7 +13,6 @@ export type ExchangeProduct = {
   name?: string;
   category_id?: string;
   sku_gt?: string;
-  sku_id?: string;
 };
 
 type Props = {
@@ -123,7 +122,7 @@ export default function CatalogExchangePicker(props: Props) {
         if (!q) return true;
         const title = String(p.title || p.name || "");
         const path = buildPath(nodeById, cid);
-        return [title, p.sku_gt || "", p.sku_id || "", path].join(" ").toLowerCase().includes(q);
+        return [title, p.sku_gt || "", path].join(" ").toLowerCase().includes(q);
       })
       .sort((a, b) => String(a.title || a.name || "").localeCompare(String(b.title || b.name || ""), "ru"))
       .slice(0, 400);
@@ -207,7 +206,7 @@ export default function CatalogExchangePicker(props: Props) {
                 <input type="checkbox" checked={selectedProductSet.has(p.id)} onChange={(e) => toggleProduct(p.id, e.target.checked)} />
                 <span className="cx-productMain">
                   <span className="cx-productTitle">{title}</span>
-                  <span className="cx-productMeta">{buildPath(nodeById, cid)} · GT {p.sku_gt || "-"} · IDS {p.sku_id || "-"}</span>
+                  <span className="cx-productMeta">{buildPath(nodeById, cid)} · GT {p.sku_gt || "-"}</span>
                 </span>
               </label>
             );

@@ -35,7 +35,6 @@ type ProductItem = {
   name?: string;
   sku_pim?: string;
   sku_gt?: string;
-  sku_id?: string;
   group_id?: string;
   category_id?: string;
 };
@@ -61,8 +60,7 @@ function productLabel(p: ProductItem) {
 
 function productSkuIds(p: ProductItem) {
   const gt = (p.sku_gt || "").trim() || "-";
-  const ids = (p.sku_id || "").trim() || "-";
-  return `GT ID: ${gt} | IDS ID: ${ids}`;
+  return `GT SKU: ${gt}`;
 }
 
 function qnorm(s: string) {
@@ -271,7 +269,7 @@ export default function ProductGroups() {
     return (ungrouped || []).filter((p) => {
       if (subtree && !subtree.has(String(p.category_id || ""))) return false;
       if (!q) return true;
-      return [productLabel(p), p.sku_gt || "", p.sku_id || ""]
+      return [productLabel(p), p.sku_gt || ""]
         .join(" ")
         .toLowerCase()
         .includes(q);
@@ -287,7 +285,7 @@ export default function ProductGroups() {
     }
 
     const matchedProducts = (ungrouped || []).filter((p) =>
-      [productLabel(p), p.sku_gt || "", p.sku_id || ""]
+      [productLabel(p), p.sku_gt || ""]
         .join(" ")
         .toLowerCase()
         .includes(q)
@@ -428,7 +426,7 @@ export default function ProductGroups() {
     return (ungrouped || []).filter((p) => {
       if (subtree && !subtree.has(String(p.category_id || ""))) return false;
       if (!q) return true;
-      return [productLabel(p), p.sku_gt || "", p.sku_id || ""]
+      return [productLabel(p), p.sku_gt || ""]
         .join(" ")
         .toLowerCase()
         .includes(q);
