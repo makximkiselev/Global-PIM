@@ -324,6 +324,7 @@ export default function Catalog() {
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
+  const [renamePosition, setRenamePosition] = useState("0");
 
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -564,6 +565,7 @@ export default function Catalog() {
     setSelectedId(id);
     expandTo(id);
     setRenameName(n.name);
+    setRenamePosition(String(Math.max(0, Number(n.position ?? 0))));
     setRenameOpen(true);
   };
 
@@ -590,10 +592,14 @@ export default function Catalog() {
     if (!selectedId) return;
     const name = renameName.trim();
     if (!name) return;
+    const parsedPosition = Number.parseInt(renamePosition, 10);
 
     await api<NodeT>(`/catalog/nodes/${selectedId}`, {
       method: "PATCH",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({
+        name,
+        position: Number.isFinite(parsedPosition) ? Math.max(0, parsedPosition) : 0,
+      }),
     });
 
     setRenameOpen(false);
@@ -1088,6 +1094,7 @@ export default function Catalog() {
                     ))}
                   </div>
                   <div className="catalog-inlineMeta">
+                    <span className="catalog-inlineChip">Приоритет: {selected.position ?? 0}</span>
                     <span className="catalog-inlineChip">Товаров: {selectedCount}</span>
                     <span className="catalog-inlineChip">Выбрано: {selectedProductsCount}</span>
                   </div>
@@ -1237,6 +1244,22 @@ export default function Catalog() {
               style={{ borderColor: "rgba(0,0,0,0.22)" }}
               autoFocus
             />
+          </div>
+
+          <div className="field">
+            <div className="field-label">Приоритет</div>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={renamePosition}
+              onChange={(e) => setRenamePosition(e.target.value)}
+              style={{ borderColor: "rgba(0,0,0,0.22)" }}
+            />
+          </div>
+
+          <div className="muted" style={{ fontSize: 12 }}>
+            Меньшее число поднимает категорию выше среди соседних категорий.
           </div>
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>

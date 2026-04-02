@@ -463,6 +463,7 @@ class NodeCreate(BaseModel):
 
 class NodePatch(BaseModel):
     name: Optional[str] = None
+    position: Optional[int] = None
 
 
 class NodeMove(BaseModel):
@@ -513,13 +514,27 @@ def create_node(payload: NodeCreate):
 @router.patch("/catalog/nodes/{node_id}")
 def patch_node(node_id: str, payload: NodePatch):
     nodes = _load_nodes()
+    target: Optional[Dict[str, Any]] = None
     for n in nodes:
         if n["id"] == node_id:
+            target = n
             if payload.name is not None:
                 n["name"] = payload.name.strip()
-            _save_nodes(nodes)
-            return n
-    raise HTTPException(status_code=404, detail="Node not found")
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    if payload.position is not None:
+        parent_id = target.get("parent_id") or None
+        siblings = [n for n in nodes if (n.get("parent_id") or None) == parent_id and n["id"] != node_id]
+        siblings.sort(key=lambda x: int(x.get("position", 0)))
+        pos = max(0, min(int(payload.position), len(siblings)))
+        merged = siblings[:pos] + [target] + siblings[pos:]
+        for i, node in enumerate(merged):
+            node["position"] = i
+
+    _save_nodes(nodes)
+    return target
 
 
 @router.delete("/catalog/nodes/{node_id}")

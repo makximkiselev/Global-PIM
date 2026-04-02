@@ -5,7 +5,7 @@
 
 .templates-page{
   width: 100%;
-  max-width: 1360px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
@@ -36,8 +36,8 @@
 /* --- GRID --- */
 .templates-page .catalog-grid{
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 18px;
   align-items: start;
 }
 
@@ -63,28 +63,29 @@
   width: 100%;
   display:flex;
   align-items:center;
-  gap:12px;
-  padding:9px 11px;
+  gap:8px;
+  padding:7px 8px;
+  min-height: 38px;
   border-radius:14px;
   border:1px solid var(--line);
   background: rgba(255,255,255,.92);
-  box-shadow: 0 10px 28px rgba(15,23,42,.05);
+  box-shadow: var(--shadow-soft);
   cursor:pointer;
-  transition: border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease;
+  transition: border-color .12s ease, background .12s ease, box-shadow .12s ease, transform .12s ease;
 }
 .templates-page .tpl-item:hover{
-  border-color: rgba(37,99,235,.18);
+  border-color: rgba(11,18,32,.12);
   background: rgba(255,255,255,.98);
-  box-shadow: 0 14px 32px rgba(15,23,42,.08);
+  box-shadow: var(--shadow);
   transform: translateY(-1px);
 }
 .templates-page .tpl-item.is-locked{
   border-style:dashed;
 }
 .templates-page .tpl-item.is-selected{
-  border-color: rgba(37,99,235,.34);
-  background: linear-gradient(180deg, rgba(239,246,255,.96) 0%, rgba(255,255,255,.98) 100%);
-  box-shadow: 0 16px 34px rgba(37,99,235,.12);
+  border-color: rgba(255,107,61,.40);
+  background: linear-gradient(180deg, rgba(255,247,237,.96) 0%, rgba(255,255,255,.98) 100%);
+  box-shadow: var(--shadow);
 }
 .templates-page .tpl-item.is-own:not(.is-selected){
   border-color: rgba(16,185,129,.18);
@@ -96,7 +97,7 @@
 .templates-page .caret-btn{
   flex: 0 0 var(--caret, 26px);
   width: var(--caret, 26px);
-  height: 28px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -125,7 +126,7 @@
 .templates-page .tpl-sub{
   font-size:11px;
   color: var(--muted);
-  margin-top:4px;
+  margin-top:2px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -133,12 +134,12 @@
 .templates-page .tpl-meta{
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:6px;
   flex:0 0 auto;
 }
 .templates-page .tpl-pill{
   font-size:10px;
-  padding:4px 7px;
+  padding:3px 7px;
   border-radius:999px;
   border:1px solid rgba(11,18,32,.12);
   background: rgba(11,18,32,.04);
@@ -204,8 +205,8 @@
 }
 .templates-page .templates-grid{
   display:grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap:14px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap:18px;
   align-items:start;
 }
 .templates-page .templates-preview{
