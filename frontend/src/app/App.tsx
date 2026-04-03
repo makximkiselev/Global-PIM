@@ -5,7 +5,7 @@ import { useAuth } from "./auth/AuthContext";
 import { firstAllowedPath } from "./auth/permissions";
 
 import Dashboard from "../pages/Dashboard";
-import Catalog from "../pages/Catalog";
+import Catalog from "../pages/CatalogV2";
 import Templates from "../pages/Templates";
 import TemplateEditor from "../pages/TemplateEditor";
 import ProductNew from "../pages/ProductNew";

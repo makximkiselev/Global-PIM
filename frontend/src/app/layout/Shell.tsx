@@ -77,6 +77,7 @@ function groupItems(group: NavGroup): NavItem[] {
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
+  if (href === "/catalog") return pathname === "/catalog";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

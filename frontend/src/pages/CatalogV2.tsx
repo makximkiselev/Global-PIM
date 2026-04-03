@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import "../styles/catalog.css";
+import "../styles/catalog-fresh.css";
 import { api } from "../lib/api";
+import ProductRegistry from "../components/ProductRegistry";
+import CategorySidebar from "../components/CategorySidebar";
 import {
   DndContext,
   DragOverlay,
@@ -30,15 +32,6 @@ type ProductHit = {
   id: string;
   name: string;
   category_id: string;
-};
-
-type ProductT = {
-  id: string;
-  name: string;
-  category_id: string;
-  title?: string;
-  sku_pim?: string;
-  sku_gt?: string;
 };
 
 function buildChildrenMap(nodes: NodeT[]) {
@@ -146,7 +139,7 @@ function Dropline({ id }: { id: string }) {
   return (
     <div
       ref={setNodeRef}
-      className={`cat2-dropLine ${isOver ? "is-over" : ""}`}
+      className={`cf-dropLine ${isOver ? "is-over" : ""}`}
     />
   );
 }
@@ -157,7 +150,7 @@ function DropInside({ id }: { id: string }) {
   return (
     <div
       ref={setNodeRef}
-      className={`cat2-dropInside ${isOver ? "is-over" : ""}`}
+      className={`cf-dropInside ${isOver ? "is-over" : ""}`}
     />
   );
 }
@@ -169,11 +162,9 @@ function DraggableRow({
   isExpanded,
   hasKids,
   count,
+  sortMode,
   onSelect,
   onToggle,
-  onCreateChild,
-  onRename,
-  onDelete,
 }: {
   node: NodeT;
   depth: number;
@@ -181,11 +172,9 @@ function DraggableRow({
   isExpanded: boolean;
   hasKids: boolean;
   count: number;
+  sortMode: boolean;
   onSelect: () => void;
   onToggle: () => void;
-  onCreateChild: () => void;
-  onRename: () => void;
-  onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: node.id });
@@ -196,21 +185,21 @@ function DraggableRow({
 
   return (
     <div
-      className="cat2-treeRow"
+      className="cf-treeRow"
       style={{ ["--depth" as any]: depth }}
       data-depth={String(depth)}
     >
-      <Dropline id={`before:${node.id}`} />
+      {sortMode ? <Dropline id={`before:${node.id}`} /> : null}
 
       <div
         ref={setNodeRef}
         style={style}
-        className={`cat2-treeRowInner ${isDragging ? "is-dragging" : ""}`}
+        className={`cf-treeRowInner ${isDragging ? "is-dragging" : ""}`}
       >
-        <DropInside id={`inside:${node.id}`} />
+        {sortMode ? <DropInside id={`inside:${node.id}`} /> : null}
 
         <div
-          className={`cat2-treeNode ${isSelected ? "is-active" : ""}`}
+          className={`cf-treeNode ${isSelected ? "is-active" : ""}`}
           role="button"
           tabIndex={0}
           onClick={onSelect}
@@ -221,19 +210,23 @@ function DraggableRow({
             }
           }}
         >
-          <div
-            className="cat2-drag"
-            title="Перетащить"
-            onClick={(e) => e.stopPropagation()}
-            {...listeners}
-            {...attributes}
-          >
-            <span className="cat2-dragDots">⠿</span>
-          </div>
+          {sortMode ? (
+            <div
+              className="cf-drag"
+              title="Перетащить"
+              onClick={(e) => e.stopPropagation()}
+              {...listeners}
+              {...attributes}
+            >
+              <span className="cf-dragDots">⠿</span>
+            </div>
+          ) : (
+            <div className="cf-dragPlaceholder" aria-hidden />
+          )}
 
           {hasKids ? (
             <span
-              className="cat2-caret"
+              className="cf-caret"
               role="button"
               tabIndex={0}
               onClick={(e) => {
@@ -251,50 +244,23 @@ function DraggableRow({
               {isExpanded ? "▾" : "▸"}
             </span>
           ) : (
-            <div className="cat2-caretSpacer" aria-hidden />
+            <div className="cf-caretSpacer" aria-hidden />
           )}
 
-          <div className="cat2-treeName" title={node.name}>
+          <div className="cf-treeName" title={node.name}>
             {node.name}
           </div>
 
           <span
-            className="cat2-count"
+            className="cf-count"
             title="Товаров в категории (включая подкатегории)"
           >
             {count}
           </span>
-
-          <div className="cat2-treeActions" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="cat2-iconBtn"
-              title="Добавить подкатегорию"
-              type="button"
-              onClick={onCreateChild}
-            >
-              +
-            </button>
-            <button
-              className="cat2-iconBtn"
-              title="Переименовать"
-              type="button"
-              onClick={onRename}
-            >
-              ✎
-            </button>
-            <button
-              className="cat2-iconBtn is-danger"
-              title="Удалить ветку"
-              type="button"
-              onClick={onDelete}
-            >
-              🗑
-            </button>
-          </div>
         </div>
       </div>
 
-      <Dropline id={`after:${node.id}`} />
+      {sortMode ? <Dropline id={`after:${node.id}`} /> : null}
     </div>
   );
 }
@@ -304,6 +270,7 @@ export default function Catalog() {
   const [nodes, setNodes] = useState<NodeT[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [treeQuery, setTreeQuery] = useState("");
+  const [sortMode, setSortMode] = useState(false);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     try {
@@ -321,13 +288,9 @@ export default function Catalog() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [renamePosition, setRenamePosition] = useState("0");
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
-
-  // products (right)
-  const [products, setProducts] = useState<ProductT[]>([]);
-  const [pListLoading, setPListLoading] = useState(false);
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
 
   // search (topbar)
   const [pq, setPq] = useState("");
@@ -356,6 +319,9 @@ export default function Catalog() {
   const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const childrenMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const aggCounts = useMemo(() => computeAggregatedCounts(nodes), [nodes]);
+  const hasExpandedNodes = useMemo(() => {
+    return nodes.some((n) => !!expanded[n.id] && (childrenMap.get(n.id) || []).length > 0);
+  }, [nodes, expanded, childrenMap]);
   const leafNodes = useMemo(() => nodes.filter((n) => !(childrenMap.get(n.id) || []).length), [nodes, childrenMap]);
   const visibleSet = useMemo(() => {
     const q = treeQuery.trim().toLowerCase();
@@ -396,6 +362,13 @@ export default function Catalog() {
   useEffect(() => {
     localStorage.setItem("catalog.expanded", JSON.stringify(expanded));
   }, [expanded]);
+
+  useEffect(() => {
+    if (!categoryMenuOpen) return;
+    const onDown = () => setCategoryMenuOpen(false);
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [categoryMenuOpen]);
 
   function expandTo(id: string) {
     setExpanded((prev) => {
@@ -466,34 +439,6 @@ export default function Catalog() {
     setBulkCategoryId(nextId || "");
   }, [bulkOpen, selectedId, bulkCategoryId, nodesById, templateCategories, templateCategoryIds]);
 
-  // right products list
-  useEffect(() => {
-    if (!selectedId) {
-      setProducts([]);
-      setSelectedProducts([]);
-      return;
-    }
-    const run = async () => {
-      setPListLoading(true);
-      try {
-        const r = await api<{ items: ProductT[] }>(
-          `/catalog/products?category_id=${encodeURIComponent(
-            selectedId
-          )}&include_descendants=1`
-        );
-        setProducts(r.items || []);
-        setSelectedProducts([]);
-      } catch (e) {
-        console.error(e);
-        setProducts([]);
-        setSelectedProducts([]);
-      } finally {
-        setPListLoading(false);
-      }
-    };
-    run();
-  }, [selectedId]);
-
   // search (debounced)
   useEffect(() => {
     const q = pq.trim();
@@ -553,6 +498,7 @@ export default function Catalog() {
     setCreateName("");
     setExpanded((s) => ({ ...s, [parentId]: true }));
     setCreateOpen(true);
+    setCategoryMenuOpen(false);
   };
 
   const openRename = (id: string) => {
@@ -563,12 +509,14 @@ export default function Catalog() {
     setRenameName(n.name);
     setRenamePosition(String(Math.max(0, Number(n.position ?? 0))));
     setRenameOpen(true);
+    setCategoryMenuOpen(false);
   };
 
   const openDelete = (id: string) => {
     setSelectedId(id);
     expandTo(id);
     setDeleteOpen(true);
+    setCategoryMenuOpen(false);
   };
 
   async function doCreate() {
@@ -688,9 +636,12 @@ export default function Catalog() {
   const selected = selectedId ? nodesById.get(selectedId) : null;
   const selectedPath = selected ? collectPath(nodesById, selected.id) : "";
   const crumbsArr = selectedPath ? selectedPath.split(" / ") : [];
+  const breadcrumbLabel = selected
+    ? (crumbsArr.length > 1 ? crumbsArr.slice(0, -1).join(" / ") : "Каталог")
+    : "";
   const roots = childrenMap.get(null) || [];
   const totalProductsCount = roots.reduce((sum, root) => sum + (aggCounts.get(root.id) ?? 0), 0);
-  const selectedCount = selected ? (pListLoading ? aggCounts.get(selected.id) ?? 0 : products.length) : 0;
+  const selectedCount = selected ? (aggCounts.get(selected.id) ?? 0) : 0;
   const TreeNode = ({ node, depth }: { node: NodeT; depth: number }) => {
     if (visibleSet && !visibleSet.has(node.id)) return null;
     const kids = childrenMap.get(node.id) || [];
@@ -709,14 +660,12 @@ export default function Catalog() {
           isExpanded={isExpanded}
           hasKids={hasKids}
           count={count}
+          sortMode={sortMode}
           onSelect={() => {
             setSelectedId(node.id);
             expandTo(node.id);
           }}
           onToggle={() => toggle(node.id)}
-          onCreateChild={() => openCreateChild(node.id)}
-          onRename={() => openRename(node.id)}
-          onDelete={() => openDelete(node.id)}
         />
 
         {hasKids && isExpanded && (
@@ -740,44 +689,6 @@ export default function Catalog() {
   const goCreateProduct = () => {
     if (!selectedId) return;
     window.location.href = `/products/new?category_id=${encodeURIComponent(selectedId)}`;
-  };
-
-  const selectedProductsCount = selectedProducts.length;
-  const allSelected = products.length > 0 && selectedProductsCount === products.length;
-
-  const toggleProduct = (id: string, checked: boolean) => {
-    setSelectedProducts((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return Array.from(next);
-    });
-  };
-
-  const toggleAllProducts = (checked: boolean) => {
-    setSelectedProducts(checked ? products.map((p) => p.id) : []);
-  };
-
-  const editSelected = () => {
-    if (selectedProducts.length !== 1) return;
-    window.location.href = `/products/${selectedProducts[0]}`;
-  };
-
-  const deleteSelected = async () => {
-    if (!selectedProducts.length) return;
-    const ok = window.confirm(`Удалить товаров: ${selectedProducts.length}?`);
-    if (!ok) return;
-    await api<{ ok: boolean }>("/catalog/products/bulk-delete", {
-      method: "POST",
-      body: JSON.stringify({ ids: selectedProducts }),
-    });
-    setSelectedProducts([]);
-    if (selectedId) {
-      const r = await api<{ items: ProductT[] }>(
-        `/catalog/products?category_id=${encodeURIComponent(selectedId)}&include_descendants=1`
-      );
-      setProducts(r.items || []);
-    }
   };
 
   const isBulkLeaf = (node: NodeT) => !(childrenMap.get(node.id) || []).length;
@@ -839,7 +750,7 @@ export default function Catalog() {
   };
 
   return (
-    <div className="catalog-page page-shell">
+    <div className="catalog-fresh-page page-shell">
       <div className="page-header catalog-topbar" ref={topbarRef}>
         <div className="page-header-main">
           <div className="page-title">Каталог</div>
@@ -849,9 +760,9 @@ export default function Catalog() {
         </div>
       </div>
 
-      <div className="card cat2-commandBar" ref={topbarRef}>
-        <div className="cat2-commandSearch">
-          <div className="search cat2-pageSearch">
+      <div className="cf-commandBar" ref={topbarRef}>
+        <div className="cf-commandSearch">
+          <div className="search cf-pageSearch">
             <span style={{ color: "var(--muted)" }}>🔎</span>
             <input
               value={pq}
@@ -861,7 +772,7 @@ export default function Catalog() {
           </div>
 
           {(pLoading || pHits.length > 0) && pq.trim() && (
-            <div className="dropdown cat2-pageDropdown">
+            <div className="dropdown cf-pageDropdown">
               {pLoading ? (
                 <div style={{ padding: 10, color: "var(--muted)", fontSize: 13 }}>
                   Ищу…
@@ -888,14 +799,14 @@ export default function Catalog() {
             </div>
             )}
         </div>
-        <div className="cat2-commandStats">
-          <div className="cat2-stat">
-            <span className="cat2-statLabel">Категорий</span>
-            <span className="cat2-statValue">{nodes.length}</span>
+        <div className="cf-commandStats">
+          <div className="cf-stat">
+            <span className="cf-statLabel">Категорий</span>
+            <span className="cf-statValue">{nodes.length}</span>
           </div>
-          <div className="cat2-stat">
-            <span className="cat2-statLabel">Товаров</span>
-            <span className="cat2-statValue">{totalProductsCount}</span>
+          <div className="cf-stat">
+            <span className="cf-statLabel">Товаров</span>
+            <span className="cf-statValue">{totalProductsCount}</span>
           </div>
         </div>
       </div>
@@ -1023,37 +934,36 @@ export default function Catalog() {
         </div>
       </Modal>
 
-      <div className="cat2-workspace">
-        <aside className="cat2-sidebar">
-          <div className="cat2-sidebarHead">
-            <div className="cat2-sidebarTitleBlock">
-              <div className="cat2-sidebarTitle">Категории</div>
-              <div className="cat2-sidebarHint">Структура и сортировка</div>
-            </div>
-            <button className="btn primary sm" onClick={openCreateRoot} type="button">
-              Новая
-            </button>
-          </div>
-
-          <div className="cat2-sidebarToolbar">
-            <div className="cat2-treeSearch">
-              <span style={{ color: "var(--muted)" }}>🔎</span>
-              <input
-                value={treeQuery}
-                onChange={(e) => setTreeQuery(e.target.value)}
-                placeholder="Быстрый поиск"
-              />
-            </div>
-            <button className="btn sm" type="button" onClick={expandAll}>
-              Развернуть
-            </button>
-            <button className="btn sm" type="button" onClick={collapseAll}>
-              Свернуть
-            </button>
-          </div>
-
+      <div className="cf-workspace">
+        <CategorySidebar
+          className="cf-sidebar"
+          title="Категории"
+          hint="Структура каталога"
+          primaryAction={{ label: "Новая", onClick: openCreateRoot, kind: "primary" }}
+          searchValue={treeQuery}
+          onSearchChange={setTreeQuery}
+          searchPlaceholder="Быстрый поиск"
+          controls={
+            <>
+              <button
+                className={`btn sm ${sortMode ? "primary" : ""}`}
+                type="button"
+                onClick={() => setSortMode((v) => !v)}
+              >
+                {sortMode ? "Готово" : "Сортировка"}
+              </button>
+              <button
+                className="btn sm"
+                type="button"
+                onClick={hasExpandedNodes ? collapseAll : expandAll}
+              >
+                {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+              </button>
+            </>
+          }
+        >
           <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-            <div className="cat2-tree">
+            <div className="cf-tree">
               {loading ? (
                 <div className="muted">Загрузка…</div>
               ) : roots.length === 0 ? (
@@ -1069,102 +979,91 @@ export default function Catalog() {
               {activeNode ? <div className="drag-overlay">{activeNode.name}</div> : null}
             </DragOverlay>
           </DndContext>
-        </aside>
+        </CategorySidebar>
 
-        <section className="cat2-main">
-          <div className="cat2-hero">
-            <div className="cat2-heroMain">
-              <div className="cat2-heroTitle">
+        <section className="cf-main">
+          <div className="cf-hero">
+            <div className="cf-heroMain">
+              {selected ? <div className="cf-heroEyebrow">{breadcrumbLabel}</div> : null}
+              <div className="cf-heroTitle">
                 {selected ? selected.name : "Выберите категорию"}
               </div>
               {selected ? (
                 <>
-                  <div className="cat2-heroPath">{selectedPath}</div>
-                  <div className="cat2-metaRow">
-                    <span className="cat2-metaChip">{selectedCount} товаров</span>
-                    <span className="cat2-metaChip">Приоритет {selected.position ?? 0}</span>
-                    <span className="cat2-metaChip">Выбрано {selectedProductsCount}</span>
+                  <div className="cf-metaLine">
+                    <span>{selectedCount} товаров</span>
+                    <span>Приоритет {selected.position ?? 0}</span>
+                    <span>Текущая ветка</span>
                   </div>
                 </>
               ) : null}
             </div>
-            <div className="cat2-heroActions">
-              {selectedProductsCount === 1 ? (
-                <button className="btn" type="button" onClick={editSelected}>
-                  Редактировать
+            <div className="cf-heroActions">
+              <div className="cf-actionGroup cf-actionGroupMain">
+                <button
+                  className="btn primary"
+                  onClick={goCreateProduct}
+                  type="button"
+                  disabled={!selectedId}
+                  title={!selectedId ? "Сначала выбери категорию" : "Добавить товар"}
+                >
+                  + Товар
                 </button>
-              ) : null}
-              {selectedProductsCount > 0 ? (
-                <button className="btn danger" type="button" onClick={deleteSelected}>
-                  Удалить
+                <button className="btn" type="button" onClick={() => setBulkOpen(true)}>
+                  Массовая загрузка
                 </button>
-              ) : null}
-              <button
-                className="btn primary"
-                onClick={goCreateProduct}
-                type="button"
-                disabled={!selectedId}
-                title={!selectedId ? "Сначала выбери категорию" : "Добавить товар"}
-              >
-                + Товар
-              </button>
-              <button className="btn" type="button" onClick={() => setBulkOpen(true)}>
-                Массовая загрузка
-              </button>
-              <Link className="btn" to="/catalog/groups">
-                Группы товаров
-              </Link>
+                <Link className="btn" to={selectedId ? `/catalog/import?category=${encodeURIComponent(selectedId)}` : "/catalog/import"}>
+                  Заполнение данных
+                </Link>
+                <Link className="btn" to="/catalog/groups">
+                  Группы товаров
+                </Link>
+                {selected ? (
+                  <div
+                    className="cf-moreMenu"
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      className={`btn cf-moreBtn${categoryMenuOpen ? " is-open" : ""}`}
+                      type="button"
+                      onClick={() => setCategoryMenuOpen((v) => !v)}
+                      aria-haspopup="menu"
+                      aria-expanded={categoryMenuOpen}
+                      title="Действия с категорией"
+                    >
+                      ⋯
+                    </button>
+                    {categoryMenuOpen ? (
+                      <div className="cf-moreDropdown" role="menu">
+                        <button className="cf-moreItem" type="button" onClick={() => openCreateChild(selected.id)}>
+                          Создать подкатегорию
+                        </button>
+                        <button className="cf-moreItem" type="button" onClick={() => openRename(selected.id)}>
+                          Изменить категорию
+                        </button>
+                        <button className="cf-moreItem is-danger" type="button" onClick={() => openDelete(selected.id)}>
+                          Удалить категорию
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
           {!selected ? null : (
-            <div className="cat2-section">
-              <div className="cat2-sectionHead">
-                <div className="cat2-sectionTitle">Товары в категории</div>
+            <div className="cf-section">
+              <div className="cf-sectionHead">
+                <div className="cf-sectionTitle">Товары в категории</div>
               </div>
-              {pListLoading ? (
-                <div className="muted">Загрузка товаров…</div>
-              ) : products.length === 0 ? (
-                <div className="cat2-emptyState">В этой категории пока нет товаров.</div>
-              ) : (
-                <div className="cat2-table">
-                  <div className="cat2-tableRow is-head">
-                    <div className="cat2-check">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={(e) => toggleAllProducts(e.target.checked)}
-                        aria-label="Выбрать все товары"
-                      />
-                    </div>
-                    <div className="cat2-sku">GT SKU</div>
-                    <div className="cat2-name">Наименование</div>
-                  </div>
-                  {products.map((p) => {
-                    const skuGt = (p.sku_gt || "").trim() || "—";
-                    const title = p.title || p.name || "";
-                    const checked = selectedProducts.includes(p.id);
-                    return (
-                      <div key={p.id} className="cat2-tableRow">
-                        <div className="cat2-check">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => toggleProduct(p.id, e.target.checked)}
-                            aria-label={`Выбрать товар ${title || p.id}`}
-                          />
-                        </div>
-                        <Link className="cat2-sku" to={`/products/${p.id}`} title={skuGt}>
-                          {skuGt}
-                        </Link>
-                        <Link className="cat2-name" to={`/products/${p.id}`} title={title}>
-                          {title}
-                        </Link>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <ProductRegistry
+                mode="embedded"
+                scopeCategoryId={selected.id}
+                scopeTitle={`Товары: ${selected.name}`}
+                paramPrefix="cat_"
+                showHeader={false}
+              />
             </div>
           )}
         </section>
@@ -1178,17 +1077,8 @@ export default function Catalog() {
         onEnter={doCreate}
       >
         <div className="form">
-          <div
-            style={{
-              border: "1px dashed rgba(0,0,0,0.12)",
-              borderRadius: 14,
-              padding: "10px 12px",
-              color: "var(--muted)",
-              fontSize: 13,
-              lineHeight: 1.35,
-            }}
-          >
-            <b style={{ color: "var(--text)" }}>Куда:</b> {createCrumbs}
+          <div className="cf-modalNote">
+            <b>Куда:</b> {createCrumbs}
           </div>
 
           <div className="field">
@@ -1197,12 +1087,11 @@ export default function Catalog() {
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="Например: Смартфоны"
-              style={{ borderColor: "rgba(0,0,0,0.22)" }}
               autoFocus
             />
           </div>
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <div className="cf-modalActions">
             <button className="btn" onClick={() => setCreateOpen(false)} type="button">
               Отмена
             </button>
@@ -1215,7 +1104,7 @@ export default function Catalog() {
 
       {/* Rename */}
       <Modal
-        title="Переименовать"
+        title="Изменить категорию"
         open={renameOpen}
         onClose={() => setRenameOpen(false)}
         onEnter={doRename}
@@ -1226,7 +1115,6 @@ export default function Catalog() {
             <input
               value={renameName}
               onChange={(e) => setRenameName(e.target.value)}
-              style={{ borderColor: "rgba(0,0,0,0.22)" }}
               autoFocus
             />
           </div>
@@ -1239,15 +1127,14 @@ export default function Catalog() {
               step={1}
               value={renamePosition}
               onChange={(e) => setRenamePosition(e.target.value)}
-              style={{ borderColor: "rgba(0,0,0,0.22)" }}
             />
           </div>
 
-          <div className="muted" style={{ fontSize: 12 }}>
+          <div className="cf-modalHint">
             Меньшее число поднимает категорию выше среди соседних категорий.
           </div>
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <div className="cf-modalActions">
             <button className="btn" onClick={() => setRenameOpen(false)} type="button">
               Отмена
             </button>
@@ -1261,10 +1148,10 @@ export default function Catalog() {
       {/* Delete */}
       <Modal title="Удалить ветку" open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <div className="form">
-          <div className="muted" style={{ lineHeight: 1.5 }}>
+          <div className="cf-modalDangerText">
             Будет удалена <b>вся ветка</b> (категория и все подкатегории).
           </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
+          <div className="cf-modalActions">
             <button className="btn" onClick={() => setDeleteOpen(false)} type="button">
               Отмена
             </button>

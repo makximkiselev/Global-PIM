@@ -703,12 +703,21 @@ def list_products(category_id: Optional[str] = None, include_descendants: bool =
         else:
             products = [p for p in products if p.get("category_id") == category_id]
 
+    products.sort(
+        key=lambda p: (
+            _gt_sort_key(p.get("sku_gt")),
+            str(p.get("title") or p.get("name") or "").lower(),
+        )
+    )
+
     return {"items": [_serialize_product_list_item(p) for p in products]}
 
 
 @router.get("/catalog/products-page-data")
 def products_page_data(
     q: str = Query(""),
+    category: str = Query(""),
+    exact: bool = Query(False),
     parent: str = Query(""),
     sub: str = Query(""),
     group: str = Query(""),
@@ -732,8 +741,10 @@ def products_page_data(
 
     group_name_by_id = {str(g.get("id") or ""): str(g.get("name") or "") for g in groups if isinstance(g, dict)}
     templates_by_category = _templates_by_category(templates_db)
+    exact_category = (category or "").strip()
     subtree_parent = _collect_subtree_ids(nodes, parent) if parent else None
     subtree_sub = _collect_subtree_ids(nodes, sub) if sub else None
+    subtree_exact = _collect_subtree_ids(nodes, exact_category) if exact_category and not exact else None
     q_normalized = (q or "").strip().lower()
     ym_filter = (ym or "all").strip().lower()
     oz_filter = (oz or "all").strip().lower()
@@ -768,6 +779,12 @@ def products_page_data(
     for product in _load_full_products():
         item = _serialize_product_list_item(product)
         category_id = str(item.get("category_id") or "")
+        if exact_category:
+            if exact:
+                if category_id != exact_category:
+                    continue
+            elif subtree_exact and category_id not in subtree_exact:
+                continue
         if subtree_parent and category_id not in subtree_parent:
             continue
         if subtree_sub and category_id not in subtree_sub:

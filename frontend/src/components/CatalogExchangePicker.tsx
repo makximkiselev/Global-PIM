@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import CategorySidebar from "./CategorySidebar";
 
 export type ExchangeNode = {
   id: string;
@@ -160,33 +161,37 @@ export default function CatalogExchangePicker(props: Props) {
 
   return (
     <div className="cx-pickerGrid">
-      <section className="card cx-pane">
-        <div className="cx-paneHead">
-          <div>
-            <div className="cx-paneTitle">Каталог</div>
-            <div className="cx-paneSub">Выбор веток и разделов каталога</div>
-          </div>
-          <label className="cx-inlineCheck">
-            <input
-              type="checkbox"
-              checked={selectedNodeIds.length === 0 && selectedProductIds.length === 0}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  onSelectedNodeIdsChange([]);
-                  onSelectedProductIdsChange([]);
-                }
-              }}
-            />
-            <span>Весь каталог</span>
-          </label>
-        </div>
-        <input className="pn-input" placeholder="Поиск по дереву..." value={nodeQuery} onChange={(e) => setNodeQuery(e.target.value)} />
-        <label className="cx-inlineCheck cx-inlineCheckMuted">
-          <input type="checkbox" checked={includeDescendants} onChange={(e) => onIncludeDescendantsChange(e.target.checked)} />
-          <span>Включая дочерние разделы</span>
-        </label>
+      <CategorySidebar
+        className="cx-pane cx-paneSidebar"
+        title="Каталог"
+        hint="Выбор веток и разделов каталога"
+        searchValue={nodeQuery}
+        onSearchChange={setNodeQuery}
+        searchPlaceholder="Поиск по дереву..."
+        controls={
+          <>
+            <label className="cx-inlineCheck">
+              <input
+                type="checkbox"
+                checked={selectedNodeIds.length === 0 && selectedProductIds.length === 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    onSelectedNodeIdsChange([]);
+                    onSelectedProductIdsChange([]);
+                  }
+                }}
+              />
+              <span>Весь каталог</span>
+            </label>
+            <label className="cx-inlineCheck cx-inlineCheckMuted">
+              <input type="checkbox" checked={includeDescendants} onChange={(e) => onIncludeDescendantsChange(e.target.checked)} />
+              <span>С дочерними</span>
+            </label>
+          </>
+        }
+      >
         <div className="cx-tree">{renderTree(null)}</div>
-      </section>
+      </CategorySidebar>
 
       <section className="card cx-pane">
         <div className="cx-paneHead">

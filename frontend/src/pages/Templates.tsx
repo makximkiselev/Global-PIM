@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "../styles/catalog.css";
 import "../styles/templates.css";
 import { api } from "../lib/api";
+import CategorySidebar from "../components/CategorySidebar";
 
 type NodeT = {
   id: string;
@@ -445,36 +446,27 @@ export default function TemplatesCatalog() {
             Своя — шаблон задан на категории • Наследуется — редактировать нужно “выше”
           </div>
         </div>
-        <div className="page-header-actions">
-          <button className="btn sm" type="button" onClick={expandAll}>
-            Развернуть все
-          </button>
-          <button className="btn sm" type="button" onClick={collapseAll}>
-            Свернуть все
-          </button>
-        </div>
       </div>
 
       <div className="templates-grid">
-        <div className="card templates-panel">
-          <div className="templates-head">
-            <div>
-              <div className="card-title">Категории и наследование</div>
-              <div className="muted">Всего категорий: {nodes.length}</div>
-            </div>
-          </div>
-
-          <div className="templates-toolbar">
-            <div className="templates-search">
-              <span style={{ color: "var(--muted)" }}>🔎</span>
-              <input
-                value={treeQuery}
-                onChange={(e) => setTreeQuery(e.target.value)}
-                placeholder="Поиск категории…"
-              />
-            </div>
-          </div>
-
+        <CategorySidebar
+          className="templates-panel"
+          title="Категории"
+          hint={`Наследование и выбор шаблона · ${nodes.length}`}
+          searchValue={treeQuery}
+          onSearchChange={setTreeQuery}
+          searchPlaceholder="Поиск категории…"
+          controls={
+            <>
+              <button className="btn sm" type="button" onClick={expandAll}>
+                Развернуть
+              </button>
+              <button className="btn sm" type="button" onClick={collapseAll}>
+                Свернуть
+              </button>
+            </>
+          }
+        >
           <div className="tree" ref={treeRef}>
             {loading ? (
               <div className="muted">Загрузка…</div>
@@ -484,7 +476,7 @@ export default function TemplatesCatalog() {
               roots.map((r) => <TreeNode key={r.id} node={r} depth={0} />)
             )}
           </div>
-        </div>
+        </CategorySidebar>
 
         <div className="card templates-preview">
           {!selectedId ? (

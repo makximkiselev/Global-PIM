@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import CatalogExchangePicker, { type ExchangeNode, type ExchangeProduct } from "../components/CatalogExchangePicker";
 import { api } from "../lib/api";
 import "../styles/catalog-exchange.css";
@@ -21,6 +21,7 @@ type ImportRunResp = {
   products?: Array<{
     product_id: string;
     title: string;
+    sku_gt?: string;
     filled_features: number;
     conflicts_count: number;
     source_summary?: {
@@ -45,6 +46,7 @@ type ImportRunResp = {
 };
 
 export default function CatalogImportPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [products, setProducts] = useState<ExchangeProduct[]>([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -57,6 +59,7 @@ export default function CatalogImportPage() {
   const [err, setErr] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [bootstrappedFromUrl, setBootstrappedFromUrl] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -70,6 +73,32 @@ export default function CatalogImportPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (bootstrappedFromUrl) return;
+    if (!nodes.length && !products.length) return;
+    const categoryId = String(searchParams.get("category") || "").trim();
+    const productId = String(searchParams.get("product") || "").trim();
+    const nextNodeIds =
+      categoryId && nodes.some((node) => node.id === categoryId) ? [categoryId] : [];
+    const nextProductIds =
+      productId && products.some((product) => product.id === productId) ? [productId] : [];
+    if (nextNodeIds.length) setSelectedNodeIds(nextNodeIds);
+    if (nextProductIds.length) setSelectedProductIds(nextProductIds);
+    setBootstrappedFromUrl(true);
+  }, [bootstrappedFromUrl, nodes, products, searchParams]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (selectedNodeIds[0]) next.set("category", selectedNodeIds[0]);
+    else next.delete("category");
+    if (selectedProductIds[0]) next.set("product", selectedProductIds[0]);
+    else next.delete("product");
+    const serialized = next.toString();
+    if (serialized !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [selectedNodeIds, selectedProductIds, searchParams, setSearchParams]);
+
   const unresolved = useMemo(() => (run?.conflicts || []).filter((x) => !x.resolved), [run]);
   const selectedScope = useMemo(() => {
     if (!selectedNodeIds.length && !selectedProductIds.length) return "Весь каталог";
@@ -77,6 +106,14 @@ export default function CatalogImportPage() {
     if (selectedNodeIds.length && !selectedProductIds.length) return `Разделы: ${selectedNodeIds.length}`;
     return `Разделы: ${selectedNodeIds.length} · Товары: ${selectedProductIds.length}`;
   }, [selectedNodeIds, selectedProductIds]);
+  const runProducts = run?.products || [];
+  const runOverview = run?.import_overview || {};
+  const sourceMode = useMemo(() => {
+    if (useYandex && useCompetitors) return "Маркет -> конкуренты";
+    if (useYandex) return "Только Яндекс.Маркет";
+    if (useCompetitors) return "Только конкуренты";
+    return "Источники не выбраны";
+  }, [useCompetitors, useYandex]);
 
   async function startImport() {
     setLoading(true);
@@ -141,62 +178,71 @@ export default function CatalogImportPage() {
     <div className="cx-page">
       <div className="cx-head">
         <div>
-          <h1>Импорт</h1>
-          <p>Насыщение товаров контентом. Сначала тянем Яндекс.Маркет, затем добиваем карточку конкурентами и отдельно разбираем расхождения.</p>
+          <div className="cx-headEyebrow">Заполнение данных</div>
+          <h1>Импорт контента</h1>
+          <p>Выбираем ветку каталога, тянем контент из Яндекс.Маркета, затем добиваем пробелы конкурентами и отдельно закрываем конфликты значений.</p>
         </div>
         <div className="cx-headActions">
           <Link className="btn" to="/products">К товарам</Link>
           <button className="btn primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
-            {loading ? "Импортирую…" : "Запустить импорт"}
+            {loading ? "Заполняю…" : "Запустить заполнение"}
           </button>
         </div>
       </div>
 
-      <section className="cx-importTopGrid">
-        <div className="card cx-flowCard">
-          <div className="cx-flowCardEyebrow">Сценарий</div>
-          <div className="cx-flowSteps">
-            <div className="cx-flowStep">
-              <span className="cx-flowIndex">1</span>
-              <div>
-                <div className="cx-flowTitle">Выбор каталога</div>
-                <div className="cx-flowText">Весь каталог, ветки дерева или конкретные товары.</div>
-              </div>
-            </div>
-            <div className="cx-flowStep">
-              <span className="cx-flowIndex">2</span>
-              <div>
-                <div className="cx-flowTitle">Яндекс.Маркет</div>
-                <div className="cx-flowText">Подтягиваем описание, медиа и значения параметров по мастер-шаблону.</div>
-              </div>
-            </div>
-            <div className="cx-flowStep">
-              <span className="cx-flowIndex">3</span>
-              <div>
-                <div className="cx-flowTitle">Конкуренты</div>
-                <div className="cx-flowText">Добиваем пропуски. Конфликтующие значения уходим решать отдельно.</div>
-              </div>
-            </div>
+      <section className="cx-runway card">
+        <div className="cx-runwayMain">
+          <div className="cx-runwayTitle">Пайплайн</div>
+          <div className="cx-runwaySteps">
+            <div className="cx-runwayStep"><span>1</span><b>Область</b><small>Каталог или точечные товары</small></div>
+            <div className="cx-runwayStep"><span>2</span><b>Маркет</b><small>Описание, медиа, часть характеристик</small></div>
+            <div className="cx-runwayStep"><span>3</span><b>Конкуренты</b><small>Добивка пробелов и конфликты</small></div>
           </div>
         </div>
+        <div className="cx-runwayAside">
+          <div className="cx-kpi">
+            <span className="cx-kpiLabel">Область</span>
+            <span className="cx-kpiValue">{selectedScope}</span>
+          </div>
+          <div className="cx-kpi">
+            <span className="cx-kpiLabel">Режим</span>
+            <span className="cx-kpiValue">{sourceMode}</span>
+          </div>
+        </div>
+      </section>
 
-        <div className="card cx-sourcesCard">
-          <div className="cx-flowCardEyebrow">Источники</div>
+      <section className="cx-importTopGrid">
+        <div className="card cx-sourceShell">
+          <div className="cx-sectionHeadline">
+            <div>
+              <div className="cx-paneTitle">Источники заполнения</div>
+              <div className="cx-paneSub">Маркет даем как основной источник. Конкурентов включаем для добивки и конфликтов.</div>
+            </div>
+          </div>
           <div className="cx-sourceList">
             <label className={`cx-sourceToggle ${useYandex ? "isActive" : ""}`}>
               <input type="checkbox" checked={useYandex} onChange={(e) => setUseYandex(e.target.checked)} />
               <span className="cx-sourceTitle">Яндекс.Маркет</span>
-              <span className="cx-sourceMeta">Приоритетный источник для медиа, описания и характеристик.</span>
+              <span className="cx-sourceMeta">Приоритет для описания, медиа и характеристик по мастер-шаблону.</span>
             </label>
             <label className={`cx-sourceToggle ${useCompetitors ? "isActive" : ""}`}>
               <input type="checkbox" checked={useCompetitors} onChange={(e) => setUseCompetitors(e.target.checked)} />
               <span className="cx-sourceTitle">Конкуренты</span>
-              <span className="cx-sourceMeta">Заполняют пробелы после Маркета и формируют варианты для разрешения конфликтов.</span>
+              <span className="cx-sourceMeta">Добивают пробелы после Маркета и дают варианты для разрешения конфликтов.</span>
             </label>
           </div>
-          <div className="cx-selectionBar">
-            <div className="cx-selectionLabel">Выбрано для импорта</div>
-            <div className="cx-selectionValue">{selectedScope}</div>
+        </div>
+        <div className="card cx-runInfoCard">
+          <div className="cx-sectionHeadline">
+            <div>
+              <div className="cx-paneTitle">Что произойдет</div>
+              <div className="cx-paneSub">Заполнение идет в 1 прогон и сохраняет run c итогами и нерешенными конфликтами.</div>
+            </div>
+          </div>
+          <div className="cx-bulletList">
+            <div>Выбранные товары будут синхронизированы с Маркетом.</div>
+            <div>Конкуренты не затирают вслепую, а создают варианты выбора.</div>
+            <div>Пустые блоки после прогона остаются видимыми отдельным списком.</div>
           </div>
         </div>
       </section>
@@ -216,25 +262,27 @@ export default function CatalogImportPage() {
 
       {run ? (
         <>
-          <section className="cx-summaryGrid">
+          <section className="cx-summaryGrid cx-summaryGridPrimary">
             <div className="card cx-summaryCard"><div className="cx-summaryLabel">Товаров в прогоне</div><div className="cx-summaryValue">{run.count}</div></div>
             <div className="card cx-summaryCard"><div className="cx-summaryLabel">Обновлено</div><div className="cx-summaryValue">{run.updated_products}</div></div>
             <div className="card cx-summaryCard"><div className="cx-summaryLabel">Яндекс нашел</div><div className="cx-summaryValue">{run.yandex_result?.matched_products || 0}</div></div>
             <div className="card cx-summaryCard"><div className="cx-summaryLabel">Конфликтов</div><div className="cx-summaryValue">{unresolved.length}</div></div>
           </section>
 
-          <section className="cx-summaryGrid">
-            <div className="card cx-summaryCard"><div className="cx-summaryLabel">Описания готовы</div><div className="cx-summaryValue">{run.import_overview?.description_ready || 0}</div></div>
-            <div className="card cx-summaryCard"><div className="cx-summaryLabel">Фото готовы</div><div className="cx-summaryValue">{run.import_overview?.images_ready || 0}</div></div>
-            <div className="card cx-summaryCard"><div className="cx-summaryLabel">С Маркетом</div><div className="cx-summaryValue">{run.import_overview?.with_yandex_data || 0}</div></div>
-            <div className="card cx-summaryCard"><div className="cx-summaryLabel">Ждут добивки</div><div className="cx-summaryValue">{run.import_overview?.still_missing || 0}</div></div>
+          <section className="cx-summaryStrip card">
+            <div className="cx-stripMetric"><span>Описания готовы</span><b>{runOverview.description_ready || 0}</b></div>
+            <div className="cx-stripMetric"><span>Фото готовы</span><b>{runOverview.images_ready || 0}</b></div>
+            <div className="cx-stripMetric"><span>Характеристики</span><b>{runOverview.features_ready || 0}</b></div>
+            <div className="cx-stripMetric"><span>С Маркетом</span><b>{runOverview.with_yandex_data || 0}</b></div>
+            <div className="cx-stripMetric"><span>С медиа конкурентов</span><b>{runOverview.with_competitor_media || 0}</b></div>
+            <div className="cx-stripMetric isAlert"><span>Ждут добивки</span><b>{runOverview.still_missing || 0}</b></div>
           </section>
 
           <section className="card cx-pane">
             <div className="cx-paneHead">
               <div>
-                <div className="cx-paneTitle">Результат импорта</div>
-                <div className="cx-paneSub">Видно, чем товар насытился после Маркета и конкурентов, и какие блоки еще пустые.</div>
+                <div className="cx-paneTitle">Результат прогона</div>
+                <div className="cx-paneSub">Видно, чем товар насытился после Маркета и конкурентов, и какие блоки остались пустыми.</div>
               </div>
             </div>
             <div className="cx-resultsTableWrap">
@@ -250,10 +298,17 @@ export default function CatalogImportPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(run.products || []).map((row) => (
+                  {runProducts.map((row) => (
                     <tr key={row.product_id}>
-                      <td><Link to={`/products/${encodeURIComponent(row.product_id)}`}>{row.title}</Link></td>
-                      <td>{row.source_summary?.filled_features ?? row.filled_features}</td>
+                      <td>
+                        <div className="cx-resultProduct">
+                          <Link to={`/products/${encodeURIComponent(row.product_id)}`}>{row.title}</Link>
+                          <span>GT SKU {row.sku_gt || "—"}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="cx-resultValue">{row.source_summary?.filled_features ?? row.filled_features}</div>
+                      </td>
                       <td>
                         <div className="cx-cellStack">
                           <span className={`cx-statusDot ${(row.source_summary?.description?.present) ? "isOk" : ""}`}>Описание</span>
@@ -280,7 +335,7 @@ export default function CatalogImportPage() {
             <div className="cx-paneHead">
               <div>
                 <div className="cx-paneTitle">Конфликты данных</div>
-                <div className="cx-paneSub">Выбери одно из значений или задай собственное финальное значение.</div>
+                <div className="cx-paneSub">Выбери одно из значений или задай свое финальное. Без этого конфликт не закроется.</div>
               </div>
               <button className="btn primary" onClick={() => void saveResolutions()} disabled={saving || unresolved.length === 0}>{saving ? "Сохраняю…" : "Применить выбранные значения"}</button>
             </div>
