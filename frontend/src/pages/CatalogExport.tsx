@@ -16,7 +16,7 @@ type ExportRunResp = {
 
 export default function CatalogExportPage() {
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
-  const [products, setProducts] = useState<ExchangeProduct[]>([]);
+  const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
   const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
@@ -29,13 +29,13 @@ export default function CatalogExportPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [n, p, c] = await Promise.all([
+      const [n, counts, c] = await Promise.all([
         api<{ nodes: ExchangeNode[] }>("/catalog/nodes"),
-        api<{ items: ExchangeProduct[] }>("/catalog/products"),
+        api<{ counts: Record<string, number> }>("/catalog/products/counts"),
         api<ConnectorsResp>("/connectors/status"),
       ]);
       setNodes(n.nodes || []);
-      setProducts(p.items || []);
+      setProductCountsByCategory(counts.counts || {});
       setProviders((c.providers || []).filter((x) => ["yandex_market", "ozon"].includes(x.code)));
     };
     void load();
@@ -118,7 +118,7 @@ export default function CatalogExportPage() {
 
       <CatalogExchangePicker
         nodes={nodes}
-        products={products}
+        productCountsByCategory={productCountsByCategory}
         selectedNodeIds={selectedNodeIds}
         selectedProductIds={selectedProductIds}
         onSelectedNodeIdsChange={setSelectedNodeIds}

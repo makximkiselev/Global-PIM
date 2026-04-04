@@ -346,6 +346,7 @@ export default function Product() {
 
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
   const [allProducts, setAllProducts] = useState<CatalogProductItem[]>([]);
+  const [relationSearchLoading, setRelationSearchLoading] = useState(false);
 
   const [tab, setTabState] = useState<
     "variants" | "media" | "features" | "description" | "documents" | "analogs" | "related"
@@ -575,7 +576,6 @@ export default function Product() {
     : null;
 
   const modalItems = useMemo(() => {
-    const q = qnorm(selectQuery);
     if (!selectModalKind) return [] as CatalogProductItem[];
 
     const selectedIds = new Set(
@@ -586,15 +586,51 @@ export default function Product() {
 
     return (allProducts || [])
       .filter((p) => p.id !== product?.id)
-      .filter((p) => {
-        if (!q) return true;
-        return [toDisplayTitle(p), p.sku_gt || "", buildPath(nodesById, p.category_id || "")]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      })
       .map((p) => ({ ...p, _selected: selectedIds.has(p.id) } as any));
-  }, [selectModalKind, selectQuery, allProducts, content.analogs, content.related, product?.id, nodesById]);
+  }, [selectModalKind, allProducts, content.analogs, content.related, product?.id]);
+
+  useEffect(() => {
+    if (!selectModalKind) {
+      setSelectQuery("");
+      setAllProducts([]);
+      setRelationSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const selectedIds = (
+      selectModalKind === "analogs" ? content.analogs : content.related
+    )
+      .map((x) => String(x.id || "").trim())
+      .filter(Boolean);
+
+    const timer = window.setTimeout(() => {
+      const q = qnorm(selectQuery);
+      if (!q && !selectedIds.length) {
+        setAllProducts([]);
+        setRelationSearchLoading(false);
+        return;
+      }
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (selectedIds.length) params.set("ids", selectedIds.join(","));
+      params.set("limit", "80");
+      setRelationSearchLoading(true);
+      void (async () => {
+        try {
+          const res = await api<{ items: CatalogProductItem[] }>(`/catalog/products/search?${params.toString()}`);
+          if (!cancelled) setAllProducts(res.items || []);
+        } finally {
+          if (!cancelled) setRelationSearchLoading(false);
+        }
+      })();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [selectModalKind, selectQuery, content.analogs, content.related]);
 
   useEffect(() => {
     if (heroImageIndex > Math.max(0, (content.media_images || []).length - 1)) {
@@ -613,16 +649,15 @@ export default function Product() {
       setLoading(true);
       setErr(null);
       try {
-        const [prod, cats, productsList] = await Promise.all([
+        const [prod, cats] = await Promise.all([
           api<ProductResp>(`/products/${encodeURIComponent(productId)}`),
           api<{ nodes: CatalogNode[] }>("/catalog/nodes"),
-          api<{ items: CatalogProductItem[] }>("/catalog/products"),
         ]);
 
         if (cancelled) return;
         setProduct(prod.product);
         setCatalogNodes(cats.nodes || []);
-        setAllProducts(productsList.items || []);
+        setAllProducts([]);
         try {
           const channels = await api<ChannelsSummaryResp>(`/products/${encodeURIComponent(productId)}/channels-summary`);
           if (!cancelled) {
@@ -2094,6 +2129,7 @@ export default function Product() {
                 onChange={(e) => setSelectQuery(e.target.value)}
               />
               <div className="pg-addList" style={{ marginTop: 10, maxHeight: "56vh" }}>
+                {relationSearchLoading ? <div className="pn-muted">Загрузка…</div> : null}
                 {modalItems.map((p: any) => (
                   <button
                     key={p.id}
@@ -2110,6 +2146,7 @@ export default function Product() {
                     <div style={{ fontSize: 18, color: p._selected ? "#16a34a" : "#9ca3af" }}>{p._selected ? "✓" : "○"}</div>
                   </button>
                 ))}
+                {!relationSearchLoading && !modalItems.length ? <div className="pn-muted">Начни поиск, чтобы выбрать товары.</div> : null}
               </div>
             </div>
           </div>
