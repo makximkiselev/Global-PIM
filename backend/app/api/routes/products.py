@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
@@ -21,6 +22,7 @@ from app.core.products.service import (
 from app.core.products.repo import load_products as load_products_repo
 from app.core.json_store import JsonStoreError, read_doc, DATA_DIR
 from app.core.object_storage import ObjectStorageError, delete_object, s3_enabled, upload_bytes
+from app.storage.json_store import load_dictionaries_db, load_templates_db
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -28,6 +30,75 @@ YANDEX_OFFER_CARDS_PATH = DATA_DIR / "marketplaces" / "yandex_market" / "offer_c
 CONNECTORS_STATE_PATH = DATA_DIR / "marketplaces" / "connectors_scheduler.json"
 OZON_PRODUCT_RATING_PATH = DATA_DIR / "marketplaces" / "ozon" / "product_rating_by_sku.json"
 OZON_IMPORT_INFO_PATH = DATA_DIR / "marketplaces" / "ozon" / "import_products_info.json"
+_PRODUCT_NEW_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
+_product_new_bootstrap_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+
+
+def _load_catalog_nodes_doc() -> List[Dict[str, Any]]:
+    doc = read_doc(DATA_DIR / "catalog_nodes.json", default=[])
+    return doc if isinstance(doc, list) else []
+
+
+def _product_new_bootstrap_payload() -> Dict[str, Any]:
+    now = time.time()
+    cached = _product_new_bootstrap_cache.get("payload")
+    cached_ts = float(_product_new_bootstrap_cache.get("ts") or 0.0)
+    if cached and now - cached_ts < _PRODUCT_NEW_BOOTSTRAP_CACHE_TTL_SECONDS:
+        return cached
+
+    catalog_nodes = _load_catalog_nodes_doc()
+    templates_db = load_templates_db()
+    template_tree = []
+    for node in catalog_nodes:
+        if not isinstance(node, dict):
+            continue
+        nid = str(node.get("id") or "").strip()
+        if not nid:
+            continue
+        template_ids = (templates_db.get("category_to_templates") or {}).get(nid, []) if isinstance(templates_db.get("category_to_templates"), dict) else []
+        template_id = template_ids[0] if isinstance(template_ids, list) and template_ids else (templates_db.get("category_to_template") or {}).get(nid) if isinstance(templates_db.get("category_to_template"), dict) else None
+        template_tree.append({
+            "id": nid,
+            "parent_id": node.get("parent_id"),
+            "template_id": template_id,
+        })
+
+    dict_db = load_dictionaries_db()
+    attributes = []
+    dictionaries = []
+    for row in dict_db.get("items", []) or []:
+        if not isinstance(row, dict):
+            continue
+        dict_id = str(row.get("id") or "").strip()
+        if not dict_id:
+            continue
+        title = str(row.get("title") or dict_id).strip() or dict_id
+        code = str(row.get("code") or "").strip()
+        meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+        attributes.append({
+            "id": row.get("attr_id") or dict_id,
+            "title": title,
+            "code": code,
+            "type": row.get("type"),
+            "scope": row.get("scope"),
+            "dict_id": dict_id,
+        })
+        dictionaries.append({
+            "id": dict_id,
+            "title": title,
+            "code": code,
+            "meta": {"service": bool(meta.get("service"))},
+        })
+
+    payload = {
+        "catalog_nodes": catalog_nodes,
+        "template_tree": template_tree,
+        "attributes": attributes,
+        "dictionaries": dictionaries,
+    }
+    _product_new_bootstrap_cache["ts"] = now
+    _product_new_bootstrap_cache["payload"] = payload
+    return payload
 
 
 class CreateProductReq(BaseModel):
@@ -280,6 +351,12 @@ def product_channels_summary(product_id: str):
             {"key": "store77", "title": "Store77", "status": "Подключен" if str(links_by_label.get("store77") or "").strip() else "Не задан", "url": str(links_by_label.get("store77") or "").strip()},
         ],
     }
+
+
+@router.get("/new-bootstrap")
+def products_new_bootstrap():
+    payload = _product_new_bootstrap_payload()
+    return {"ok": True, **payload}
 
 
 @router.post("/create")

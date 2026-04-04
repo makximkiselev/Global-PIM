@@ -8,8 +8,6 @@ function apiBase() {
   return "/api";
 }
 
-const API_CATALOG_NODES = `${apiBase()}/catalog/nodes`;
-const API_TEMPLATES_TREE = `${apiBase()}/templates/tree`;
 const API_TEMPLATES_BY_CATEGORY = `${apiBase()}/templates/by-category`;
 const API_TEMPLATE_GET = `${apiBase()}/templates`;
 const API_COMP_MAPPING = `${apiBase()}/competitor-mapping/template`;
@@ -18,13 +16,9 @@ const API_ALLOCATE_SKUS = `${apiBase()}/products/allocate-skus`;
 const API_PRODUCT_CREATE = `${apiBase()}/products/create`;
 const API_PRODUCT_PATCH = `${apiBase()}/products`;
 const API_VARIANTS_BULK_CREATE = `${apiBase()}/variants/bulk-create`;
-const API_ATTRIBUTES = `${apiBase()}/attributes`;
-const API_DICTIONARIES = `${apiBase()}/dictionaries`;
-const API_DICT_GET = (dictId: string) => `${API_DICTIONARIES}/${encodeURIComponent(dictId)}`;
+const API_DICT_GET = (dictId: string) => `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}`;
 const API_DICT_ENSURE_VALUE = (dictId: string) =>
-  `${API_DICTIONARIES}/${encodeURIComponent(dictId)}/values/ensure`;
-const API_CATALOG_SEARCH = `${apiBase()}/catalog/products/search`;
-const API_CATALOG_PRODUCTS = `${apiBase()}/catalog/products`;
+  `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}/values/ensure`;
 
 async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
@@ -81,14 +75,20 @@ type CatalogNodeFlat = {
   template_id?: string | null;
 };
 
-type CatalogNodesResp = { nodes: CatalogNodeFlat[] };
+type ProductNewBootstrapResp = {
+  ok: boolean;
+  catalog_nodes: CatalogNodeFlat[];
+  template_tree: TemplateTreeNode[];
+  attributes: AttributeItem[];
+  dictionaries: DictionaryListItem[];
+};
+
 type CatalogProductsResp = { items: ProductListItem[] };
 type TemplateTreeNode = {
   id: string;
   parent_id: string | null;
   template_id?: string | null;
 };
-type TemplatesTreeResp = { nodes: TemplateTreeNode[] };
 
 type CatalogNodeTree = CatalogNodeFlat & { children: CatalogNodeTree[] };
 
@@ -345,11 +345,6 @@ type AttributeItem = {
   type: string;
   scope?: string | null;
   dict_id?: string | null;
-};
-
-type AttributesListResp = {
-  items: AttributeItem[];
-  total: number;
 };
 
 type DictionaryListItem = {
@@ -716,7 +711,7 @@ function CatalogProductPickerModal(props: {
       setErr(null);
       try {
         const res = await getJson<CatalogProductsResp>(
-          `${API_CATALOG_PRODUCTS}?category_id=${encodeURIComponent(activeCategoryId)}&include_descendants=true`
+          `${apiBase()}/catalog/products/search?category_ids=${encodeURIComponent(activeCategoryId)}&include_descendants=1&limit=500`
         );
         setProducts(res.items || []);
       } catch (e: any) {
@@ -1212,52 +1207,24 @@ export default function ProductNew() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await getJson<CatalogNodesResp>(API_CATALOG_NODES);
-        const nodes = res.nodes || [];
+        const res = await getJson<ProductNewBootstrapResp>(`${apiBase()}/products/new-bootstrap`);
+        const nodes = res.catalog_nodes || [];
         const tree = buildTree(nodes);
-
         const mapFlat = new Map<string, CatalogNodeFlat>();
         for (const n of nodes) mapFlat.set(n.id, n);
+        const templateMap = new Map<string, TemplateTreeNode>();
+        for (const n of res.template_tree || []) templateMap.set(n.id, n);
 
         setCatalogTree(tree);
         setTreeById(indexTree(tree));
         setFlatById(mapFlat);
+        setTemplateTreeById(templateMap);
+        setGlobalAttrs(res.attributes || []);
+        setDictionaryItems(res.dictionaries || []);
       } catch (e: any) {
         setCatalogErr(e?.message || "CATALOG_LOAD_FAILED");
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await getJson<TemplatesTreeResp>(API_TEMPLATES_TREE);
-        const map = new Map<string, TemplateTreeNode>();
-        for (const n of res.nodes || []) map.set(n.id, n);
-        setTemplateTreeById(map);
-      } catch {
         setTemplateTreeById(new Map());
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await getJson<AttributesListResp>(`${API_ATTRIBUTES}?limit=2000`);
-        setGlobalAttrs(res.items || []);
-      } catch {
         setGlobalAttrs([]);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await getJson<{ items: DictionaryListItem[] }>(`${API_DICTIONARIES}?include_service=1`);
-        setDictionaryItems(res.items || []);
-      } catch {
         setDictionaryItems([]);
       }
     })();
