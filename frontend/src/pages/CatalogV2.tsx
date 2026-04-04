@@ -642,6 +642,12 @@ export default function Catalog() {
   const roots = childrenMap.get(null) || [];
   const totalProductsCount = roots.reduce((sum, root) => sum + (aggCounts.get(root.id) ?? 0), 0);
   const selectedCount = selected ? (aggCounts.get(selected.id) ?? 0) : 0;
+  const prefetchCategoryIds = useMemo(() => {
+    if (!selected) return [] as string[];
+    const siblings = childrenMap.get(selected.parent_id ?? null) || [];
+    const children = childrenMap.get(selected.id) || [];
+    return [...siblings, ...children].map((node) => node.id);
+  }, [childrenMap, selected]);
   const TreeNode = ({ node, depth }: { node: NodeT; depth: number }) => {
     if (visibleSet && !visibleSet.has(node.id)) return null;
     const kids = childrenMap.get(node.id) || [];
@@ -984,18 +990,17 @@ export default function Catalog() {
         <section className="cf-main">
           <div className="cf-hero">
             <div className="cf-heroMain">
-              {selected ? <div className="cf-heroEyebrow">{breadcrumbLabel}</div> : null}
+              {selected && breadcrumbLabel ? (
+                <div className="cf-heroPath">{breadcrumbLabel}</div>
+              ) : null}
               <div className="cf-heroTitle">
                 {selected ? selected.name : "Выберите категорию"}
               </div>
               {selected ? (
-                <>
-                  <div className="cf-metaLine">
-                    <span>{selectedCount} товаров</span>
-                    <span>Приоритет {selected.position ?? 0}</span>
-                    <span>Текущая ветка</span>
-                  </div>
-                </>
+                <div className="cf-metaLine">
+                  <span>{selectedCount} товаров</span>
+                  <span>Приоритет {selected.position ?? 0}</span>
+                </div>
               ) : null}
             </div>
             <div className="cf-heroActions">
@@ -1009,12 +1014,6 @@ export default function Catalog() {
                 >
                   + Товар
                 </button>
-                <button className="btn" type="button" onClick={() => setBulkOpen(true)}>
-                  Массовая загрузка
-                </button>
-                <Link className="btn" to={selectedId ? `/catalog/import?category=${encodeURIComponent(selectedId)}` : "/catalog/import"}>
-                  Заполнение данных
-                </Link>
                 <Link className="btn" to="/catalog/groups">
                   Группы товаров
                 </Link>
@@ -1035,6 +1034,12 @@ export default function Catalog() {
                     </button>
                     {categoryMenuOpen ? (
                       <div className="cf-moreDropdown" role="menu">
+                        <button className="cf-moreItem" type="button" onClick={() => setBulkOpen(true)}>
+                          Массовая загрузка
+                        </button>
+                        <Link className="cf-moreItem" to={selectedId ? `/catalog/import?category=${encodeURIComponent(selectedId)}` : "/catalog/import"}>
+                          Заполнение данных
+                        </Link>
                         <button className="cf-moreItem" type="button" onClick={() => openCreateChild(selected.id)}>
                           Создать подкатегорию
                         </button>
@@ -1054,15 +1059,13 @@ export default function Catalog() {
 
           {!selected ? null : (
             <div className="cf-section">
-              <div className="cf-sectionHead">
-                <div className="cf-sectionTitle">Товары в категории</div>
-              </div>
               <ProductRegistry
                 mode="embedded"
                 scopeCategoryId={selected.id}
                 scopeTitle={`Товары: ${selected.name}`}
                 paramPrefix="cat_"
                 showHeader={false}
+                prefetchCategoryIds={prefetchCategoryIds}
               />
             </div>
           )}

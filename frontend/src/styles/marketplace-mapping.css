@@ -231,6 +231,36 @@
   overflow:hidden;
 }
 
+.mm-treePaneShared.csb-shell{
+  padding:12px;
+  border-right:0;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(249,250,252,.96));
+}
+
+.mm-treePaneShared .csb-head{
+  margin-bottom:10px;
+}
+
+.mm-treePaneShared .csb-toolbar{
+  margin-bottom:10px;
+}
+
+.mm-treePaneShared .csb-body,
+.mm-treePaneShared .csb-tree{
+  min-height:0;
+}
+
+.mm-treePaneShared .csb-tree{
+  max-height:68vh;
+  overflow:auto;
+}
+
+.mm-treePaneFeatures.csb-shell{
+  padding:0;
+  border:0;
+  background:transparent;
+}
+
 .mm-paneHead{
   display:flex;
   align-items:flex-start;

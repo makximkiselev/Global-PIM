@@ -49,6 +49,8 @@ type ProductsPageDataResp = {
 };
 
 const DEFAULT_PAGE_SIZE = 50;
+const PRODUCTS_REGISTRY_CACHE_TTL_MS = 30_000;
+const productsRegistryCache = new Map<string, { ts: number; data: ProductsPageDataResp }>();
 
 function productStatusTone(status: string, present: boolean): "" | "isOn" {
   const normalized = String(status || "").trim().toLowerCase();
@@ -63,6 +65,7 @@ type Props = {
   scopeTitle?: string;
   paramPrefix?: string;
   showHeader?: boolean;
+  prefetchCategoryIds?: string[];
 };
 
 export default function ProductRegistry({
@@ -71,6 +74,7 @@ export default function ProductRegistry({
   scopeTitle = "Товары",
   paramPrefix = "",
   showHeader = true,
+  prefetchCategoryIds = [],
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -136,44 +140,103 @@ export default function ProductRegistry({
     setSearchParams(next, { replace: true });
   }
 
+  function buildParams(overrides?: { category?: string; currentPage?: number }) {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (scopeCategoryId || overrides?.category) {
+      params.set("category", overrides?.category || scopeCategoryId);
+    } else {
+      if (parentCategoryId) params.set("parent", parentCategoryId);
+      if (subCategoryId) params.set("sub", subCategoryId);
+    }
+    if (groupFilter) params.set("group", groupFilter);
+    if (templateFilter) params.set("template", templateFilter);
+    if (marketFilter !== "all") params.set("ym", marketFilter);
+    if (ozonFilter !== "all") params.set("oz", ozonFilter);
+    if (viewFilter !== "all") params.set("view", viewFilter);
+    params.set("page", String(overrides?.currentPage || currentPage));
+    params.set("page_size", String(DEFAULT_PAGE_SIZE));
+    return params;
+  }
+
+  function applyPayload(data: ProductsPageDataResp) {
+    setProducts(Array.isArray(data.products) ? data.products : []);
+    setNodes(Array.isArray(data.nodes) ? data.nodes : []);
+    setGroups(Array.isArray(data.groups) ? data.groups : []);
+    setTemplates(Array.isArray(data.templates) ? data.templates : []);
+    setTotal(Math.max(0, Number(data.total || 0)));
+    setPageSize(Math.max(1, Number(data.page_size || DEFAULT_PAGE_SIZE)));
+  }
+
   async function load() {
-    setLoading(true);
+    const params = buildParams();
+    const requestKey = params.toString();
+    const cached = productsRegistryCache.get(requestKey);
+    const now = Date.now();
+
+    if (cached && now - cached.ts < PRODUCTS_REGISTRY_CACHE_TTL_MS) {
+      applyPayload(cached.data);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     setLoadError("");
     try {
-      const params = new URLSearchParams();
-      if (query) params.set("q", query);
-      if (scopeCategoryId) {
-        params.set("category", scopeCategoryId);
-        params.set("exact", "1");
-      } else {
-        if (parentCategoryId) params.set("parent", parentCategoryId);
-        if (subCategoryId) params.set("sub", subCategoryId);
-      }
-      if (groupFilter) params.set("group", groupFilter);
-      if (templateFilter) params.set("template", templateFilter);
-      if (marketFilter !== "all") params.set("ym", marketFilter);
-      if (ozonFilter !== "all") params.set("oz", ozonFilter);
-      if (viewFilter !== "all") params.set("view", viewFilter);
-      params.set("page", String(currentPage));
-      params.set("page_size", String(DEFAULT_PAGE_SIZE));
-
-      const data = await api<ProductsPageDataResp>(`/catalog/products-page-data?${params.toString()}`);
-      setProducts(Array.isArray(data.products) ? data.products : []);
-      setNodes(Array.isArray(data.nodes) ? data.nodes : []);
-      setGroups(Array.isArray(data.groups) ? data.groups : []);
-      setTemplates(Array.isArray(data.templates) ? data.templates : []);
-      setTotal(Math.max(0, Number(data.total || 0)));
-      setPageSize(Math.max(1, Number(data.page_size || DEFAULT_PAGE_SIZE)));
+      const data = await api<ProductsPageDataResp>(`/catalog/products-page-data?${requestKey}`);
+      productsRegistryCache.set(requestKey, { ts: Date.now(), data });
+      applyPayload(data);
     } catch (e) {
-      setLoadError((e as Error).message || "Не удалось загрузить список товаров");
+      if (!cached) {
+        setLoadError((e as Error).message || "Не удалось загрузить список товаров");
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function prefetchCategory(categoryId: string) {
+    const params = buildParams({ category: categoryId, currentPage: 1 });
+    params.delete("q");
+    params.delete("group");
+    params.delete("template");
+    params.delete("ym");
+    params.delete("oz");
+    params.delete("view");
+    params.set("page", "1");
+
+    const requestKey = params.toString();
+    const cached = productsRegistryCache.get(requestKey);
+    if (cached && Date.now() - cached.ts < PRODUCTS_REGISTRY_CACHE_TTL_MS) return;
+
+    try {
+      const data = await api<ProductsPageDataResp>(`/catalog/products-page-data?${requestKey}`);
+      productsRegistryCache.set(requestKey, { ts: Date.now(), data });
+    } catch {
+      // ignore prefetch failures
     }
   }
 
   useEffect(() => {
     void load();
   }, [query, scopeCategoryId, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, viewFilter, currentPage]);
+
+  useEffect(() => {
+    if (!scopeCategoryId || !prefetchCategoryIds.length) return;
+    const ids = prefetchCategoryIds.filter((id) => id && id !== scopeCategoryId).slice(0, 8);
+    if (!ids.length) return;
+    let cancelled = false;
+    const run = async () => {
+      for (const id of ids) {
+        if (cancelled) break;
+        await prefetchCategory(id);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [scopeCategoryId, prefetchCategoryIds.join("|")]);
 
   useEffect(() => {
     const next = searchDraft.trim();

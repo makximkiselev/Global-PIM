@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 from urllib.parse import urlparse
@@ -29,6 +30,9 @@ AUTHORIZED_SITES = {
     "restore": {"restore", "re-store.ru"},
     "store77": {"store77", "store77.net", "77"},
 }
+
+_IMPORT_OVERVIEW_CACHE_TTL_SECONDS = 30.0
+_import_overview_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
 def _now_iso() -> str:
@@ -487,8 +491,105 @@ class CatalogExportRunReq(BaseModel):
     limit: int = Field(default=1000, ge=1, le=5000)
 
 
+def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
+    return "|".join(
+        [
+            ",".join(sorted({str(x or "").strip() for x in node_ids if str(x or "").strip()})),
+            ",".join(sorted({str(x or "").strip() for x in product_ids if str(x or "").strip()})),
+            "1" if include_descendants else "0",
+            str(int(limit)),
+        ]
+    )
+
+
+def _build_import_overview_payload(
+    node_ids: List[str],
+    product_ids: List[str],
+    include_descendants: bool,
+    limit: int,
+) -> Dict[str, Any]:
+    products = _resolve_products(node_ids, product_ids, include_descendants)
+    nodes = _load_nodes()
+    product_summaries: List[Dict[str, Any]] = []
+    for product in products:
+        product_id = str(product.get("id") or "").strip()
+        if not product_id:
+            continue
+        features = (product.get("content") or {}).get("features") if isinstance((product.get("content") or {}).get("features"), list) else []
+        filled = sum(1 for f in features if isinstance(f, dict) and str(f.get("value") or "").strip())
+        source_summary = _content_source_summary(product)
+        product_summaries.append(
+            {
+                "product_id": product_id,
+                "title": str(product.get("title") or product_id),
+                "category_id": str(product.get("category_id") or ""),
+                "sku_gt": str(product.get("sku_gt") or ""),
+                "filled_features": filled,
+                "source_summary": source_summary,
+                "conflicts_count": 0,
+                "template_id": _resolve_template_id(str(product.get("category_id") or "").strip(), nodes),
+            }
+        )
+
+    product_summaries.sort(
+        key=lambda row: (
+            0 if str(row.get("sku_gt") or "").isdigit() else 1,
+            int(str(row.get("sku_gt") or "0")) if str(row.get("sku_gt") or "").isdigit() else 2**31 - 1,
+            str(row.get("title") or "").lower(),
+        )
+    )
+
+    import_overview = {
+        "description_ready": sum(1 for row in product_summaries if bool(((row.get("source_summary") or {}).get("description") or {}).get("present"))),
+        "images_ready": sum(1 for row in product_summaries if int((((row.get("source_summary") or {}).get("media") or {}).get("images_count") or 0)) > 0),
+        "features_ready": sum(1 for row in product_summaries if int(((row.get("source_summary") or {}).get("filled_features") or 0)) > 0),
+        "with_yandex_data": sum(
+            1
+            for row in product_summaries
+            if bool(((row.get("source_summary") or {}).get("description") or {}).get("from_yandex"))
+            or bool(((row.get("source_summary") or {}).get("media") or {}).get("from_yandex"))
+        ),
+        "with_competitor_media": sum(
+            1 for row in product_summaries if bool(((row.get("source_summary") or {}).get("media") or {}).get("from_competitors"))
+        ),
+        "still_missing": sum(1 for row in product_summaries if bool((row.get("source_summary") or {}).get("missing_blocks"))),
+    }
+
+    return {
+        "ok": True,
+        "count": len(product_summaries),
+        "products": product_summaries[: int(limit)],
+        "import_overview": import_overview,
+    }
+
+
+@router.get("/import/overview")
+def get_catalog_import_overview(
+    node_ids: str = "",
+    product_ids: str = "",
+    include_descendants: bool = True,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    parsed_node_ids = [str(x or "").strip() for x in node_ids.split(",") if str(x or "").strip()]
+    parsed_product_ids = [str(x or "").strip() for x in product_ids.split(",") if str(x or "").strip()]
+    if not parsed_node_ids and not parsed_product_ids:
+        return {"ok": True, "count": 0, "products": [], "import_overview": {}}
+
+    safe_limit = max(1, min(int(limit or 50), 200))
+    cache_key = _selection_key(parsed_node_ids, parsed_product_ids, bool(include_descendants), safe_limit)
+    now = time.monotonic()
+    cached = _import_overview_cache.get(cache_key)
+    if cached and now - cached[0] < _IMPORT_OVERVIEW_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    payload = _build_import_overview_payload(parsed_node_ids, parsed_product_ids, bool(include_descendants), safe_limit)
+    _import_overview_cache[cache_key] = (now, payload)
+    return payload
+
+
 @router.post("/import/run")
 async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
+    _import_overview_cache.clear()
     products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants))
     products = products[: int(req.limit)]
     if not products:
@@ -654,6 +755,7 @@ def get_catalog_import_run(run_id: str) -> Dict[str, Any]:
 
 @router.post("/import/resolve")
 def resolve_catalog_import(req: CatalogImportResolveReq) -> Dict[str, Any]:
+    _import_overview_cache.clear()
     runs = _load_runs(IMPORT_RUNS_PATH)
     run = (runs.get("runs") or {}).get(req.run_id)
     if not isinstance(run, dict):

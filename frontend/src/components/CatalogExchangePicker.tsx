@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CategorySidebar from "./CategorySidebar";
+import { api } from "../lib/api";
 
 export type ExchangeNode = {
   id: string;
@@ -18,7 +19,7 @@ export type ExchangeProduct = {
 
 type Props = {
   nodes: ExchangeNode[];
-  products: ExchangeProduct[];
+  productCountsByCategory: Record<string, number>;
   selectedNodeIds: string[];
   selectedProductIds: string[];
   onSelectedNodeIdsChange: (ids: string[]) => void;
@@ -46,7 +47,7 @@ function buildPath(nodeById: Map<string, ExchangeNode>, categoryId: string) {
 export default function CatalogExchangePicker(props: Props) {
   const {
     nodes,
-    products,
+    productCountsByCategory,
     selectedNodeIds,
     selectedProductIds,
     onSelectedNodeIdsChange,
@@ -57,6 +58,9 @@ export default function CatalogExchangePicker(props: Props) {
 
   const [nodeQuery, setNodeQuery] = useState("");
   const [productQuery, setProductQuery] = useState("");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [productItems, setProductItems] = useState<ExchangeProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
 
   const nodeById = useMemo(() => new Map((nodes || []).map((n) => [n.id, n])), [nodes]);
   const childrenByParent = useMemo(() => {
@@ -78,6 +82,27 @@ export default function CatalogExchangePicker(props: Props) {
 
   const selectedNodeSet = useMemo(() => new Set(selectedNodeIds || []), [selectedNodeIds]);
   const selectedProductSet = useMemo(() => new Set(selectedProductIds || []), [selectedProductIds]);
+  const directCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [categoryId, count] of Object.entries(productCountsByCategory || {})) {
+      if (!categoryId) continue;
+      map.set(categoryId, Number(count) || 0);
+    }
+    return map;
+  }, [productCountsByCategory]);
+  const aggregatedCounts = useMemo(() => {
+    const memo = new Map<string, number>();
+    const walk = (id: string) => {
+      if (memo.has(id)) return memo.get(id)!;
+      const own = directCounts.get(id) || 0;
+      const kids = childrenByParent.get(id) || [];
+      const total = own + kids.reduce((sum, child) => sum + walk(child.id), 0);
+      memo.set(id, total);
+      return total;
+    };
+    for (const node of nodes || []) walk(node.id);
+    return memo;
+  }, [childrenByParent, directCounts, nodes]);
 
   const filteredNodeIds = useMemo(() => {
     const q = qnorm(nodeQuery);
@@ -96,6 +121,13 @@ export default function CatalogExchangePicker(props: Props) {
     }
     return hits;
   }, [nodeQuery, nodes, nodeById]);
+  const hasExpandedNodes = useMemo(
+    () =>
+      Object.entries(expanded).some(
+        ([id, value]) => value && (childrenByParent.get(id) || []).length > 0
+      ),
+    [childrenByParent, expanded]
+  );
 
   const selectedTreeCategoryIds = useMemo(() => {
     if (!selectedNodeIds.length) return null;
@@ -113,21 +145,73 @@ export default function CatalogExchangePicker(props: Props) {
   }, [selectedNodeIds, includeDescendants, childrenByParent]);
 
   const hasProductScope = !!selectedTreeCategoryIds || !!qnorm(productQuery);
-  const visibleProducts = useMemo(() => {
+  const visibleProducts = productItems;
+
+  useEffect(() => {
+    const exactIds = selectedProductIds.filter(Boolean);
+    if (!exactIds.length) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api<{ items: ExchangeProduct[] }>(
+          `/catalog/products/search?ids=${encodeURIComponent(exactIds.join(","))}&limit=${encodeURIComponent(String(Math.max(exactIds.length, 50)))}`
+        );
+        if (cancelled) return;
+        setProductItems((prev) => {
+          const merged = new Map<string, ExchangeProduct>();
+          for (const item of prev) merged.set(item.id, item);
+          for (const item of res.items || []) merged.set(item.id, item);
+          return Array.from(merged.values());
+        });
+      } catch {
+        // no-op: selected ids will stay selected even if labels are not loaded yet
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProductIds]);
+
+  useEffect(() => {
+    let cancelled = false;
     const q = qnorm(productQuery);
-    if (!selectedTreeCategoryIds && !q) return [] as ExchangeProduct[];
-    return (products || [])
-      .filter((p) => {
-        const cid = String(p.category_id || "");
-        if (selectedTreeCategoryIds && !selectedTreeCategoryIds.has(cid)) return false;
-        if (!q) return true;
-        const title = String(p.title || p.name || "");
-        const path = buildPath(nodeById, cid);
-        return [title, p.sku_gt || "", path].join(" ").toLowerCase().includes(q);
-      })
-      .sort((a, b) => String(a.title || a.name || "").localeCompare(String(b.title || b.name || ""), "ru"))
-      .slice(0, 400);
-  }, [products, selectedTreeCategoryIds, productQuery, nodeById]);
+    const nodeIds = selectedNodeIds.filter(Boolean);
+    if (!q && !nodeIds.length) {
+      setProductItems((prev) => prev.filter((item) => selectedProductSet.has(item.id)));
+      setProductsLoading(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setProductsLoading(true);
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (nodeIds.length) params.set("category_ids", nodeIds.join(","));
+      params.set("include_descendants", includeDescendants ? "1" : "0");
+      params.set("limit", "80");
+      void (async () => {
+        try {
+          const res = await api<{ items: ExchangeProduct[] }>(`/catalog/products/search?${params.toString()}`);
+          if (cancelled) return;
+          setProductItems((prev) => {
+            const merged = new Map<string, ExchangeProduct>();
+            for (const item of res.items || []) merged.set(item.id, item);
+            for (const item of prev) {
+              if (selectedProductSet.has(item.id)) merged.set(item.id, item);
+            }
+            return Array.from(merged.values());
+          });
+        } finally {
+          if (!cancelled) setProductsLoading(false);
+        }
+      })();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [includeDescendants, productQuery, selectedNodeIds, selectedProductSet]);
 
   function toggleNode(id: string, checked: boolean) {
     const next = new Set(selectedNodeIds || []);
@@ -143,18 +227,62 @@ export default function CatalogExchangePicker(props: Props) {
     onSelectedProductIdsChange(Array.from(next));
   }
 
+  function toggleNodeExpand(id: string) {
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function expandAll() {
+    const next: Record<string, boolean> = {};
+    for (const node of nodes || []) {
+      if ((childrenByParent.get(node.id) || []).length > 0) next[node.id] = true;
+    }
+    setExpanded(next);
+  }
+
+  function collapseAll() {
+    setExpanded({});
+  }
+
   function renderTree(parentId: string | null, depth = 0): JSX.Element[] {
     const items = childrenByParent.get(parentId || "") || [];
     const q = filteredNodeIds;
     return items.flatMap((node) => {
       if (q && !q.has(node.id)) return [];
       const checked = selectedNodeSet.has(node.id);
+      const kids = childrenByParent.get(node.id) || [];
+      const hasKids = kids.length > 0;
+      const isExpanded = q ? true : !!expanded[node.id];
       return [
-        <label key={node.id} className="cx-treeRow" style={{ paddingLeft: 14 + depth * 18 }}>
-          <input type="checkbox" checked={checked} onChange={(e) => toggleNode(node.id, e.target.checked)} />
-          <span>{node.name}</span>
-        </label>,
-        ...renderTree(node.id, depth + 1),
+        <div key={node.id}>
+          <div className="csb-treeRow" style={{ ["--depth" as any]: depth }}>
+            <label className={`csb-treeNode csb-treeNodeCheck ${checked ? "is-active" : ""}`}>
+              {hasKids ? (
+                <button
+                  className="csb-caretBtn"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleNodeExpand(node.id);
+                  }}
+                  title={isExpanded ? "Свернуть" : "Развернуть"}
+                >
+                  {isExpanded ? "▾" : "▸"}
+                </button>
+              ) : (
+                <span className="csb-caretSpacer" aria-hidden="true" />
+              )}
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => toggleNode(node.id, e.target.checked)}
+              />
+              <span className="csb-treeName" title={node.name}>{node.name}</span>
+              <span className="csb-treeCount">{aggregatedCounts.get(node.id) || 0}</span>
+            </label>
+          </div>
+          {hasKids && isExpanded ? renderTree(node.id, depth + 1) : null}
+        </div>,
       ];
     });
   }
@@ -187,19 +315,22 @@ export default function CatalogExchangePicker(props: Props) {
               <input type="checkbox" checked={includeDescendants} onChange={(e) => onIncludeDescendantsChange(e.target.checked)} />
               <span>С дочерними</span>
             </label>
+            <button className="btn sm" type="button" onClick={hasExpandedNodes ? collapseAll : expandAll}>
+              {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+            </button>
           </>
         }
       >
-        <div className="cx-tree">{renderTree(null)}</div>
+        <div className="csb-tree">{renderTree(null)}</div>
       </CategorySidebar>
 
       <section className="card cx-pane">
         <div className="cx-paneHead">
           <div>
             <div className="cx-paneTitle">Товары</div>
-            <div className="cx-paneSub">Можно дополнительно выбрать конкретные товары</div>
+            <div className="cx-paneSub">Точный выбор товаров по уже прогретым backend-данным</div>
           </div>
-          <div className="cx-count">{visibleProducts.length}</div>
+          <div className="cx-count">{productsLoading ? "…" : visibleProducts.length}</div>
         </div>
         <input className="pn-input" placeholder="Поиск по товарам..." value={productQuery} onChange={(e) => setProductQuery(e.target.value)} />
         <div className="cx-productsList">
@@ -216,7 +347,7 @@ export default function CatalogExchangePicker(props: Props) {
               </label>
             );
           })}
-          {!hasProductScope ? <div className="cx-empty">Сначала выбери раздел каталога или начни поиск по товарам.</div> : visibleProducts.length === 0 ? <div className="cx-empty">Ничего не найдено</div> : null}
+          {!hasProductScope ? <div className="cx-empty">Сначала выбери раздел каталога или начни поиск по товарам.</div> : productsLoading ? <div className="cx-empty">Загружаю товары…</div> : visibleProducts.length === 0 ? <div className="cx-empty">Ничего не найдено</div> : null}
         </div>
       </section>
     </div>

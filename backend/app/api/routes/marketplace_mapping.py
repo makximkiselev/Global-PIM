@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -58,6 +59,10 @@ PROVIDER_TITLES: Dict[str, str] = {
 MAPPING_PROVIDERS: tuple[str, ...] = tuple(PROVIDER_TITLES.keys())
 
 DEFAULT_SERVICE_NAMES: List[str] = [str(item["name"]) for item in base_template_fields()]
+_ATTR_CATEGORIES_CACHE_TTL_SECONDS = 30.0
+_ATTR_DETAILS_CACHE_TTL_SECONDS = 30.0
+_attr_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_attr_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
 
 
 def _load_catalog_nodes() -> List[Dict[str, Any]]:
@@ -2095,6 +2100,12 @@ def mapping_clear_descendant_bindings(req: ClearDescendantBindingsReq) -> Dict[s
 
 @router.get("/import/attributes/categories")
 def mapping_attribute_categories() -> Dict[str, Any]:
+    now = time.monotonic()
+    cached_payload = _attr_categories_cache.get("payload")
+    cached_ts = float(_attr_categories_cache.get("ts") or 0.0)
+    if cached_payload and now - cached_ts < _ATTR_CATEGORIES_CACHE_TTL_SECONDS:
+        return cached_payload
+
     _migrate_mapping_documents_to_canonical_names()
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
@@ -2176,7 +2187,10 @@ def mapping_attribute_categories() -> Dict[str, Any]:
             }
         )
     out.sort(key=lambda x: str(x.get("path") or "").lower())
-    return {"ok": True, "items": out, "count": len(out)}
+    payload = {"ok": True, "items": out, "count": len(out)}
+    _attr_categories_cache["ts"] = now
+    _attr_categories_cache["payload"] = payload
+    return payload
 
 
 @router.get("/import/attributes/{catalog_category_id}")
@@ -2185,6 +2199,10 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     cid = str(catalog_category_id or "").strip()
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+
+    cached = _attr_details_cache.get(cid)
+    if cached and time.monotonic() - cached[0] < _ATTR_DETAILS_CACHE_TTL_SECONDS:
+        return cached[1]
 
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
@@ -2227,7 +2245,7 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     template = ((templates_db.get("templates") or {}).get(template_id) if template_id else None) or {}
     template_meta = template.get("meta") if isinstance(template, dict) and isinstance(template.get("meta"), dict) else {}
 
-    return {
+    payload = {
         "ok": True,
         "category": {"id": cid, "name": cat.get("name"), "path": cat.get("path")},
         "mapping": cat_mapping,
@@ -2255,6 +2273,8 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         "master_template": template_meta.get("master_template") if isinstance(template_meta.get("master_template"), dict) else None,
         "sources": template_meta.get("sources") if isinstance(template_meta.get("sources"), dict) else {},
     }
+    _attr_details_cache[cid] = (time.monotonic(), payload)
+    return payload
 
 
 @router.put("/import/attributes/{catalog_category_id}")
@@ -2263,6 +2283,9 @@ def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) ->
     cid = str(catalog_category_id or "").strip()
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+    _attr_categories_cache["ts"] = 0.0
+    _attr_categories_cache["payload"] = None
+    _attr_details_cache.pop(cid, None)
 
     catalog_rows = _catalog_rows(_load_catalog_nodes())
     catalog_ids = {x.get("id") for x in catalog_rows}

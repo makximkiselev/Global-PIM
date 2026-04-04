@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import CategorySidebar from "../components/CategorySidebar";
 import "../styles/marketplace-mapping.css";
 import "../styles/product-groups.css";
 
@@ -18,6 +19,14 @@ type SourcesMarketplaceSectionProps = {
   renderCategoryDetailExtra?: (categoryId: string, categoryName: string) => ReactNode;
   renderFeatureDetailExtra?: (categoryId: string, categoryName: string) => ReactNode;
 };
+
+const SOURCES_MAPPING_CACHE_TTL_MS = 30_000;
+const SOURCES_STATIC_CACHE_TTL_MS = 5 * 60_000;
+let categoriesMappingCache: { ts: number; data: CategoriesResp | null } = { ts: 0, data: null };
+let attrCategoriesCache: { ts: number; data: AttrCategoriesResp | null } = { ts: 0, data: null };
+const attrDetailsCache = new Map<string, { ts: number; data: AttrDetailsResp }>();
+let catalogAttrOptionsCache: { ts: number; data: CatalogAttrOption[] } = { ts: 0, data: [] };
+let serviceParamDefsCache: { ts: number; data: ServiceParamDef[] } = { ts: 0, data: [] };
 
 type Provider = {
   code: string;
@@ -839,7 +848,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [modalSelectedProviderCategoryId, setModalSelectedProviderCategoryId] = useState("");
   const [modalQuery, setModalQuery] = useState("");
   const [saving, setSaving] = useState(false);
-  const [hoveredCatalogId, setHoveredCatalogId] = useState("");
   const [savedToast, setSavedToast] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState("");
   const [savedToastText, setSavedToastText] = useState("Сохранено");
@@ -872,10 +880,22 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }, [forcedImportTab, importTab]);
 
   async function loadCategoriesMapping(): Promise<CategoriesResp | null> {
+    const now = Date.now();
+    if (categoriesMappingCache.data && now - categoriesMappingCache.ts < SOURCES_MAPPING_CACHE_TTL_MS) {
+      const data = categoriesMappingCache.data;
+      setCatalogNodes(data.catalog_nodes || []);
+      setCatalogItems(data.catalog_items || []);
+      setProviders(data.providers || []);
+      setProviderCategories(data.provider_categories || {});
+      setMappings(data.mappings || {});
+      setBindingStates(data.binding_states || {});
+      return data;
+    }
     setLoading(true);
     setErr(null);
     try {
       const data = await api<CategoriesResp>("/marketplaces/mapping/import/categories");
+      categoriesMappingCache = { ts: Date.now(), data };
       setCatalogNodes(data.catalog_nodes || []);
       setCatalogItems(data.catalog_items || []);
       setProviders(data.providers || []);
@@ -892,9 +912,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }
 
   async function loadAttrCategories() {
+    const now = Date.now();
     setAttrCategoriesLoading(true);
     try {
-      const r = await api<AttrCategoriesResp>("/marketplaces/mapping/import/attributes/categories");
+      const r =
+        attrCategoriesCache.data && now - attrCategoriesCache.ts < SOURCES_MAPPING_CACHE_TTL_MS
+          ? attrCategoriesCache.data
+          : await api<AttrCategoriesResp>("/marketplaces/mapping/import/attributes/categories");
+      attrCategoriesCache = { ts: Date.now(), data: r };
       const items = r.items || [];
       setAttrCategories(items);
       if (items.length === 0) {
@@ -915,18 +940,31 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }
 
   async function loadCatalogAttrOptions() {
+    const now = Date.now();
+    if (catalogAttrOptionsCache.data.length && now - catalogAttrOptionsCache.ts < SOURCES_STATIC_CACHE_TTL_MS) {
+      setCatalogAttrOptions(catalogAttrOptionsCache.data);
+      return;
+    }
     try {
       const r = await api<{ items: CatalogAttrOption[] }>("/attributes?limit=10000");
-      setCatalogAttrOptions(r.items || []);
+      const items = r.items || [];
+      catalogAttrOptionsCache = { ts: Date.now(), data: items };
+      setCatalogAttrOptions(items);
     } catch {
       setCatalogAttrOptions([]);
     }
   }
 
   async function loadServiceParamDefs(): Promise<ServiceParamDef[]> {
+    const now = Date.now();
+    if (serviceParamDefsCache.data.length && now - serviceParamDefsCache.ts < SOURCES_STATIC_CACHE_TTL_MS) {
+      setServiceParamDefs(serviceParamDefsCache.data);
+      return serviceParamDefsCache.data;
+    }
     try {
       const r = await api<{ items: DictionaryListItem[] }>("/dictionaries?include_service=1");
       const defs = normalizeServiceDefs(r.items || []);
+      serviceParamDefsCache = { ts: Date.now(), data: defs };
       setServiceParamDefs(defs);
       return defs;
     } catch {
@@ -935,7 +973,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
-  async function loadAttrDetails(categoryId: string, autoImportMissing = true) {
+  async function loadAttrDetails(categoryId: string) {
     if (!categoryId) {
       setAttrDetails(null);
       setAttrRows([]);
@@ -946,11 +984,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setAttrDetailsError("");
     try {
       const defs = await loadServiceParamDefs();
-      let data = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
-      const yMeta = data.providers?.yandex_market;
-      const ozMeta = data.providers?.ozon;
-      const shouldImportYandex = !!yMeta?.category_id && !yMeta?.cached;
-      const shouldImportOzon = !!ozMeta?.category_id && !ozMeta?.cached;
+      const cachedDetails = attrDetailsCache.get(categoryId);
+      let data =
+        cachedDetails && Date.now() - cachedDetails.ts < SOURCES_MAPPING_CACHE_TTL_MS
+          ? cachedDetails.data
+          : await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
+      attrDetailsCache.set(categoryId, { ts: Date.now(), data });
       setAttrDetails(data);
       setSavedTemplateId(String(data.template_id || ""));
       let rowsSource: AttrRow[] = (data.rows || []) as AttrRow[];
@@ -986,46 +1025,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       const withServiceRows = enforceServiceRowsTop(merged, defs);
       setAttrRows(applyYandexSystemBindings(withServiceRows, defs));
       setAttrCacheHydratedFor(categoryId);
-      if (autoImportMissing && shouldImportYandex) {
-        setSyncing(true);
-        setSyncMsg("Подгружаем параметры Я.Маркета в локальный кэш...");
-        void api("/marketplaces/yandex/import/category-parameters", {
-          method: "POST",
-          body: JSON.stringify({ category_id: yMeta?.category_id, language: "RU" }),
-        })
-          .then(async () => {
-            if (attrSelectedCategoryId !== categoryId) return;
-            await loadAttrDetails(categoryId, false);
-            await loadAttrCategories().catch(() => null);
-            setSyncMsg("Параметры Я.Маркета догружены");
-          })
-          .catch(() => {
-            setSyncMsg("Не удалось догрузить параметры Я.Маркета");
-          })
-          .finally(() => {
-            setSyncing(false);
-          });
-      }
-      if (autoImportMissing && shouldImportOzon) {
-        setSyncing(true);
-        setSyncMsg("Подгружаем параметры Ozon в локальный кэш...");
-        void api("/marketplaces/ozon/import/category-attributes", {
-          method: "POST",
-          body: JSON.stringify({ category_id: ozMeta?.category_id, language: "DEFAULT" }),
-        })
-          .then(async () => {
-            if (attrSelectedCategoryId !== categoryId) return;
-            await loadAttrDetails(categoryId, false);
-            await loadAttrCategories().catch(() => null);
-            setSyncMsg("Параметры Ozon догружены");
-          })
-          .catch(() => {
-            setSyncMsg("Не удалось догрузить параметры Ozon");
-          })
-          .finally(() => {
-            setSyncing(false);
-          });
-      }
     } catch (e) {
       setAttrDetails(null);
       setAttrRows([]);
@@ -1039,6 +1038,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setSyncing(true);
     setSyncMsg("Обновление локального кэша...");
     try {
+      categoriesMappingCache = { ts: 0, data: null };
+      attrCategoriesCache = { ts: 0, data: null };
+      attrDetailsCache.clear();
+      catalogAttrOptionsCache = { ts: 0, data: [] };
+      serviceParamDefsCache = { ts: 0, data: [] };
       await loadCategoriesMapping();
       if (mainTab === "import" && importTab === "features") {
         await Promise.all([loadAttrCategories(), loadServiceParamDefs()]);
@@ -1307,11 +1311,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return { node, crumbs };
   }
 
-  const primaryProviderCode = useMemo(() => {
-    if (displayProviders.some((p) => p.code === "yandex_market")) return "yandex_market";
-    if (displayProviders.some((p) => p.code === "ozon")) return "ozon";
-    return displayProviders.find((p) => p.connected)?.code || "";
-  }, [displayProviders]);
+  const hasExpandedNodes = useMemo(
+    () =>
+      Object.entries(treeExpanded).some(
+        ([id, value]) => value && (childrenByParent.get(id) || []).length > 0
+      ),
+    [childrenByParent, treeExpanded]
+  );
 
   function isTreeNodeVisible(nodeId: string) {
     if (!treeSearchVisible) return true;
@@ -1355,53 +1361,39 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const children = (childrenByParent.get(node.id) || []).filter((x) => isTreeNodeVisible(x.id));
     const hasChildren = children.length > 0;
     const expanded = qnorm(catalogQuery) ? true : !!treeExpanded[node.id];
-    const path = pathById.get(node.id) || node.name || "";
-    const p = splitPath(path);
-    const cov = primaryProviderCode ? leafCoverageState(node.id, primaryProviderCode) : "none";
     const isSelected = selectedCatalogId === node.id;
-    const isHovered = hoveredCatalogId === node.id;
-    const treeLineClass = [
-      "mm-treeLine",
-      hasChildren && expanded ? "mm-rowParent" : "",
-      isSelected ? "mm-rowSelected" : "",
-      isHovered ? "mm-rowHover" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
     return (
       <div key={node.id}>
-        <div
-          className="mm-catalogNode"
-          onClick={() => applySelectedCatalogId(node.id)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              applySelectedCatalogId(node.id);
-            }
-          }}
-          onMouseEnter={() => setHoveredCatalogId(node.id)}
-          onMouseLeave={() => setHoveredCatalogId((prev) => (prev === node.id ? "" : prev))}
-        >
-          <div className={treeLineClass} style={{ paddingLeft: 6 + level * 14 }}>
-            <button
-              type="button"
-              className={`mm-treeCaret ${hasChildren ? "" : "empty"}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (hasChildren) toggleTreeNode(node.id);
-              }}
-            >
-              {hasChildren ? (expanded ? "▾" : "▸") : "•"}
-            </button>
-            <span className={`mm-nodeSign ${cov === "ok" ? "ok" : cov === "warn" ? "warn" : "none"}`}>
-              {cov === "ok" ? "✓" : cov === "warn" ? "!" : " "}
-            </span>
-            <div>
-              <div className="mm-catPath">{node.name}</div>
-              {p.crumbs ? <div className="mm-breadcrumbs">{p.crumbs}</div> : null}
-            </div>
+        <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
+          <div
+            className={`csb-treeNode ${isSelected ? "is-active" : ""}`}
+            onClick={() => applySelectedCatalogId(node.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                applySelectedCatalogId(node.id);
+              }
+            }}
+          >
+            {hasChildren ? (
+              <button
+                type="button"
+                className="csb-caretBtn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTreeNode(node.id);
+                }}
+                title={expanded ? "Свернуть" : "Развернуть"}
+              >
+                {expanded ? "▾" : "▸"}
+              </button>
+            ) : (
+              <span className="csb-caretSpacer" aria-hidden="true" />
+            )}
+            <span className="csb-treeName" title={node.name}>{node.name}</span>
+            <span className="csb-treeCount" />
           </div>
         </div>
         {hasChildren && expanded ? children.map((child) => renderCatalogTreeRows(child, level + 1)) : null}
@@ -1758,7 +1750,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
       setAttrDraftExists(true);
       setSavedTemplateId(String(resp.template_id || ""));
       await loadAttrCategories();
-      await loadAttrDetails(activeAttrCategoryId, false);
+      await loadAttrDetails(activeAttrCategoryId);
       setAttrHasServerSaved(true);
       setAttrEditMode(false);
       setSavedToast(true);
@@ -1864,12 +1856,12 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
   function clearAttrDraft() {
     if (!activeAttrCategoryId) return;
     const cache = loadAttrDraftCache();
-    if (cache.byCategory[activeAttrCategoryId]) {
-      delete cache.byCategory[activeAttrCategoryId];
-      saveAttrDraftCache(cache);
-    }
-    setAttrDraftExists(false);
-    loadAttrDetails(activeAttrCategoryId, false);
+      if (cache.byCategory[activeAttrCategoryId]) {
+        delete cache.byCategory[activeAttrCategoryId];
+        saveAttrDraftCache(cache);
+      }
+      setAttrDraftExists(false);
+    loadAttrDetails(activeAttrCategoryId);
   }
 
   return (
@@ -1974,14 +1966,29 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                 <div className="empty-state">Нет площадок для сопоставления.</div>
               ) : (
                 <div className="mm-workspace">
-                  <div className="mm-treePane">
-                    <div className="mm-paneHead">
-                      <div className="mm-paneTitle">Каталог</div>
-                    </div>
-                    <div className="mm-treePaneBody">
+                  <CategorySidebar
+                    className="mm-treePane mm-treePaneShared"
+                    title="Каталог"
+                    hint="Структура каталога"
+                    searchValue={catalogQuery}
+                    onSearchChange={setCatalogQuery}
+                    searchPlaceholder="Быстрый поиск"
+                    controls={
+                      <button className="btn sm" type="button" onClick={hasExpandedNodes ? () => setTreeExpanded({}) : () => {
+                        const next: Record<string, boolean> = {};
+                        for (const [parentId, children] of childrenByParent.entries()) {
+                          if (parentId && children.length > 0) next[parentId] = true;
+                        }
+                        setTreeExpanded(next);
+                      }}>
+                        {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+                      </button>
+                    }
+                  >
+                    <div className="csb-tree">
                       {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
                     </div>
-                  </div>
+                  </CategorySidebar>
 
                   <div className="mm-detailPane">
                     <div className="mm-paneHead">
@@ -2176,9 +2183,29 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                     <div className="muted">{useCatalogTreeForFeatures ? catalogItems.length : attrCategories.length}</div>
                   </div>
                   {useCatalogTreeForFeatures ? (
-                    <div className="mm-treePaneBody mm-treePaneBodyTight">
-                      {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
-                    </div>
+                    <CategorySidebar
+                      className="mm-treePaneShared mm-treePaneFeatures"
+                      title="Категории"
+                      hint="Структура каталога"
+                      searchValue={catalogQuery}
+                      onSearchChange={setCatalogQuery}
+                      searchPlaceholder="Быстрый поиск"
+                      controls={
+                        <button className="btn sm" type="button" onClick={hasExpandedNodes ? () => setTreeExpanded({}) : () => {
+                          const next: Record<string, boolean> = {};
+                          for (const [parentId, children] of childrenByParent.entries()) {
+                            if (parentId && children.length > 0) next[parentId] = true;
+                          }
+                          setTreeExpanded(next);
+                        }}>
+                          {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+                        </button>
+                      }
+                    >
+                      <div className="csb-tree">
+                        {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
+                      </div>
+                    </CategorySidebar>
                   ) : attrCategoriesLoading ? (
                     <div className="muted">Загрузка...</div>
                   ) : attrCategories.length === 0 ? (

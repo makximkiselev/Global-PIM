@@ -63,6 +63,80 @@
   min-height:460px;
 }
 
+.csb-tree{
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+  min-height:460px;
+}
+
+.csb-treeRow{
+  --depth:0;
+  padding-left:calc(var(--depth) * 18px);
+}
+
+.csb-treeNode{
+  display:grid;
+  grid-template-columns:14px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  min-height:38px;
+  padding:5px 8px;
+  border-left:2px solid transparent;
+  border-radius:8px;
+  cursor:pointer;
+  transition:background .14s ease,border-color .14s ease;
+}
+
+.csb-treeNode:hover{
+  background:rgba(255,255,255,.82);
+}
+
+.csb-treeNode.is-active{
+  background:rgba(255,248,244,.9);
+  border-left-color:#ff8a45;
+}
+
+.csb-treeNodeCheck{
+  grid-template-columns:14px 16px minmax(0,1fr) auto;
+}
+
+.csb-caretBtn,
+.csb-caretSpacer{
+  width:14px;
+  min-width:14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.csb-caretBtn{
+  border:0;
+  padding:0;
+  background:transparent;
+  cursor:pointer;
+}
+
+.csb-treeName{
+  min-width:0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-size:14px;
+  font-weight:700;
+  color:var(--text);
+}
+
+.csb-treeCount{
+  display:inline-flex;
+  align-items:center;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+}
+
 @media (max-width: 1100px){
   .csb-shell{
     border-right:0;

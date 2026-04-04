@@ -37,6 +37,8 @@ FULL_PRODUCTS_PATH = DATA_DIR / "products.json"
 
 _PRODUCTS_PAGE_CACHE_TTL_SECONDS = 20.0
 _products_page_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_PRODUCTS_PAGE_RESULT_CACHE_TTL_SECONDS = 15.0
+_products_page_result_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
 # =========================
@@ -661,35 +663,57 @@ def get_category_info(category_id: str) -> Dict[str, Any]:
 # Products endpoints (JSON-based)
 # =========================
 @router.get("/catalog/products/search")
-def search_products(q: str = ""):
+def search_products(
+    q: str = "",
+    ids: str = "",
+    category_ids: str = "",
+    include_descendants: bool = True,
+    limit: int = Query(50, ge=1, le=200),
+):
     query = (q or "").strip().lower()
-    if not query:
-        return {"items": []}
+    requested_ids = {str(x or "").strip() for x in (ids or "").split(",") if str(x or "").strip()}
+    requested_category_ids = {str(x or "").strip() for x in (category_ids or "").split(",") if str(x or "").strip()}
 
     products = _load_full_products()
+    if requested_category_ids:
+        category_scope: Set[str] = set()
+        if include_descendants:
+            nodes = _load_nodes()
+            for category_id in requested_category_ids:
+                category_scope |= _collect_subtree_ids(nodes, category_id)
+        else:
+            category_scope = requested_category_ids
+        products = [p for p in products if str(p.get("category_id") or "").strip() in category_scope]
+
     items = []
     for p in products:
+        product_id = str(p.get("id") or "").strip()
         title = str(p.get("title") or p.get("name") or "")
-        sku_pim = str(p.get("sku_pim") or "")
-        sku_gt = str(p.get("sku_gt") or "")
-        haystack = [
-            title.lower(),
-            sku_pim.lower(),
-            sku_gt.lower(),
-        ]
-        if not any(query in x for x in haystack):
+        if requested_ids and product_id not in requested_ids:
+            continue
+        if query:
+            sku_pim = str(p.get("sku_pim") or "")
+            sku_gt = str(p.get("sku_gt") or "")
+            haystack = [
+                title.lower(),
+                sku_pim.lower(),
+                sku_gt.lower(),
+                product_id.lower(),
+            ]
+            if not any(query in x for x in haystack):
+                continue
+        elif not requested_ids and not requested_category_ids:
             continue
 
-        items.append(
-            {
-                "id": str(p.get("id") or ""),
-                "name": title,
-                "category_id": str(p.get("category_id") or ""),
-            }
-        )
+        items.append(_serialize_product_list_item(p))
 
-    # лимит чтобы не раздувать ответ
-    return {"items": items[:50]}
+    items.sort(
+        key=lambda item: (
+            _gt_sort_key(item.get("sku_gt")),
+            str(item.get("title") or item.get("name") or "").lower(),
+        )
+    )
+    return {"items": items[:limit]}
 
 
 @router.get("/catalog/products")
@@ -713,6 +737,18 @@ def list_products(category_id: Optional[str] = None, include_descendants: bool =
     return {"items": [_serialize_product_list_item(p) for p in products]}
 
 
+@router.get("/catalog/products/counts")
+def catalog_product_counts():
+    products = _load_full_products()
+    counts: Dict[str, int] = {}
+    for product in products:
+        category_id = str(product.get("category_id") or "").strip()
+        if not category_id:
+            continue
+        counts[category_id] = counts.get(category_id, 0) + 1
+    return {"counts": counts}
+
+
 @router.get("/catalog/products-page-data")
 def products_page_data(
     q: str = Query(""),
@@ -732,6 +768,28 @@ def products_page_data(
     if refresh:
         _products_page_cache["ts"] = 0.0
         _products_page_cache["payload"] = None
+        _products_page_result_cache.clear()
+
+    cache_key = "|".join(
+        [
+            f"q={q}",
+            f"category={category}",
+            f"exact={int(bool(exact))}",
+            f"parent={parent}",
+            f"sub={sub}",
+            f"group={group}",
+            f"template={template}",
+            f"ym={ym}",
+            f"oz={oz}",
+            f"view={view}",
+            f"page={page}",
+            f"page_size={page_size}",
+        ]
+    )
+    now = time.monotonic()
+    cached_result = _products_page_result_cache.get(cache_key)
+    if cached_result and now - cached_result[0] < _PRODUCTS_PAGE_RESULT_CACHE_TTL_SECONDS:
+        return cached_result[1]
 
     meta = _products_page_meta()
     nodes = meta["nodes"]
@@ -856,7 +914,7 @@ def products_page_data(
     start = max(0, (page - 1) * page_size)
     end = start + page_size
 
-    return {
+    payload = {
         "ok": True,
         "products": filtered_items[start:end],
         "total": total,
@@ -866,6 +924,8 @@ def products_page_data(
         "groups": groups,
         "templates": templates,
     }
+    _products_page_result_cache[cache_key] = (now, payload)
+    return payload
 
 
 @router.get("/catalog/products/template.xlsx")

@@ -255,27 +255,20 @@
 
 .catalog-fresh-page .cf-heroMain{ min-width:0; }
 
-.catalog-fresh-page .cf-heroEyebrow{
-  font-size:11px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-  color:var(--muted);
-  margin-bottom:8px;
-}
-
 .catalog-fresh-page .cf-heroTitle{
-  font-size:32px;
-  line-height:1.02;
+  font-size:22px;
+  line-height:1.08;
   font-weight:850;
-  letter-spacing:-.04em;
+  letter-spacing:-.035em;
 }
 
 .catalog-fresh-page .cf-heroPath{
-  margin-top:8px;
-  font-size:13px;
-  font-weight:600;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:800;
   color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.08em;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -284,8 +277,8 @@
 .catalog-fresh-page .cf-metaLine{
   display:flex;
   flex-wrap:wrap;
-  gap:10px;
-  margin-top:12px;
+  gap:8px;
+  margin-top:8px;
   color:var(--muted);
   font-size:12px;
   font-weight:700;
@@ -310,15 +303,17 @@
 
 .catalog-fresh-page .cf-heroActions{
   display:flex;
-  flex-direction:column;
-  align-items:flex-end;
+  flex-direction:row;
+  align-items:flex-start;
+  justify-content:flex-end;
   gap:8px;
-  max-width:660px;
+  min-width:0;
+  flex-wrap:wrap;
 }
 
 .catalog-fresh-page .cf-heroActions .btn{
-  min-height:38px;
-  padding:0 14px;
+  min-height:36px;
+  padding:0 13px;
   border-radius:12px;
   font-size:13px;
 }
@@ -327,11 +322,12 @@
   display:flex;
   flex-wrap:wrap;
   justify-content:flex-end;
+  align-items:center;
   gap:8px;
 }
 
 .catalog-fresh-page .cf-actionGroupMain{
-  gap:10px;
+  gap:8px;
 }
 
 .catalog-fresh-page .cf-moreMenu{
@@ -380,6 +376,7 @@
   color:var(--text);
   text-align:left;
   cursor:pointer;
+  text-decoration:none;
 }
 
 .catalog-fresh-page .cf-moreItem:hover{
@@ -391,20 +388,7 @@
 }
 
 .catalog-fresh-page .cf-section{
-  padding:16px 24px 24px;
-}
-
-.catalog-fresh-page .cf-sectionHead{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin-bottom:12px;
-}
-
-.catalog-fresh-page .cf-sectionTitle{
-  font-size:20px;
-  font-weight:800;
-  letter-spacing:-.02em;
+  padding:10px 24px 22px;
 }
 
 .catalog-fresh-page .cf-emptyState{

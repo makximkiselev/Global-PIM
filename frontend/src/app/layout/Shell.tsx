@@ -19,8 +19,8 @@ const groups: NavGroup[] = [
         title: "Товары",
         items: [
           { href: "/catalog", label: "Каталог", page: "catalog" },
-          { href: "/products", label: "Товары", page: "products" },
           { href: "/catalog/groups", label: "Группы товаров", page: "product_groups" },
+          { href: "/catalog/content-index", label: "Контент-индекс", page: "stats_card_quality" },
         ],
       },
       {
@@ -57,13 +57,6 @@ const groups: NavGroup[] = [
   {
     title: "Медиа",
     items: [{ href: "/images/infographics", label: "Генерация инфографики", page: "infographics" }],
-  },
-  {
-    title: "Статистика",
-    items: [
-      { href: "/stats/card-quality", label: "Качество карточек", page: "stats_card_quality" },
-      { href: "/stats/marketplace-quality", label: "Качество на маркетплейсах", page: "stats_marketplace_quality" },
-    ],
   },
   {
     title: "Администрирование",

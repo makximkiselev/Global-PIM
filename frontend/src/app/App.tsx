@@ -52,6 +52,7 @@ function ProtectedApp() {
         <Route path="/" element={<RequirePage page="dashboard"><Dashboard /></RequirePage>} />
         <Route path="/catalog" element={<RequirePage page="catalog"><Catalog /></RequirePage>} />
         <Route path="/catalog/groups" element={<RequirePage page="product_groups"><ProductGroups /></RequirePage>} />
+        <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
         <Route path="/products" element={<RequirePage page="products"><ProductsPage /></RequirePage>} />
         <Route path="/catalog/import" element={<RequirePage page="catalog_import"><CatalogImportPage /></RequirePage>} />
         <Route path="/catalog/export" element={<RequirePage page="catalog_export"><CatalogExportPage /></RequirePage>} />
@@ -71,8 +72,6 @@ function ProtectedApp() {
         <Route path="/connectors/status" element={<RequirePage page="connectors_status"><ConnectorsStatus /></RequirePage>} />
         <Route path="/images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />
 
-        <Route path="/stats/card-quality" element={<RequirePage page="stats_card_quality"><Placeholder title="Качество карточек" /></RequirePage>} />
-        <Route path="/stats/marketplace-quality" element={<RequirePage page="stats_marketplace_quality"><Placeholder title="Качество на маркетплейсах" /></RequirePage>} />
         <Route path="/admin/access" element={<RequirePage page="admin_access"><AdminAccess /></RequirePage>} />
       </Routes>
     </Shell>
