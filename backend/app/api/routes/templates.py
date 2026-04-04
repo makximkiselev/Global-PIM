@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 from datetime import datetime, timezone
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -13,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.storage.json_store import (
     ensure_global_attribute,
+    load_dictionaries_db,
     load_templates_db,
     save_templates_db,
     new_id,
@@ -39,6 +41,8 @@ OZON_CATEGORY_ATTRS_PATH = MARKETPLACES_DIR / "ozon" / "category_attributes.json
 OZON_CATEGORIES_TREE_PATH = MARKETPLACES_DIR / "ozon" / "categories_tree.json"
 CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
 PRODUCTS_PATH = DATA_DIR / "products.json"
+_EDITOR_REFERENCE_CACHE_TTL_SECONDS = 300.0
+_editor_reference_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 
 
 # =========================
@@ -738,6 +742,47 @@ def get_by_category(category_id: str) -> Dict[str, Any]:
     }
 
 
+def _template_editor_reference_payload() -> Dict[str, Any]:
+    now = time.time()
+    cached = _editor_reference_cache.get("payload")
+    cached_ts = float(_editor_reference_cache.get("ts") or 0.0)
+    if cached and now - cached_ts < _EDITOR_REFERENCE_CACHE_TTL_SECONDS:
+        return cached
+
+    dict_db = load_dictionaries_db()
+    dict_items = []
+    global_attrs = []
+    for row in dict_db.get("items", []) or []:
+        if not isinstance(row, dict):
+            continue
+        dict_id = str(row.get("id") or "").strip()
+        if not dict_id:
+            continue
+        title = str(row.get("title") or dict_id).strip() or dict_id
+        dict_items.append({"id": dict_id, "title": title, "size": len(row.get("items") or [])})
+        global_attrs.append({
+            "id": str(row.get("attr_id") or dict_id),
+            "title": title,
+            "code": str(row.get("code") or "").strip(),
+            "type": _norm_type(row.get("type")),
+            "scope": str(row.get("scope") or "both").strip() or "both",
+            "dict_id": dict_id,
+        })
+
+    dict_items.sort(key=lambda x: str(x.get("title") or "").lower())
+    global_attrs.sort(key=lambda x: str(x.get("title") or "").lower())
+    payload = {"dict_items": dict_items, "attributes": global_attrs}
+    _editor_reference_cache["ts"] = now
+    _editor_reference_cache["payload"] = payload
+    return payload
+
+
+@router.get("/editor-reference")
+def template_editor_reference() -> Dict[str, Any]:
+    payload = _template_editor_reference_payload()
+    return {"ok": True, **payload}
+
+
 @router.get("/editor-bootstrap/{category_id}")
 def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
     nodes = _get_catalog_nodes()
@@ -802,6 +847,8 @@ def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
 
 @router.post("/by-category/{category_id}")
 def create_for_category(category_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    _editor_reference_cache["ts"] = 0.0
+    _editor_reference_cache["payload"] = None
     """
     Создаёт НОВЫЙ шаблон для категории (теперь допускается множество).
 
@@ -1167,6 +1214,8 @@ def get_template(template_id: str) -> Dict[str, Any]:
 
 @router.put("/{template_id}")
 def update_template(template_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    _editor_reference_cache["ts"] = 0.0
+    _editor_reference_cache["payload"] = None
     db = load_templates_db()
     tpl = db.get("templates", {}).get(template_id)
     if not tpl:
@@ -1185,6 +1234,8 @@ def update_template(template_id: str, payload: Dict[str, Any]) -> Dict[str, Any]
 
 @router.put("/{template_id}/attributes")
 def replace_attributes(template_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    _editor_reference_cache["ts"] = 0.0
+    _editor_reference_cache["payload"] = None
     """
     payload: { attributes: [...] }
     полностью перезаписываем список атрибутов
@@ -1226,6 +1277,8 @@ def replace_attributes(template_id: str, payload: Dict[str, Any]) -> Dict[str, A
 
 @router.delete("/{template_id}")
 def delete_template(template_id: str) -> Dict[str, Any]:
+    _editor_reference_cache["ts"] = 0.0
+    _editor_reference_cache["payload"] = None
     """
     ✅ Удаление конкретного шаблона по template_id.
     """

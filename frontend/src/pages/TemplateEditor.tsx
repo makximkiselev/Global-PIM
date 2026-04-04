@@ -75,6 +75,12 @@ type DictItem = {
   size?: number;
 };
 
+type EditorReferenceResp = {
+  ok: boolean;
+  dict_items: DictItem[];
+  attributes: GlobalAttr[];
+};
+
 const TYPE_LABEL: Record<AttrType, string> = {
   text: "Текст",
   number: "Число",
@@ -274,6 +280,18 @@ export default function TemplateEditor() {
     });
   }
 
+  async function loadEditorReference(force = false) {
+    if (!force && dictItems.length && allAttributes?.length) {
+      return { dictItems, attributes: allAttributes };
+    }
+    const ref = await api<EditorReferenceResp>(`/templates/editor-reference`);
+    const nextDicts = (ref.dict_items || []).slice().sort((a, b) => a.title.localeCompare(b.title, "ru"));
+    const nextAttrs = ref.attributes || [];
+    setDictItems(nextDicts);
+    setAllAttributes(nextAttrs);
+    return { dictItems: nextDicts, attributes: nextAttrs };
+  }
+
   async function load() {
     if (!categoryId) return;
     const data = await api<{
@@ -364,9 +382,7 @@ export default function TemplateEditor() {
     }
     setDictLoading(true);
     try {
-      const r = await api<{ items: DictItem[] }>("/dictionaries");
-      const items = (r.items || []).slice().sort((a, b) => a.title.localeCompare(b.title, "ru"));
-      setDictItems(items);
+      await loadEditorReference();
     } finally {
       setDictLoading(false);
     }
@@ -381,9 +397,8 @@ export default function TemplateEditor() {
     try {
       let attrsList = allAttributes;
       if (!attrsList) {
-        const r = await api<{ items: GlobalAttr[] }>("/attributes?limit=2000");
-        attrsList = r.items || [];
-        setAllAttributes(attrsList);
+        const ref = await loadEditorReference();
+        attrsList = ref.attributes || [];
       }
 
       const matched = (attrsList || []).find((a) => (a.dict_id || "") === id);
@@ -579,9 +594,8 @@ export default function TemplateEditor() {
       // 2) ensure global attribute for rows without attribute_id
       let attrsList = allAttributes;
       if (!attrsList) {
-        const r = await api<{ items: GlobalAttr[] }>("/attributes?limit=2000");
-        attrsList = r.items || [];
-        setAllAttributes(attrsList);
+        const ref = await loadEditorReference();
+        attrsList = ref.attributes || [];
       }
       const attrById = new Map<string, GlobalAttr>();
       for (const it of attrsList || []) {
@@ -668,6 +682,7 @@ export default function TemplateEditor() {
       // 4) save
       await putAttributes(ownerTpl.id, ensured);
 
+      await loadEditorReference(true);
       await load();
       showToast("Сохранено");
     } finally {
@@ -757,6 +772,7 @@ export default function TemplateEditor() {
 
       setImportOpen(false);
       setImportTplName("");
+      await loadEditorReference(true);
       await load();
       showToast("Импортировано");
     } finally {

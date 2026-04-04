@@ -174,7 +174,26 @@ export default function ProductGroups() {
     setCatalogNodes(data.nodes || []);
   }
 
-  async function refreshAll() {
+  async function refreshGroupsView() {
+    await loadGroups();
+    if (selectedGroupId) {
+      await loadGroupDetails(selectedGroupId);
+    }
+  }
+
+  async function refreshUngroupedView() {
+    await loadUngrouped();
+  }
+
+  async function refreshCurrentTab() {
+    if (tab === TAB_UNGROUPED) {
+      await refreshUngroupedView();
+      return;
+    }
+    await refreshGroupsView();
+  }
+
+  async function refreshAfterGroupMutation() {
     await Promise.all([loadGroups(), loadUngrouped()]);
     if (selectedGroupId) {
       await loadGroupDetails(selectedGroupId);
@@ -182,14 +201,33 @@ export default function ProductGroups() {
   }
 
   useEffect(() => {
-    Promise.all([refreshAll(), loadCatalogNodes()]);
+    loadCatalogNodes();
+    if (tab === TAB_UNGROUPED) {
+      refreshUngroupedView();
+    } else {
+      refreshGroupsView();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (tab === TAB_UNGROUPED) {
+      if (!ungrouped.length && !ungroupedLoading) loadUngrouped();
+      return;
+    }
+    if (!groups.length && !groupsLoading) loadGroups();
+    if (selectedGroupId) loadGroupDetails(selectedGroupId);
+  }, [tab]);
+
+  useEffect(() => {
+    if (!selectedGroupId || tab !== TAB_GROUPS) return;
     loadGroupDetails(selectedGroupId);
-  }, [selectedGroupId]);
+  }, [selectedGroupId, tab]);
+
+  useEffect(() => {
+    if (!addModalOpen) return;
+    if (!ungrouped.length && !ungroupedLoading) loadUngrouped();
+  }, [addModalOpen]);
 
   const nodeById = useMemo(() => {
     const map = new Map<string, CatalogNode>();
@@ -472,7 +510,7 @@ export default function ProductGroups() {
         body: JSON.stringify({ add, remove }),
       });
       setAddSelected([]);
-      await refreshAll();
+      await refreshAfterGroupMutation();
       requestAnimationFrame(() => window.scrollTo({ top: keepY, left: 0, behavior: "auto" }));
     } finally {
       setSoftRefreshing(false);
@@ -489,7 +527,7 @@ export default function ProductGroups() {
         body: JSON.stringify({ add: ungroupedSelected }),
       });
       setUngroupedSelected([]);
-      await refreshAll();
+      await refreshAfterGroupMutation();
       requestAnimationFrame(() => window.scrollTo({ top: keepY, left: 0, behavior: "auto" }));
     } finally {
       setSoftRefreshing(false);
@@ -517,7 +555,7 @@ export default function ProductGroups() {
       setAssignGroupId("");
       setUngroupedSelected([]);
       setGroupCreatedToast(`Группа "${name}" создана`);
-      await refreshAll();
+      await refreshAfterGroupMutation();
       setSelectedGroupId(newGroupId);
       requestAnimationFrame(() => window.scrollTo({ top: keepY, left: 0, behavior: "auto" }));
     } finally {
@@ -769,7 +807,7 @@ export default function ProductGroups() {
           <Link className="btn" to="/catalog">
             ← В каталог
           </Link>
-          <button className="btn" type="button" onClick={refreshAll} disabled={groupsLoading || ungroupedLoading}>
+          <button className="btn" type="button" onClick={refreshCurrentTab} disabled={groupsLoading || ungroupedLoading}>
             {groupsLoading || ungroupedLoading ? "Обновляю…" : "Обновить"}
           </button>
         </div>
