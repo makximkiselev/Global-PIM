@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any, Dict, Optional, List, Tuple
 from urllib.parse import urlparse
 
@@ -9,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.storage.json_store import (
     load_competitor_mapping_db,
+    load_dictionaries_db,
     save_competitor_mapping_db,
     load_templates_db,
 )
@@ -21,6 +23,9 @@ from app.core.competitors.extract_competitor_fields import (
 )
 
 router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
+
+_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
+_bootstrap_cache: Dict[str, Any] = {"at": 0.0, "payload": None}
 
 
 # =========================
@@ -238,6 +243,65 @@ def _normalize_mapped_specs(
 
 def _valid_master_codes(template_id: str) -> set[str]:
     return {f["code"] for f in _master_fields(template_id) if isinstance(f, dict) and f.get("code")}
+
+
+def _service_code_payload() -> Dict[str, List[str]]:
+    db = load_dictionaries_db()
+    items = db.get("items") if isinstance(db.get("items"), list) else []
+    codes: set[str] = set()
+    names: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        service = meta.get("service")
+        if service is not True and service != "true":
+            continue
+        for value in (item.get("code"), item.get("attr_id"), item.get("id")):
+            norm = str(value or "").strip()
+            if norm:
+                codes.add(norm)
+        title = str(item.get("title") or "").strip()
+        if title:
+            names.add(title)
+    return {"codes": sorted(codes), "names": sorted(names)}
+
+
+def _template_list_payload() -> List[Dict[str, Any]]:
+    db = load_templates_db()
+    templates = db.get("templates") if isinstance(db.get("templates"), dict) else {}
+    out: List[Dict[str, Any]] = []
+    for template_id, template in templates.items():
+        if not isinstance(template, dict):
+            continue
+        out.append(
+            {
+                "id": str(template.get("id") or template_id),
+                "name": str(template.get("name") or "Без названия"),
+                "category_id": str(template.get("category_id") or "").strip() or None,
+            }
+        )
+    out.sort(key=lambda item: item["name"].lower())
+    return out
+
+
+def _template_flags_payload() -> Dict[str, bool]:
+    db = load_competitor_mapping_db()
+    items = db.get("templates", {}) or {}
+    flags: Dict[str, bool] = {}
+    for template_id, row in items.items():
+        if isinstance(row, dict) and _is_configured(row):
+            flags[str(template_id)] = True
+    return flags
+
+
+def _build_bootstrap_payload() -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "templates": _template_list_payload(),
+        "flags": _template_flags_payload(),
+        "service_codes": _service_code_payload(),
+    }
 
 
 def _normalize_mapping_full(template_id: str, mapping_in: Any) -> Dict[str, str]:
@@ -494,6 +558,8 @@ def save_template_mapping(template_id: str, payload: Dict[str, Any]) -> Dict[str
 
     tpl_rows[template_id] = current
     save_competitor_mapping_db(db)
+    _bootstrap_cache["payload"] = None
+    _bootstrap_cache["at"] = 0.0
 
     return {"ok": True, "data": current, "configured": _is_configured(current)}
 
@@ -534,6 +600,8 @@ def save_category_mapping(category_id: str, payload: Dict[str, Any]) -> Dict[str
     db.setdefault("categories", {})
     db["categories"][category_id] = current
     save_competitor_mapping_db(db)
+    _bootstrap_cache["payload"] = None
+    _bootstrap_cache["at"] = 0.0
 
     return {
         "ok": True,
@@ -563,6 +631,19 @@ def template_flags() -> Dict[str, Any]:
             flags[str(tid)] = True
 
     return {"ok": True, "flags": flags}
+
+
+@router.get("/bootstrap")
+def competitor_mapping_bootstrap() -> Dict[str, Any]:
+    now = monotonic()
+    cached = _bootstrap_cache.get("payload")
+    cached_at = float(_bootstrap_cache.get("at") or 0.0)
+    if cached and (now - cached_at) < _BOOTSTRAP_CACHE_TTL_SECONDS:
+        return cached
+    payload = _build_bootstrap_payload()
+    _bootstrap_cache["payload"] = payload
+    _bootstrap_cache["at"] = now
+    return payload
 
 
 @router.post("/competitor-fields")

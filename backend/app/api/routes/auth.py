@@ -249,6 +249,31 @@ def bootstrap_owner_info(_auth=Depends(require_action("users.manage"))):
     return {"ok": True, "owner_users": owner_users}
 
 
+@router.get("/admin/bootstrap")
+def admin_bootstrap(_auth=Depends(require_action("users.manage"))):
+    db = load_auth_db()
+    roles = db.get("roles") if isinstance(db.get("roles"), dict) else {}
+    users = db.get("users") if isinstance(db.get("users"), dict) else {}
+    visible_roles = _visible_roles(_auth, roles)
+    visible_users = _visible_users(_auth, users, roles)
+    events = recent_login_events(120)
+    if not _auth_is_owner(_auth):
+        visible_ids = {str((user or {}).get("id") or "") for user in visible_users.values() if isinstance(user, dict)}
+        visible_logins = {str((user or {}).get("login") or "") for user in visible_users.values() if isinstance(user, dict)}
+        events = [
+            event
+            for event in events
+            if str(event.get("user_id") or "") in visible_ids or str(event.get("login") or "") in visible_logins
+        ]
+    return {
+        "ok": True,
+        "roles": [_role_public(role) for role in visible_roles.values() if isinstance(role, dict)],
+        "users": [_user_public(user, visible_roles) for user in visible_users.values() if isinstance(user, dict)],
+        "events": events,
+        "catalog": {"pages": PAGE_CATALOG, "actions": ACTION_CATALOG},
+    }
+
+
 @router.get("/admin/roles")
 def admin_roles(_auth=Depends(require_action("roles.manage"))):
     db = load_auth_db()

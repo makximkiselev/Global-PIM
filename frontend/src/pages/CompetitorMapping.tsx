@@ -21,14 +21,6 @@ const PARAM_GROUPS = ["Артикулы", "Описание", "Медиа", "О 
 type ParamGroup = (typeof PARAM_GROUPS)[number];
 
 const FALLBACK_SERVICE_CODES = new Set(["sku_gt", "barcode"]);
-
-type DictionaryItem = {
-  id?: string | null;
-  code?: string | null;
-  attr_id?: string | null;
-  title?: string | null;
-  meta?: { service?: boolean | string };
-};
 type FieldMeta = {
   name: string;
   section?: string;
@@ -77,6 +69,13 @@ type CompetitorMappingProps = {
   view?: CompetitorMappingView;
   categoryId?: string;
   categoryName?: string;
+};
+
+type CompetitorBootstrapResp = {
+  ok: boolean;
+  templates: TemplateItem[];
+  flags: Record<string, boolean>;
+  service_codes?: { codes?: string[]; names?: string[] };
 };
 
 // -------------------- utils --------------------
@@ -235,19 +234,6 @@ async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const t = await r.text();
   const j = tryParseJson(t);
   return (j ?? (t as any)) as T;
-}
-
-async function apiGetSoft<T>(path: string): Promise<{ ok: boolean; status: number; data?: T; error?: string }> {
-  try {
-    const r = await fetch(apiPath(path), { credentials: "include" });
-    const status = r.status;
-    if (!r.ok) return { ok: false, status, error: await safeErr(r) };
-    const t = await r.text();
-    const j = tryParseJson(t);
-    return { ok: true, status, data: (j ?? (t as any)) as T };
-  } catch (e: any) {
-    return { ok: false, status: 0, error: String(e?.message || e) };
-  }
 }
 
 // -------------------- UI bits --------------------
@@ -459,49 +445,25 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
   const API = useMemo(
     () => ({
       async listTemplates(): Promise<TemplateItem[]> {
-        const soft = await apiGetSoft<{ ok: boolean; items: any[] }>(`/templates/list`);
-        if (soft.ok && soft.data?.items && Array.isArray(soft.data.items)) {
-          return soft.data.items
-            .filter(Boolean)
-            .map((t: any) => ({
-              id: String(t.id),
-              name: String(t.name || "Без названия"),
-              category_id: t.category_id ? String(t.category_id) : null,
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name, "ru"));
-        }
-
-        const data = await apiGet<any>(`/templates/tree`);
-        if (data?.templates && typeof data.templates === "object" && !Array.isArray(data.templates)) {
-          return Object.values<any>(data.templates)
-            .filter((t) => t && t.id)
-            .map((t) => ({
-              id: String(t.id),
-              name: String(t.name || "Без названия"),
-              category_id: t.category_id ? String(t.category_id) : null,
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name, "ru"));
-        }
-        return [];
+        const data = await apiGet<CompetitorBootstrapResp>(`/competitor-mapping/bootstrap`);
+        return Array.isArray(data?.templates) ? data.templates : [];
       },
 
       async templateFlags(): Promise<FlagsResp> {
-        return apiGet<FlagsResp>(`/competitor-mapping/template-flags`);
+        const data = await apiGet<CompetitorBootstrapResp>(`/competitor-mapping/bootstrap`);
+        return { ok: true, flags: data?.flags || {} };
       },
 
       async listServiceCodes(): Promise<{ codes: string[]; names: string[] }> {
-        const data = await apiGet<{ items?: DictionaryItem[] }>(`/dictionaries?include_service=1`);
-        const out = new Set<string>();
-        const names = new Set<string>();
-        for (const it of data?.items || []) {
-          const service = it?.meta?.service;
-          if (service !== true && service !== "true") continue;
-          if (it?.code) out.add(String(it.code).trim());
-          if (it?.attr_id) out.add(String(it.attr_id).trim());
-          if (it?.id) out.add(String(it.id).trim());
-          if (it?.title) names.add(String(it.title).trim());
-        }
-        return { codes: Array.from(out), names: Array.from(names) };
+        const data = await apiGet<CompetitorBootstrapResp>(`/competitor-mapping/bootstrap`);
+        return {
+          codes: data?.service_codes?.codes || [],
+          names: data?.service_codes?.names || [],
+        };
+      },
+
+      async bootstrap(): Promise<CompetitorBootstrapResp> {
+        return apiGet<CompetitorBootstrapResp>(`/competitor-mapping/bootstrap`);
       },
 
       async getTemplateMapping(templateId: string): Promise<TemplateMappingResp> {
@@ -623,35 +585,17 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
 
   // -------------------- bootstrap --------------------
   useEffect(() => {
-    if (categoryId) {
-      setTemplates([]);
-      setFlags({});
-      API.listServiceCodes()
-        .then((svc: any) => {
-          setServiceCodes(svc?.codes || []);
-          setServiceNames(svc?.names || []);
-        })
-        .catch(() => {
-          setServiceCodes([]);
-          setServiceNames([]);
-        });
-      return;
-    }
     let mounted = true;
     (async () => {
       setErr("");
       setLoading(true);
       try {
-        const [tpls, fl, svc] = await Promise.all([
-          API.listTemplates(),
-          API.templateFlags(),
-          API.listServiceCodes().catch(() => []),
-        ]);
+        const bootstrap = await API.bootstrap();
         if (!mounted) return;
-        setTemplates(tpls);
-        setFlags(fl?.flags || {});
-        setServiceCodes((svc as any)?.codes || []);
-        setServiceNames((svc as any)?.names || []);
+        setTemplates(categoryId ? [] : (bootstrap?.templates || []));
+        setFlags(categoryId ? {} : (bootstrap?.flags || {}));
+        setServiceCodes(bootstrap?.service_codes?.codes || []);
+        setServiceNames(bootstrap?.service_codes?.names || []);
       } catch (e: any) {
         if (!mounted) return;
         setErr(String(e?.message || e));

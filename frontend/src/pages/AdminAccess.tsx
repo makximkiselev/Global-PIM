@@ -37,9 +37,13 @@ type LoginEventRow = {
   user_agent?: string | null;
 };
 
-type RolesResp = { ok: boolean; roles: RoleRow[]; catalog: { pages: CatalogRow[]; actions: CatalogRow[] } };
-type UsersResp = { ok: boolean; users: UserRow[]; roles: RoleRow[] };
-type LoginEventsResp = { ok: boolean; events: LoginEventRow[] };
+type AdminBootstrapResp = {
+  ok: boolean;
+  roles: RoleRow[];
+  users: UserRow[];
+  events: LoginEventRow[];
+  catalog: { pages: CatalogRow[]; actions: CatalogRow[] };
+};
 
 const EMPTY_ROLE: RoleRow = { id: "", code: "", name: "", description: "", pages: [], actions: [], is_system: false };
 const EMPTY_USER: UserRow = { id: "", login: "", email: "", name: "", role_ids: [], is_active: true };
@@ -128,27 +132,23 @@ export default function AdminAccess() {
     setLoading(true);
     setError("");
     try {
-      const [rolesResp, usersResp, eventsResp] = await Promise.all([
-        api<RolesResp>("/auth/admin/roles"),
-        api<UsersResp>("/auth/admin/users"),
-        api<LoginEventsResp>("/auth/admin/login-events"),
-      ]);
-      setCatalog(rolesResp.catalog || { pages: [], actions: [] });
-      setRoles(rolesResp.roles || []);
-      setUsers(usersResp.users || []);
-      setLoginEvents(eventsResp.events || []);
+      const bootstrap = await api<AdminBootstrapResp>("/auth/admin/bootstrap");
+      setCatalog(bootstrap.catalog || { pages: [], actions: [] });
+      setRoles(bootstrap.roles || []);
+      setUsers(bootstrap.users || []);
+      setLoginEvents(bootstrap.events || []);
       const requestedRoleId = searchParams.get("role") || "";
       const requestedUserId = searchParams.get("user") || "";
 
       const nextRole =
-        (requestedRoleId && rolesResp.roles?.find((item) => item.id === requestedRoleId)) ||
-        (editingRole.id && rolesResp.roles?.find((item) => item.id === editingRole.id)) ||
-        rolesResp.roles?.[0] ||
+        (requestedRoleId && bootstrap.roles?.find((item) => item.id === requestedRoleId)) ||
+        (editingRole.id && bootstrap.roles?.find((item) => item.id === editingRole.id)) ||
+        bootstrap.roles?.[0] ||
         EMPTY_ROLE;
       const nextUser =
-        (requestedUserId && usersResp.users?.find((item) => item.id === requestedUserId)) ||
-        (editingUser.id && usersResp.users?.find((item) => item.id === editingUser.id)) ||
-        usersResp.users?.[0] ||
+        (requestedUserId && bootstrap.users?.find((item) => item.id === requestedUserId)) ||
+        (editingUser.id && bootstrap.users?.find((item) => item.id === editingUser.id)) ||
+        bootstrap.users?.[0] ||
         EMPTY_USER;
 
       setEditingRole(nextRole);
