@@ -137,6 +137,23 @@ def _load_products_doc() -> Dict[str, Any]:
     return data if isinstance(data, dict) else {"version": 1, "items": []}
 
 
+def _catalog_path(nodes: List[Dict[str, Any]], category_id: str) -> List[Dict[str, str]]:
+    by_id = {str(n.get("id") or ""): n for n in nodes if isinstance(n, dict)}
+    chain: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    cur = by_id.get(str(category_id or "").strip())
+    while cur:
+        cid = str(cur.get("id") or "").strip()
+        if not cid or cid in seen:
+            break
+        seen.add(cid)
+        chain.append({"id": cid, "name": str(cur.get("name") or cid)})
+        pid = str(cur.get("parent_id") or "").strip()
+        cur = by_id.get(pid) if pid else None
+    chain.reverse()
+    return chain
+
+
 def _feature_skeleton_attrs(attrs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
@@ -717,6 +734,68 @@ def get_by_category(category_id: str) -> Dict[str, Any]:
         "attributes": attrs,
         "base_attributes": master["base_attributes"],
         "category_attributes": master["category_attributes"],
+        "master": master,
+    }
+
+
+@router.get("/editor-bootstrap/{category_id}")
+def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
+    nodes = _get_catalog_nodes()
+    path = _catalog_path(nodes, category_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="CATEGORY_NOT_FOUND")
+
+    db = load_templates_db()
+    templates = db.get("templates", {}) or {}
+    attrs_by_tpl = db.get("attributes", {}) or {}
+    cat_map = _templates_by_category(db)
+
+    owner_path_item = None
+    owner_tpl = None
+    owner_attrs: List[Dict[str, Any]] = []
+    for path_item in reversed(path):
+        cid = str(path_item.get("id") or "").strip()
+        tids = cat_map.get(cid, []) or []
+        if not tids:
+            continue
+        tpl = templates.get(tids[0])
+        if not isinstance(tpl, dict):
+            continue
+        owner_path_item = path_item
+        owner_tpl = tpl
+        owner_attrs = _ensure_default_attrs(attrs_by_tpl.get(tids[0], []) or [])
+        break
+
+    if isinstance(owner_tpl, dict):
+        master = _template_master_payload(owner_tpl, owner_attrs)
+    else:
+        master = {
+            "version": 2,
+            "base_attributes": _build_default_attrs(),
+            "category_attributes": [],
+            "stats": {
+                "base_count": len(_build_default_attrs()),
+                "category_count": 0,
+                "required_count": sum(1 for x in _build_default_attrs() if bool(x.get("required"))),
+                "total_count": len(_build_default_attrs()),
+            },
+            "sources": {},
+        }
+
+    own_template = owner_tpl if owner_path_item and str(owner_path_item.get("id") or "") == str(category_id) else None
+    inherited_from = None if own_template else owner_path_item
+
+    return {
+        "ok": True,
+        "category": {
+            "id": str(category_id),
+            "name": str(path[-1].get("name") or category_id),
+            "path": path,
+        },
+        "owner_template": owner_tpl,
+        "own_template": own_template,
+        "inherited_from": inherited_from,
+        "attributes": owner_attrs,
         "master": master,
     }
 

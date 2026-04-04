@@ -23,10 +23,8 @@ type SourcesMarketplaceSectionProps = {
 const SOURCES_MAPPING_CACHE_TTL_MS = 30_000;
 const SOURCES_STATIC_CACHE_TTL_MS = 5 * 60_000;
 let categoriesMappingCache: { ts: number; data: CategoriesResp | null } = { ts: 0, data: null };
-let attrCategoriesCache: { ts: number; data: AttrCategoriesResp | null } = { ts: 0, data: null };
+let attrBootstrapCache: { ts: number; data: AttrBootstrapResp | null } = { ts: 0, data: null };
 const attrDetailsCache = new Map<string, { ts: number; data: AttrDetailsResp }>();
-let catalogAttrOptionsCache: { ts: number; data: CatalogAttrOption[] } = { ts: 0, data: [] };
-let serviceParamDefsCache: { ts: number; data: ServiceParamDef[] } = { ts: 0, data: [] };
 
 type Provider = {
   code: string;
@@ -120,6 +118,11 @@ type AttrCategoriesResp = {
   ok: boolean;
   items: AttrCategoryItem[];
   count: number;
+};
+
+type AttrBootstrapResp = AttrCategoriesResp & {
+  catalog_attr_options: CatalogAttrOption[];
+  service_param_defs: ServiceParamDef[];
 };
 
 type AttrDetailsResp = {
@@ -221,13 +224,6 @@ type ServiceParamDef = {
 
 const PARAM_GROUPS = ["Артикулы", "Описание", "Медиа", "О товаре", "Логистика", "Гарантия", "Прочее"] as const;
 type ParamGroup = (typeof PARAM_GROUPS)[number];
-
-type DictionaryListItem = {
-  id: string;
-  title?: string;
-  code?: string;
-  meta?: { service?: boolean };
-};
 
 type AttrTemplateTab = "all" | "base" | "category";
 
@@ -550,28 +546,6 @@ function applyYandexSystemBindings(rowsIn: AttrRow[], serviceDefs: ServiceParamD
       confirmed: row.confirmed || !!target.required,
     };
   });
-}
-
-function normalizeServiceDefs(items: DictionaryListItem[]): ServiceParamDef[] {
-  const out: ServiceParamDef[] = [...DEFAULT_SERVICE_PARAM_DEFS];
-  const usedKeys = new Set(out.map((x) => x.key));
-  const usedTitles = new Set(out.map((x) => qnorm(x.title)));
-
-  for (const d of items || []) {
-    if (!d || !d.meta?.service) continue;
-    const title = String(d.title || "").trim();
-    if (!title) continue;
-    const code = String(d.code || "").trim();
-    const id = String(d.id || "").trim();
-    let key = code || id.replace(/^dict_/, "");
-    key = key.replace(/\s+/g, "_").toLowerCase();
-    if (!key) key = `svc_${out.length + 1}`;
-    if (usedKeys.has(key) || usedTitles.has(qnorm(title))) continue;
-    out.push({ key, title });
-    usedKeys.add(key);
-    usedTitles.add(qnorm(title));
-  }
-  return out;
 }
 
 function mergeRowsWithCatalogOptions(
@@ -911,17 +885,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
-  async function loadAttrCategories() {
+  async function loadAttrBootstrap() {
     const now = Date.now();
     setAttrCategoriesLoading(true);
     try {
       const r =
-        attrCategoriesCache.data && now - attrCategoriesCache.ts < SOURCES_MAPPING_CACHE_TTL_MS
-          ? attrCategoriesCache.data
-          : await api<AttrCategoriesResp>("/marketplaces/mapping/import/attributes/categories");
-      attrCategoriesCache = { ts: Date.now(), data: r };
+        attrBootstrapCache.data && now - attrBootstrapCache.ts < SOURCES_STATIC_CACHE_TTL_MS
+          ? attrBootstrapCache.data
+          : await api<AttrBootstrapResp>("/marketplaces/mapping/import/attributes/bootstrap");
+      attrBootstrapCache = { ts: Date.now(), data: r };
       const items = r.items || [];
       setAttrCategories(items);
+      setCatalogAttrOptions(r.catalog_attr_options || []);
+      setServiceParamDefs((r.service_param_defs || []).length ? (r.service_param_defs || []) : DEFAULT_SERVICE_PARAM_DEFS);
       if (items.length === 0) {
         setAttrSelectedCategoryId("");
       } else if (useCatalogTreeForFeatures && selectedCatalogId) {
@@ -939,40 +915,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
-  async function loadCatalogAttrOptions() {
-    const now = Date.now();
-    if (catalogAttrOptionsCache.data.length && now - catalogAttrOptionsCache.ts < SOURCES_STATIC_CACHE_TTL_MS) {
-      setCatalogAttrOptions(catalogAttrOptionsCache.data);
-      return;
-    }
-    try {
-      const r = await api<{ items: CatalogAttrOption[] }>("/attributes?limit=10000");
-      const items = r.items || [];
-      catalogAttrOptionsCache = { ts: Date.now(), data: items };
-      setCatalogAttrOptions(items);
-    } catch {
-      setCatalogAttrOptions([]);
-    }
-  }
-
-  async function loadServiceParamDefs(): Promise<ServiceParamDef[]> {
-    const now = Date.now();
-    if (serviceParamDefsCache.data.length && now - serviceParamDefsCache.ts < SOURCES_STATIC_CACHE_TTL_MS) {
-      setServiceParamDefs(serviceParamDefsCache.data);
-      return serviceParamDefsCache.data;
-    }
-    try {
-      const r = await api<{ items: DictionaryListItem[] }>("/dictionaries?include_service=1");
-      const defs = normalizeServiceDefs(r.items || []);
-      serviceParamDefsCache = { ts: Date.now(), data: defs };
-      setServiceParamDefs(defs);
-      return defs;
-    } catch {
-      setServiceParamDefs(DEFAULT_SERVICE_PARAM_DEFS);
-      return DEFAULT_SERVICE_PARAM_DEFS;
-    }
-  }
-
   async function loadAttrDetails(categoryId: string) {
     if (!categoryId) {
       setAttrDetails(null);
@@ -983,7 +925,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setAttrDetailsLoading(true);
     setAttrDetailsError("");
     try {
-      const defs = await loadServiceParamDefs();
+      const defs = serviceParamDefs.length ? serviceParamDefs : DEFAULT_SERVICE_PARAM_DEFS;
       const cachedDetails = attrDetailsCache.get(categoryId);
       let data =
         cachedDetails && Date.now() - cachedDetails.ts < SOURCES_MAPPING_CACHE_TTL_MS
@@ -1039,13 +981,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setSyncMsg("Обновление локального кэша...");
     try {
       categoriesMappingCache = { ts: 0, data: null };
-      attrCategoriesCache = { ts: 0, data: null };
+      attrBootstrapCache = { ts: 0, data: null };
       attrDetailsCache.clear();
-      catalogAttrOptionsCache = { ts: 0, data: [] };
-      serviceParamDefsCache = { ts: 0, data: [] };
       await loadCategoriesMapping();
       if (mainTab === "import" && importTab === "features") {
-        await Promise.all([loadAttrCategories(), loadServiceParamDefs()]);
+        await loadAttrBootstrap();
       }
       setSyncMsg("Локальные данные обновлены");
     } finally {
@@ -1062,9 +1002,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   useEffect(() => {
     if (mainTab !== "import" || importTab !== "features") return;
-    loadAttrCategories();
-    loadCatalogAttrOptions();
-    loadServiceParamDefs();
+    loadAttrBootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab, importTab]);
 
@@ -1494,7 +1432,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       });
       setMappings(res.mappings || {});
       if (importTab === "features") {
-        await loadAttrCategories().catch(() => null);
+        await loadAttrBootstrap().catch(() => null);
       }
       if (closeModal) setModalOpen(false);
       setSavedToastText("Сопоставление сохранено");
@@ -1749,7 +1687,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
       saveAttrDraftCache(cache);
       setAttrDraftExists(true);
       setSavedTemplateId(String(resp.template_id || ""));
-      await loadAttrCategories();
+      await loadAttrBootstrap();
       await loadAttrDetails(activeAttrCategoryId);
       setAttrHasServerSaved(true);
       setAttrEditMode(false);
@@ -1773,7 +1711,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
         }
       );
       setAttrRows(enforceServiceRowsTop(res.rows || [], serviceParamDefs));
-      await loadAttrCategories();
+      await loadAttrBootstrap();
       await loadAttrDetails(activeAttrCategoryId);
       setSyncMsg(`AI-сопоставление выполнено (${res.engine === "ollama" ? "Ollama" : "fallback"})`);
     } catch (e) {

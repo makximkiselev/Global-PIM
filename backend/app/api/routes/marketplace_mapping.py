@@ -61,8 +61,10 @@ MAPPING_PROVIDERS: tuple[str, ...] = tuple(PROVIDER_TITLES.keys())
 DEFAULT_SERVICE_NAMES: List[str] = [str(item["name"]) for item in base_template_fields()]
 _ATTR_CATEGORIES_CACHE_TTL_SECONDS = 30.0
 _ATTR_DETAILS_CACHE_TTL_SECONDS = 30.0
+_ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
 _attr_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_attr_bootstrap_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 
 
 def _load_catalog_nodes() -> List[Dict[str, Any]]:
@@ -1243,6 +1245,61 @@ def _yandex_param_values(provider_category_id: str, attribute_id: str) -> List[s
     return []
 
 
+def _catalog_attr_options_payload() -> List[Dict[str, Any]]:
+    db = load_dictionaries_db()
+    items = [x for x in (db.get("items") or []) if isinstance(x, dict)]
+    items.sort(key=lambda x: str(x.get("title") or "").lower())
+    return [
+        {
+            "id": it.get("attr_id") or it.get("id"),
+            "title": it.get("title"),
+            "code": it.get("code"),
+            "type": it.get("type"),
+            "scope": it.get("scope"),
+            "dict_id": it.get("id"),
+            "param_group": ((it.get("meta") or {}).get("param_group") if isinstance(it.get("meta"), dict) else None),
+        }
+        for it in items
+    ]
+
+
+def _service_param_defs_payload() -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    used_keys: set[str] = set()
+    used_titles: set[str] = set()
+
+    for field in base_template_fields():
+        code = str(field.get("code") or "").strip().lower()
+        name = str(field.get("name") or "").strip()
+        if not code or not name:
+            continue
+        if code in used_keys or name.lower() in used_titles:
+            continue
+        out.append({"key": code, "title": name})
+        used_keys.add(code)
+        used_titles.add(name.lower())
+
+    db = load_dictionaries_db()
+    for d in db.get("items", []):
+        if not isinstance(d, dict):
+            continue
+        meta = d.get("meta") if isinstance(d.get("meta"), dict) else {}
+        if not meta.get("service"):
+            continue
+        title = str(d.get("title") or "").strip()
+        code = str(d.get("code") or "").strip()
+        did = str(d.get("id") or "").strip()
+        key = (code or did.replace("dict_", "")).replace(" ", "_").lower()
+        if not key:
+            continue
+        if key in used_keys or title.lower() in used_titles:
+            continue
+        out.append({"key": key, "title": title})
+        used_keys.add(key)
+        used_titles.add(title.lower())
+    return out
+
+
 @router.get("/import/categories")
 def mapping_import_categories() -> Dict[str, Any]:
     catalog_nodes = _load_catalog_nodes()
@@ -1276,6 +1333,27 @@ def mapping_import_categories() -> Dict[str, Any]:
         "mappings": mappings,
         "binding_states": binding_states,
     }
+
+
+@router.get("/import/attributes/bootstrap")
+def mapping_attribute_bootstrap() -> Dict[str, Any]:
+    now = time.monotonic()
+    cached = _attr_bootstrap_cache.get("payload")
+    cached_ts = float(_attr_bootstrap_cache.get("ts") or 0.0)
+    if cached and now - cached_ts < _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS:
+        return cached
+
+    categories_payload = mapping_attribute_categories()
+    payload = {
+        "ok": True,
+        "items": categories_payload.get("items") if isinstance(categories_payload.get("items"), list) else [],
+        "count": int(categories_payload.get("count") or 0),
+        "catalog_attr_options": _catalog_attr_options_payload(),
+        "service_param_defs": _service_param_defs_payload(),
+    }
+    _attr_bootstrap_cache["ts"] = now
+    _attr_bootstrap_cache["payload"] = payload
+    return payload
 
 
 class LinkCategoryReq(BaseModel):
@@ -2285,6 +2363,8 @@ def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) ->
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
     _attr_categories_cache["ts"] = 0.0
     _attr_categories_cache["payload"] = None
+    _attr_bootstrap_cache["ts"] = 0.0
+    _attr_bootstrap_cache["payload"] = None
     _attr_details_cache.pop(cid, None)
 
     catalog_rows = _catalog_rows(_load_catalog_nodes())

@@ -276,70 +276,29 @@ export default function TemplateEditor() {
 
   async function load() {
     if (!categoryId) return;
+    const data = await api<{
+      ok: boolean;
+      category: CategoryInfo;
+      owner_template: TemplateT | null;
+      own_template: TemplateT | null;
+      inherited_from: CategoryInfo | null;
+      attributes: AttrT[];
+      master?: TemplateMaster | null;
+    }>(`/templates/editor-bootstrap/${encodeURIComponent(categoryId)}`);
 
-    let cat: CategoryInfo | null = null;
-    try {
-      const tree = await api<{ nodes: TreeNodeT[] }>("/templates/tree");
-      const path = buildPathFromTree(tree.nodes || [], categoryId);
-      const name = path.length ? path[path.length - 1].name : categoryId;
-      cat = { id: categoryId, name, path };
-      setCategory(cat);
-    } catch {
-      cat = { id: categoryId, name: categoryId, path: [{ id: categoryId, name: categoryId }] };
-      setCategory(cat);
-    }
-
-    const own = await api<{ template: TemplateT | null; attributes: AttrT[]; master?: TemplateMaster }>(
-      `/templates/by-category/${encodeURIComponent(categoryId)}`
+    setCategory(data.category);
+    setOwnerTpl(data.own_template || null);
+    setInheritedFrom(data.inherited_from || null);
+    setTpl(data.owner_template || null);
+    setTplName(data.owner_template?.name || "");
+    setAttrs(
+      sortAttrs(data.attributes || []).map((a: any) => ({
+        ...a,
+        attribute_id: a.attribute_id || a?.options?.attribute_id || undefined,
+        _codeTouched: !!a.locked,
+      }))
     );
-
-    if (own.template?.id) {
-      setOwnerTpl(own.template);
-      setInheritedFrom(null);
-      setTpl(own.template);
-      setTplName(own.template?.name || "");
-      setAttrs(
-        sortAttrs(own.attributes || []).map((a: any) => ({
-          ...a,
-          attribute_id: a.attribute_id || a?.options?.attribute_id || undefined,
-          _codeTouched: !!a.locked,
-        }))
-      );
-      setMaster(own.master || null);
-      setImportTplName("");
-      return;
-    }
-
-    const chain = (cat?.path || []).map((x) => x.id);
-    for (let i = chain.length - 2; i >= 0; i--) {
-      const cid = chain[i];
-      const r = await api<{ template: TemplateT | null; attributes: AttrT[]; master?: TemplateMaster }>(
-        `/templates/by-category/${encodeURIComponent(cid)}`
-      );
-      if (r.template?.id) {
-        setOwnerTpl(null);
-        setInheritedFrom(cat?.path?.[i] || null);
-        setTpl(r.template);
-        setTplName(r.template?.name || "");
-        setAttrs(
-          sortAttrs(r.attributes || []).map((a: any) => ({
-            ...a,
-            attribute_id: a.attribute_id || a?.options?.attribute_id || undefined,
-            _codeTouched: !!a.locked,
-          }))
-        );
-        setMaster(r.master || null);
-        setImportTplName("");
-        return;
-      }
-    }
-
-    setOwnerTpl(null);
-    setInheritedFrom(null);
-    setTpl(null);
-    setTplName("");
-    setAttrs([]);
-    setMaster(null);
+    setMaster(data.master || null);
     setImportTplName("");
   }
 
