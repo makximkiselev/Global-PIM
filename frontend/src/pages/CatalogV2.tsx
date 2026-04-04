@@ -385,27 +385,18 @@ export default function Catalog() {
   async function refresh() {
     setLoading(true);
     try {
-      const [nodesRes, templatesRes] = await Promise.allSettled([
-        api<NodesResp>("/catalog/nodes"),
-        api<{ nodes: NodeT[] }>("/templates/tree"),
-      ]);
-
-      if (nodesRes.status === "fulfilled") {
-        const data = nodesRes.value;
-        setNodes(data.nodes || []);
-        if (!selectedId) {
-          const roots = (data.nodes || []).filter((n) => !n.parent_id);
-          if (roots[0]) setSelectedId(roots[0].id);
-        }
+      const data = await api<NodesResp>("/catalog/nodes");
+      const nextNodes = data.nodes || [];
+      setNodes(nextNodes);
+      if (!selectedId) {
+        const roots = nextNodes.filter((n) => !n.parent_id);
+        if (roots[0]) setSelectedId(roots[0].id);
       }
 
       const tset = new Set<string>();
-      if (templatesRes.status === "fulfilled") {
-        const templates = templatesRes.value;
-        for (const n of templates.nodes || []) {
-          if (n.template_id || (n as any).template_ids?.length) {
-            tset.add(n.id);
-          }
+      for (const n of nextNodes) {
+        if (n.template_id || (n as any).template_ids?.length) {
+          tset.add(n.id);
         }
       }
       setTemplateCategoryIds(tset);

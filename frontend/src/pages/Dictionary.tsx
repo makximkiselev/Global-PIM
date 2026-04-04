@@ -176,7 +176,7 @@ export default function Dictionaries() {
     setCreateError("");
     try {
       for (const form of forms) {
-        await api("/dictionaries/bulk", {
+        const created = await api<{ items?: DictListItem[] }>("/dictionaries/bulk", {
           method: "POST",
           body: JSON.stringify({
             titles: [form.name],
@@ -189,8 +189,7 @@ export default function Dictionaries() {
         });
 
         if (form.values.length > 0) {
-          const all = await api<{ items: DictListItem[] }>("/dictionaries?include_service=1");
-          const target = (all.items || []).find((x) => String(x.title || "").trim().toLowerCase() === form.name.toLowerCase());
+          const target = (created.items || []).find((x) => String(x.title || "").trim().toLowerCase() === form.name.toLowerCase());
           if (target?.id) {
             await api(`/dictionaries/${encodeURIComponent(target.id)}/values/import`, {
               method: "POST",

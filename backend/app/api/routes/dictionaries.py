@@ -509,6 +509,7 @@ def bulk_create_dictionaries(payload: BulkCreateReq = Body(...)):
 
     created = 0
     updated = 0
+    affected: List[Dict[str, Any]] = []
 
     for title in titles:
         code = slugify_code(title)
@@ -556,9 +557,23 @@ def bulk_create_dictionaries(payload: BulkCreateReq = Body(...)):
             entry["updated_at"] = now
             updated += 1
 
+        affected.append({
+            "id": str(entry.get("id") or dict_id),
+            "title": str(entry.get("title") or title),
+            "code": str(entry.get("code") or code),
+            "created_at": entry.get("created_at"),
+            "updated_at": entry.get("updated_at"),
+            "size": len(entry.get("items") or []),
+            "templates": [],
+            "category_count": 0,
+            "type": entry.get("type"),
+            "scope": entry.get("scope"),
+            "meta": entry.get("meta") if isinstance(entry.get("meta"), dict) else {},
+        })
+
     db["items"] = items
     save_dictionaries_db(db)
-    return {"ok": True, "created": created, "updated": updated}
+    return {"ok": True, "created": created, "updated": updated, "items": affected}
 
 
 @router.delete("/dictionaries/{dict_id}")
