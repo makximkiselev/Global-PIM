@@ -2338,7 +2338,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                         <div className="mm-workbench mm-workbenchSidebar">
                           <div className="mm-workbenchHead mm-workbenchHeadCompact">
                             <div>
-                              <div className="mm-workbenchTitle">Поля площадок</div>
+                              <div className="mm-workbenchTitle">Источники параметров</div>
                               <div className="mm-workbenchSub">
                                 {mappingProvidersForUi
                                   .map((providerCode) => {
@@ -2395,8 +2395,8 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                         <div className="mm-templateBoard">
                           <div className="mm-workbenchHead mm-workbenchHeadCompact">
                             <div>
-                              <div className="mm-workbenchTitle">Строки PIM</div>
-                              <div className="mm-workbenchSub">Сопоставляй поля площадок со строками PIM, подтверждай готовые строки и сохраняй шаблон категории.</div>
+                              <div className="mm-workbenchTitle">Инфомодель PIM</div>
+                              <div className="mm-workbenchSub">Здесь фиксируется смысл параметра: в какой слой PIM он попадает, с какими полями площадок связан и должен ли участвовать в экспорте.</div>
                             </div>
                           </div>
 
@@ -2404,7 +2404,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           <div className="mm-attrToolbarMain">
                             <input
                               className="pn-input mm-attrSearch"
-                              placeholder="Поиск по строкам PIM и сопоставленным параметрам..."
+                              placeholder="Поиск по параметрам PIM и связанным полям источников..."
                               value={attrRowQuery}
                               onChange={(e) => setAttrRowQuery(e.target.value)}
                             />
@@ -2437,9 +2437,9 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                                 Редактировать
                               </button>
                             )}
-                            <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
-                              Добавить строку
-                            </button>
+                              <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
+                              Добавить параметр
+                              </button>
                             <button className="btn" type="button" onClick={runAiMatch} disabled={attrAiMatching || attrSaving || !attrEditMode}>
                               {attrAiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
                             </button>
@@ -2568,8 +2568,8 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           {groupedAttrRows.length === 0 && (
                             <div className="mm-attrEmpty">
                               {attrRowsStats.total
-                                ? "По текущему фильтру строки не найдены."
-                                : "Пока нет строк. Добавьте строку и сопоставьте параметры площадок."}
+                                ? "По текущему фильтру параметры не найдены."
+                                : "Пока нет параметров. Добавь параметр PIM и свяжи его с полями площадок и конкурентов."}
                             </div>
                           )}
                         </div>
