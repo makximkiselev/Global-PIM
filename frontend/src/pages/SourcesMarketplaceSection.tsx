@@ -169,26 +169,6 @@ type AttrSaveResp = {
   sources?: Record<string, any>;
 };
 
-type YandexOfferCardsSyncResp = {
-  ok: boolean;
-  count: number;
-  matched_products: number;
-  updated_products: number;
-  items: Array<{
-    offerId: string;
-    product_id?: string | null;
-    cardStatus?: string;
-    contentRating?: number;
-    mapped_values?: Array<{
-      parameterId: string;
-      catalog_name: string;
-      code: string;
-      raw_value: string;
-      canonical_value: string;
-    }>;
-  }>;
-};
-
 type LinkResp = {
   ok: boolean;
   catalog_category_id: string;
@@ -800,7 +780,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrRows, setAttrRows] = useState<AttrRow[]>([]);
   const [attrSaving, setAttrSaving] = useState(false);
   const [attrAiMatching, setAttrAiMatching] = useState(false);
-  const [attrMarketSyncing, setAttrMarketSyncing] = useState(false);
   const [attrEditMode, setAttrEditMode] = useState(true);
   const [attrHasServerSaved, setAttrHasServerSaved] = useState(false);
   const [attrDraftExists, setAttrDraftExists] = useState(false);
@@ -1744,34 +1723,6 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
     }
   }
 
-  async function syncYandexOfferCards() {
-    if (!activeAttrCategoryId) return;
-    setAttrMarketSyncing(true);
-    setErr(null);
-    setSyncing(true);
-    setSyncMsg("Подтягиваем текущий контент карточек из Я.Маркета...");
-    try {
-      const res = await api<YandexOfferCardsSyncResp>("/marketplaces/yandex/offer-cards/sync", {
-        method: "POST",
-        body: JSON.stringify({
-          category_id: activeAttrCategoryId,
-          include_descendants: true,
-          with_recommendations: true,
-          apply_to_products: true,
-          overwrite_existing: false,
-          limit: 200,
-        }),
-      });
-      setSyncMsg(`Контент Я.Маркета подтянут: товаров ${res.matched_products}, обновлено ${res.updated_products}`);
-    } catch (e) {
-      setErr((e as Error).message || "Ошибка синхронизации Я.Маркета");
-      setSyncMsg("Не удалось подтянуть контент Я.Маркета");
-    } finally {
-      setAttrMarketSyncing(false);
-      setSyncing(false);
-    }
-  }
-
   const selectedCatalogNode = useMemo(() => {
     if (!selectedCatalogId) return null;
     return catalogNodes.find((node) => node.id === selectedCatalogId) || null;
@@ -2262,14 +2213,6 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           <span>Категорийные</span>
                           <strong>{Number(attrDetails.master_template?.category_count || 0)}</strong>
                         </div>
-                        <button
-                          type="button"
-                          className="btn mm-metaLink"
-                          onClick={syncYandexOfferCards}
-                          disabled={attrMarketSyncing}
-                        >
-                          {attrMarketSyncing ? "Тяну контент Маркета..." : "Подтянуть контент Маркета"}
-                        </button>
                         {attrDetails.template_id ? (
                           <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
                             Открыть шаблон
