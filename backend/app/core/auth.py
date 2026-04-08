@@ -148,6 +148,11 @@ def _load_auth_base() -> Dict[str, Any]:
     return db
 
 
+def load_auth_base_db() -> Dict[str, Any]:
+    db = _load_auth_base()
+    return _ensure_system_roles(db)
+
+
 def _save_auth_base(db: Dict[str, Any]) -> None:
     payload = {
         "version": db.get("version", 1),
@@ -238,10 +243,9 @@ def _ensure_system_roles(db: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_auth_db() -> Dict[str, Any]:
-    db = _load_auth_base()
+    db = load_auth_base_db()
     db["sessions"] = _load_auth_sessions()
     db["login_events"] = _load_auth_login_events()
-    db = _ensure_system_roles(db)
     users = db.get("users") if isinstance(db.get("users"), dict) else {}
     changed = False
     for uid, user in users.items():
@@ -374,7 +378,7 @@ def has_action(auth: AuthContext, action_code: str) -> bool:
 
 
 def authenticate(login: str, password: str) -> Optional[Dict[str, Any]]:
-    db = load_auth_db()
+    db = load_auth_base_db()
     users = db.get("users") if isinstance(db.get("users"), dict) else {}
     login_s = _normalize_login(login)
     for user in users.values():

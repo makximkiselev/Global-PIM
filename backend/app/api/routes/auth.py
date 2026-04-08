@@ -20,6 +20,7 @@ from app.core.auth import (
     ensure_owner_account,
     find_role_by_code,
     has_action,
+    load_auth_base_db,
     load_auth_db,
     recent_login_events,
     record_login_failure,
@@ -199,7 +200,7 @@ def auth_login(payload: LoginReq, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="INVALID_CREDENTIALS")
     user = record_login_success(str(user.get("id") or ""), ip=_client_ip(request), user_agent=_user_agent(request)) or user
     token = create_session(str(user.get("id") or ""))
-    db = load_auth_db()
+    db = load_auth_base_db()
     roles = build_auth_context(db, db.get("users", {}).get(str(user.get("id") or ""))).roles
     response.set_cookie(
         SESSION_COOKIE,
