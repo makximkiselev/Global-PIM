@@ -793,6 +793,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrTemplateTab, setAttrTemplateTab] = useState<AttrTemplateTab>("all");
   const [attrRowFilter, setAttrRowFilter] = useState<AttrRowFilter>("attention");
   const [attrRowQuery, setAttrRowQuery] = useState("");
+  const [attrSourceProvider, setAttrSourceProvider] = useState<"all" | string>("yandex_market");
   const [dragParamKey, setDragParamKey] = useState("");
   const [dragProvider, setDragProvider] = useState("");
   const [dropCellKey, setDropCellKey] = useState("");
@@ -1210,6 +1211,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const mappingProvidersForUi = useMemo(
     () => MAPPING_PROVIDER_CODES.filter((code) => !!PROVIDER_SLOTS[code]),
     []
+  );
+
+  useEffect(() => {
+    if (attrSourceProvider === "all") return;
+    if (mappingProvidersForUi.includes(attrSourceProvider)) return;
+    setAttrSourceProvider(mappingProvidersForUi[0] || "all");
+  }, [attrSourceProvider, mappingProvidersForUi]);
+
+  const sourceProvidersForUi = useMemo(
+    () => (attrSourceProvider === "all" ? mappingProvidersForUi : mappingProvidersForUi.filter((code) => code === attrSourceProvider)),
+    [attrSourceProvider, mappingProvidersForUi]
   );
 
   const catalogNameSuggests = useMemo(() => {
@@ -2133,11 +2145,15 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
               </div>
             </div>
           ) : (
-            <div className="card mm-card">
-              <div className="mm-title" style={{ marginBottom: 6 }}>Параметры</div>
-              <div className="muted" style={{ marginBottom: 12 }}>
-                Слева выберите сопоставленную категорию. Справа перетаскивайте параметры площадок в строки мастер-шаблона и подтверждайте чекбоксом.
-              </div>
+            <div className={embedded ? "mm-card mm-cardFeaturesEmbedded" : "card mm-card"}>
+              {!embedded ? (
+                <>
+                  <div className="mm-title" style={{ marginBottom: 6 }}>Параметры</div>
+                  <div className="muted" style={{ marginBottom: 12 }}>
+                    Слева выберите сопоставленную категорию. Справа перетаскивайте параметры площадок в строки мастер-шаблона и подтверждайте чекбоксом.
+                  </div>
+                </>
+              ) : null}
 
               <div className="mm-attrLayout">
                 <div className="mm-attrLeft">
@@ -2254,8 +2270,14 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                         <>
                       <div className="mm-attrHeader">
                         <div className="mm-attrHeaderMain">
-                          <div className="mm-catPath">{attrDetails.category.name}</div>
                           <div className="mm-breadcrumbs">{attrDetails.category.path}</div>
+                          <div className="mm-catPath mm-attrCategoryTitle">{attrDetails.category.name}</div>
+                          <div className="mm-attrHeaderSummary">
+                            <span>{Number(attrDetails.master_template?.row_count || 0)} параметров</span>
+                            <span>Подтверждено {Number(attrDetails.master_template?.confirmed_count || 0)}</span>
+                            <span>Основа {Number(attrDetails.master_template?.base_count || 0)}</span>
+                            <span>Категорийные {Number(attrDetails.master_template?.category_count || 0)}</span>
+                          </div>
                         </div>
                         <div className="mm-attrHeaderMeta">
                           {mappingProvidersForUi.map((providerCode) => (
@@ -2264,39 +2286,12 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                               <span>{Number(attrDetails.providers?.[providerCode]?.count || 0)}</span>
                             </div>
                           ))}
-                          <div className="mm-attrHeaderPill">
-                            Подтверждено
-                            <span>
-                              {Number(attrDetails.master_template?.confirmed_count || 0)} / {Number(attrDetails.master_template?.row_count || 0)}
-                            </span>
-                          </div>
+                          {attrDetails.template_id ? (
+                            <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                              Открыть шаблон
+                            </Link>
+                          ) : null}
                         </div>
-                      </div>
-
-                      <div className="mm-attrMetaBar">
-                        {mappingProvidersForUi.map((providerCode) => (
-                          <div key={providerCode} className="mm-attrMetaItem mm-attrMetaItemWide">
-                            <span>Категория {PROVIDER_SLOTS[providerCode]}</span>
-                            <strong>
-                              {attrDetails.providers?.[providerCode]?.category_id
-                                ? attrDetails.providers?.[providerCode]?.category_name || attrDetails.providers?.[providerCode]?.category_id
-                                : "Категория площадки не найдена"}
-                            </strong>
-                          </div>
-                        ))}
-                        <div className="mm-attrMetaItem">
-                          <span>Основа</span>
-                          <strong>{Number(attrDetails.master_template?.base_count || 0)}</strong>
-                        </div>
-                        <div className="mm-attrMetaItem">
-                          <span>Категорийные</span>
-                          <strong>{Number(attrDetails.master_template?.category_count || 0)}</strong>
-                        </div>
-                        {attrDetails.template_id ? (
-                          <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
-                            Открыть шаблон
-                          </Link>
-                        ) : null}
                       </div>
 
                       <div className="mm-tabs" style={{ marginBottom: 12 }}>
@@ -2350,9 +2345,35 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                             </div>
                           </div>
 
-                          <div className="mm-attrParams">
+                          <div className="mm-attrSourceTabs">
+                            <button
+                              type="button"
+                              className={`mm-sourceTab ${attrSourceProvider === "all" ? "active" : ""}`}
+                              onClick={() => setAttrSourceProvider("all")}
+                            >
+                              Все источники
+                            </button>
                             {mappingProvidersForUi.map((providerCode) => (
+                              <button
+                                key={`src-tab-${providerCode}`}
+                                type="button"
+                                className={`mm-sourceTab ${attrSourceProvider === providerCode ? "active" : ""}`}
+                                onClick={() => setAttrSourceProvider(providerCode)}
+                              >
+                                {PROVIDER_SLOTS[providerCode]}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="mm-attrParams">
+                            {sourceProvidersForUi.map((providerCode) => (
                               <div key={providerCode} className="mm-attrParamCol">
+                                <div className="mm-attrParamColHead">
+                                  <div className="mm-attrParamColTitle">{PROVIDER_SLOTS[providerCode]}</div>
+                                  <div className="mm-attrParamColMeta">
+                                    {(providerParamStats[providerCode]?.visible || 0)} свободно из {(providerParamStats[providerCode]?.total || 0)}
+                                  </div>
+                                </div>
                                 <div className="mm-attrParamList">
                                   {(visibleProviderParamSections[providerCode] || []).map((section) => (
                                     <div key={`${providerCode}-${section.key}`} className="mm-attrParamSection">

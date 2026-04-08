@@ -79,20 +79,14 @@ export default function SourcesMapping() {
       </div>
 
       <div className="card sm-shell">
-        <div className="sm-shellHead">
-          <div>
-            <div className="sm-shellTitle">
-              {tab === "sources"
-                ? "Категории и источники"
-                : "Сопоставление параметров"}
-            </div>
-            <div className="sm-shellSub">
-              {tab === "sources"
-                ? "Единое дерево категорий для привязок маркетплейсов и ссылок конкурентов."
-                : "Здесь собирается инфомодель категории: какой параметр PIM соответствует полям площадок и конкурентных источников, и откуда брать факт для заполнения."}
+        {tab === "sources" ? (
+          <div className="sm-shellHead">
+            <div>
+              <div className="sm-shellTitle">Категории и источники</div>
+              <div className="sm-shellSub">Единое дерево категорий для привязок маркетплейсов и ссылок конкурентов.</div>
             </div>
           </div>
-        </div>
+        ) : null}
 
       {tab === "sources" && (
         <SourcesMarketplaceSection
@@ -114,41 +108,31 @@ export default function SourcesMapping() {
       )}
 
       {tab === "params" && (
-        <div className="sm-stack">
-          <div className="sm-section sm-sectionBordered">
-            <div className="sm-sectionHead">
-              <div>
-                <div className="sm-sectionTitle">Сопоставление параметров</div>
-                <div className="sm-sectionSub">Сначала дружим смысл параметров. Значения будут маппиться отдельно позже, уже на уровне заполнения товаров и экспорта.</div>
-              </div>
-            </div>
-            <SourcesMarketplaceSection
-              embedded
-              forcedMainTab="import"
-              forcedImportTab="features"
-              hideMainTabs
-              hideImportTabs
-              selectedCategoryId={selectedCategoryId}
-              onSelectedCategoryChange={(categoryId, categoryName) => {
-                setSelectedCategory(categoryId, categoryName);
-              }}
-              useCatalogTreeForFeatures
-              featureView={paramsView}
-              onFeatureViewChange={setParamsView}
-              renderFeatureDetailExtra={(categoryId, categoryName) => (
-                <div className="sm-section sm-sectionBordered">
-                  <div className="sm-sectionHead">
-                    <div>
-                      <div className="sm-sectionTitle">Параметры конкурентов</div>
-                      <div className="sm-sectionSub">Сопоставление полей конкурентов с тем же шаблоном выбранной категории.</div>
-                    </div>
-                  </div>
-                  <CompetitorMapping embedded view="mapping" categoryId={categoryId} categoryName={categoryName} />
+        <SourcesMarketplaceSection
+          embedded
+          forcedMainTab="import"
+          forcedImportTab="features"
+          hideMainTabs
+          hideImportTabs
+          selectedCategoryId={selectedCategoryId}
+          onSelectedCategoryChange={(categoryId, categoryName) => {
+            setSelectedCategory(categoryId, categoryName);
+          }}
+          useCatalogTreeForFeatures
+          featureView={paramsView}
+          onFeatureViewChange={setParamsView}
+          renderFeatureDetailExtra={(categoryId, categoryName) => (
+            <div className="sm-section sm-sectionBordered">
+              <div className="sm-sectionHead">
+                <div>
+                  <div className="sm-sectionTitle">Параметры конкурентов</div>
+                  <div className="sm-sectionSub">Сопоставление полей конкурентов с тем же шаблоном выбранной категории.</div>
                 </div>
-              )}
-            />
-          </div>
-        </div>
+              </div>
+              <CompetitorMapping embedded view="mapping" categoryId={categoryId} categoryName={categoryName} />
+            </div>
+          )}
+        />
       )}
       </div>
     </div>
