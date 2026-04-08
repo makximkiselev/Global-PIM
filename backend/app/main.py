@@ -104,6 +104,7 @@ async def _auth_guard_middleware(request: Request, call_next):
 
 @app.on_event("startup")
 async def _startup_connectors_scheduler() -> None:
+    stats.warm_stats_summary()
     connectors_status.start_scheduler()
 
 
