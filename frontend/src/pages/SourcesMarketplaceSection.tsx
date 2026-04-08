@@ -885,6 +885,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
+  async function loadInitialReadModel() {
+    const data = await loadCategoriesMapping();
+    if (mainTab === "import" && importTab === "features") {
+      await loadAttrBootstrap();
+    }
+    if (data) {
+      setSyncMsg("");
+    }
+  }
+
   async function loadAttrBootstrap() {
     const now = Date.now();
     setAttrCategoriesLoading(true);
@@ -995,7 +1005,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   useEffect(() => {
     (async () => {
-      await runBackgroundSync();
+      await loadInitialReadModel();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1274,6 +1284,22 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (attrSelectedCategoryId === selectedCatalogId) return;
     setAttrSelectedCategoryId(selectedCatalogId);
   }, [mainTab, importTab, useCatalogTreeForFeatures, selectedCatalogId, attrSelectedCategoryId]);
+
+  useEffect(() => {
+    if (!selectedCatalogId) return;
+    setTreeExpanded((prev) => {
+      const nextExpanded: Record<string, boolean> = {};
+      let cur = parentById.get(selectedCatalogId) || "";
+      const guard = new Set<string>();
+      while (cur && !guard.has(cur)) {
+        guard.add(cur);
+        if (!prev[cur]) nextExpanded[cur] = true;
+        cur = parentById.get(cur) || "";
+      }
+      if (!Object.keys(nextExpanded).length) return prev;
+      return { ...prev, ...nextExpanded };
+    });
+  }, [selectedCatalogId, parentById]);
 
   function toggleTreeNode(nodeId: string) {
     setTreeExpanded((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));

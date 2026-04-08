@@ -62,9 +62,16 @@ DEFAULT_SERVICE_NAMES: List[str] = [str(item["name"]) for item in base_template_
 _ATTR_CATEGORIES_CACHE_TTL_SECONDS = 30.0
 _ATTR_DETAILS_CACHE_TTL_SECONDS = 30.0
 _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
+_IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 30.0
+_import_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
 _attr_bootstrap_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+
+
+def _invalidate_import_categories_cache() -> None:
+    _import_categories_cache["ts"] = 0.0
+    _import_categories_cache["payload"] = None
 
 
 def _load_catalog_nodes() -> List[Dict[str, Any]]:
@@ -1302,10 +1309,15 @@ def _service_param_defs_payload() -> List[Dict[str, Any]]:
 
 @router.get("/import/categories")
 def mapping_import_categories() -> Dict[str, Any]:
+    now = time.monotonic()
+    cached = _import_categories_cache.get("payload")
+    cached_ts = float(_import_categories_cache.get("ts") or 0.0)
+    if cached and now - cached_ts < _IMPORT_CATEGORIES_CACHE_TTL_SECONDS:
+        return cached
+
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
     mappings = _load_mappings()
-    binding_states = _build_binding_states(catalog_nodes, catalog_items, mappings)
 
     providers: List[Dict[str, Any]] = []
     provider_categories: Dict[str, List[Dict[str, Any]]] = {}
@@ -1324,15 +1336,18 @@ def mapping_import_categories() -> Dict[str, Any]:
             }
         )
 
-    return {
+    payload = {
         "ok": True,
         "catalog_nodes": catalog_nodes,
         "catalog_items": catalog_items,
         "providers": providers,
         "provider_categories": provider_categories,
         "mappings": mappings,
-        "binding_states": binding_states,
+        "binding_states": {},
     }
+    _import_categories_cache["ts"] = now
+    _import_categories_cache["payload"] = payload
+    return payload
 
 
 @router.get("/import/attributes/bootstrap")
@@ -2097,6 +2112,7 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
                     cleared_catalog_ids.append(cid)
 
         _save_mappings(items)
+        _invalidate_import_categories_cache()
     finally:
         lock.release()
 
@@ -2163,6 +2179,7 @@ def mapping_clear_descendant_bindings(req: ClearDescendantBindingsReq) -> Dict[s
                     items.pop(cid, None)
                 cleared_catalog_ids.append(cid)
         _save_mappings(items)
+        _invalidate_import_categories_cache()
     finally:
         lock.release()
 
