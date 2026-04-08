@@ -63,10 +63,12 @@ _ATTR_CATEGORIES_CACHE_TTL_SECONDS = 30.0
 _ATTR_DETAILS_CACHE_TTL_SECONDS = 30.0
 _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
 _IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 30.0
+_VALUE_DETAILS_CACHE_TTL_SECONDS = 30.0
 _import_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
 _attr_bootstrap_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_value_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
 
 
 def _invalidate_import_categories_cache() -> None:
@@ -2365,6 +2367,111 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     return payload
 
 
+@router.get("/import/values/{catalog_category_id}")
+def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
+    cid = str(catalog_category_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+
+    cached = _value_details_cache.get(cid)
+    if cached and time.monotonic() - cached[0] < _VALUE_DETAILS_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    catalog_nodes = _load_catalog_nodes()
+    catalog_items = _catalog_rows(catalog_nodes)
+    cat = next((x for x in catalog_items if str(x.get("id")) == cid), None)
+    if not cat:
+        raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
+
+    values_doc = _load_attr_values_dict_doc()
+    items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
+    payload = items.get(cid) if isinstance(items, dict) and isinstance(items.get(cid), dict) else {}
+    catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+
+    dict_db = load_dictionaries_db()
+    dict_items = dict_db.get("items") if isinstance(dict_db.get("items"), list) else []
+    dict_by_id = {
+        str(d.get("id") or "").strip(): d
+        for d in dict_items
+        if isinstance(d, dict) and str(d.get("id") or "").strip()
+    }
+
+    out: List[Dict[str, Any]] = []
+    for raw in catalog_params.values():
+        if not isinstance(raw, dict):
+            continue
+        dict_id = str(raw.get("dict_id") or "").strip()
+        if not dict_id:
+            continue
+        dict_doc = dict_by_id.get(dict_id) or load_dict(dict_id)
+        meta = dict_doc.get("meta") if isinstance(dict_doc.get("meta"), dict) else {}
+        source_ref = meta.get("source_reference") if isinstance(meta.get("source_reference"), dict) else {}
+        export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+        raw_scope = str(dict_doc.get("scope") or "").strip().lower()
+        if raw_scope == "variant":
+            scope = "group"
+            scope_label = "Группа"
+        elif raw_scope == "both":
+            scope = "shared"
+            scope_label = "Товар и группа"
+        else:
+            scope = "product"
+            scope_label = "Товар"
+
+        providers: List[Dict[str, Any]] = []
+        for provider in MAPPING_PROVIDERS:
+            ref = source_ref.get(provider) if isinstance(source_ref.get(provider), dict) else {}
+            allowed_values = _unique_text_values(ref.get("allowed_values"), limit=200)
+            mapped_values = export_map.get(provider) if isinstance(export_map.get(provider), dict) else {}
+            if not ref and not allowed_values and not mapped_values:
+                continue
+            providers.append(
+                {
+                    "code": provider,
+                    "title": PROVIDER_TITLES.get(provider, provider),
+                    "mapped_count": len(mapped_values),
+                    "allowed_count": len(allowed_values),
+                    "param_name": str(ref.get("name") or "").strip() or None,
+                    "required": bool(ref.get("required") or False),
+                }
+            )
+
+        raw_dict_values = dict_doc.get("items") if isinstance(dict_doc.get("items"), list) else []
+        value_count = 0
+        for value_item in raw_dict_values:
+            if isinstance(value_item, str) and str(value_item).strip():
+                value_count += 1
+            elif isinstance(value_item, dict) and str(value_item.get("value") or "").strip():
+                value_count += 1
+        out.append(
+            {
+                "dict_id": dict_id,
+                "title": str(dict_doc.get("title") or raw.get("catalog_name") or dict_id),
+                "catalog_name": str(raw.get("catalog_name") or dict_doc.get("title") or dict_id),
+                "group": str(raw.get("group") or meta.get("param_group") or "").strip() or "О товаре",
+                "scope": scope,
+                "scope_label": scope_label,
+                "type": str(dict_doc.get("type") or raw.get("type") or "").strip() or "select",
+                "confirmed": bool(raw.get("confirmed") or False),
+                "attribute_id": str(raw.get("attribute_id") or "").strip() or None,
+                "value_count": value_count,
+                "providers": providers,
+                "providers_count": len(providers),
+                "mapped_total": sum(int(p.get("mapped_count") or 0) for p in providers),
+            }
+        )
+
+    out.sort(key=lambda x: (str(x.get("group") or "").lower(), str(x.get("catalog_name") or "").lower()))
+    result = {
+        "ok": True,
+        "category": {"id": cid, "name": cat.get("name"), "path": cat.get("path")},
+        "items": out,
+        "count": len(out),
+    }
+    _value_details_cache[cid] = (time.monotonic(), result)
+    return result
+
+
 @router.put("/import/attributes/{catalog_category_id}")
 def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) -> Dict[str, Any]:
     _migrate_mapping_documents_to_canonical_names()
@@ -2376,6 +2483,7 @@ def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) ->
     _attr_bootstrap_cache["ts"] = 0.0
     _attr_bootstrap_cache["payload"] = None
     _attr_details_cache.pop(cid, None)
+    _value_details_cache.pop(cid, None)
 
     catalog_rows = _catalog_rows(_load_catalog_nodes())
     catalog_ids = {x.get("id") for x in catalog_rows}
@@ -2500,6 +2608,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
     rows_final = _apply_group_locks(rows_final)
 
     if req.apply:
+        _value_details_cache.pop(cid, None)
         lock = with_lock("marketplace_attribute_mapping")
         lock.acquire()
         try:

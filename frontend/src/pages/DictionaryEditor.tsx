@@ -145,11 +145,17 @@ function downloadTemplate(dictTitle: string, values: DictValue[]) {
   URL.revokeObjectURL(url);
 }
 
-export default function DictionaryEditor() {
+type DictionaryEditorProps = {
+  embedded?: boolean;
+  dictIdOverride?: string;
+};
+
+export default function DictionaryEditor({ embedded = false, dictIdOverride }: DictionaryEditorProps) {
   const nav = useNavigate();
   const location = useLocation();
   const { dictId } = useParams();
-  const requiredInputId = `dict-required-${dictId || "current"}`;
+  const effectiveDictId = String(dictIdOverride || dictId || "").trim();
+  const requiredInputId = `dict-required-${effectiveDictId || "current"}`;
   const navState = (location.state || {}) as { backTo?: string; backLabel?: string };
 
   const [item, setItem] = useState<DictItem | null>(null);
@@ -198,10 +204,10 @@ export default function DictionaryEditor() {
   }
 
   async function load() {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     setLoading(true);
     try {
-      const r = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(dictId)}`);
+      const r = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(effectiveDictId)}`);
       const raw = r.item as DictItem & { items?: DictValue[] };
       if (!raw.values && Array.isArray((raw as any).items)) {
         raw.values = (raw as any).items;
@@ -218,15 +224,15 @@ export default function DictionaryEditor() {
   }
 
   async function loadAttribute() {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     setAttrLoading(true);
     try {
       const r = await api<{
         items: Array<{ id: string; dict_id?: string | null; type?: string | null; scope?: string | null }>;
       }>("/attributes?limit=2000");
-      let hit = (r.items || []).find((x) => (x.dict_id || "") === dictId);
+      let hit = (r.items || []).find((x) => (x.dict_id || "") === effectiveDictId);
       if (!hit && item?.title) {
-        const code = dictId.startsWith("dict_") ? dictId.slice("dict_".length) : undefined;
+        const code = effectiveDictId.startsWith("dict_") ? effectiveDictId.slice("dict_".length) : undefined;
         const created = await api<{ attribute: { id: string; type?: string | null; scope?: string | null } }>(
           "/attributes/ensure",
           {
@@ -237,9 +243,9 @@ export default function DictionaryEditor() {
         if (created?.attribute?.id) {
           await api(`/attributes/${encodeURIComponent(created.attribute.id)}`, {
             method: "PATCH",
-            body: JSON.stringify({ dict_id: dictId }),
+            body: JSON.stringify({ dict_id: effectiveDictId }),
           });
-          hit = { id: created.attribute.id, dict_id: dictId, type: created.attribute.type, scope: created.attribute.scope };
+          hit = { id: created.attribute.id, dict_id: effectiveDictId, type: created.attribute.type, scope: created.attribute.scope };
         }
       }
       setAttrId(hit?.id || null);
@@ -252,12 +258,12 @@ export default function DictionaryEditor() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dictId]);
+  }, [effectiveDictId]);
 
   useEffect(() => {
     void loadAttribute();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dictId, item?.title]);
+  }, [effectiveDictId, item?.title]);
 
   useEffect(() => {
     return () => {
@@ -352,11 +358,11 @@ export default function DictionaryEditor() {
   }, [activeProviderRef]);
 
   async function addValue() {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     const v = (newValue || "").trim();
     if (!v) return;
 
-    await api(`/dictionaries/${encodeURIComponent(dictId)}/values`, {
+    await api(`/dictionaries/${encodeURIComponent(effectiveDictId)}/values`, {
       method: "POST",
       body: JSON.stringify({ value: v, source: "manual" }),
     });
@@ -367,11 +373,11 @@ export default function DictionaryEditor() {
   }
 
   async function renameValue(fromValue: string, toValue: string) {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     const to = (toValue || "").trim();
     if (!to) return;
 
-    await api(`/dictionaries/${encodeURIComponent(dictId)}/values/rename`, {
+    await api(`/dictionaries/${encodeURIComponent(effectiveDictId)}/values/rename`, {
       method: "PUT",
       body: JSON.stringify({ from: fromValue, to }),
     });
@@ -382,8 +388,8 @@ export default function DictionaryEditor() {
   }
 
   async function deleteValue(value: string) {
-    if (!dictId) return;
-    await api(`/dictionaries/${encodeURIComponent(dictId)}/values`, {
+    if (!effectiveDictId) return;
+    await api(`/dictionaries/${encodeURIComponent(effectiveDictId)}/values`, {
       method: "DELETE",
       body: JSON.stringify({ value }),
     });
@@ -391,10 +397,10 @@ export default function DictionaryEditor() {
   }
 
   async function runDedupePreview() {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     setDedupeLoading(true);
     try {
-      const r = await api<DedupeResp>(`/dictionaries/${encodeURIComponent(dictId)}/dedupe`, {
+      const r = await api<DedupeResp>(`/dictionaries/${encodeURIComponent(effectiveDictId)}/dedupe`, {
         method: "POST",
         body: JSON.stringify({ apply: false }),
       });
@@ -406,7 +412,7 @@ export default function DictionaryEditor() {
   }
 
   async function applyDedupe() {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     const prev = dedupePreview;
     const removed = prev?.removed ?? 0;
 
@@ -419,7 +425,7 @@ export default function DictionaryEditor() {
 
     setDedupeLoading(true);
     try {
-      await api<DedupeResp>(`/dictionaries/${encodeURIComponent(dictId)}/dedupe`, {
+      await api<DedupeResp>(`/dictionaries/${encodeURIComponent(effectiveDictId)}/dedupe`, {
         method: "POST",
         body: JSON.stringify({ apply: true }),
       });
@@ -432,6 +438,7 @@ export default function DictionaryEditor() {
   }
 
   function goBack() {
+    if (embedded) return;
     const backTo = String(navState?.backTo || "").trim();
     if (backTo) {
       nav(backTo);
@@ -445,7 +452,7 @@ export default function DictionaryEditor() {
   }
 
   async function importValues(file: File | null) {
-    if (!dictId || !file) return;
+    if (!effectiveDictId || !file) return;
     setImportErr(null);
     setImportLoading(true);
     try {
@@ -455,7 +462,7 @@ export default function DictionaryEditor() {
         setImportErr("Файл пустой или не содержит значений.");
         return;
       }
-      await api(`/dictionaries/${encodeURIComponent(dictId)}/values/import`, {
+      await api(`/dictionaries/${encodeURIComponent(effectiveDictId)}/values/import`, {
         method: "POST",
         body: JSON.stringify({ values, source: "import", replace: true }),
       });
@@ -491,7 +498,7 @@ export default function DictionaryEditor() {
   }
 
   async function saveExportMapping(provider: string, canonicalValue: string, mappedValue: string) {
-    if (!dictId) return;
+    if (!effectiveDictId) return;
     const payload = {
       export_map: {
         [provider]: {
@@ -499,7 +506,7 @@ export default function DictionaryEditor() {
         },
       },
     };
-    const res = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(dictId)}`, {
+    const res = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(effectiveDictId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
@@ -513,7 +520,7 @@ export default function DictionaryEditor() {
   }
 
   return (
-    <div className="templates-page page-shell">
+    <div className={embedded ? "dict-editorEmbedded" : "templates-page page-shell"}>
       <div className="page-header">
         <div className="page-header-main">
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -538,9 +545,11 @@ export default function DictionaryEditor() {
         </div>
 
         <div className="page-header-actions">
-          <button className="btn" type="button" onClick={goBack}>
-            ← {navState?.backLabel || "Назад"}
-          </button>
+          {!embedded ? (
+            <button className="btn" type="button" onClick={goBack}>
+              ← {navState?.backLabel || "Назад"}
+            </button>
+          ) : null}
 
           <button className="btn" type="button" onClick={() => void load()} disabled={loading}>
             {loading ? "Обновляю…" : "Обновить"}
@@ -587,9 +596,9 @@ export default function DictionaryEditor() {
                   value={paramGroup}
                   onChange={async (e) => {
                     const next = e.target.value as ParamGroup;
-                    if (!dictId) return;
+                    if (!effectiveDictId) return;
                     setParamGroup(next);
-                  const res = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(dictId)}`, {
+                  const res = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(effectiveDictId)}`, {
                     method: "PATCH",
                     body: JSON.stringify({ param_group: next }),
                   });
@@ -630,9 +639,9 @@ export default function DictionaryEditor() {
                   checked={requiredFlag}
                   onChange={async (e) => {
                     const next = e.target.checked;
-                    if (!dictId) return;
+                    if (!effectiveDictId) return;
                     setRequiredFlag(next);
-                    const res = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(dictId)}`, {
+                    const res = await api<{ item: DictItem }>(`/dictionaries/${encodeURIComponent(effectiveDictId)}`, {
                       method: "PATCH",
                       body: JSON.stringify({ required: next }),
                     });
