@@ -206,6 +206,7 @@ const PARAM_GROUPS = ["Артикулы", "Описание", "Медиа", "О 
 type ParamGroup = (typeof PARAM_GROUPS)[number];
 
 type AttrTemplateTab = "all" | "base" | "category";
+type AttrRowFilter = "all" | "attention" | "ready" | "unmapped";
 
 type AttrDraftCachePayload = {
   version: number;
@@ -786,6 +787,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [catalogAttrOptions, setCatalogAttrOptions] = useState<CatalogAttrOption[]>([]);
   const [serviceParamDefs, setServiceParamDefs] = useState<ServiceParamDef[]>(DEFAULT_SERVICE_PARAM_DEFS);
   const [attrTemplateTab, setAttrTemplateTab] = useState<AttrTemplateTab>("all");
+  const [attrRowFilter, setAttrRowFilter] = useState<AttrRowFilter>("attention");
+  const [attrRowQuery, setAttrRowQuery] = useState("");
   const [dragParamKey, setDragParamKey] = useState("");
   const [dragProvider, setDragProvider] = useState("");
   const [dropCellKey, setDropCellKey] = useState("");
@@ -1729,6 +1732,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
   }, [catalogNodes, selectedCatalogId]);
 
   const groupedAttrRows = useMemo(() => {
+    const query = qnorm(attrRowQuery);
     const byGroup: Record<ParamGroup, AttrRow[]> = {
       "Артикулы": [],
       "Описание": [],
@@ -1742,6 +1746,28 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
       const service = isServiceRow(row, serviceParamDefs);
       if (attrTemplateTab === "base" && !service) continue;
       if (attrTemplateTab === "category" && service) continue;
+      const providerBindings = mappingProvidersForUi.filter((providerCode) => {
+        const value = row.provider_map?.[providerCode];
+        return !!String(value?.id || "").trim();
+      }).length;
+      const isUnmapped = providerBindings === 0;
+      const needsAttention = !row.confirmed || isUnmapped;
+      if (attrRowFilter === "ready" && !row.confirmed) continue;
+      if (attrRowFilter === "attention" && !needsAttention) continue;
+      if (attrRowFilter === "unmapped" && !isUnmapped) continue;
+      if (query) {
+        const haystack = [
+          row.catalog_name || "",
+          row.group || "",
+          ...mappingProvidersForUi.flatMap((providerCode) => {
+            const value = row.provider_map?.[providerCode];
+            return [value?.name || "", value?.kind || "", ...(Array.isArray(value?.values) ? value!.values : [])];
+          }),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) continue;
+      }
       const g = normalizeParamGroup(row.group, row.catalog_name);
       byGroup[g].push({ ...row, group: g });
     }
@@ -1749,7 +1775,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
       byGroup[g].sort((a, b) => String(a.catalog_name || "").localeCompare(String(b.catalog_name || ""), "ru"));
     }
     return PARAM_GROUPS.map((g) => ({ group: g, rows: byGroup[g] })).filter((x) => x.rows.length > 0);
-  }, [attrRows, attrTemplateTab, serviceParamDefs]);
+  }, [attrRows, attrTemplateTab, serviceParamDefs, attrRowFilter, attrRowQuery, mappingProvidersForUi]);
 
   const attrBaseRowsCount = useMemo(
     () => (attrRows || []).filter((row) => isServiceRow(row, serviceParamDefs)).length,
@@ -1764,6 +1790,27 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
     if (!attrRows.length) return false;
     return attrRows.every((r) => !!r.confirmed);
   }, [attrRows]);
+
+  const attrRowsStats = useMemo(() => {
+    let ready = 0;
+    let unmapped = 0;
+    let attention = 0;
+    for (const row of attrRows || []) {
+      const providerBindings = mappingProvidersForUi.filter((providerCode) => !!String(row.provider_map?.[providerCode]?.id || "").trim()).length;
+      const isUnmapped = providerBindings === 0;
+      const needsAttention = !row.confirmed || isUnmapped;
+      if (row.confirmed) ready += 1;
+      if (isUnmapped) unmapped += 1;
+      if (needsAttention) attention += 1;
+    }
+    return {
+      total: attrRows.length,
+      ready,
+      unmapped,
+      attention,
+      visible: groupedAttrRows.reduce((sum, section) => sum + section.rows.length, 0),
+    };
+  }, [attrRows, mappingProvidersForUi, groupedAttrRows]);
 
   function clearAttrDraft() {
     if (!activeAttrCategoryId) return;
@@ -2257,9 +2304,9 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
 
                       <div className="mm-attrEditorGrid">
                         <div className="mm-workbench mm-workbenchSidebar">
-                          <div className="mm-workbenchHead">
+                          <div className="mm-workbenchHead mm-workbenchHeadCompact">
                             <div>
-                              <div className="mm-workbenchTitle">Доступные поля площадок</div>
+                              <div className="mm-workbenchTitle">Поля площадок</div>
                               <div className="mm-workbenchSub">
                                 {mappingProvidersForUi
                                   .map((providerCode) => {
@@ -2314,12 +2361,61 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                         </div>
 
                         <div className="mm-templateBoard">
-                          <div className="mm-workbenchHead">
+                          <div className="mm-workbenchHead mm-workbenchHeadCompact">
                             <div>
-                              <div className="mm-workbenchTitle">Мастер-шаблон категории</div>
-                              <div className="mm-workbenchSub">Перетаскивай поля Я.Маркета в строки PIM и фиксируй готовность. Значения площадки используются как reference-слой для экспорта.</div>
+                              <div className="mm-workbenchTitle">Строки PIM</div>
+                              <div className="mm-workbenchSub">Сопоставляй поля площадок со строками PIM, подтверждай готовые строки и сохраняй шаблон категории.</div>
                             </div>
                           </div>
+
+                        <div className="mm-attrToolbar">
+                          <div className="mm-attrToolbarMain">
+                            <input
+                              className="pn-input mm-attrSearch"
+                              placeholder="Поиск по строкам PIM и сопоставленным параметрам..."
+                              value={attrRowQuery}
+                              onChange={(e) => setAttrRowQuery(e.target.value)}
+                            />
+                            <div className="mm-attrFilterChips">
+                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "attention" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("attention")}>
+                                Требуют внимания
+                                <span>{attrRowsStats.attention}</span>
+                              </button>
+                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "unmapped" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("unmapped")}>
+                                Не сопоставлены
+                                <span>{attrRowsStats.unmapped}</span>
+                              </button>
+                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "ready" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("ready")}>
+                                Готово
+                                <span>{attrRowsStats.ready}</span>
+                              </button>
+                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "all" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("all")}>
+                                Все строки
+                                <span>{attrRowsStats.total}</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mm-attrToolbarActions">
+                            {!attrHasServerSaved ? (
+                              <button className="btn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
+                                Очистить черновик
+                              </button>
+                            ) : (
+                              <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving || attrAiMatching}>
+                                Редактировать
+                              </button>
+                            )}
+                            <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
+                              Добавить строку
+                            </button>
+                            <button className="btn" type="button" onClick={runAiMatch} disabled={attrAiMatching || attrSaving || !attrEditMode}>
+                              {attrAiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
+                            </button>
+                            <button className="btn btn-primary" type="button" onClick={saveAttrRows} disabled={attrSaving || !attrEditMode}>
+                              {attrSaving ? "Сохраняю..." : "Сохранить шаблон"}
+                            </button>
+                          </div>
+                        </div>
 
                         <div className="mm-attrTableWrap">
                           <div className="mm-attrTable">
@@ -2438,32 +2534,15 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           ))}
 
                           {groupedAttrRows.length === 0 && (
-                            <div className="mm-attrEmpty">Пока нет строк. Добавьте строку и перетащите параметры площадок.</div>
+                            <div className="mm-attrEmpty">
+                              {attrRowsStats.total
+                                ? "По текущему фильтру строки не найдены."
+                                : "Пока нет строк. Добавьте строку и сопоставьте параметры площадок."}
+                            </div>
                           )}
                         </div>
                       </div>
                         </div>
-                      </div>
-
-                      <div className="mm-attrBottomActions">
-                        {!attrHasServerSaved ? (
-                          <button className="btn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
-                            Очистить черновик
-                          </button>
-                        ) : (
-                          <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving || attrAiMatching}>
-                            Редактировать
-                          </button>
-                        )}
-                        <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
-                          Добавить строку
-                        </button>
-                        <button className="btn" type="button" onClick={runAiMatch} disabled={attrAiMatching || attrSaving || !attrEditMode}>
-                          {attrAiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
-                        </button>
-                        <button className="btn btn-primary" type="button" onClick={saveAttrRows} disabled={attrSaving || !attrEditMode}>
-                          {attrSaving ? "Сохраняю..." : "Сохранить мастер-шаблон"}
-                        </button>
                       </div>
                       <datalist id="mm-catalog-attr-options">
                         {catalogNameSuggests.map((name) => (
