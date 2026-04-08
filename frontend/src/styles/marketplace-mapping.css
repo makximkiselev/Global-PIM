@@ -1713,6 +1713,39 @@
   color:var(--muted);
 }
 
+.mm-featurePaneSingle{
+  min-width:0;
+}
+
+.mm-featurePaneSingle .sm-section{
+  gap:10px;
+}
+
+.mm-featurePaneSingle .sm-sectionBordered{
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:0;
+}
+
+.mm-featurePaneSingle .cm-panel,
+.mm-featurePaneSingle .cm-panelRight{
+  border:0;
+  border-radius:0;
+  padding:0;
+  background:transparent;
+  box-shadow:none;
+}
+
+.mm-featurePaneSingle .cm-layout,
+.mm-featurePaneSingle .cm-pageEmbedded{
+  gap:0;
+}
+
+.mm-featurePaneSingle .cm-rightHeader{
+  margin-bottom:10px;
+}
+
 @media (max-width: 1100px){
   .mm-head{ flex-direction:column; }
   .mm-summaryHead{ flex-direction:column; }

@@ -18,6 +18,8 @@ type SourcesMarketplaceSectionProps = {
   useCatalogTreeForFeatures?: boolean;
   renderCategoryDetailExtra?: (categoryId: string, categoryName: string) => ReactNode;
   renderFeatureDetailExtra?: (categoryId: string, categoryName: string) => ReactNode;
+  featureView?: "marketplaces" | "competitors";
+  onFeatureViewChange?: (view: "marketplaces" | "competitors") => void;
 };
 
 const SOURCES_MAPPING_CACHE_TTL_MS = 30_000;
@@ -758,6 +760,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     useCatalogTreeForFeatures = false,
     renderCategoryDetailExtra,
     renderFeatureDetailExtra,
+    featureView = "marketplaces",
+    onFeatureViewChange,
   } = props;
   const [mainTab, setMainTab] = useState<MainTab>(forcedMainTab || "import");
   const [importTab, setImportTab] = useState<ImportTab>(forcedImportTab || "categories");
@@ -2220,6 +2224,34 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                     <div className="muted">Нет данных по категории.</div>
                   ) : (
                     <>
+                      {renderFeatureDetailExtra ? (
+                        <div className="mm-tabs" style={{ marginBottom: 12 }}>
+                          <button
+                            type="button"
+                            className={`mm-tab ${featureView === "marketplaces" ? "active" : ""}`}
+                            onClick={() => onFeatureViewChange?.("marketplaces")}
+                          >
+                            Маркетплейсы
+                          </button>
+                          <button
+                            type="button"
+                            className={`mm-tab ${featureView === "competitors" ? "active" : ""}`}
+                            onClick={() => onFeatureViewChange?.("competitors")}
+                          >
+                            Конкуренты
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {renderFeatureDetailExtra && featureView === "competitors" && activeAttrCategoryId ? (
+                        <div className="mm-featurePaneSingle">
+                          {renderFeatureDetailExtra(
+                            activeAttrCategoryId,
+                            attrDetails?.category?.name || selectedCatalogNode?.name || ""
+                          )}
+                        </div>
+                      ) : (
+                        <>
                       <div className="mm-attrHeader">
                         <div className="mm-attrHeaderMain">
                           <div className="mm-catPath">{attrDetails.category.name}</div>
@@ -2549,14 +2581,8 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           <option key={name} value={name} />
                         ))}
                       </datalist>
-                      {renderFeatureDetailExtra && activeAttrCategoryId ? (
-                        <div className="mm-categoryExtra">
-                          {renderFeatureDetailExtra(
-                            activeAttrCategoryId,
-                            attrDetails?.category?.name || selectedCatalogNode?.name || ""
-                          )}
-                        </div>
-                      ) : null}
+                        </>
+                      )}
                     </>
                   )}
                 </div>

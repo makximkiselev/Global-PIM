@@ -6,10 +6,16 @@ import "../styles/product-groups.css";
 import "../styles/competitor-mapping.css";
 
 type SourcesTab = "sources" | "params";
+type ParamsView = "marketplaces" | "competitors";
 
 function normalizeTab(value: string | null): SourcesTab {
   if (value === "params") return "params";
   return "sources";
+}
+
+function normalizeParamsView(value: string | null): ParamsView {
+  if (value === "competitors") return "competitors";
+  return "marketplaces";
 }
 
 export default function SourcesMapping() {
@@ -17,11 +23,16 @@ export default function SourcesMapping() {
   const [tab, setTabState] = useState<SourcesTab>(normalizeTab(searchParams.get("tab")));
   const [selectedCategoryId, setSelectedCategoryId] = useState(searchParams.get("category") || "");
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
+  const [paramsView, setParamsViewState] = useState<ParamsView>(normalizeParamsView(searchParams.get("params_view")));
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
     setTabState((prev) => (prev === nextTab ? prev : nextTab));
     setSelectedCategoryId(searchParams.get("category") || "");
+    setParamsViewState((prev) => {
+      const nextView = normalizeParamsView(searchParams.get("params_view"));
+      return prev === nextView ? prev : nextView;
+    });
   }, [searchParams]);
 
   function setTab(nextTab: SourcesTab) {
@@ -37,6 +48,13 @@ export default function SourcesMapping() {
     const next = new URLSearchParams(searchParams);
     if (nextCategoryId) next.set("category", nextCategoryId);
     else next.delete("category");
+    setSearchParams(next, { replace: true });
+  }
+
+  function setParamsView(nextView: ParamsView) {
+    setParamsViewState(nextView);
+    const next = new URLSearchParams(searchParams);
+    next.set("params_view", nextView);
     setSearchParams(next, { replace: true });
   }
 
@@ -115,6 +133,8 @@ export default function SourcesMapping() {
                 setSelectedCategory(categoryId, categoryName);
               }}
               useCatalogTreeForFeatures
+              featureView={paramsView}
+              onFeatureViewChange={setParamsView}
               renderFeatureDetailExtra={(categoryId, categoryName) => (
                 <div className="sm-section sm-sectionBordered">
                   <div className="sm-sectionHead">
