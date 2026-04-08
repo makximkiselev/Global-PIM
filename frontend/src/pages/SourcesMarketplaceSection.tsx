@@ -887,9 +887,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   async function loadInitialReadModel() {
     const data = await loadCategoriesMapping();
-    if (mainTab === "import" && importTab === "features") {
-      await loadAttrBootstrap();
-    }
     if (data) {
       setSyncMsg("");
     }

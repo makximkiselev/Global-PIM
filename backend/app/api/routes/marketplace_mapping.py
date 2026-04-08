@@ -2324,13 +2324,6 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     items = doc.get("items") if isinstance(doc.get("items"), dict) else {}
     saved = items.get(cid) if isinstance(items.get(cid), dict) else {}
     rows = _normalize_attr_rows(saved.get("rows") if isinstance(saved, dict) else [])
-    template_rows = _collect_template_rows_from_saved(doc, exclude_category_id=cid, limit=320)
-    suggested_rows = _deterministic_ai_rows(
-        yandex_params,
-        rows,
-        feedback_doc=None,
-        template_rows=template_rows,
-    ) if yandex_params else []
     templates_db = load_templates_db()
     cat_to_tpls = templates_db.get("category_to_templates") if isinstance(templates_db.get("category_to_templates"), dict) else {}
     template_id = ""
@@ -2361,8 +2354,8 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
             },
         },
         "rows": rows,
-        "suggested_rows": suggested_rows,
-        "suggested_rows_count": len(suggested_rows),
+        "suggested_rows": [],
+        "suggested_rows_count": 0,
         "updated_at": saved.get("updated_at") if isinstance(saved, dict) else None,
         "template_id": template_id or None,
         "master_template": template_meta.get("master_template") if isinstance(template_meta.get("master_template"), dict) else None,
