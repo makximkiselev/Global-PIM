@@ -797,6 +797,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [dragParamKey, setDragParamKey] = useState("");
   const [dragProvider, setDragProvider] = useState("");
   const [dropCellKey, setDropCellKey] = useState("");
+  const [selectedSourceParam, setSelectedSourceParam] = useState<{
+    provider: string;
+    id: string;
+    name: string;
+    kind?: string;
+    values?: string[];
+    required?: boolean;
+  } | null>(null);
   const [pendingScrollRowId, setPendingScrollRowId] = useState("");
   const [pendingScrollFocus, setPendingScrollFocus] = useState(false);
 
@@ -1592,7 +1600,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setAttrRows((prev) => enforceServiceRowsTop(prev.filter((r) => r.id !== rowId), serviceParamDefs));
   }
 
-function setAttrProviderValue(rowId: string, provider: string, value: AttrRowProviderMap) {
+  function setAttrProviderValue(rowId: string, provider: string, value: AttrRowProviderMap) {
     if (!attrEditMode) return;
     setAttrRows((prev) =>
       enforceServiceRowsTop(
@@ -1611,6 +1619,25 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
         serviceParamDefs
       )
     );
+  }
+
+  function applySourceParamToRow(
+    rowId: string,
+    provider: string,
+    param: { id: string; name: string; kind?: string; values?: string[]; required?: boolean }
+  ) {
+    setAttrProviderValue(rowId, provider, {
+      id: String(param.id || ""),
+      name: String(param.name || ""),
+      kind: String(param.kind || ""),
+      values: Array.isArray(param.values) ? param.values : [],
+      required: !!param.required,
+      export: true,
+    });
+    setSelectedSourceParam(null);
+    setDragParamKey("");
+    setDragProvider("");
+    setDropCellKey("");
   }
 
   function clearAttrProviderValue(rowId: string, provider: string) {
@@ -1668,14 +1695,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
     try {
       const p = JSON.parse(raw);
       if (!p || String(p.provider || "") !== provider) return;
-      setAttrProviderValue(rowId, provider, {
-        id: String(p.id || ""),
-        name: String(p.name || ""),
-        kind: String(p.kind || ""),
-        values: Array.isArray(p.values) ? p.values : [],
-        required: !!p.required,
-        export: true,
-      });
+      applySourceParamToRow(rowId, provider, p);
     } catch {
       // ignore
     } finally {
@@ -2280,12 +2300,13 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           </div>
                         </div>
                         <div className="mm-attrHeaderMeta">
-                          {mappingProvidersForUi.map((providerCode) => (
-                            <div key={providerCode} className="mm-attrHeaderPill">
-                              {PROVIDER_SLOTS[providerCode]}
-                              <span>{Number(attrDetails.providers?.[providerCode]?.count || 0)}</span>
-                            </div>
-                          ))}
+                          <div className="mm-attrHeaderSourceLine">
+                            {mappingProvidersForUi.map((providerCode) => (
+                              <span key={providerCode} className="mm-attrHeaderSourceItem">
+                                {PROVIDER_SLOTS[providerCode]} {Number(attrDetails.providers?.[providerCode]?.count || 0)}
+                              </span>
+                            ))}
+                          </div>
                           {attrDetails.template_id ? (
                             <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
                               Открыть шаблон
@@ -2330,42 +2351,60 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                       ) : null}
 
                       <div className="mm-attrEditorGrid">
-                        <div className="mm-workbench mm-workbenchSidebar">
+                        <div className="mm-templateBoard mm-templateBoardWide">
                           <div className="mm-workbenchHead mm-workbenchHeadCompact">
                             <div>
-                              <div className="mm-workbenchTitle">Источники параметров</div>
-                              <div className="mm-workbenchSub">
-                                {mappingProvidersForUi
-                                  .map((providerCode) => {
-                                    const stats = providerParamStats[providerCode];
-                                    return `${PROVIDER_SLOTS[providerCode]}: ${stats?.visible || 0} из ${stats?.total || 0}${stats?.hiddenUsed ? `, скрыто ${stats.hiddenUsed}` : ""}`;
-                                  })
-                                  .join(" · ")}
-                              </div>
+                              <div className="mm-workbenchTitle">Инфомодель PIM</div>
+                              <div className="mm-workbenchSub">Здесь фиксируется смысл параметра: в какой слой PIM он попадает, с какими полями площадок связан и должен ли участвовать в экспорте.</div>
                             </div>
                           </div>
 
-                          <div className="mm-attrSourceTabs">
-                            <button
-                              type="button"
-                              className={`mm-sourceTab ${attrSourceProvider === "all" ? "active" : ""}`}
-                              onClick={() => setAttrSourceProvider("all")}
-                            >
-                              Все источники
-                            </button>
-                            {mappingProvidersForUi.map((providerCode) => (
+                        <div className="mm-paramPool">
+                          <div className="mm-paramPoolHead">
+                            <div>
+                              <div className="mm-workbenchTitle">Пул параметров источников</div>
+                                  <div className="mm-workbenchSub">
+                                    Выбери источник и перетаскивай нужные поля в строки PIM. Все, что уже сопоставлено, из пула скрывается.
+                                  </div>
+                                </div>
+                            <div className="mm-attrSourceTabs">
                               <button
-                                key={`src-tab-${providerCode}`}
                                 type="button"
-                                className={`mm-sourceTab ${attrSourceProvider === providerCode ? "active" : ""}`}
-                                onClick={() => setAttrSourceProvider(providerCode)}
+                                className={`mm-sourceTab ${attrSourceProvider === "all" ? "active" : ""}`}
+                                onClick={() => setAttrSourceProvider("all")}
                               >
-                                {PROVIDER_SLOTS[providerCode]}
+                                Все источники
                               </button>
-                            ))}
+                              {mappingProvidersForUi.map((providerCode) => (
+                                <button
+                                  key={`src-tab-${providerCode}`}
+                                  type="button"
+                                  className={`mm-sourceTab ${attrSourceProvider === providerCode ? "active" : ""}`}
+                                  onClick={() => setAttrSourceProvider(providerCode)}
+                                >
+                                  {PROVIDER_SLOTS[providerCode]}
+                                </button>
+                              ))}
+                            </div>
                           </div>
 
-                          <div className="mm-attrParams">
+                          {selectedSourceParam ? (
+                            <div className="mm-paramPoolSelection">
+                              <div className="mm-paramPoolSelectionText">
+                                Выбран параметр: <strong>{selectedSourceParam.name}</strong>
+                                <span>{PROVIDER_SLOTS[selectedSourceParam.provider] || selectedSourceParam.provider}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn mm-miniBtn"
+                                onClick={() => setSelectedSourceParam(null)}
+                              >
+                                Снять выбор
+                              </button>
+                            </div>
+                          ) : null}
+
+                          <div className="mm-paramPoolGrid">
                             {sourceProvidersForUi.map((providerCode) => (
                               <div key={providerCode} className="mm-attrParamCol">
                                 <div className="mm-attrParamColHead">
@@ -2388,10 +2427,26 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                                           <button
                                             key={`${providerCode}-${p.id}`}
                                             type="button"
-                                            className={`mm-attrParamItem ${dragParamKey === `${providerCode}:${String(p.id)}` ? "isDragging" : ""}`}
+                                            className={`mm-attrParamItem ${dragParamKey === `${providerCode}:${String(p.id)}` ? "isDragging" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode && selectedSourceParam.id === String(p.id) ? "isSelected" : ""}`}
                                             draggable={attrEditMode}
                                             onDragStart={(e) => onDragParam(providerCode, p, e)}
                                             onDragEnd={onDragEndParam}
+                                            onClick={() => {
+                                              if (!attrEditMode) return;
+                                              const nextId = String(p.id || "");
+                                              setSelectedSourceParam((prev) =>
+                                                prev && prev.provider === providerCode && prev.id === nextId
+                                                  ? null
+                                                  : {
+                                                      provider: providerCode,
+                                                      id: nextId,
+                                                      name: String(p.name || ""),
+                                                      kind: String(p.kind || ""),
+                                                      values: Array.isArray(p.values) ? p.values : [],
+                                                      required: !!p.required,
+                                                    }
+                                              );
+                                            }}
                                             disabled={!attrEditMode}
                                           >
                                             <span className="mm-attrParamTop">
@@ -2413,14 +2468,6 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                           </div>
                         </div>
 
-                        <div className="mm-templateBoard">
-                          <div className="mm-workbenchHead mm-workbenchHeadCompact">
-                            <div>
-                              <div className="mm-workbenchTitle">Инфомодель PIM</div>
-                              <div className="mm-workbenchSub">Здесь фиксируется смысл параметра: в какой слой PIM он попадает, с какими полями площадок связан и должен ли участвовать в экспорте.</div>
-                            </div>
-                          </div>
-
                         <div className="mm-attrToolbar">
                           <div className="mm-attrToolbarMain">
                             <input
@@ -2431,7 +2478,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                             />
                             <div className="mm-attrFilterChips">
                               <button type="button" className={`mm-chipBtn ${attrRowFilter === "attention" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("attention")}>
-                                Требуют внимания
+                                Внимание
                                 <span>{attrRowsStats.attention}</span>
                               </button>
                               <button type="button" className={`mm-chipBtn ${attrRowFilter === "unmapped" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("unmapped")}>
@@ -2472,7 +2519,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
 
                         <div className="mm-attrTableWrap">
                           <div className="mm-attrTable">
-                          <div className="mm-attrTh">Каталог</div>
+                          <div className="mm-attrTh">Параметр PIM</div>
                           {mappingProvidersForUi.map((providerCode) => (
                             <div key={`th-${providerCode}`} className="mm-attrTh">{PROVIDER_SLOTS[providerCode]}</div>
                           ))}
@@ -2528,7 +2575,7 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                                       return (
                                         <div
                                           key={dropKey}
-                                          className={`mm-attrTd mm-dropCell mm-dropCellRich ${dropCellKey === dropKey ? "isDragOver" : ""}`}
+                                          className={`mm-attrTd mm-dropCell mm-dropCellRich ${dropCellKey === dropKey ? "isDragOver" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode ? "isSelectable" : ""}`}
                                           onDragOver={(e) => {
                                             if (dragProvider && dragProvider !== providerCode) {
                                               e.dataTransfer.dropEffect = "none";
@@ -2545,6 +2592,10 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                                           }}
                                           onDragLeave={() => setDropCellKey((prev) => (prev === dropKey ? "" : prev))}
                                           onDrop={(e) => onDropParam(row.id, providerCode, e)}
+                                          onClick={() => {
+                                            if (!attrEditMode || !selectedSourceParam || selectedSourceParam.provider !== providerCode) return;
+                                            applySourceParamToRow(row.id, providerCode, selectedSourceParam);
+                                          }}
                                         >
                                           {providerValue.name ? (
                                             <div className="mm-dropCellContent">
@@ -2564,7 +2615,13 @@ function setAttrProviderValue(rowId: string, provider: string, value: AttrRowPro
                                                 <button className="btn mm-miniBtn" type="button" onClick={() => clearAttrProviderValue(row.id, providerCode)} disabled={!attrEditMode}>Очистить</button>
                                               </div>
                                             </div>
-                                          ) : <span className="muted">Перетащите параметр</span>}
+                                          ) : (
+                                            <span className="muted">
+                                              {selectedSourceParam && selectedSourceParam.provider === providerCode
+                                                ? "Нажмите, чтобы привязать выбранный параметр"
+                                                : "Перетащите параметр или выберите его кликом"}
+                                            </span>
+                                          )}
                                         </div>
                                       );
                                     })}
