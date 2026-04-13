@@ -1329,6 +1329,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const hasChildren = children.length > 0;
     const expanded = qnorm(catalogQuery) ? true : !!treeExpanded[node.id];
     const isSelected = selectedCatalogId === node.id;
+    const providerStates = displayProviders.map((prov) => categoryBindingMeta(node.id, prov.code).state);
+    const mappedProvidersCount = providerStates.filter((state) => state !== "empty").length;
+    const hasWarnProviders = providerStates.includes("aggregated");
     return (
       <div key={node.id}>
         <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
@@ -1360,7 +1363,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               <span className="csb-caretSpacer" aria-hidden="true" />
             )}
             <span className="csb-treeName" title={node.name}>{node.name}</span>
-            <span className="csb-treeCount" />
+            <span className={`csb-treeCount mm-treeMappingCount ${mappedProvidersCount > 0 ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""}`}>
+              {mappedProvidersCount}/{displayProviders.length || 0}
+            </span>
           </div>
         </div>
         {hasChildren && expanded ? children.map((child) => renderCatalogTreeRows(child, level + 1)) : null}
@@ -1384,6 +1389,43 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (direct) return direct;
     const anc = nearestMappedAncestor(nodeId, providerCode);
     return anc ? String(mappings[anc]?.[providerCode] || "").trim() : "";
+  }
+
+  function categoryBindingMeta(nodeId: string, providerCode: string) {
+    const stateInfo = bindingStates?.[nodeId]?.[providerCode];
+    const directId = String(stateInfo?.direct_id || mappings[nodeId]?.[providerCode] || "").trim();
+    const inheritedFrom = String(
+      stateInfo?.inherited_from || (directId ? "" : nearestMappedAncestor(nodeId, providerCode)) || ""
+    ).trim();
+    const childBindings = (
+      stateInfo?.child_bindings?.map((binding) => ({
+        providerCategoryId: String(binding.provider_category_id || "").trim(),
+      })) || (directId ? [] : descendantDirectBindings(nodeId, providerCode))
+    );
+    const effectiveId = String(
+      stateInfo?.effective_id ||
+      directId ||
+      (inheritedFrom ? String(mappings[inheritedFrom]?.[providerCode] || "").trim() : "") ||
+      ""
+    ).trim();
+    const mappedCat = effectiveId ? providerCategoryById[providerCode]?.[effectiveId] : null;
+    const pathInfo = splitPath(mappedCat?.path || mappedCat?.name || "");
+    const aggregatedFromChildren = childBindings.length > 0;
+    const inheritedOnly = !directId && !!inheritedFrom;
+    return {
+      directId,
+      inheritedFrom,
+      aggregatedFromChildren,
+      effectiveId,
+      label: directId
+        ? pathInfo.node || "Выбрано"
+        : aggregatedFromChildren
+          ? `Из дочерних: ${childBindings.length}`
+          : inheritedOnly
+            ? pathInfo.node || "Наследуется"
+            : "Не сопоставлено",
+      state: directId ? "direct" : aggregatedFromChildren ? "aggregated" : inheritedOnly ? "inherited" : "empty",
+    };
   }
 
   function descendantDirectBindings(nodeId: string, providerCode: string): Array<{
@@ -1848,6 +1890,24 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     };
   }, [attrRows, mappingProvidersForUi, groupedAttrRows]);
 
+  const attrCategoryBindings = useMemo(() => {
+    if (!activeAttrCategoryId) return [];
+    return mappingProvidersForUi.map((providerCode) => {
+      const directId = String(mappings[activeAttrCategoryId]?.[providerCode] || "").trim();
+      const inheritedFrom = directId ? "" : nearestMappedAncestor(activeAttrCategoryId, providerCode);
+      const effectiveId = directId || (inheritedFrom ? String(mappings[inheritedFrom]?.[providerCode] || "").trim() : "");
+      const providerCategory = effectiveId ? providerCategoryById[providerCode]?.[effectiveId] || null : null;
+      const providerPath = providerCategory?.path || providerCategory?.name || "";
+      const providerLabel = splitPath(providerPath).node || "Не выбрано";
+      return {
+        providerCode,
+        state: directId ? "direct" : effectiveId ? "inherited" : "empty",
+        label: providerLabel,
+        inheritedFrom: inheritedFrom ? splitPath(pathById.get(inheritedFrom) || inheritedFrom).node : "",
+      };
+    });
+  }, [activeAttrCategoryId, mappingProvidersForUi, mappings, pathById, providerCategoryById]);
+
   function clearAttrDraft() {
     if (!activeAttrCategoryId) return;
     const cache = loadAttrDraftCache();
@@ -1989,6 +2049,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     <div className="mm-paneHead">
                       <div>
                         <div className="mm-paneTitle">{selectedCatalogNode ? selectedCatalogNode.name : "Категория"}</div>
+                        {selectedCatalogNode ? (
+                          <div className="mm-catBindingStrip">
+                            {displayProviders.map((prov) => {
+                              const binding = categoryBindingMeta(selectedCatalogNode.id, prov.code);
+                              return (
+                                <div key={`${selectedCatalogNode.id}-${prov.code}-summary`} className={`mm-catBindingPill is-${binding.state}`}>
+                                  <span className="mm-catBindingProvider">{prov.title}</span>
+                                  <span className="mm-catBindingValue">{binding.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -1999,10 +2072,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             <div className="mm-providerStack">
                               {displayProviders.map((prov) => {
                                 const stateInfo = bindingStates?.[selectedCatalogNode.id]?.[prov.code];
-                                const directId = String(stateInfo?.direct_id || mappings[selectedCatalogNode.id]?.[prov.code] || "").trim();
-                                const inheritedFrom = String(
-                                  stateInfo?.inherited_from || (directId ? "" : nearestMappedAncestor(selectedCatalogNode.id, prov.code)) || ""
-                                ).trim();
+                                const bindingMeta = categoryBindingMeta(selectedCatalogNode.id, prov.code);
+                                const directId = bindingMeta.directId;
+                                const inheritedFrom = bindingMeta.inheritedFrom;
                                 const childBindings = (
                                   stateInfo?.child_bindings?.map((binding) => ({
                                     providerCategoryId: String(binding.provider_category_id || "").trim(),
@@ -2020,16 +2092,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     catalogPaths: binding.catalog_paths || [],
                                   })) || (directId ? [] : descendantDirectBindings(selectedCatalogNode.id, prov.code))
                                 );
-                                const effectiveId = String(
-                                  stateInfo?.effective_id ||
-                                  directId ||
-                                  (inheritedFrom ? String(mappings[inheritedFrom]?.[prov.code] || "").trim() : "") ||
-                                  ""
-                                ).trim();
+                                const effectiveId = bindingMeta.effectiveId;
                                 const canOpen = prov.connected || !!PROVIDER_SLOTS[prov.code];
                                 const canEdit = canOpen && !!directId;
                                 const canDelete = !!directId;
-                                const aggregatedFromChildren = childBindings.length > 0;
+                                const aggregatedFromChildren = bindingMeta.aggregatedFromChildren;
                                 const inheritedOnly = !directId && !aggregatedFromChildren && !!inheritedFrom;
                                 const mainLabel = canEdit ? "Изменить" : inheritedOnly ? "Задать свою" : "Сопоставить";
                                 const mainDisabled = !canOpen;
@@ -2297,6 +2364,24 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             <span>Подтверждено {Number(attrDetails.master_template?.confirmed_count || 0)}</span>
                             <span>Основа {Number(attrDetails.master_template?.base_count || 0)}</span>
                             <span>Категорийные {Number(attrDetails.master_template?.category_count || 0)}</span>
+                          </div>
+                          <div className="mm-attrBindingStrip">
+                            {attrCategoryBindings.map((binding) => (
+                              <div
+                                key={binding.providerCode}
+                                className={`mm-attrBindingPill is-${binding.state}`}
+                                title={
+                                  binding.state === "direct"
+                                    ? `${PROVIDER_SLOTS[binding.providerCode]}: прямая привязка`
+                                    : binding.state === "inherited"
+                                      ? `${PROVIDER_SLOTS[binding.providerCode]}: наследуется от ${binding.inheritedFrom}`
+                                      : `${PROVIDER_SLOTS[binding.providerCode]}: привязка не задана`
+                                }
+                              >
+                                <span className="mm-attrBindingProvider">{PROVIDER_SLOTS[binding.providerCode]}</span>
+                                <span className="mm-attrBindingValue">{binding.label}</span>
+                              </div>
+                            ))}
                           </div>
                         </div>
                         <div className="mm-attrHeaderMeta">

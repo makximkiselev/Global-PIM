@@ -151,6 +151,34 @@ def _pg_connect():
     return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
 
 
+def _reset_pg_connection() -> None:
+    global _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER, _PG_TABLE_READY
+    conn = _PG_CONN
+    _PG_CONN = None
+    _PG_KIND = ""
+    _PG_JSON_ADAPTER = None
+    _PG_TABLE_READY = False
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def _is_retryable_pg_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    markers = (
+        "idle-session timeout",
+        "terminating connection",
+        "server closed the connection unexpectedly",
+        "connection already closed",
+        "broken pipe",
+        "ssl connection has been closed unexpectedly",
+    )
+    return any(marker in message for marker in markers)
+
+
 def _ensure_pg_table(conn: Any) -> None:
     global _PG_TABLE_READY
     if _PG_TABLE_READY:
@@ -348,24 +376,31 @@ def read_doc(path: Path, default: Optional[Any] = None) -> Any:
     cached = _cache_get(key)
     if cached is not None:
         return cached
-    conn, _, _ = _pg_connect()
-    _ensure_pg_table(conn)
-    with conn.cursor() as cur:
-        cur.execute("SELECT payload FROM json_documents WHERE path = %s", (key,))
-        row = cur.fetchone()
-        if not row:
-            return default if default is not None else {}
-        raw = row[0]
-        if isinstance(raw, (dict, list)):
-            return raw
-        if raw is None:
-            return default if default is not None else {}
+    for attempt in range(2):
         try:
-            payload = json.loads(raw) if isinstance(raw, str) else raw
-        except Exception:
-            return default if default is not None else {}
-        _cache_set(key, payload)
-        return deepcopy(payload)
+            conn, _, _ = _pg_connect()
+            _ensure_pg_table(conn)
+            with conn.cursor() as cur:
+                cur.execute("SELECT payload FROM json_documents WHERE path = %s", (key,))
+                row = cur.fetchone()
+                if not row:
+                    return default if default is not None else {}
+                raw = row[0]
+                if isinstance(raw, (dict, list)):
+                    return raw
+                if raw is None:
+                    return default if default is not None else {}
+                try:
+                    payload = json.loads(raw) if isinstance(raw, str) else raw
+                except Exception:
+                    return default if default is not None else {}
+                _cache_set(key, payload)
+                return deepcopy(payload)
+        except Exception as exc:
+            if attempt == 0 and _is_retryable_pg_error(exc):
+                _reset_pg_connection()
+                continue
+            raise
 
 
 def write_doc(path: Path, data: Any) -> None:
@@ -374,31 +409,39 @@ def write_doc(path: Path, data: Any) -> None:
         raise JsonStoreError(f"SQL_ONLY_MODE_PATH_NOT_ALLOWED: {p}")
 
     _assert_postgres_runtime()
-    conn, _, Json = _pg_connect()
-    _ensure_pg_table(conn)
     key = _doc_key_for_path(p)
     _cache_invalidate(key)
-    with conn.cursor() as cur:
-        if Json is not None:
-            cur.execute(
-                """
-                INSERT INTO json_documents (path, payload, updated_at)
-                VALUES (%s, %s, NOW())
-                ON CONFLICT (path)
-                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
-                """,
-                (key, Json(data)),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO json_documents (path, payload, updated_at)
-                VALUES (%s, %s::jsonb, NOW())
-                ON CONFLICT (path)
-                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
-                """,
-                (key, json.dumps(data, ensure_ascii=False)),
-            )
+    for attempt in range(2):
+        try:
+            conn, _, Json = _pg_connect()
+            _ensure_pg_table(conn)
+            with conn.cursor() as cur:
+                if Json is not None:
+                    cur.execute(
+                        """
+                        INSERT INTO json_documents (path, payload, updated_at)
+                        VALUES (%s, %s, NOW())
+                        ON CONFLICT (path)
+                        DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                        """,
+                        (key, Json(data)),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO json_documents (path, payload, updated_at)
+                        VALUES (%s, %s::jsonb, NOW())
+                        ON CONFLICT (path)
+                        DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                        """,
+                        (key, json.dumps(data, ensure_ascii=False)),
+                    )
+            break
+        except Exception as exc:
+            if attempt == 0 and _is_retryable_pg_error(exc):
+                _reset_pg_connection()
+                continue
+            raise
     _cache_set(key, data)
 
 

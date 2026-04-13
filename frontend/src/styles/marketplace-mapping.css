@@ -375,6 +375,66 @@
   gap:8px;
 }
 
+.mm-catBindingStrip{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+}
+
+.mm-catBindingPill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:30px;
+  padding:5px 10px;
+  border-radius:999px;
+  border:1px solid rgba(11,18,32,.10);
+  background:rgba(248,250,252,.92);
+  font-size:12px;
+}
+
+.mm-catBindingPill.is-direct{
+  border-color:rgba(16,185,129,.24);
+  background:rgba(16,185,129,.08);
+}
+
+.mm-catBindingPill.is-inherited{
+  border-color:rgba(255,107,61,.22);
+  background:rgba(255,107,61,.08);
+}
+
+.mm-catBindingPill.is-aggregated{
+  border-color:rgba(59,130,246,.22);
+  background:rgba(59,130,246,.08);
+}
+
+.mm-catBindingProvider{
+  color:var(--muted);
+  font-weight:900;
+}
+
+.mm-catBindingValue{
+  color:var(--text);
+  font-weight:900;
+}
+
+.mm-treeMappingCount{
+  min-width:40px;
+  justify-content:center;
+  font-size:11px;
+  font-weight:900;
+  color:var(--muted);
+}
+
+.mm-treeMappingCount.is-mapped{
+  color:#0f8f56;
+}
+
+.mm-treeMappingCount.is-warn{
+  color:#2563eb;
+}
+
 .mm-emptyWorkspace{
   padding:22px 16px;
   color:var(--muted);
@@ -1113,6 +1173,56 @@
   color:var(--muted);
   font-size:12px;
   font-weight:800;
+}
+
+.mm-attrBindingStrip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:2px;
+}
+
+.mm-attrBindingPill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:32px;
+  padding:5px 10px;
+  border-radius:12px;
+  border:1px solid rgba(11,18,32,.10);
+  background:rgba(248,250,252,.92);
+  font-size:12px;
+}
+
+.mm-attrBindingPill.is-direct{
+  border-color:rgba(16,185,129,.24);
+  background:rgba(16,185,129,.08);
+}
+
+.mm-attrBindingPill.is-inherited{
+  border-color:rgba(255,107,61,.22);
+  background:rgba(255,107,61,.08);
+}
+
+.mm-attrBindingPill.is-aggregated{
+  border-color:rgba(59,130,246,.22);
+  background:rgba(59,130,246,.08);
+}
+
+.mm-attrBindingPill.is-empty{
+  border-color:rgba(11,18,32,.10);
+  background:rgba(248,250,252,.92);
+}
+
+.mm-attrBindingProvider{
+  color:var(--muted);
+  font-weight:900;
+}
+
+.mm-attrBindingValue{
+  color:var(--text);
+  font-weight:900;
 }
 
 .mm-attrSummaryGrid{
