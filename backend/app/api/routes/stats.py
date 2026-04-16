@@ -7,7 +7,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 from app.core.json_store import read_doc
-from app.storage.relational_pim_store import load_catalog_nodes
+from app.storage.relational_pim_store import load_catalog_nodes, load_products_count
+from app.storage.json_store import load_templates_db
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -28,6 +29,8 @@ _SUMMARY_REFRESH_LOCK = threading.Lock()
 def _read_json(path: Path, default: Any) -> Any:
     if path == CATALOG_PATH:
         return load_catalog_nodes()
+    if path == TEMPLATES_PATH:
+        return load_templates_db()
     return read_doc(path, default=default)
 
 
@@ -41,12 +44,11 @@ def _is_competitor_configured(row: Dict[str, Any]) -> bool:
 
 def _build_stats_summary() -> Dict[str, Any]:
     nodes = _read_json(CATALOG_PATH, default=[])
-    products_doc = _read_json(PRODUCTS_PATH, default={"items": []})
     templates_doc = _read_json(TEMPLATES_PATH, default={"templates": {}})
     competitors_doc = _read_json(COMPETITOR_MAPPING_PATH, default={"templates": {}})
 
     categories_count = len(nodes) if isinstance(nodes, list) else 0
-    products_count = len(products_doc.get("items") or [])
+    products_count = load_products_count()
     templates_count = len(templates_doc.get("templates") or {})
 
     comp_rows = competitors_doc.get("templates") or {}

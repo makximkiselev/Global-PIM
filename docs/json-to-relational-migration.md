@@ -102,11 +102,15 @@ Hot paths, уже переведенные на новый слой:
 - `templates` product readers
 - `yandex_market`
 - `ozon_market`
+- registry projection:
+  - `catalog_product_registry_rel`
+  - `category_product_counts_rel`
+- `stats` summary теперь считает товары из реляционного product store, не из JSON blob
 
 ### Phase 5
 
 Перенести:
-- product registry read-model и вспомогательные summary tables
+- остаточные product summary/read models для тяжелых экранов
 - остаточные вспомогательные JSON-backed слои
 - убрать dual-write для уже вынесенных сущностей
 

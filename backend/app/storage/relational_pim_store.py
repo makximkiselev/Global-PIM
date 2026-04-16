@@ -341,6 +341,42 @@ def _ensure_tables() -> None:
                   ON products_rel(group_id)
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS catalog_product_registry_rel (
+                  id TEXT PRIMARY KEY,
+                  title TEXT NOT NULL,
+                  category_id TEXT NOT NULL,
+                  sku_pim TEXT NULL,
+                  sku_gt TEXT NULL,
+                  group_id TEXT NULL,
+                  preview_url TEXT NULL,
+                  exports_enabled_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  updated_at TEXT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_registry_rel_category
+                  ON catalog_product_registry_rel(category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_registry_rel_sku_gt
+                  ON catalog_product_registry_rel(sku_gt)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS category_product_counts_rel (
+                  category_id TEXT PRIMARY KEY,
+                  products_count INTEGER NOT NULL DEFAULT 0,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
 
     _with_pg_retry(_run)
 
@@ -1748,11 +1784,25 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
     normalized = _normalize_products_doc(doc)
     items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
     rows: List[tuple[Any, ...]] = []
+    registry_rows: List[tuple[Any, ...]] = []
+    counts: Dict[str, int] = {}
     for item in items:
+        category_id = str(item.get("category_id") or "").strip()
+        content = item.get("content") if isinstance(item.get("content"), dict) else {}
+        media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
+        media_pool = media_images if media_images else media_legacy
+        preview_url = ""
+        for media in media_pool:
+            if isinstance(media, dict) and str(media.get("url") or "").strip():
+                preview_url = str(media.get("url") or "").strip()
+                break
+        if category_id:
+            counts[category_id] = int(counts.get(category_id, 0)) + 1
         rows.append(
             (
                 str(item.get("id") or "").strip(),
-                str(item.get("category_id") or "").strip(),
+                category_id,
                 str(item.get("type") or "single").strip() or "single",
                 str(item.get("status") or "draft").strip() or "draft",
                 str(item.get("title") or "").strip(),
@@ -1768,11 +1818,26 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
                 str(item.get("updated_at") or "").strip() or None,
             )
         )
+        registry_rows.append(
+            (
+                str(item.get("id") or "").strip(),
+                str(item.get("title") or "").strip(),
+                category_id,
+                str(item.get("sku_pim") or "").strip() or None,
+                str(item.get("sku_gt") or "").strip() or None,
+                str(item.get("group_id") or "").strip() or None,
+                preview_url or None,
+                json.dumps(item.get("exports_enabled") if isinstance(item.get("exports_enabled"), dict) else {}),
+                str(item.get("updated_at") or "").strip() or None,
+            )
+        )
 
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
             cur.execute("DELETE FROM products_rel")
+            cur.execute("DELETE FROM catalog_product_registry_rel")
+            cur.execute("DELETE FROM category_product_counts_rel")
             if rows:
                 cur.executemany(
                     """
@@ -1787,6 +1852,28 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
                     )
                     """,
                     rows,
+                )
+            if registry_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO catalog_product_registry_rel (
+                      id, title, category_id, sku_pim, sku_gt, group_id, preview_url,
+                      exports_enabled_json, updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s
+                    )
+                    """,
+                    registry_rows,
+                )
+            if counts:
+                cur.executemany(
+                    """
+                    INSERT INTO category_product_counts_rel (
+                      category_id, products_count, updated_at
+                    ) VALUES (%s, %s, NOW())
+                    """,
+                    [(cid, count) for cid, count in counts.items()],
                 )
 
     _with_pg_retry(_run)
@@ -1885,32 +1972,66 @@ def save_products_doc(doc: Dict[str, Any]) -> None:
 
 
 def load_catalog_product_items() -> List[Dict[str, Any]]:
-    doc = load_products_doc()
-    items = doc.get("items") if isinstance(doc.get("items"), list) else []
-    out: List[Dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        content = item.get("content") if isinstance(item.get("content"), dict) else {}
-        media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
-        media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
-        media_pool = media_images if media_images else media_legacy
-        preview_url = ""
-        for media in media_pool:
-            if isinstance(media, dict) and str(media.get("url") or "").strip():
-                preview_url = str(media.get("url") or "").strip()
-                break
-        out.append(
-            {
-                "id": str(item.get("id") or "").strip(),
-                "name": str(item.get("title") or item.get("name") or "").strip(),
-                "title": str(item.get("title") or item.get("name") or "").strip(),
-                "category_id": str(item.get("category_id") or "").strip(),
-                "sku_pim": str(item.get("sku_pim") or "").strip(),
-                "sku_gt": str(item.get("sku_gt") or "").strip(),
-                "group_id": str(item.get("group_id") or "").strip(),
-                "preview_url": preview_url,
-                "exports_enabled": item.get("exports_enabled") if isinstance(item.get("exports_enabled"), dict) else {},
-            }
-        )
-    return out
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json
+                FROM catalog_product_registry_rel
+                ORDER BY title, id
+                """
+            )
+            rows = cur.fetchall() or []
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            exports_enabled = row[7] if isinstance(row[7], dict) else {}
+            out.append(
+                {
+                    "id": str(row[0] or "").strip(),
+                    "name": str(row[1] or "").strip(),
+                    "title": str(row[1] or "").strip(),
+                    "category_id": str(row[2] or "").strip(),
+                    "sku_pim": str(row[3] or "").strip(),
+                    "sku_gt": str(row[4] or "").strip(),
+                    "group_id": str(row[5] or "").strip(),
+                    "preview_url": str(row[6] or "").strip(),
+                    "exports_enabled": exports_enabled if isinstance(exports_enabled, dict) else {},
+                }
+            )
+        return out
+
+    return _with_pg_retry(_run)
+
+
+def load_category_product_counts() -> Dict[str, int]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+
+    def _run() -> Dict[str, int]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT category_id, products_count
+                FROM category_product_counts_rel
+                ORDER BY category_id
+                """
+            )
+            rows = cur.fetchall() or []
+        return {
+            str(row[0] or "").strip(): int(row[1] or 0)
+            for row in rows
+            if str(row[0] or "").strip()
+        }
+
+    return _with_pg_retry(_run)
+
+
+def load_products_count() -> int:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    return _table_count("products_rel")

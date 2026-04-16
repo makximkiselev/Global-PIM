@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
 from app.storage.json_store import load_templates_db, save_templates_db, load_products_db, save_products_db
-from app.storage.relational_pim_store import load_catalog_nodes, save_catalog_nodes, load_catalog_product_items
+from app.storage.relational_pim_store import (
+    load_catalog_nodes,
+    save_catalog_nodes,
+    load_catalog_product_items,
+    load_category_product_counts,
+)
 from app.core.json_store import read_doc, write_doc
 from app.core.products.service import (
     create_product_service,
@@ -740,14 +745,7 @@ def list_products(category_id: Optional[str] = None, include_descendants: bool =
 
 @router.get("/catalog/products/counts")
 def catalog_product_counts():
-    products = _load_full_products()
-    counts: Dict[str, int] = {}
-    for product in products:
-        category_id = str(product.get("category_id") or "").strip()
-        if not category_id:
-            continue
-        counts[category_id] = counts.get(category_id, 0) + 1
-    return {"counts": counts}
+    return {"counts": load_category_product_counts()}
 
 
 @router.get("/catalog/products-page-data")
