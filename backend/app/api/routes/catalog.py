@@ -14,6 +14,7 @@ from app.storage.relational_pim_store import (
     load_catalog_nodes,
     save_catalog_nodes,
     load_catalog_product_items,
+    query_catalog_product_items,
     load_category_product_counts,
     save_category_template_resolution,
     load_category_template_resolution_map,
@@ -773,35 +774,27 @@ def search_products(
     requested_ids = {str(x or "").strip() for x in (ids or "").split(",") if str(x or "").strip()}
     requested_category_ids = {str(x or "").strip() for x in (category_ids or "").split(",") if str(x or "").strip()}
 
-    products = _load_products()
+    category_scope: Set[str] = set()
     if requested_category_ids:
-        category_scope: Set[str] = set()
         if include_descendants:
             nodes = _load_nodes()
             for category_id in requested_category_ids:
                 category_scope |= _collect_subtree_ids(nodes, category_id)
         else:
             category_scope = requested_category_ids
-        products = [p for p in products if str(p.get("category_id") or "").strip() in category_scope]
+    products = query_catalog_product_items(
+        ids=sorted(requested_ids) if requested_ids else None,
+        category_ids=sorted(category_scope) if category_scope else None,
+        q=query,
+        limit=limit,
+    )
 
     items = []
     for p in products:
         product_id = str(p.get("id") or "").strip()
-        title = str(p.get("title") or p.get("name") or "")
         if requested_ids and product_id not in requested_ids:
             continue
-        if query:
-            sku_pim = str(p.get("sku_pim") or "")
-            sku_gt = str(p.get("sku_gt") or "")
-            haystack = [
-                title.lower(),
-                sku_pim.lower(),
-                sku_gt.lower(),
-                product_id.lower(),
-            ]
-            if not any(query in x for x in haystack):
-                continue
-        elif not requested_ids and not requested_category_ids:
+        if not query and not requested_ids and not requested_category_ids:
             continue
 
         items.append(dict(p))
@@ -817,20 +810,15 @@ def search_products(
 
 @router.get("/catalog/products")
 def list_products(category_id: Optional[str] = None, include_descendants: bool = True):
-    products = _load_products()
+    category_scope: Optional[Set[str]] = None
     if category_id:
         if include_descendants:
             nodes = _load_nodes()
-            subtree_ids = _collect_subtree_ids(nodes, category_id)
-            products = [p for p in products if p.get("category_id") in subtree_ids]
+            category_scope = _collect_subtree_ids(nodes, category_id)
         else:
-            products = [p for p in products if p.get("category_id") == category_id]
-
-    products.sort(
-        key=lambda p: (
-            _gt_sort_key(p.get("sku_gt")),
-            str(p.get("title") or p.get("name") or "").lower(),
-        )
+            category_scope = {category_id}
+    products = query_catalog_product_items(
+        category_ids=sorted(category_scope) if category_scope else None,
     )
     return {"items": products}
 

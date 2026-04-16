@@ -400,6 +400,19 @@ def _ensure_tables() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dashboard_stats_rel (
+                  summary_key TEXT PRIMARY KEY,
+                  categories_count INTEGER NOT NULL DEFAULT 0,
+                  products_count INTEGER NOT NULL DEFAULT 0,
+                  templates_count INTEGER NOT NULL DEFAULT 0,
+                  connectors_configured INTEGER NOT NULL DEFAULT 0,
+                  connectors_total INTEGER NOT NULL DEFAULT 0,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
 
     _with_pg_retry(_run)
 
@@ -695,7 +708,6 @@ def load_catalog_nodes() -> List[Dict[str, Any]]:
 def save_catalog_nodes(nodes: List[Dict[str, Any]]) -> None:
     _ensure_tables()
     _replace_catalog_nodes_table(nodes)
-    write_doc(CATALOG_NODES_PATH, nodes)
 
 
 def load_category_mappings() -> Dict[str, Dict[str, str]]:
@@ -729,7 +741,6 @@ def load_category_mappings() -> Dict[str, Dict[str, str]]:
 def save_category_mappings(items: Dict[str, Dict[str, str]]) -> None:
     _ensure_tables()
     _replace_category_mappings_table(items)
-    write_doc(CATEGORY_MAPPINGS_PATH, {"version": 1, "items": items})
 
 
 def load_attribute_mapping_doc() -> Dict[str, Any]:
@@ -811,7 +822,6 @@ def save_attribute_mapping_doc(doc: Dict[str, Any]) -> None:
     if not isinstance(doc, dict):
         doc = {"version": 1, "items": {}}
     _replace_attribute_mappings_table(doc)
-    write_doc(ATTRIBUTE_MAPPINGS_PATH, doc)
 
 
 def load_attribute_value_refs_doc() -> Dict[str, Any]:
@@ -941,7 +951,6 @@ def save_attribute_value_refs_doc(doc: Dict[str, Any]) -> None:
     if not isinstance(doc, dict):
         doc = {"version": 2, "updated_at": None, "items": {}}
     _replace_attribute_value_refs_table(doc)
-    write_doc(ATTRIBUTE_VALUE_DICTIONARY_PATH, doc)
 
 
 def _slugify_code(value: str) -> str:
@@ -1449,7 +1458,6 @@ def save_dictionaries_db_doc(doc: Dict[str, Any]) -> None:
     _ensure_tables()
     normalized = _normalize_dictionary_doc(doc)
     _replace_dictionaries_tables(normalized)
-    write_doc(DICTIONARIES_PATH, normalized)
 
 
 def _dedupe_list_str(items: Any) -> List[str]:
@@ -1920,7 +1928,6 @@ def save_templates_db_doc(doc: Dict[str, Any]) -> None:
     _ensure_tables()
     normalized = _normalize_templates_doc(doc)
     _replace_templates_tables(normalized)
-    write_doc(TEMPLATES_PATH, normalized)
 
 
 def load_products_doc() -> Dict[str, Any]:
@@ -2007,6 +2014,68 @@ def load_catalog_product_items() -> List[Dict[str, Any]]:
                 ORDER BY title, id
                 """
             )
+            rows = cur.fetchall() or []
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            exports_enabled = row[7] if isinstance(row[7], dict) else {}
+            out.append(
+                {
+                    "id": str(row[0] or "").strip(),
+                    "name": str(row[1] or "").strip(),
+                    "title": str(row[1] or "").strip(),
+                    "category_id": str(row[2] or "").strip(),
+                    "sku_pim": str(row[3] or "").strip(),
+                    "sku_gt": str(row[4] or "").strip(),
+                    "group_id": str(row[5] or "").strip(),
+                    "preview_url": str(row[6] or "").strip(),
+                    "exports_enabled": exports_enabled if isinstance(exports_enabled, dict) else {},
+                }
+            )
+        return out
+
+    return _with_pg_retry(_run)
+
+
+def query_catalog_product_items(
+    *,
+    ids: List[str] | None = None,
+    category_ids: List[str] | None = None,
+    q: str = "",
+    limit: int | None = None,
+) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    safe_ids = [str(x or "").strip() for x in (ids or []) if str(x or "").strip()]
+    safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
+    query = str(q or "").strip().lower()
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        sql = """
+            SELECT id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json
+            FROM catalog_product_registry_rel
+        """
+        clauses: List[str] = []
+        params: List[Any] = []
+        if safe_ids:
+            clauses.append("id = ANY(%s)")
+            params.append(safe_ids)
+        if safe_category_ids:
+            clauses.append("category_id = ANY(%s)")
+            params.append(safe_category_ids)
+        if query:
+            clauses.append(
+                "(LOWER(title) LIKE %s OR LOWER(COALESCE(sku_pim, '')) LIKE %s OR LOWER(COALESCE(sku_gt, '')) LIKE %s OR LOWER(id) LIKE %s)"
+            )
+            like = f"%{query}%"
+            params.extend([like, like, like, like])
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN 0 ELSE 1 END, CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN LPAD(sku_gt, 32, '0') ELSE LOWER(COALESCE(sku_gt, '')) END, LOWER(title), id"
+        if isinstance(limit, int) and limit > 0:
+            sql += " LIMIT %s"
+            params.append(int(limit))
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
             rows = cur.fetchall() or []
         out: List[Dict[str, Any]] = []
         for row in rows:
@@ -2183,5 +2252,69 @@ def load_product_marketplace_status_map() -> Dict[str, Dict[str, Dict[str, Any]]
                 },
             }
         return out
+
+    return _with_pg_retry(_run)
+
+
+def save_dashboard_stats_summary(payload: Dict[str, Any]) -> None:
+    _ensure_tables()
+    row = (
+        "main",
+        int(payload.get("categories") or 0),
+        int(payload.get("products") or 0),
+        int(payload.get("templates") or 0),
+        int(payload.get("connectors_configured") or 0),
+        int(payload.get("connectors_total") or 0),
+    )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO dashboard_stats_rel (
+                  summary_key, categories_count, products_count, templates_count,
+                  connectors_configured, connectors_total, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (summary_key) DO UPDATE SET
+                  categories_count = EXCLUDED.categories_count,
+                  products_count = EXCLUDED.products_count,
+                  templates_count = EXCLUDED.templates_count,
+                  connectors_configured = EXCLUDED.connectors_configured,
+                  connectors_total = EXCLUDED.connectors_total,
+                  updated_at = NOW()
+                """,
+                row,
+            )
+
+    _with_pg_retry(_run)
+
+
+def load_dashboard_stats_summary() -> Dict[str, Any]:
+    _ensure_tables()
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT categories_count, products_count, templates_count,
+                       connectors_configured, connectors_total, updated_at
+                FROM dashboard_stats_rel
+                WHERE summary_key = 'main'
+                """
+            )
+            row = cur.fetchone()
+        if not row:
+            return {}
+        return {
+            "ok": True,
+            "categories": int(row[0] or 0),
+            "products": int(row[1] or 0),
+            "templates": int(row[2] or 0),
+            "connectors_configured": int(row[3] or 0),
+            "connectors_total": int(row[4] or 0),
+            "updated_at": row[5].isoformat() if row[5] else None,
+        }
 
     return _with_pg_retry(_run)

@@ -110,6 +110,9 @@ Hot paths, уже переведенные на новый слой:
   - `product_marketplace_status_rel`
 - `stats` summary теперь считает товары из реляционного product store, не из JSON blob
 - `catalog/products-page-data` больше не должен читать полный product blob для шаблонов и marketplace статусов
+- `catalog/products` и `catalog/products/search` идут через SQL query path по `catalog_product_registry_rel`
+- `stats/summary` теперь может подниматься из persisted summary table:
+  - `dashboard_stats_rel`
 
 ### Phase 5
 
@@ -123,6 +126,17 @@ Hot paths, уже переведенные на новый слой:
 - `products.json` больше не является write target для runtime updates;
 - `sku_gt_index.json`, `sku_pim_index.json`, `product_category_index.json`, `catalog_products.json`
   больше не являются source of truth и не обновляются как рабочий слой.
+
+Уже убрано для ранее вынесенных storage-сущностей:
+
+- `catalog_nodes.json`
+- `marketplaces/category_mapping.json`
+- `marketplaces/attribute_master_mapping.json`
+- `marketplaces/attribute_value_dictionary.json`
+- `dictionaries.json`
+- `templates.json`
+
+они больше не являются write target для runtime updates.
 
 ## Exit criteria
 

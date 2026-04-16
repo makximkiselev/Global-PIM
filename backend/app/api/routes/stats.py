@@ -7,7 +7,12 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 from app.core.json_store import read_doc
-from app.storage.relational_pim_store import load_catalog_nodes, load_products_count
+from app.storage.relational_pim_store import (
+    load_catalog_nodes,
+    load_products_count,
+    load_dashboard_stats_summary,
+    save_dashboard_stats_summary,
+)
 from app.storage.json_store import load_templates_db
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -70,6 +75,7 @@ def _build_stats_summary() -> Dict[str, Any]:
 
 
 def _store_stats_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
+    save_dashboard_stats_summary(payload)
     with _SUMMARY_CACHE_LOCK:
         _SUMMARY_CACHE["payload"] = payload
         _SUMMARY_CACHE["expires_at"] = time.monotonic() + _SUMMARY_CACHE_TTL_SECONDS
@@ -103,6 +109,11 @@ def get_stats_summary_cached() -> Dict[str, Any]:
     if payload:
         _refresh_stats_summary_in_background()
         return payload
+    persisted = load_dashboard_stats_summary()
+    if persisted:
+        _store_stats_summary(persisted)
+        _refresh_stats_summary_in_background()
+        return persisted
     return warm_stats_summary()
 
 
