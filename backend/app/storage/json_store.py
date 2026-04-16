@@ -9,6 +9,8 @@ from app.core.json_store import read_doc as core_read_json, write_doc as core_wr
 from app.storage.relational_pim_store import (
     load_dictionaries_db_doc as load_dictionaries_db_rel,
     save_dictionaries_db_doc as save_dictionaries_db_rel,
+    load_templates_db_doc as load_templates_db_rel,
+    save_templates_db_doc as save_templates_db_rel,
 )
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]  # backend/
@@ -150,18 +152,12 @@ def _migrate_templates_db(db: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_templates_db() -> Dict[str, Any]:
-    db = _read_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
-    db = _migrate_templates_db(db)
-
-    for k, v in DEFAULT_TEMPLATES.items():
-        if k not in db or not isinstance(db[k], type(v)):
-            db[k] = _clone_default({k: v})[k]
-    return db
+    return _migrate_templates_db(load_templates_db_rel())
 
 
 def save_templates_db(db: Dict[str, Any]) -> None:
     db = _migrate_templates_db(db)
-    _write_json_atomic(TEMPLATES_FILE, db)
+    save_templates_db_rel(db)
 
 
 def new_id() -> str:

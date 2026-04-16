@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -19,6 +20,7 @@ ATTRIBUTE_MAPPINGS_PATH = DATA_DIR / "marketplaces" / "attribute_master_mapping.
 ATTRIBUTE_VALUE_DICTIONARY_PATH = DATA_DIR / "marketplaces" / "attribute_value_dictionary.json"
 DICTIONARIES_PATH = DATA_DIR / "dictionaries.json"
 DICTS_DIR = DATA_DIR / "dicts"
+TEMPLATES_PATH = DATA_DIR / "templates.json"
 
 
 def _with_pg_retry(fn):
@@ -234,6 +236,63 @@ def _ensure_tables() -> None:
                   provider_value TEXT NOT NULL,
                   PRIMARY KEY (dict_id, provider, canonical_key)
                 )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS templates_rel (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  category_id TEXT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_templates_rel_category
+                  ON templates_rel(category_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS template_attributes_rel (
+                  template_id TEXT NOT NULL,
+                  attr_id TEXT NOT NULL,
+                  name TEXT NOT NULL,
+                  code TEXT NOT NULL,
+                  attr_type TEXT NOT NULL,
+                  is_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  scope TEXT NOT NULL DEFAULT 'common',
+                  attribute_id TEXT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+                  options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  PRIMARY KEY (template_id, attr_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_template_attributes_rel_template_position
+                  ON template_attributes_rel(template_id, position, code)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS category_template_links_rel (
+                  category_id TEXT NOT NULL,
+                  template_id TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (category_id, template_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_category_template_links_rel_category_position
+                  ON category_template_links_rel(category_id, position)
                 """
             )
 
@@ -1286,3 +1345,304 @@ def save_dictionaries_db_doc(doc: Dict[str, Any]) -> None:
     normalized = _normalize_dictionary_doc(doc)
     _replace_dictionaries_tables(normalized)
     write_doc(DICTIONARIES_PATH, normalized)
+
+
+def _dedupe_list_str(items: Any) -> List[str]:
+    if not isinstance(items, list):
+        return []
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _normalize_templates_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(doc, dict):
+        doc = {"version": 2, "templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
+    templates = doc.get("templates") if isinstance(doc.get("templates"), dict) else {}
+    attributes = doc.get("attributes") if isinstance(doc.get("attributes"), dict) else {}
+    category_to_template = doc.get("category_to_template") if isinstance(doc.get("category_to_template"), dict) else {}
+    category_to_templates = doc.get("category_to_templates") if isinstance(doc.get("category_to_templates"), dict) else {}
+
+    normalized_templates: Dict[str, Dict[str, Any]] = {}
+    for key, value in templates.items():
+        if not isinstance(value, dict):
+            continue
+        tid = str(value.get("id") or key).strip()
+        if not tid:
+            continue
+        normalized_templates[tid] = {
+            **value,
+            "id": tid,
+            "name": str(value.get("name") or tid).strip() or tid,
+            "category_id": str(value.get("category_id") or "").strip() or None,
+            "created_at": value.get("created_at") or "",
+            "updated_at": value.get("updated_at") or "",
+        }
+
+    normalized_attributes: Dict[str, List[Dict[str, Any]]] = {}
+    for key, value in attributes.items():
+        tid = str(key).strip()
+        if not tid:
+            continue
+        rows = value if isinstance(value, list) else []
+        next_rows: List[Dict[str, Any]] = []
+        for idx, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            next_rows.append(
+                {
+                    **row,
+                    "id": str(row.get("id") or "").strip() or f"{tid}:{idx}",
+                    "name": str(row.get("name") or row.get("code") or "").strip(),
+                    "code": str(row.get("code") or "").strip(),
+                    "type": str(row.get("type") or "text").strip() or "text",
+                    "required": bool(row.get("required") or False),
+                    "scope": str(row.get("scope") or "common").strip() or "common",
+                    "attribute_id": str(row.get("attribute_id") or "").strip() or None,
+                    "position": int(row.get("position") or idx),
+                    "locked": bool(row.get("locked") or False),
+                    "options": row.get("options") if isinstance(row.get("options"), dict) else {},
+                }
+            )
+        normalized_attributes[tid] = next_rows
+
+    normalized_cat_to_tpls: Dict[str, List[str]] = {}
+    for cid, tids in category_to_templates.items():
+        cid_s = str(cid).strip()
+        if not cid_s:
+            continue
+        normalized_cat_to_tpls[cid_s] = _dedupe_list_str(tids)
+    for cid, tid in category_to_template.items():
+        cid_s = str(cid).strip()
+        tid_s = str(tid).strip()
+        if not cid_s or not tid_s:
+            continue
+        normalized_cat_to_tpls.setdefault(cid_s, [])
+        if tid_s not in normalized_cat_to_tpls[cid_s]:
+            normalized_cat_to_tpls[cid_s].insert(0, tid_s)
+
+    normalized_cat_to_tpl: Dict[str, str] = {}
+    for cid, tids in normalized_cat_to_tpls.items():
+        if tids:
+            normalized_cat_to_tpl[cid] = tids[0]
+
+    return {
+        "version": 2,
+        "templates": normalized_templates,
+        "attributes": normalized_attributes,
+        "category_to_template": normalized_cat_to_tpl,
+        "category_to_templates": normalized_cat_to_tpls,
+    }
+
+
+def _replace_templates_tables(doc: Dict[str, Any]) -> None:
+    normalized = _normalize_templates_doc(doc)
+    templates = normalized.get("templates") if isinstance(normalized.get("templates"), dict) else {}
+    attributes = normalized.get("attributes") if isinstance(normalized.get("attributes"), dict) else {}
+    category_to_templates = normalized.get("category_to_templates") if isinstance(normalized.get("category_to_templates"), dict) else {}
+
+    template_rows: List[tuple[Any, ...]] = []
+    attr_rows: List[tuple[Any, ...]] = []
+    link_rows: List[tuple[Any, ...]] = []
+
+    for tid, template in templates.items():
+        if not isinstance(template, dict):
+            continue
+        template_rows.append(
+            (
+                str(tid).strip(),
+                str(template.get("name") or tid).strip() or str(tid).strip(),
+                str(template.get("category_id") or "").strip() or None,
+                str(template.get("created_at") or "") or None,
+                str(template.get("updated_at") or "") or None,
+            )
+        )
+
+    for tid, rows in attributes.items():
+        tid_s = str(tid).strip()
+        if not tid_s or not isinstance(rows, list):
+            continue
+        for idx, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            attr_rows.append(
+                (
+                    tid_s,
+                    str(row.get("id") or "").strip() or f"{tid_s}:{idx}",
+                    str(row.get("name") or row.get("code") or "").strip(),
+                    str(row.get("code") or "").strip(),
+                    str(row.get("type") or "text").strip() or "text",
+                    bool(row.get("required") or False),
+                    str(row.get("scope") or "common").strip() or "common",
+                    str(row.get("attribute_id") or "").strip() or None,
+                    int(row.get("position") or idx),
+                    bool(row.get("locked") or False),
+                    json.dumps(row.get("options") if isinstance(row.get("options"), dict) else {}, ensure_ascii=False),
+                )
+            )
+
+    for cid, tids in category_to_templates.items():
+        cid_s = str(cid).strip()
+        if not cid_s or not isinstance(tids, list):
+            continue
+        for position, tid in enumerate(tids):
+            tid_s = str(tid).strip()
+            if cid_s and tid_s:
+                link_rows.append((cid_s, tid_s, int(position)))
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM category_template_links_rel")
+            cur.execute("DELETE FROM template_attributes_rel")
+            cur.execute("DELETE FROM templates_rel")
+            if template_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO templates_rel (
+                      id, name, category_id, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    template_rows,
+                )
+            if attr_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO template_attributes_rel (
+                      template_id, attr_id, name, code, attr_type, is_required,
+                      scope, attribute_id, position, is_locked, options_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    attr_rows,
+                )
+            if link_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO category_template_links_rel (
+                      category_id, template_id, position
+                    ) VALUES (%s, %s, %s)
+                    """,
+                    link_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_templates_from_legacy() -> None:
+    lock = with_lock("templates_rel_bootstrap")
+    lock.acquire()
+    try:
+        if _table_count("templates_rel") > 0:
+            return
+        doc = read_doc(TEMPLATES_PATH, default={"version": 2, "templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}})
+        _replace_templates_tables(doc if isinstance(doc, dict) else {})
+    finally:
+        lock.release()
+
+
+def load_templates_db_doc() -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_templates_from_legacy()
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, category_id, created_at, updated_at
+                FROM templates_rel
+                ORDER BY id
+                """
+            )
+            template_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT template_id, attr_id, name, code, attr_type, is_required,
+                       scope, attribute_id, position, is_locked, options_json
+                FROM template_attributes_rel
+                ORDER BY template_id, position, code
+                """
+            )
+            attr_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT category_id, template_id, position
+                FROM category_template_links_rel
+                ORDER BY category_id, position, template_id
+                """
+            )
+            link_rows = cur.fetchall() or []
+
+        templates: Dict[str, Dict[str, Any]] = {}
+        for row in template_rows:
+            tid = str(row[0] or "").strip()
+            if not tid:
+                continue
+            templates[tid] = {
+                "id": tid,
+                "name": str(row[1] or tid).strip() or tid,
+                "category_id": str(row[2] or "").strip() or None,
+                "created_at": str(row[3] or "") or "",
+                "updated_at": str(row[4] or "") or "",
+            }
+
+        attributes: Dict[str, List[Dict[str, Any]]] = {}
+        for row in attr_rows:
+            tid = str(row[0] or "").strip()
+            if not tid:
+                continue
+            options = row[10] if isinstance(row[10], dict) else {}
+            if not isinstance(options, dict):
+                try:
+                    options = json.loads(str(row[10] or "{}"))
+                except Exception:
+                    options = {}
+            attributes.setdefault(tid, []).append(
+                {
+                    "id": str(row[1] or "").strip(),
+                    "name": str(row[2] or "").strip(),
+                    "code": str(row[3] or "").strip(),
+                    "type": str(row[4] or "text").strip() or "text",
+                    "required": bool(row[5] or False),
+                    "scope": str(row[6] or "common").strip() or "common",
+                    "attribute_id": str(row[7] or "").strip() or None,
+                    "position": int(row[8] or 0),
+                    "locked": bool(row[9] or False),
+                    "options": options if isinstance(options, dict) else {},
+                }
+            )
+
+        category_to_templates: Dict[str, List[str]] = {}
+        for row in link_rows:
+            cid = str(row[0] or "").strip()
+            tid = str(row[1] or "").strip()
+            if cid and tid:
+                category_to_templates.setdefault(cid, []).append(tid)
+
+        category_to_template: Dict[str, str] = {}
+        for cid, tids in category_to_templates.items():
+            if tids:
+                category_to_template[cid] = tids[0]
+
+        return {
+            "version": 2,
+            "templates": templates,
+            "attributes": attributes,
+            "category_to_template": category_to_template,
+            "category_to_templates": category_to_templates,
+        }
+
+    return _normalize_templates_doc(_with_pg_retry(_run))
+
+
+def save_templates_db_doc(doc: Dict[str, Any]) -> None:
+    _ensure_tables()
+    normalized = _normalize_templates_doc(doc)
+    _replace_templates_tables(normalized)
+    write_doc(TEMPLATES_PATH, normalized)

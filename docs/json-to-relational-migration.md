@@ -67,19 +67,32 @@
 
 ### Phase 3
 
+Перенесено:
+
+- `templates` -> реляционный слой:
+  - `templates_rel`
+  - `template_attributes_rel`
+  - `category_template_links_rel`
+
+Runtime strategy та же:
+
+- чтение идет из таблиц;
+- запись идет в таблицы;
+- legacy `templates.json` сохраняется как dual-write compatibility layer.
+
+### Phase 4
+
 Перенести:
 
 - `products`
 - product indexes
 - catalog product registry read-model
 
-### Phase 4
+### Phase 5
 
 Перенести:
-
-- `templates`
-- template attributes
-- category-to-template links
+- остаточные вспомогательные JSON-backed слои
+- убрать dual-write для уже вынесенных сущностей
 
 ## Exit criteria
 
