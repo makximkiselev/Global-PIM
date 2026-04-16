@@ -1,0 +1,15 @@
+[Unit]
+Description=Global PIM Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/projects/global-pim/backend
+EnvironmentFile=/opt/projects/global-pim/backend/.env
+ExecStart=/opt/projects/global-pim/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 18010 --workers 4
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

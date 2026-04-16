@@ -21,6 +21,31 @@
 - Local machine has DB CA cert at:
   - `$HOME/Downloads/ca.crt`
 
+## Required backend runtime
+
+`global-pim.service` must run `uvicorn` with multiple workers.
+
+Required `ExecStart`:
+
+```text
+ExecStart=/opt/projects/global-pim/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 18010 --workers 4
+```
+
+Why this is required:
+
+- single-worker `uvicorn` let one blocked request stall the whole API;
+- nginx then returned upstream timeouts on:
+  - `/api/auth/session`
+  - `/api/health`
+  - `/api/marketplaces/mapping/import/attributes/*`
+- with `--workers 4`, login and parameter-mapping reads returned to acceptable latency.
+
+The tracked reference unit now lives in:
+
+```text
+deploy/systemd/global-pim.service
+```
+
 ## Deploy code
 
 ```bash
