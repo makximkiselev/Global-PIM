@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
+from app.storage.relational_pim_store import load_catalog_nodes
 
 router = APIRouter(prefix="/marketplaces/ozon", tags=["marketplaces-ozon"])
 
@@ -107,8 +108,7 @@ def _save_doc(path: Path, payload: Dict[str, Any]) -> None:
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
-    doc = read_doc(CATALOG_NODES_PATH, default=[])
-    return doc if isinstance(doc, list) else []
+    return load_catalog_nodes()
 
 
 def _default_import_store_credentials() -> Dict[str, Any]:

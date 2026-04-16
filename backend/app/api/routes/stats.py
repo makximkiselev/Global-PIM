@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 from app.core.json_store import read_doc
+from app.storage.relational_pim_store import load_catalog_nodes
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -25,6 +26,8 @@ _SUMMARY_REFRESH_LOCK = threading.Lock()
 
 
 def _read_json(path: Path, default: Any) -> Any:
+    if path == CATALOG_PATH:
+        return load_catalog_nodes()
     return read_doc(path, default=default)
 
 

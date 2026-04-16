@@ -16,6 +16,7 @@ from app.storage.json_store import (
     slugify_code,
 )
 from app.core.json_store import DATA_DIR, read_doc
+from app.storage.relational_pim_store import load_catalog_nodes
 
 router = APIRouter(tags=["dictionaries"])
 CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
@@ -150,9 +151,7 @@ def _iso_max(a: Optional[str], b: Optional[str]) -> Optional[str]:
 
 
 def _existing_category_ids() -> set[str]:
-    nodes = read_doc(CATALOG_NODES_PATH, default=[])
-    if not isinstance(nodes, list):
-        return set()
+    nodes = load_catalog_nodes()
     out: set[str] = set()
     for n in nodes:
         if not isinstance(n, dict):

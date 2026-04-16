@@ -20,6 +20,7 @@ from app.storage.json_store import (
     new_id,
     slugify_code,
 )
+from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings
 from app.core.master_templates import (
     base_field_by_code,
     base_field_by_name,
@@ -132,8 +133,7 @@ def _build_default_attrs() -> List[Dict[str, Any]]:
 
 
 def _load_catalog_nodes() -> List[Dict[str, Any]]:
-    data = read_doc(CATALOG_NODES_PATH, default=[])
-    return data if isinstance(data, list) else []
+    return load_catalog_nodes()
 
 
 def _load_products_doc() -> Dict[str, Any]:
@@ -512,10 +512,7 @@ def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any
                 if str(p.get("id") or "").strip() or str(p.get("name") or "").strip():
                     provider_mapped_rows[provider] += 1
 
-        cat_map_doc = read_doc(CATEGORY_MAPPING_PATH, default={"items": {}})
-        cat_map = cat_map_doc.get("items") if isinstance(cat_map_doc, dict) else {}
-        if not isinstance(cat_map, dict):
-            cat_map = {}
+        cat_map = load_category_mappings()
         category_mapping = (cat_map.get(category_id) or {}) if isinstance(cat_map.get(category_id), dict) else {}
         yandex_category_id = str(category_mapping.get("yandex_market") or "").strip()
         ozon_category_id = str(category_mapping.get("ozon") or "").strip()

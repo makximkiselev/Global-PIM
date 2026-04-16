@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
 from app.core.value_mapping import provider_export_value, provider_import_value
+from app.storage.relational_pim_store import load_attribute_mapping_doc, load_catalog_nodes, load_category_mappings
 
 router = APIRouter(prefix="/marketplaces/yandex", tags=["marketplaces-yandex"])
 
@@ -203,8 +204,7 @@ def _save_products(items: List[Dict[str, Any]]) -> None:
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
-    doc = read_doc(CATALOG_NODES_PATH, default=[])
-    return doc if isinstance(doc, list) else []
+    return load_catalog_nodes()
 
 
 def _parent_map(nodes: List[Dict[str, Any]]) -> Dict[str, str]:
@@ -218,12 +218,9 @@ def _parent_map(nodes: List[Dict[str, Any]]) -> Dict[str, str]:
 
 
 def _load_category_mapping() -> Dict[str, Dict[str, str]]:
-    doc = read_doc(CATEGORY_MAPPING_PATH, default={"items": {}})
-    items = doc.get("items") if isinstance(doc, dict) else {}
-    if not isinstance(items, dict):
-        return {}
+    items = load_category_mappings()
     out: Dict[str, Dict[str, str]] = {}
-    for cid, row in items.items():
+    for cid, row in (items or {}).items():
         if not isinstance(row, dict):
             continue
         out[str(cid)] = {str(k): str(v) for k, v in row.items() if str(v or "").strip()}
@@ -244,7 +241,7 @@ def _effective_yandex_category_id(category_id: str, mappings: Dict[str, Dict[str
 
 
 def _load_attr_mapping_rows() -> Dict[str, List[Dict[str, Any]]]:
-    doc = read_doc(ATTR_MAPPING_PATH, default={"items": {}})
+    doc = load_attribute_mapping_doc()
     items = doc.get("items") if isinstance(doc, dict) else {}
     if not isinstance(items, dict):
         return {}

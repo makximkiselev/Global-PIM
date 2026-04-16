@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
 from app.storage.json_store import load_templates_db, save_templates_db
+from app.storage.relational_pim_store import load_catalog_nodes, save_catalog_nodes
 from app.core.json_store import read_doc, write_doc
 from app.core.products.service import (
     create_product_service,
@@ -53,11 +54,11 @@ def _save_json(path: Path, data) -> None:
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
-    return _load_json(CATALOG_PATH, [])
+    return load_catalog_nodes()
 
 
 def _save_nodes(nodes: List[Dict[str, Any]]) -> None:
-    _save_json(CATALOG_PATH, nodes)
+    save_catalog_nodes(nodes)
 
 
 def _load_products() -> List[Dict[str, Any]]:

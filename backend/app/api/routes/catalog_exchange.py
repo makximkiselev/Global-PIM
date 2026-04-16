@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
+from app.storage.relational_pim_store import load_catalog_nodes
 from app.api.routes.yandex_market import OfferCardsSyncReq, sync_offer_cards, ExportPreviewReq, yandex_export_preview
 from app.api.routes.competitor_mapping import _ensure_row_shape, _normalize_mapped_specs
 from app.core.competitors.extract_competitor_fields import extract_competitor_content
@@ -50,8 +51,7 @@ def _save_products(items: List[Dict[str, Any]]) -> None:
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
-    doc = read_doc(CATALOG_PATH, default=[])
-    return doc if isinstance(doc, list) else []
+    return load_catalog_nodes()
 
 
 def _load_runs(path: Path) -> Dict[str, Any]:

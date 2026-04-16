@@ -25,6 +25,13 @@ from app.storage.json_store import (
     save_templates_db,
     slugify_code,
 )
+from app.storage.relational_pim_store import (
+    load_attribute_mapping_doc,
+    load_catalog_nodes,
+    load_category_mappings,
+    save_attribute_mapping_doc,
+    save_category_mappings,
+)
 from app.core.master_templates import (
     PARAM_GROUPS,
     base_field_by_code,
@@ -42,6 +49,7 @@ router = APIRouter(prefix="/marketplaces/mapping", tags=["marketplace-mapping"])
 BASE_DIR = Path(__file__).resolve().parents[3]  # backend/
 DATA_DIR = BASE_DIR / "data"
 MARKETPLACES_DIR = DATA_DIR / "marketplaces"
+CACHE_DIR = MARKETPLACES_DIR / "_cache_v3"
 
 MAPPINGS_PATH = MARKETPLACES_DIR / "category_mapping.json"
 ATTR_MAPPING_PATH = MARKETPLACES_DIR / "attribute_master_mapping.json"
@@ -50,6 +58,10 @@ CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
 YANDEX_CATEGORY_PARAMS_PATH = MARKETPLACES_DIR / "yandex_market" / "category_parameters.json"
 OZON_CATEGORY_ATTRS_PATH = MARKETPLACES_DIR / "ozon" / "category_attributes.json"
 ATTR_FEEDBACK_PATH = MARKETPLACES_DIR / "attribute_match_feedback.json"
+IMPORT_CATEGORIES_CACHE_PATH = CACHE_DIR / "import_categories_snapshot.json"
+ATTR_BOOTSTRAP_CACHE_PATH = CACHE_DIR / "attr_bootstrap_snapshot.json"
+ATTR_CATEGORIES_CACHE_PATH = CACHE_DIR / "attr_categories_snapshot.json"
+ATTR_DETAILS_CACHE_DIR = CACHE_DIR / "attr_details"
 
 PROVIDER_TITLES: Dict[str, str] = {
     "yandex_market": "Я.Маркет",
@@ -59,11 +71,11 @@ PROVIDER_TITLES: Dict[str, str] = {
 MAPPING_PROVIDERS: tuple[str, ...] = tuple(PROVIDER_TITLES.keys())
 
 DEFAULT_SERVICE_NAMES: List[str] = [str(item["name"]) for item in base_template_fields()]
-_ATTR_CATEGORIES_CACHE_TTL_SECONDS = 30.0
-_ATTR_DETAILS_CACHE_TTL_SECONDS = 30.0
-_ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
-_IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 30.0
-_VALUE_DETAILS_CACHE_TTL_SECONDS = 30.0
+_ATTR_CATEGORIES_CACHE_TTL_SECONDS = 86400.0
+_ATTR_DETAILS_CACHE_TTL_SECONDS = 86400.0
+_ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 86400.0
+_IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 86400.0
+_VALUE_DETAILS_CACHE_TTL_SECONDS = 86400.0
 _import_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _attr_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
@@ -74,11 +86,72 @@ _value_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
 def _invalidate_import_categories_cache() -> None:
     _import_categories_cache["ts"] = 0.0
     _import_categories_cache["payload"] = None
+    write_doc(IMPORT_CATEGORIES_CACHE_PATH, {"ts": 0.0, "payload": None})
+
+
+def _attr_details_cache_path(catalog_category_id: str) -> Path:
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(catalog_category_id or "").strip()) or "unknown"
+    return ATTR_DETAILS_CACHE_DIR / f"{safe}.json"
+
+
+def _persistent_cache_read(path: Path, ttl_seconds: float) -> Optional[Dict[str, Any]]:
+    doc = read_doc(path, default={"ts": 0.0, "payload": None})
+    if not isinstance(doc, dict):
+        return None
+    ts = float(doc.get("ts") or 0.0)
+    payload = doc.get("payload")
+    if not payload:
+        return None
+    if time.time() - ts >= ttl_seconds:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _persistent_cache_write(path: Path, payload: Dict[str, Any]) -> None:
+    write_doc(path, {"ts": time.time(), "payload": payload})
+
+
+def _persistent_cache_clear(path: Path) -> None:
+    write_doc(path, {"ts": 0.0, "payload": None})
+
+
+def _persistent_attr_details_cache_clear_all() -> None:
+    try:
+        for child in ATTR_DETAILS_CACHE_DIR.glob("*.json"):
+            _persistent_cache_clear(child)
+    except Exception:
+        return
+
+
+def warm_marketplace_mapping_read_models() -> Dict[str, Any]:
+    warmed_details = 0
+    categories_payload = mapping_import_categories()
+    attr_categories_payload = mapping_attribute_categories()
+    bootstrap_payload = mapping_attribute_bootstrap()
+    items = attr_categories_payload.get("items") if isinstance(attr_categories_payload, dict) else []
+    if isinstance(items, list):
+        for item in items:
+            cid = str((item or {}).get("id") or "").strip()
+            if not cid:
+                continue
+            try:
+                mapping_attribute_details(cid)
+                warmed_details += 1
+            except Exception:
+                continue
+    return {
+        "ok": True,
+        "categories": len(categories_payload.get("catalog_items") or []) if isinstance(categories_payload, dict) else 0,
+        "mapped_categories": len(items or []) if isinstance(items, list) else 0,
+        "bootstrap_count": int(bootstrap_payload.get("count") or 0) if isinstance(bootstrap_payload, dict) else 0,
+        "details_warmed": warmed_details,
+    }
 
 
 def _load_catalog_nodes() -> List[Dict[str, Any]]:
-    doc = read_doc(CATALOG_NODES_PATH, default=[])
-    return doc if isinstance(doc, list) else []
+    return load_catalog_nodes()
 
 
 def _catalog_rows(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -178,13 +251,9 @@ def _provider_category_name(provider: str, provider_category_id: str) -> str:
 
 
 def _load_mappings() -> Dict[str, Dict[str, str]]:
-    doc = read_doc(MAPPINGS_PATH, default={"version": 1, "items": {}})
-    items = doc.get("items") if isinstance(doc, dict) else {}
-    if not isinstance(items, dict):
-        items = {}
-
+    items = load_category_mappings()
     out: Dict[str, Dict[str, str]] = {}
-    for catalog_id, m in items.items():
+    for catalog_id, m in (items or {}).items():
         cid = str(catalog_id or "").strip()
         if not cid or not isinstance(m, dict):
             continue
@@ -200,7 +269,7 @@ def _load_mappings() -> Dict[str, Dict[str, str]]:
 
 
 def _save_mappings(items: Dict[str, Dict[str, str]]) -> None:
-    write_doc(MAPPINGS_PATH, {"version": 1, "items": items})
+    save_category_mappings(items)
 
 
 def _catalog_parent_map(nodes: List[Dict[str, Any]]) -> Dict[str, str]:
@@ -255,12 +324,28 @@ def _effective_mapping_for_catalog(
     return out
 
 
+def _direct_mapping_for_catalog(
+    catalog_category_id: str,
+    mappings: Dict[str, Dict[str, str]],
+) -> Dict[str, str]:
+    cid = str(catalog_category_id or "").strip()
+    row = mappings.get(cid) if cid else {}
+    if not isinstance(row, dict):
+        row = {}
+    out: Dict[str, str] = {}
+    for provider in MAPPING_PROVIDERS:
+        value = str(row.get(provider) or "").strip()
+        if value:
+            out[provider] = value
+    return out
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _load_attr_mapping_doc() -> Dict[str, Any]:
-    doc = read_doc(ATTR_MAPPING_PATH, default={"version": 1, "items": {}})
+    doc = load_attribute_mapping_doc()
     if not isinstance(doc, dict):
         doc = {"version": 1, "items": {}}
     if not isinstance(doc.get("items"), dict):
@@ -903,7 +988,7 @@ def _migrate_mapping_documents_to_canonical_names() -> None:
                 changed_attr_mapping = True
     if changed_attr_mapping:
         doc["items"] = items
-        write_doc(ATTR_MAPPING_PATH, doc)
+        save_attribute_mapping_doc(doc)
 
     changed_values = False
     values_doc = _load_attr_values_dict_doc()
@@ -1272,6 +1357,50 @@ def _catalog_attr_options_payload() -> List[Dict[str, Any]]:
     ]
 
 
+def _catalog_attr_options_for_category(category_id: str) -> List[Dict[str, Any]]:
+    cid = str(category_id or "").strip()
+    if not cid:
+        return []
+    try:
+        from app.api.routes import templates as templates_routes
+
+        bootstrap = templates_routes.template_editor_bootstrap(cid)
+    except Exception:
+        return []
+
+    master = bootstrap.get("master") if isinstance(bootstrap, dict) else {}
+    category_attrs = master.get("category_attributes") if isinstance(master, dict) else []
+    if not isinstance(category_attrs, list):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    used: set[str] = set()
+    for attr in category_attrs:
+        if not isinstance(attr, dict):
+            continue
+        title = str(attr.get("name") or "").strip()
+        code = str(attr.get("code") or "").strip()
+        options = attr.get("options") if isinstance(attr.get("options"), dict) else {}
+        attr_id = str(attr.get("attribute_id") or options.get("attribute_id") or attr.get("id") or "").strip()
+        dict_id = str(options.get("dict_id") or "").strip()
+        key = _norm_name(title or code or attr_id)
+        if not key or key in used:
+            continue
+        used.add(key)
+        out.append(
+            {
+                "id": attr_id or code or title,
+                "title": title or code or attr_id,
+                "code": code or None,
+                "type": attr.get("type"),
+                "scope": attr.get("scope"),
+                "dict_id": dict_id or None,
+                "param_group": str(options.get("param_group") or "").strip() or None,
+            }
+        )
+    return out
+
+
 def _service_param_defs_payload() -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     used_keys: set[str] = set()
@@ -1316,6 +1445,11 @@ def mapping_import_categories() -> Dict[str, Any]:
     cached_ts = float(_import_categories_cache.get("ts") or 0.0)
     if cached and now - cached_ts < _IMPORT_CATEGORIES_CACHE_TTL_SECONDS:
         return cached
+    persisted = _persistent_cache_read(IMPORT_CATEGORIES_CACHE_PATH, _IMPORT_CATEGORIES_CACHE_TTL_SECONDS)
+    if persisted:
+        _import_categories_cache["ts"] = now
+        _import_categories_cache["payload"] = persisted
+        return persisted
 
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
@@ -1338,6 +1472,8 @@ def mapping_import_categories() -> Dict[str, Any]:
             }
         )
 
+    binding_states = _build_binding_states(catalog_nodes, catalog_items, mappings)
+
     payload = {
         "ok": True,
         "catalog_nodes": catalog_nodes,
@@ -1345,10 +1481,11 @@ def mapping_import_categories() -> Dict[str, Any]:
         "providers": providers,
         "provider_categories": provider_categories,
         "mappings": mappings,
-        "binding_states": {},
+        "binding_states": binding_states,
     }
     _import_categories_cache["ts"] = now
     _import_categories_cache["payload"] = payload
+    _persistent_cache_write(IMPORT_CATEGORIES_CACHE_PATH, payload)
     return payload
 
 
@@ -1359,17 +1496,23 @@ def mapping_attribute_bootstrap() -> Dict[str, Any]:
     cached_ts = float(_attr_bootstrap_cache.get("ts") or 0.0)
     if cached and now - cached_ts < _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS:
         return cached
+    persisted = _persistent_cache_read(ATTR_BOOTSTRAP_CACHE_PATH, _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS)
+    if persisted:
+        _attr_bootstrap_cache["ts"] = now
+        _attr_bootstrap_cache["payload"] = persisted
+        return persisted
 
     categories_payload = mapping_attribute_categories()
     payload = {
         "ok": True,
         "items": categories_payload.get("items") if isinstance(categories_payload.get("items"), list) else [],
         "count": int(categories_payload.get("count") or 0),
-        "catalog_attr_options": _catalog_attr_options_payload(),
+        "catalog_attr_options": [],
         "service_param_defs": _service_param_defs_payload(),
     }
     _attr_bootstrap_cache["ts"] = now
     _attr_bootstrap_cache["payload"] = payload
+    _persistent_cache_write(ATTR_BOOTSTRAP_CACHE_PATH, payload)
     return payload
 
 
@@ -1639,148 +1782,218 @@ def _record_feedback_from_rows(
     return
 
 
-def _collect_template_rows_from_saved(
-    attr_doc: Dict[str, Any],
-    exclude_category_id: str,
-    limit: int = 240,
-) -> List[Dict[str, Any]]:
-    items = attr_doc.get("items") if isinstance(attr_doc.get("items"), dict) else {}
-    if not isinstance(items, dict):
-        return []
-    out: List[Dict[str, Any]] = []
-    for cid, payload in items.items():
-        if str(cid or "").strip() == str(exclude_category_id or "").strip():
-            continue
-        row_list = _normalize_attr_rows(payload.get("rows") if isinstance(payload, dict) else [])
-        for r in row_list:
-            pmap = r.get("provider_map") if isinstance(r.get("provider_map"), dict) else {}
-            y = pmap.get("yandex_market") if isinstance(pmap.get("yandex_market"), dict) else {}
-            oz = pmap.get("ozon") if isinstance(pmap.get("ozon"), dict) else {}
-            yid = str(y.get("id") or "").strip()
-            yn = str(y.get("name") or "").strip()
-            ozid = str(oz.get("id") or "").strip()
-            ozn = str(oz.get("name") or "").strip()
-            cname = str(r.get("catalog_name") or "").strip()
-            if not cname:
-                continue
-            if not (yid or yn or ozid or ozn):
-                continue
-            out.append(
-                {
-                    "catalog_name": cname,
-                    "group": _normalize_param_group(r.get("group"), cname, yn or ozn),
-                    "yandex_id": yid,
-                    "yandex_name": yn,
-                    "yandex_kind": str(y.get("kind") or "").strip(),
-                    "ozon_id": ozid,
-                    "ozon_name": ozn,
-                    "ozon_kind": str(oz.get("kind") or "").strip(),
-                    "confirmed": bool(r.get("confirmed") or False),
-                }
-            )
-    out.sort(
-        key=lambda x: (
-            0 if bool(x.get("confirmed")) else 1,
-            str(x.get("catalog_name") or "").lower(),
-            str(x.get("yandex_name") or x.get("ozon_name") or "").lower(),
-        )
-    )
-    return out[: max(0, int(limit))]
-
-
-def _template_pick_for_pair(
-    y: Optional[Dict[str, Any]],
-    templates: List[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    yid = str((y or {}).get("id") or "").strip()
-    yn = _norm_name(str((y or {}).get("name") or ""))
-    y_tokens = _tokens(str((y or {}).get("name") or ""))
-    y_kind = _kind_group(str((y or {}).get("kind") or ""))
-
-    def score(t: Dict[str, Any]) -> int:
-        t_name = _norm_name(str(t.get("yandex_name") or ""))
-        t_tokens = _tokens(str(t.get("yandex_name") or ""))
-        t_kind = _kind_group(str(t.get("yandex_kind") or ""))
-        s = 0
-        if yid and yid == str(t.get("yandex_id") or "").strip():
-            s += 9
-        if yn and yn == t_name:
-            s += 7
-        elif yn and t_name and (yn in t_name or t_name in yn):
-            s += 4
-        if y_tokens and t_tokens:
-            inter = len(y_tokens & t_tokens)
-            union = max(1, len(y_tokens | t_tokens))
-            j = inter / union
-            if j >= 0.75:
-                s += 4
-            elif j >= 0.5:
-                s += 3
-            elif j >= 0.25:
-                s += 1
-        if y_kind and t_kind and y_kind == t_kind:
-            s += 1
-        if bool(t.get("confirmed")):
-            s += 2
-        return s
-
-    best: Optional[Dict[str, Any]] = None
-    best_score = 0
-    for t in templates or []:
-        sc = score(t)
-        if sc > best_score:
-            best_score = sc
-            best = t
-    if best_score >= 4:
-        return best
-    return None
-
-
 def _deterministic_ai_rows(
     yandex_params: List[Dict[str, Any]],
     existing_rows: List[Dict[str, Any]],
     feedback_doc: Optional[Dict[str, Any]] = None,
-    template_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    by_name: Dict[str, Dict[str, Any]] = {}
-    out: List[Dict[str, Any]] = []
-    service = _service_names()
-
-    def upsert_row(row: Dict[str, Any]) -> None:
-        n = _norm_name(str(row.get("catalog_name") or ""))
-        if not n:
-            return
-        cur = by_name.get(n)
-        if not cur:
-            by_name[n] = row
-            out.append(row)
-            return
-        for p in MAPPING_PROVIDERS:
-            dst = cur.get("provider_map", {}).get(p, {})
-            src = row.get("provider_map", {}).get(p, {})
-            if not dst.get("id") and src.get("id"):
-                cur["provider_map"][p] = src
-        cur["confirmed"] = bool(cur.get("confirmed") or row.get("confirmed"))
-
-    for nm in service:
-        upsert_row(_build_row(nm, None, confirmed=False))
-
-    for er in _normalize_attr_rows(existing_rows):
-        upsert_row(er)
-
-    y_used: set[str] = set()
+    out = [dict(r) for r in _normalize_attr_rows(existing_rows)]
     yz = [x for x in yandex_params if isinstance(x, dict)]
+    used_yids: set[str] = {
+        str((((row.get("provider_map") or {}).get("yandex_market") or {}).get("id") or "")).strip()
+        for row in out
+        if isinstance(row, dict)
+    }
 
     for y in yz:
         yid = str(y.get("id") or "").strip()
-        if not yid or yid in y_used:
+        if not yid or yid in used_yids:
             continue
-        t = _template_pick_for_pair(y, template_rows or [])
-        name = str((t or {}).get("catalog_name") or "").strip() or str(y.get("name") or yid)
-        grp = str((t or {}).get("group") or "").strip() or None
-        upsert_row(_build_row(name, y, confirmed=bool((t or {}).get("confirmed")), group=grp))
+
+        best_idx = -1
+        best_score = 0.0
+        for idx, row in enumerate(out):
+            row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+            y_map = row_map.get("yandex_market") if isinstance(row_map.get("yandex_market"), dict) else {}
+            if str(y_map.get("id") or "").strip():
+                continue
+            row_name = str(row.get("catalog_name") or "").strip()
+            if not row_name:
+                continue
+            score = _pair_score(
+                {"id": "", "name": row_name, "kind": str(row.get("group") or "")},
+                y,
+                feedback_doc=feedback_doc,
+            )
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+
+        if best_idx < 0 or best_score < 0.34:
+            continue
+
+        row = dict(out[best_idx])
+        provider_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        provider_map["yandex_market"] = {
+            "id": yid,
+            "name": str(y.get("name") or yid),
+            "kind": str(y.get("kind") or "").strip(),
+            "values": _extract_text_list(y.get("values"))[:120],
+            "required": bool(y.get("required") or False),
+            "export": True,
+        }
+        row["provider_map"] = provider_map
+        row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
+        out[best_idx] = row
+        used_yids.add(yid)
 
     return _normalize_attr_rows(out)
+
+
+def _prune_rows_for_current_provider_params(
+    rows: List[Dict[str, Any]],
+    yandex_params: List[Dict[str, Any]],
+    ozon_params: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    valid_yandex_ids = {str(x.get("id") or "").strip() for x in yandex_params if str(x.get("id") or "").strip()}
+    valid_ozon_ids = {str(x.get("id") or "").strip() for x in ozon_params if str(x.get("id") or "").strip()}
+    pruned: List[Dict[str, Any]] = []
+
+    for row in _normalize_attr_rows(rows):
+        name = str(row.get("catalog_name") or "").strip()
+        provider_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        y_map = dict(provider_map.get("yandex_market") or {}) if isinstance(provider_map.get("yandex_market"), dict) else _empty_provider_binding()
+        oz_map = dict(provider_map.get("ozon") or {}) if isinstance(provider_map.get("ozon"), dict) else _empty_provider_binding()
+
+        had_provider_binding = bool(str(y_map.get("id") or "").strip() or str(oz_map.get("id") or "").strip())
+
+        y_id = str(y_map.get("id") or "").strip()
+        if y_id and y_id not in valid_yandex_ids:
+            y_map = _empty_provider_binding()
+
+        oz_id = str(oz_map.get("id") or "").strip()
+        if oz_id and oz_id not in valid_ozon_ids:
+            oz_map = _empty_provider_binding()
+
+        has_valid_binding = bool(str(y_map.get("id") or "").strip() or str(oz_map.get("id") or "").strip())
+        keep_without_binding = (
+            bool(row.get("confirmed") or False)
+            or is_base_field_name(name)
+            or _is_service_catalog_name(name)
+            or not had_provider_binding
+        )
+        if not has_valid_binding and not keep_without_binding:
+            continue
+
+        next_row = dict(row)
+        next_row["provider_map"] = {
+            "yandex_market": y_map,
+            "ozon": oz_map,
+        }
+        pruned.append(next_row)
+
+    return _normalize_attr_rows(pruned)
+
+
+def _catalog_target_rows(
+    catalog_attr_options: List[Dict[str, Any]],
+    service_param_defs: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    used: set[str] = set()
+
+    for item in service_param_defs or []:
+        title = canonical_base_field_name(_humanize_catalog_name(item.get("title")))
+        if not title:
+            continue
+        key = _norm_name(title)
+        if not key or key in used:
+            continue
+        used.add(key)
+        out.append(_build_row(title, None, confirmed=False, group=_normalize_param_group(None, title)))
+
+    for item in catalog_attr_options or []:
+        title = canonical_base_field_name(_humanize_catalog_name(item.get("title")))
+        if not title:
+            continue
+        key = _norm_name(title)
+        if not key or key in used:
+            continue
+        used.add(key)
+        out.append(
+            _build_row(
+                title,
+                None,
+                confirmed=False,
+                group=_normalize_param_group(item.get("param_group"), title),
+            )
+        )
+
+    return _normalize_attr_rows(out)
+
+
+def _merge_existing_into_target_rows(
+    target_rows: List[Dict[str, Any]],
+    existing_rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    merged = [dict(r) for r in _normalize_attr_rows(target_rows)]
+    by_name: Dict[str, int] = {
+        _norm_name(str(row.get("catalog_name") or "")): idx
+        for idx, row in enumerate(merged)
+        if _norm_name(str(row.get("catalog_name") or ""))
+    }
+
+    for row in _normalize_attr_rows(existing_rows):
+        key = _norm_name(str(row.get("catalog_name") or ""))
+        if key and key in by_name:
+            cur = dict(merged[by_name[key]])
+            cur_map = cur.get("provider_map") if isinstance(cur.get("provider_map"), dict) else {}
+            row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+            for provider in MAPPING_PROVIDERS:
+                cur_payload = cur_map.get(provider) if isinstance(cur_map.get(provider), dict) else _empty_provider_binding()
+                row_payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else _empty_provider_binding()
+                if (
+                    not str(cur_payload.get("id") or "").strip()
+                    and (
+                        str(row_payload.get("id") or "").strip()
+                        or str(row_payload.get("name") or "").strip()
+                    )
+                ):
+                    cur_map[provider] = row_payload
+            cur["provider_map"] = cur_map
+            cur["confirmed"] = bool(cur.get("confirmed") or row.get("confirmed"))
+            if str(row.get("group") or "").strip():
+                cur["group"] = _normalize_param_group(row.get("group"), cur.get("catalog_name"))
+            merged[by_name[key]] = cur
+            continue
+
+        has_binding = any(
+            str((((row.get("provider_map") or {}).get(provider) or {}).get("id") or "")).strip()
+            for provider in MAPPING_PROVIDERS
+        )
+        if has_binding or bool(row.get("confirmed") or False):
+            merged.append(row)
+
+    return _normalize_attr_rows(merged)
+
+
+def _merge_ai_rows_into_target_rows(
+    target_rows: List[Dict[str, Any]],
+    ai_rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    merged = [dict(r) for r in _normalize_attr_rows(target_rows)]
+    by_name: Dict[str, int] = {
+        _norm_name(str(row.get("catalog_name") or "")): idx
+        for idx, row in enumerate(merged)
+        if _norm_name(str(row.get("catalog_name") or ""))
+    }
+
+    for row in _normalize_attr_rows(ai_rows):
+        key = _norm_name(str(row.get("catalog_name") or ""))
+        if not key or key not in by_name:
+            continue
+        cur = dict(merged[by_name[key]])
+        cur_map = cur.get("provider_map") if isinstance(cur.get("provider_map"), dict) else {}
+        row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        for provider in MAPPING_PROVIDERS:
+            row_payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else _empty_provider_binding()
+            if str(row_payload.get("id") or "").strip():
+                cur_map[provider] = row_payload
+        cur["provider_map"] = cur_map
+        cur["confirmed"] = bool(cur.get("confirmed") or row.get("confirmed"))
+        merged[by_name[key]] = cur
+
+    return _normalize_attr_rows(merged)
 
 
 async def _ollama_suggest_rows(
@@ -1788,7 +2001,6 @@ async def _ollama_suggest_rows(
     yandex_params: List[Dict[str, Any]],
     existing_rows: List[Dict[str, Any]],
     feedback_doc: Optional[Dict[str, Any]] = None,
-    template_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     base_url = str(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
     model = str(os.getenv("OLLAMA_MODEL", "qwen2.5:14b-instruct")).strip() or "qwen2.5:14b-instruct"
@@ -1811,15 +2023,6 @@ async def _ollama_suggest_rows(
                 "group": str(r.get("group") or ""),
             }
             for r in _normalize_attr_rows(existing_rows)
-        ],
-        "template_rows_from_saved_categories": [
-            {
-                "catalog_name": str(t.get("catalog_name") or ""),
-                "group": str(t.get("group") or ""),
-                "yandex_name": str(t.get("yandex_name") or ""),
-                "confirmed": bool(t.get("confirmed") or False),
-            }
-            for t in (template_rows or [])[:180]
         ],
         "response_schema": {
             "rows": [
@@ -2115,6 +2318,14 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
 
         _save_mappings(items)
         _invalidate_import_categories_cache()
+        _attr_categories_cache["ts"] = 0.0
+        _attr_categories_cache["payload"] = None
+        _attr_bootstrap_cache["ts"] = 0.0
+        _attr_bootstrap_cache["payload"] = None
+        _attr_details_cache.clear()
+        _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
+        _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+        _persistent_attr_details_cache_clear_all()
     finally:
         lock.release()
 
@@ -2182,6 +2393,14 @@ def mapping_clear_descendant_bindings(req: ClearDescendantBindingsReq) -> Dict[s
                 cleared_catalog_ids.append(cid)
         _save_mappings(items)
         _invalidate_import_categories_cache()
+        _attr_categories_cache["ts"] = 0.0
+        _attr_categories_cache["payload"] = None
+        _attr_bootstrap_cache["ts"] = 0.0
+        _attr_bootstrap_cache["payload"] = None
+        _attr_details_cache.clear()
+        _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
+        _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+        _persistent_attr_details_cache_clear_all()
     finally:
         lock.release()
 
@@ -2202,6 +2421,11 @@ def mapping_attribute_categories() -> Dict[str, Any]:
     cached_ts = float(_attr_categories_cache.get("ts") or 0.0)
     if cached_payload and now - cached_ts < _ATTR_CATEGORIES_CACHE_TTL_SECONDS:
         return cached_payload
+    persisted = _persistent_cache_read(ATTR_CATEGORIES_CACHE_PATH, _ATTR_CATEGORIES_CACHE_TTL_SECONDS)
+    if persisted:
+        _attr_categories_cache["ts"] = now
+        _attr_categories_cache["payload"] = persisted
+        return persisted
 
     _migrate_mapping_documents_to_canonical_names()
     catalog_nodes = _load_catalog_nodes()
@@ -2287,6 +2511,7 @@ def mapping_attribute_categories() -> Dict[str, Any]:
     payload = {"ok": True, "items": out, "count": len(out)}
     _attr_categories_cache["ts"] = now
     _attr_categories_cache["payload"] = payload
+    _persistent_cache_write(ATTR_CATEGORIES_CACHE_PATH, payload)
     return payload
 
 
@@ -2300,6 +2525,10 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     cached = _attr_details_cache.get(cid)
     if cached and time.monotonic() - cached[0] < _ATTR_DETAILS_CACHE_TTL_SECONDS:
         return cached[1]
+    persisted = _persistent_cache_read(_attr_details_cache_path(cid), _ATTR_DETAILS_CACHE_TTL_SECONDS)
+    if persisted:
+        _attr_details_cache[cid] = (time.monotonic(), persisted)
+        return persisted
 
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
@@ -2309,9 +2538,9 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
 
     mappings = _load_mappings()
-    cat_mapping = _effective_mapping_for_catalog(cid, mappings, parent_by_id)
+    cat_mapping = _direct_mapping_for_catalog(cid, mappings)
     if not cat_mapping:
-        raise HTTPException(status_code=400, detail="CATEGORY_NOT_MAPPED")
+        raise HTTPException(status_code=400, detail="CATEGORY_NOT_DIRECTLY_MAPPED")
 
     yandex_cat_id = str(cat_mapping.get("yandex_market") or "").strip()
     yandex_cached = _has_yandex_params_cached(yandex_cat_id)
@@ -2325,7 +2554,11 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     doc = _load_attr_mapping_doc()
     items = doc.get("items") if isinstance(doc.get("items"), dict) else {}
     saved = items.get(cid) if isinstance(items.get(cid), dict) else {}
-    rows = _normalize_attr_rows(saved.get("rows") if isinstance(saved, dict) else [])
+    rows = _prune_rows_for_current_provider_params(
+        saved.get("rows") if isinstance(saved, dict) else [],
+        yandex_params,
+        ozon_params,
+    )
     templates_db = load_templates_db()
     cat_to_tpls = templates_db.get("category_to_templates") if isinstance(templates_db.get("category_to_templates"), dict) else {}
     template_id = ""
@@ -2334,6 +2567,7 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         template_id = str((tids or [""])[0] or "").strip()
     template = ((templates_db.get("templates") or {}).get(template_id) if template_id else None) or {}
     template_meta = template.get("meta") if isinstance(template, dict) and isinstance(template.get("meta"), dict) else {}
+    catalog_attr_options = _catalog_attr_options_for_category(cid)
 
     payload = {
         "ok": True,
@@ -2362,8 +2596,10 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         "template_id": template_id or None,
         "master_template": template_meta.get("master_template") if isinstance(template_meta.get("master_template"), dict) else None,
         "sources": template_meta.get("sources") if isinstance(template_meta.get("sources"), dict) else {},
+        "catalog_attr_options": catalog_attr_options,
     }
     _attr_details_cache[cid] = (time.monotonic(), payload)
+    _persistent_cache_write(_attr_details_cache_path(cid), payload)
     return payload
 
 
@@ -2484,6 +2720,9 @@ def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) ->
     _attr_bootstrap_cache["payload"] = None
     _attr_details_cache.pop(cid, None)
     _value_details_cache.pop(cid, None)
+    _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
+    _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+    _persistent_cache_clear(_attr_details_cache_path(cid))
 
     catalog_rows = _catalog_rows(_load_catalog_nodes())
     catalog_ids = {x.get("id") for x in catalog_rows}
@@ -2530,7 +2769,7 @@ def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) ->
                 parent_by_id=parent_by_id,
             )
         doc["items"] = items
-        write_doc(ATTR_MAPPING_PATH, doc)
+        save_attribute_mapping_doc(doc)
     finally:
         lock.release()
 
@@ -2568,9 +2807,9 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
 
     mappings = _load_mappings()
-    cat_mapping = _effective_mapping_for_catalog(cid, mappings, parent_by_id)
+    cat_mapping = _direct_mapping_for_catalog(cid, mappings)
     if not cat_mapping:
-        raise HTTPException(status_code=400, detail="CATEGORY_NOT_MAPPED")
+        raise HTTPException(status_code=400, detail="CATEGORY_NOT_DIRECTLY_MAPPED")
 
     yandex_cat_id = str(cat_mapping.get("yandex_market") or "").strip()
     yandex_params = _load_yandex_params(yandex_cat_id)
@@ -2580,9 +2819,17 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
     if not isinstance(items, dict):
         items = {}
     saved = items.get(cid) if isinstance(items.get(cid), dict) else {}
-    existing_rows = _normalize_attr_rows(saved.get("rows") if isinstance(saved, dict) else [])
+    existing_rows = _prune_rows_for_current_provider_params(
+        saved.get("rows") if isinstance(saved, dict) else [],
+        yandex_params,
+        [],
+    )
+    target_rows = _catalog_target_rows(
+        _catalog_attr_options_for_category(cid),
+        _service_param_defs_payload(),
+    )
+    seed_rows = _merge_existing_into_target_rows(target_rows, existing_rows)
     feedback_doc = _load_attr_feedback_doc()
-    template_rows = _collect_template_rows_from_saved(doc, exclude_category_id=cid, limit=280)
 
     rows_ai: Optional[List[Dict[str, Any]]] = None
     engine = "fallback"
@@ -2590,25 +2837,32 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         rows_ai = await _ollama_suggest_rows(
             category_name=str(cat.get("path") or cat.get("name") or cid),
             yandex_params=yandex_params,
-            existing_rows=existing_rows,
+            existing_rows=seed_rows,
             feedback_doc=feedback_doc,
-            template_rows=template_rows,
         )
         if rows_ai:
+            rows_ai = _merge_ai_rows_into_target_rows(seed_rows, rows_ai)
             engine = "ollama"
     except Exception:
         rows_ai = None
 
     rows_final = rows_ai or _deterministic_ai_rows(
         yandex_params,
-        existing_rows,
+        seed_rows,
         feedback_doc=feedback_doc,
-        template_rows=template_rows,
     )
     rows_final = _apply_group_locks(rows_final)
 
     if req.apply:
+        _attr_categories_cache["ts"] = 0.0
+        _attr_categories_cache["payload"] = None
+        _attr_bootstrap_cache["ts"] = 0.0
+        _attr_bootstrap_cache["payload"] = None
+        _attr_details_cache.pop(cid, None)
         _value_details_cache.pop(cid, None)
+        _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
+        _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+        _persistent_cache_clear(_attr_details_cache_path(cid))
         lock = with_lock("marketplace_attribute_mapping")
         lock.acquire()
         try:
@@ -2618,7 +2872,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
                 doc_items = {}
             doc_items[cid] = {"rows": rows_final, "updated_at": _now_iso()}
             doc_apply["items"] = doc_items
-            write_doc(ATTR_MAPPING_PATH, doc_apply)
+            save_attribute_mapping_doc(doc_apply)
             _upsert_template_from_attr_mapping(
                 cid,
                 rows_final,

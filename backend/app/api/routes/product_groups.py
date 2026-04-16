@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.json_store import DATA_DIR, read_doc, write_doc, with_lock
 from app.core.products.repo import load_products
 from app.storage.json_store import load_dictionaries_db, load_templates_db
+from app.storage.relational_pim_store import load_catalog_nodes
 
 router = APIRouter(prefix="/product-groups", tags=["product-groups"])
 
@@ -164,8 +165,7 @@ def _sync_group_feature_names(
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
-    doc = read_doc(CATALOG_NODES_PATH, default=[])
-    return doc if isinstance(doc, list) else []
+    return load_catalog_nodes()
 
 
 def _templates_by_category(db: Dict[str, Any]) -> Dict[str, List[str]]:

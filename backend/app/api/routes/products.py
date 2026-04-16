@@ -23,6 +23,7 @@ from app.core.products.repo import load_products as load_products_repo
 from app.core.json_store import JsonStoreError, read_doc, DATA_DIR
 from app.core.object_storage import ObjectStorageError, delete_object, s3_enabled, upload_bytes
 from app.storage.json_store import load_dictionaries_db, load_templates_db
+from app.storage.relational_pim_store import load_catalog_nodes
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -35,8 +36,7 @@ _product_new_bootstrap_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 
 
 def _load_catalog_nodes_doc() -> List[Dict[str, Any]]:
-    doc = read_doc(DATA_DIR / "catalog_nodes.json", default=[])
-    return doc if isinstance(doc, list) else []
+    return load_catalog_nodes()
 
 
 def _product_new_bootstrap_payload() -> Dict[str, Any]:
