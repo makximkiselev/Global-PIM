@@ -17,6 +17,8 @@ CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
 CATEGORY_MAPPINGS_PATH = DATA_DIR / "marketplaces" / "category_mapping.json"
 ATTRIBUTE_MAPPINGS_PATH = DATA_DIR / "marketplaces" / "attribute_master_mapping.json"
 ATTRIBUTE_VALUE_DICTIONARY_PATH = DATA_DIR / "marketplaces" / "attribute_value_dictionary.json"
+DICTIONARIES_PATH = DATA_DIR / "dictionaries.json"
+DICTS_DIR = DATA_DIR / "dicts"
 
 
 def _with_pg_retry(fn):
@@ -137,6 +139,101 @@ def _ensure_tables() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_attribute_value_refs_rel_category
                   ON attribute_value_refs_rel(catalog_category_id, catalog_name)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionaries_rel (
+                  id TEXT PRIMARY KEY,
+                  title TEXT NOT NULL,
+                  code TEXT NOT NULL,
+                  attr_id TEXT NOT NULL,
+                  attr_type TEXT NOT NULL DEFAULT 'select',
+                  scope TEXT NOT NULL DEFAULT 'both',
+                  is_service BOOLEAN NOT NULL DEFAULT FALSE,
+                  is_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  param_group TEXT NULL,
+                  template_layer TEXT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_dictionaries_rel_code
+                  ON dictionaries_rel(code)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_dictionaries_rel_attr_id
+                  ON dictionaries_rel(attr_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_values_rel (
+                  dict_id TEXT NOT NULL,
+                  value_key TEXT NOT NULL,
+                  value_text TEXT NOT NULL,
+                  value_count INTEGER NOT NULL DEFAULT 0,
+                  last_seen TEXT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (dict_id, value_key)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_dictionary_values_rel_dict_position
+                  ON dictionary_values_rel(dict_id, position, value_text)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_value_sources_rel (
+                  dict_id TEXT NOT NULL,
+                  value_key TEXT NOT NULL,
+                  source_name TEXT NOT NULL,
+                  source_count INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (dict_id, value_key, source_name)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_aliases_rel (
+                  dict_id TEXT NOT NULL,
+                  alias_key TEXT NOT NULL,
+                  canonical_value TEXT NOT NULL,
+                  PRIMARY KEY (dict_id, alias_key)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_provider_refs_rel (
+                  dict_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  provider_param_id TEXT NULL,
+                  provider_param_name TEXT NULL,
+                  kind TEXT NULL,
+                  is_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  allowed_values TEXT[] NULL,
+                  PRIMARY KEY (dict_id, provider)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_export_maps_rel (
+                  dict_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  canonical_key TEXT NOT NULL,
+                  provider_value TEXT NOT NULL,
+                  PRIMARY KEY (dict_id, provider, canonical_key)
+                )
                 """
             )
 
@@ -681,3 +778,511 @@ def save_attribute_value_refs_doc(doc: Dict[str, Any]) -> None:
         doc = {"version": 2, "updated_at": None, "items": {}}
     _replace_attribute_value_refs_table(doc)
     write_doc(ATTRIBUTE_VALUE_DICTIONARY_PATH, doc)
+
+
+def _slugify_code(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    out: List[str] = []
+    for ch in raw:
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in {" ", "-", "_"}:
+            out.append("_")
+    return "".join(out).strip("_") or "attr"
+
+
+def _normalize_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _normalize_value_key(value: Any) -> str:
+    return _normalize_text(value).lower().replace("ё", "е")
+
+
+def _dictionary_default_doc(dict_id: str, title: str | None = None) -> Dict[str, Any]:
+    did = str(dict_id or "").strip()
+    now = ""
+    code = did[len("dict_"):] if did.startswith("dict_") else _slugify_code(title or did)
+    return {
+        "id": did,
+        "title": _normalize_text(title or did) or did,
+        "code": code,
+        "attr_id": f"attr_{code}_{did[-6:] or 'global'}",
+        "type": "select",
+        "scope": "both",
+        "dict_id": did,
+        "items": [],
+        "aliases": {},
+        "meta": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _migrate_dict_items(items: Any) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if not isinstance(items, list):
+        return out
+    for it in items:
+        if isinstance(it, str):
+            value = _normalize_text(it)
+            if value:
+                out.append({"value": value, "count": 0, "last_seen": None, "sources": {}})
+            continue
+        if not isinstance(it, dict):
+            continue
+        value = _normalize_text(it.get("value"))
+        if not value:
+            continue
+        out.append(
+            {
+                "value": value,
+                "count": int(it.get("count") or 0),
+                "last_seen": it.get("last_seen") or None,
+                "sources": it.get("sources") if isinstance(it.get("sources"), dict) else {},
+            }
+        )
+    return out
+
+
+def _merge_dict_items(existing: List[Dict[str, Any]], incoming: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for row in existing:
+        key = _normalize_value_key(row.get("value"))
+        if key:
+            by_key[key] = row
+    for row in incoming:
+        key = _normalize_value_key(row.get("value"))
+        if key and key not in by_key:
+            by_key[key] = row
+    return list(by_key.values())
+
+
+def _normalize_dictionary_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(doc, dict):
+        doc = {"version": 2, "items": []}
+    items = doc.get("items")
+    if not isinstance(items, list):
+        items = []
+    out_items: List[Dict[str, Any]] = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        did = _normalize_text(raw.get("id"))
+        if not did:
+            continue
+        title = _normalize_text(raw.get("title")) or did
+        code = _normalize_text(raw.get("code")) or (did[len("dict_"):] if did.startswith("dict_") else _slugify_code(title))
+        meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
+        out_items.append(
+            {
+                "id": did,
+                "title": title,
+                "code": code,
+                "attr_id": _normalize_text(raw.get("attr_id")) or f"attr_{code}_{did[-6:] or 'global'}",
+                "type": _normalize_text(raw.get("type")) or "select",
+                "scope": _normalize_text(raw.get("scope")) or "both",
+                "dict_id": did,
+                "items": _migrate_dict_items(raw.get("items") if isinstance(raw.get("items"), list) else raw.get("values")),
+                "aliases": raw.get("aliases") if isinstance(raw.get("aliases"), dict) else {},
+                "meta": meta,
+                "created_at": raw.get("created_at") or "",
+                "updated_at": raw.get("updated_at") or "",
+            }
+        )
+    return {"version": 2, "items": out_items}
+
+
+def _load_legacy_dictionaries_doc() -> Dict[str, Any]:
+    doc = read_doc(DICTIONARIES_PATH, default={"version": 2, "items": []})
+    normalized = _normalize_dictionary_doc(doc if isinstance(doc, dict) else {"version": 2, "items": []})
+    items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
+    by_id: Dict[str, Dict[str, Any]] = {
+        str(item.get("id") or "").strip(): item for item in items if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    try:
+        for path in DICTS_DIR.glob("*.json"):
+            raw = read_doc(path, default={})
+            if not isinstance(raw, dict):
+                continue
+            did = _normalize_text(raw.get("id")) or path.stem
+            title = _normalize_text(raw.get("title")) or did
+            incoming = {
+                "id": did,
+                "title": title,
+                "code": _normalize_text(raw.get("code")) or (did[len("dict_"):] if did.startswith("dict_") else _slugify_code(title)),
+                "attr_id": _normalize_text(raw.get("attr_id")),
+                "type": _normalize_text(raw.get("type")) or "select",
+                "scope": _normalize_text(raw.get("scope")) or "both",
+                "dict_id": did,
+                "items": _migrate_dict_items(raw.get("items")),
+                "aliases": raw.get("aliases") if isinstance(raw.get("aliases"), dict) else {},
+                "meta": raw.get("meta") if isinstance(raw.get("meta"), dict) else {},
+                "created_at": raw.get("created_at") or "",
+                "updated_at": raw.get("updated_at") or "",
+            }
+            existing = by_id.get(did)
+            if not existing:
+                by_id[did] = incoming
+                continue
+            merged = dict(existing)
+            merged["items"] = _merge_dict_items(existing.get("items", []), incoming.get("items", []))
+            existing_aliases = existing.get("aliases") if isinstance(existing.get("aliases"), dict) else {}
+            incoming_aliases = incoming.get("aliases") if isinstance(incoming.get("aliases"), dict) else {}
+            merged["aliases"] = {**existing_aliases, **incoming_aliases}
+            existing_meta = existing.get("meta") if isinstance(existing.get("meta"), dict) else {}
+            incoming_meta = incoming.get("meta") if isinstance(incoming.get("meta"), dict) else {}
+            merged["meta"] = {**existing_meta, **incoming_meta}
+            if not _normalize_text(merged.get("title")) and _normalize_text(incoming.get("title")):
+                merged["title"] = incoming.get("title")
+            if not _normalize_text(merged.get("attr_id")) and _normalize_text(incoming.get("attr_id")):
+                merged["attr_id"] = incoming.get("attr_id")
+            by_id[did] = merged
+    except Exception:
+        pass
+    return {"version": 2, "items": list(by_id.values())}
+
+
+def _replace_dictionaries_tables(doc: Dict[str, Any]) -> None:
+    normalized = _normalize_dictionary_doc(doc)
+    items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
+    dictionaries_rows: List[tuple[Any, ...]] = []
+    value_rows_map: Dict[tuple[str, str], Dict[str, Any]] = {}
+    source_rows_map: Dict[tuple[str, str, str], int] = {}
+    alias_rows_map: Dict[tuple[str, str], str] = {}
+    provider_rows_map: Dict[tuple[str, str], tuple[Any, ...]] = {}
+    export_rows_map: Dict[tuple[str, str, str], str] = {}
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        did = _normalize_text(item.get("id"))
+        if not did:
+            continue
+        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        dictionaries_rows.append(
+            (
+                did,
+                _normalize_text(item.get("title")) or did,
+                _normalize_text(item.get("code")) or (did[len("dict_"):] if did.startswith("dict_") else _slugify_code(item.get("title"))),
+                _normalize_text(item.get("attr_id")) or f"attr_{did}",
+                _normalize_text(item.get("type")) or "select",
+                _normalize_text(item.get("scope")) or "both",
+                bool(meta.get("service") or False),
+                bool(meta.get("required") or False),
+                _normalize_text(meta.get("param_group")) or None,
+                _normalize_text(meta.get("template_layer")) or None,
+                str(item.get("created_at") or "") or None,
+                str(item.get("updated_at") or "") or None,
+            )
+        )
+
+        for position, raw_value in enumerate(_migrate_dict_items(item.get("items"))):
+            value_key = _normalize_value_key(raw_value.get("value"))
+            if not value_key:
+                continue
+            row_key = (did, value_key)
+            next_value = {
+                "value_text": _normalize_text(raw_value.get("value")),
+                "value_count": int(raw_value.get("count") or 0),
+                "last_seen": str(raw_value.get("last_seen") or "") or None,
+                "position": int(position),
+            }
+            existing_value = value_rows_map.get(row_key)
+            if not existing_value:
+                value_rows_map[row_key] = next_value
+            else:
+                existing_value["value_count"] = int(existing_value.get("value_count") or 0) + next_value["value_count"]
+                if next_value["last_seen"] and (existing_value.get("last_seen") or "") < next_value["last_seen"]:
+                    existing_value["last_seen"] = next_value["last_seen"]
+                if len(next_value["value_text"]) > len(str(existing_value.get("value_text") or "")):
+                    existing_value["value_text"] = next_value["value_text"]
+                existing_value["position"] = min(int(existing_value.get("position") or 0), next_value["position"])
+            sources = raw_value.get("sources") if isinstance(raw_value.get("sources"), dict) else {}
+            for source_name, source_count in sources.items():
+                sname = _normalize_text(source_name)
+                if not sname:
+                    continue
+                source_key = (did, value_key, sname)
+                source_rows_map[source_key] = int(source_rows_map.get(source_key) or 0) + int(source_count or 0)
+
+        aliases = item.get("aliases") if isinstance(item.get("aliases"), dict) else {}
+        for alias_key, canonical_value in aliases.items():
+            akey = _normalize_value_key(alias_key)
+            cval = _normalize_text(canonical_value)
+            if akey and cval:
+                alias_rows_map[(did, akey)] = cval
+
+        source_reference = meta.get("source_reference") if isinstance(meta.get("source_reference"), dict) else {}
+        for provider, payload in source_reference.items():
+            if not isinstance(payload, dict):
+                continue
+            pname = _normalize_text(provider)
+            if not pname:
+                continue
+            provider_rows_map[(did, pname)] = (
+                did,
+                pname,
+                _normalize_text(payload.get("id")) or None,
+                _normalize_text(payload.get("name")) or None,
+                _normalize_text(payload.get("kind")) or None,
+                bool(payload.get("required") or False),
+                [str(v).strip() for v in (payload.get("allowed_values") or []) if str(v).strip()] or None,
+            )
+
+        export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+        for provider, mapping in export_map.items():
+            if not isinstance(mapping, dict):
+                continue
+            pname = _normalize_text(provider)
+            if not pname:
+                continue
+            for canonical_key, provider_value in mapping.items():
+                ckey = _normalize_value_key(canonical_key)
+                pvalue = _normalize_text(provider_value)
+                if ckey and pvalue:
+                    export_rows_map[(did, pname, ckey)] = pvalue
+
+    value_rows: List[tuple[Any, ...]] = [
+        (
+            dict_id,
+            value_key,
+            str(payload.get("value_text") or ""),
+            int(payload.get("value_count") or 0),
+            payload.get("last_seen"),
+            int(payload.get("position") or 0),
+        )
+        for (dict_id, value_key), payload in value_rows_map.items()
+    ]
+    source_rows: List[tuple[Any, ...]] = [
+        (dict_id, value_key, source_name, int(source_count or 0))
+        for (dict_id, value_key, source_name), source_count in source_rows_map.items()
+    ]
+    alias_rows: List[tuple[Any, ...]] = [
+        (dict_id, alias_key, canonical_value)
+        for (dict_id, alias_key), canonical_value in alias_rows_map.items()
+    ]
+    provider_rows: List[tuple[Any, ...]] = list(provider_rows_map.values())
+    export_rows: List[tuple[Any, ...]] = [
+        (dict_id, provider, canonical_key, provider_value)
+        for (dict_id, provider, canonical_key), provider_value in export_rows_map.items()
+    ]
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM dictionary_export_maps_rel")
+            cur.execute("DELETE FROM dictionary_provider_refs_rel")
+            cur.execute("DELETE FROM dictionary_aliases_rel")
+            cur.execute("DELETE FROM dictionary_value_sources_rel")
+            cur.execute("DELETE FROM dictionary_values_rel")
+            cur.execute("DELETE FROM dictionaries_rel")
+            if dictionaries_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionaries_rel (
+                      id, title, code, attr_id, attr_type, scope,
+                      is_service, is_required, param_group, template_layer, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    dictionaries_rows,
+                )
+            if value_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_values_rel (
+                      dict_id, value_key, value_text, value_count, last_seen, position
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    value_rows,
+                )
+            if source_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_value_sources_rel (
+                      dict_id, value_key, source_name, source_count
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    source_rows,
+                )
+            if alias_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_aliases_rel (
+                      dict_id, alias_key, canonical_value
+                    ) VALUES (%s, %s, %s)
+                    """,
+                    alias_rows,
+                )
+            if provider_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_provider_refs_rel (
+                      dict_id, provider, provider_param_id, provider_param_name, kind, is_required, allowed_values
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    provider_rows,
+                )
+            if export_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_export_maps_rel (
+                      dict_id, provider, canonical_key, provider_value
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    export_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_dictionaries_from_legacy() -> None:
+    lock = with_lock("dictionaries_rel_bootstrap")
+    lock.acquire()
+    try:
+        if _table_count("dictionaries_rel") > 0:
+            return
+        doc = _load_legacy_dictionaries_doc()
+        _replace_dictionaries_tables(doc)
+    finally:
+        lock.release()
+
+
+def load_dictionaries_db_doc() -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_dictionaries_from_legacy()
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                  id, title, code, attr_id, attr_type, scope,
+                  is_service, is_required, param_group, template_layer, created_at, updated_at
+                FROM dictionaries_rel
+                ORDER BY LOWER(title), id
+                """
+            )
+            dict_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT dict_id, value_key, value_text, value_count, last_seen, position
+                FROM dictionary_values_rel
+                ORDER BY dict_id, position, value_text
+                """
+            )
+            value_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT dict_id, value_key, source_name, source_count
+                FROM dictionary_value_sources_rel
+                ORDER BY dict_id, value_key, source_name
+                """
+            )
+            source_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT dict_id, alias_key, canonical_value
+                FROM dictionary_aliases_rel
+                ORDER BY dict_id, alias_key
+                """
+            )
+            alias_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT dict_id, provider, provider_param_id, provider_param_name, kind, is_required, allowed_values
+                FROM dictionary_provider_refs_rel
+                ORDER BY dict_id, provider
+                """
+            )
+            provider_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT dict_id, provider, canonical_key, provider_value
+                FROM dictionary_export_maps_rel
+                ORDER BY dict_id, provider, canonical_key
+                """
+            )
+            export_rows = cur.fetchall() or []
+
+        source_map: Dict[tuple[str, str], Dict[str, int]] = {}
+        for row in source_rows:
+            source_map.setdefault((str(row[0] or ""), str(row[1] or "")), {})[str(row[2] or "")] = int(row[3] or 0)
+
+        values_map: Dict[str, List[Dict[str, Any]]] = {}
+        for row in value_rows:
+            did = str(row[0] or "")
+            value_key = str(row[1] or "")
+            values_map.setdefault(did, []).append(
+                {
+                    "value": str(row[2] or ""),
+                    "count": int(row[3] or 0),
+                    "last_seen": str(row[4] or "") or None,
+                    "sources": source_map.get((did, value_key), {}),
+                }
+            )
+
+        aliases_map: Dict[str, Dict[str, str]] = {}
+        for row in alias_rows:
+            aliases_map.setdefault(str(row[0] or ""), {})[str(row[1] or "")] = str(row[2] or "")
+
+        provider_ref_map: Dict[str, Dict[str, Any]] = {}
+        for row in provider_rows:
+            did = str(row[0] or "")
+            provider_ref_map.setdefault(did, {})[str(row[1] or "")] = {
+                "id": str(row[2] or "") or None,
+                "name": str(row[3] or "") or None,
+                "kind": str(row[4] or "") or None,
+                "required": bool(row[5] or False),
+                "allowed_values": list(row[6] or []),
+            }
+
+        export_map: Dict[str, Dict[str, Dict[str, str]]] = {}
+        for row in export_rows:
+            did = str(row[0] or "")
+            provider = str(row[1] or "")
+            export_map.setdefault(did, {}).setdefault(provider, {})[str(row[2] or "")] = str(row[3] or "")
+
+        items: List[Dict[str, Any]] = []
+        for row in dict_rows:
+            did = str(row[0] or "")
+            meta: Dict[str, Any] = {}
+            if bool(row[6] or False):
+                meta["service"] = True
+            if bool(row[7] or False):
+                meta["required"] = True
+            if str(row[8] or "").strip():
+                meta["param_group"] = str(row[8] or "").strip()
+            if str(row[9] or "").strip():
+                meta["template_layer"] = str(row[9] or "").strip()
+            if provider_ref_map.get(did):
+                meta["source_reference"] = provider_ref_map[did]
+            if export_map.get(did):
+                meta["export_map"] = export_map[did]
+            items.append(
+                {
+                    "id": did,
+                    "title": str(row[1] or ""),
+                    "code": str(row[2] or ""),
+                    "attr_id": str(row[3] or ""),
+                    "type": str(row[4] or "") or "select",
+                    "scope": str(row[5] or "") or "both",
+                    "dict_id": did,
+                    "items": values_map.get(did, []),
+                    "aliases": aliases_map.get(did, {}),
+                    "meta": meta,
+                    "created_at": str(row[10] or "") or "",
+                    "updated_at": str(row[11] or "") or "",
+                }
+            )
+        return {"version": 2, "items": items}
+
+    return _with_pg_retry(_run)
+
+
+def save_dictionaries_db_doc(doc: Dict[str, Any]) -> None:
+    _ensure_tables()
+    normalized = _normalize_dictionary_doc(doc)
+    _replace_dictionaries_tables(normalized)
+    write_doc(DICTIONARIES_PATH, normalized)

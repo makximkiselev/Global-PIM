@@ -6,6 +6,10 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
 from app.core.json_store import read_doc as core_read_json, write_doc as core_write_json
+from app.storage.relational_pim_store import (
+    load_dictionaries_db_doc as load_dictionaries_db_rel,
+    save_dictionaries_db_doc as save_dictionaries_db_rel,
+)
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]  # backend/
 DATA_DIR = BACKEND_DIR / "data"
@@ -399,53 +403,12 @@ def _migrate_dictionaries_db(db: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_dictionaries_db() -> Dict[str, Any]:
-    db = _read_json(DICTIONARIES_FILE, DEFAULT_DICTIONARIES)
-    db = _migrate_dictionaries_db(db)
-
-    changed = False
-    # one-time merge from legacy dict files
-    try:
-        for path in DICTS_DIR.glob("*.json"):
-            raw = _read_json(path, {})
-            if not isinstance(raw, dict):
-                continue
-            did = str(raw.get("id") or path.stem).strip()
-            if not did:
-                continue
-            title = str(raw.get("title") or did).strip()
-            items = _migrate_dict_items(raw.get("items"))
-            aliases = raw.get("aliases") if isinstance(raw.get("aliases"), dict) else {}
-            existing = next((x for x in db.get("items", []) if isinstance(x, dict) and x.get("id") == did), None)
-            if existing is None:
-                db["items"].append(
-                    {
-                        "id": did,
-                        "title": title,
-                        "items": items,
-                        "aliases": aliases,
-                        "meta": raw.get("meta") if isinstance(raw.get("meta"), dict) else {},
-                        "created_at": raw.get("created_at") or "",
-                        "updated_at": raw.get("updated_at") or "",
-                    }
-                )
-                changed = True
-            else:
-                merged = _merge_dict_items(existing.get("items", []), items)
-                if len(merged) != len(existing.get("items", [])):
-                    existing["items"] = merged
-                    changed = True
-    except Exception:
-        pass
-
-    if changed:
-        save_dictionaries_db(db)
-
-    return db
+    return _migrate_dictionaries_db(load_dictionaries_db_rel())
 
 
 def save_dictionaries_db(db: Dict[str, Any]) -> None:
     db = _migrate_dictionaries_db(db)
-    _write_json_atomic(DICTIONARIES_FILE, db)
+    save_dictionaries_db_rel(db)
 
 
 def _norm_title(s: str) -> str:

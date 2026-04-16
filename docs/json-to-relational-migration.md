@@ -47,14 +47,23 @@
 
 ### Phase 2
 
-Перенести:
+Перенесено:
 
-- `attribute_mappings`
-- `attribute_value_dictionary`
-- read-model для `sources-mapping`
+- `attribute_mappings` -> `attribute_mappings_rel`
+- `attribute_value_dictionary` -> `attribute_value_refs_rel`
+- `dictionaries` -> реляционный словарный слой:
+  - `dictionaries_rel`
+  - `dictionary_values_rel`
+  - `dictionary_value_sources_rel`
+  - `dictionary_aliases_rel`
+  - `dictionary_provider_refs_rel`
+  - `dictionary_export_maps_rel`
 
-`attribute_mappings` уже переведены на отдельную таблицу `attribute_mappings_rel` с dual-write.
-`attribute_value_dictionary` переведен на отдельную таблицу `attribute_value_refs_rel` с dual-write.
+Все три слоя работают через dual-write:
+
+- чтение идет из таблиц;
+- запись идет в таблицы;
+- legacy JSON пока сохраняется для совместимости.
 
 ### Phase 3
 

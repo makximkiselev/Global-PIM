@@ -493,10 +493,10 @@ def _upsert_attr_values_dictionary_for_category(
 
 def _catalog_param_group_locks() -> Dict[str, str]:
     """
-    Lock map: catalog parameter title -> param_group from /data/dictionaries.json.
+    Lock map: catalog parameter title -> param_group from dictionaries store.
     Apply only for parameters with explicit type, as requested by product logic.
     """
-    doc = read_doc(DATA_DIR / "dictionaries.json", default={"items": []})
+    doc = load_dictionaries_db()
     items = doc.get("items") if isinstance(doc, dict) else []
     if not isinstance(items, list):
         return {}
@@ -1715,8 +1715,7 @@ def _pair_score(
 
 
 def _service_names() -> List[str]:
-    dpath = DATA_DIR / "dictionaries.json"
-    doc = read_doc(dpath, default={"items": []})
+    doc = load_dictionaries_db()
     out = list(DEFAULT_SERVICE_NAMES)
     used = {x.strip().lower() for x in out}
     for it in doc.get("items") or []:
