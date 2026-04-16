@@ -422,7 +422,7 @@ def load_gt_index() -> Dict[str, Any]:
 
 
 def save_gt_index(doc: Dict[str, Any]) -> None:
-    write_doc(GT_INDEX_PATH, doc)
+    return None
 
 
 def load_pim_index() -> Dict[str, Any]:
@@ -431,7 +431,7 @@ def load_pim_index() -> Dict[str, Any]:
 
 
 def save_pim_index(doc: Dict[str, Any]) -> None:
-    write_doc(PIM_INDEX_PATH, doc)
+    return None
 
 
 def load_category_index() -> Dict[str, Any]:
@@ -440,7 +440,7 @@ def load_category_index() -> Dict[str, Any]:
 
 
 def save_category_index(doc: Dict[str, Any]) -> None:
-    write_doc(CAT_INDEX_PATH, doc)
+    return None
 
 
 # =========================
@@ -465,7 +465,7 @@ def _load_catalog_products() -> List[Dict[str, Any]]:
 
 
 def _save_catalog_products(items: List[Dict[str, Any]]) -> None:
-    write_doc(CATALOG_PRODUCTS_PATH, items)
+    return None
 
 
 def _upsert_catalog_product(product_id: str, title: str, category_id: str) -> None:

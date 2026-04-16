@@ -377,6 +377,29 @@ def _ensure_tables() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS category_template_resolution_rel (
+                  category_id TEXT PRIMARY KEY,
+                  template_id TEXT NULL,
+                  template_name TEXT NULL,
+                  source_category_id TEXT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS product_marketplace_status_rel (
+                  product_id TEXT PRIMARY KEY,
+                  yandex_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  ozon_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
 
     _with_pg_retry(_run)
 
@@ -1968,7 +1991,6 @@ def save_products_doc(doc: Dict[str, Any]) -> None:
     _ensure_tables()
     normalized = _normalize_products_doc(doc)
     _replace_products_table(normalized)
-    write_doc(PRODUCTS_PATH, normalized)
 
 
 def load_catalog_product_items() -> List[Dict[str, Any]]:
@@ -2035,3 +2057,131 @@ def load_products_count() -> int:
     _ensure_tables()
     _bootstrap_products_from_legacy()
     return _table_count("products_rel")
+
+
+def save_category_template_resolution(rows: List[Dict[str, Any]]) -> None:
+    _ensure_tables()
+    payload = []
+    for row in rows or []:
+        cid = str(row.get("category_id") or "").strip()
+        if not cid:
+            continue
+        payload.append(
+            (
+                cid,
+                str(row.get("template_id") or "").strip() or None,
+                str(row.get("template_name") or "").strip() or None,
+                str(row.get("source_category_id") or "").strip() or None,
+            )
+        )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM category_template_resolution_rel")
+            if payload:
+                cur.executemany(
+                    """
+                    INSERT INTO category_template_resolution_rel (
+                      category_id, template_id, template_name, source_category_id, updated_at
+                    ) VALUES (%s, %s, %s, %s, NOW())
+                    """,
+                    payload,
+                )
+
+    _with_pg_retry(_run)
+
+
+def load_category_template_resolution_map() -> Dict[str, Dict[str, str]]:
+    _ensure_tables()
+
+    def _run() -> Dict[str, Dict[str, str]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT category_id, template_id, template_name, source_category_id
+                FROM category_template_resolution_rel
+                ORDER BY category_id
+                """
+            )
+            rows = cur.fetchall() or []
+        return {
+            str(row[0] or "").strip(): {
+                "template_id": str(row[1] or "").strip(),
+                "template_name": str(row[2] or "").strip(),
+                "source_category_id": str(row[3] or "").strip(),
+            }
+            for row in rows
+            if str(row[0] or "").strip()
+        }
+
+    return _with_pg_retry(_run)
+
+
+def save_product_marketplace_status(rows: List[Dict[str, Any]]) -> None:
+    _ensure_tables()
+    payload = []
+    for row in rows or []:
+        pid = str(row.get("product_id") or "").strip()
+        if not pid:
+            continue
+        payload.append(
+            (
+                pid,
+                bool(row.get("yandex_present") or False),
+                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
+                bool(row.get("ozon_present") or False),
+                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
+            )
+        )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM product_marketplace_status_rel")
+            if payload:
+                cur.executemany(
+                    """
+                    INSERT INTO product_marketplace_status_rel (
+                      product_id, yandex_present, yandex_status, ozon_present, ozon_status, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, NOW())
+                    """,
+                    payload,
+                )
+
+    _with_pg_retry(_run)
+
+
+def load_product_marketplace_status_map() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    _ensure_tables()
+
+    def _run() -> Dict[str, Dict[str, Dict[str, Any]]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT product_id, yandex_present, yandex_status, ozon_present, ozon_status
+                FROM product_marketplace_status_rel
+                ORDER BY product_id
+                """
+            )
+            rows = cur.fetchall() or []
+        out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for row in rows:
+            pid = str(row[0] or "").strip()
+            if not pid:
+                continue
+            out[pid] = {
+                "yandex_market": {
+                    "present": bool(row[1] or False),
+                    "status": str(row[2] or "Нет данных").strip() or "Нет данных",
+                },
+                "ozon": {
+                    "present": bool(row[3] or False),
+                    "status": str(row[4] or "Нет данных").strip() or "Нет данных",
+                },
+            }
+        return out
+
+    return _with_pg_retry(_run)

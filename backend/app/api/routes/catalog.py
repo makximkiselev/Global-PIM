@@ -15,6 +15,10 @@ from app.storage.relational_pim_store import (
     save_catalog_nodes,
     load_catalog_product_items,
     load_category_product_counts,
+    save_category_template_resolution,
+    load_category_template_resolution_map,
+    save_product_marketplace_status,
+    load_product_marketplace_status_map,
 )
 from app.core.json_store import read_doc, write_doc
 from app.core.products.service import (
@@ -45,6 +49,10 @@ _PRODUCTS_PAGE_CACHE_TTL_SECONDS = 20.0
 _products_page_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _PRODUCTS_PAGE_RESULT_CACHE_TTL_SECONDS = 15.0
 _products_page_result_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_TEMPLATE_RESOLUTION_CACHE_TTL_SECONDS = 300.0
+_MARKETPLACE_SUMMARY_CACHE_TTL_SECONDS = 60.0
+_template_resolution_state: Dict[str, float] = {"ts": 0.0}
+_marketplace_summary_state: Dict[str, float] = {"ts": 0.0}
 
 
 # =========================
@@ -146,6 +154,59 @@ def _products_page_meta() -> Dict[str, Any]:
     return payload
 
 
+def _refresh_category_template_resolution(nodes: List[Dict[str, Any]], templates: List[Dict[str, Any]], templates_db: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    templates_by_category = _templates_by_category(templates_db)
+    template_name_by_id = {str(row.get("id") or ""): str(row.get("name") or "") for row in templates if isinstance(row, dict)}
+    by_id = {str(n.get("id") or ""): n for n in nodes if isinstance(n, dict)}
+    rows: List[Dict[str, Any]] = []
+    out: Dict[str, Dict[str, str]] = {}
+    for node in nodes:
+        category_id = str(node.get("id") or "").strip()
+        if not category_id:
+            continue
+        cur = by_id.get(category_id)
+        seen: Set[str] = set()
+        template_id = ""
+        source_category_id = ""
+        while cur:
+            cid = str(cur.get("id") or "").strip()
+            if not cid or cid in seen:
+                break
+            seen.add(cid)
+            tids = templates_by_category.get(cid) or []
+            if tids:
+                template_id = str(tids[0] or "").strip()
+                source_category_id = cid
+                break
+            pid = str(cur.get("parent_id") or "").strip()
+            cur = by_id.get(pid) if pid else None
+        template_name = template_name_by_id.get(template_id, "") if template_id else ""
+        row = {
+            "category_id": category_id,
+            "template_id": template_id,
+            "template_name": template_name,
+            "source_category_id": source_category_id,
+        }
+        rows.append(row)
+        out[category_id] = {
+            "template_id": template_id,
+            "template_name": template_name,
+            "source_category_id": source_category_id,
+        }
+    save_category_template_resolution(rows)
+    _template_resolution_state["ts"] = time.monotonic()
+    return out
+
+
+def _ensure_category_template_resolution(meta: Dict[str, Any], refresh: bool = False) -> Dict[str, Dict[str, str]]:
+    now = time.monotonic()
+    if not refresh and now - float(_template_resolution_state.get("ts") or 0.0) < _TEMPLATE_RESOLUTION_CACHE_TTL_SECONDS:
+        cached = load_category_template_resolution_map()
+        if cached:
+            return cached
+    return _refresh_category_template_resolution(meta["nodes"], meta["templates"], meta["templates_db"])
+
+
 def _gt_sort_key(value: Any) -> Tuple[int, int, str]:
     v = str(value or "").strip()
     if not v:
@@ -189,6 +250,38 @@ def _build_marketplace_status_context() -> Dict[str, Any]:
         "rating_items": rating_items,
         "import_items": import_items,
     }
+
+
+def _refresh_marketplace_status_summary(products: List[Dict[str, Any]], ctx: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    rows: List[Dict[str, Any]] = []
+    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for product in products:
+        product_id = str(product.get("id") or "").strip()
+        if not product_id:
+            continue
+        statuses = _marketplace_statuses_for_product(product, ctx)
+        rows.append(
+            {
+                "product_id": product_id,
+                "yandex_present": bool(((statuses.get("yandex_market") or {}).get("present"))),
+                "yandex_status": str(((statuses.get("yandex_market") or {}).get("status")) or "Нет данных"),
+                "ozon_present": bool(((statuses.get("ozon") or {}).get("present"))),
+                "ozon_status": str(((statuses.get("ozon") or {}).get("status")) or "Нет данных"),
+            }
+        )
+        out[product_id] = statuses
+    save_product_marketplace_status(rows)
+    _marketplace_summary_state["ts"] = time.monotonic()
+    return out
+
+
+def _ensure_marketplace_status_summary(products: List[Dict[str, Any]], refresh: bool = False) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    now = time.monotonic()
+    if not refresh and now - float(_marketplace_summary_state.get("ts") or 0.0) < _MARKETPLACE_SUMMARY_CACHE_TTL_SECONDS:
+        cached = load_product_marketplace_status_map()
+        if cached:
+            return cached
+    return _refresh_marketplace_status_summary(products, _build_marketplace_status_context())
 
 
 def _marketplace_statuses_for_product(product: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -680,7 +773,7 @@ def search_products(
     requested_ids = {str(x or "").strip() for x in (ids or "").split(",") if str(x or "").strip()}
     requested_category_ids = {str(x or "").strip() for x in (category_ids or "").split(",") if str(x or "").strip()}
 
-    products = _load_full_products()
+    products = _load_products()
     if requested_category_ids:
         category_scope: Set[str] = set()
         if include_descendants:
@@ -711,7 +804,7 @@ def search_products(
         elif not requested_ids and not requested_category_ids:
             continue
 
-        items.append(_serialize_product_list_item(p))
+        items.append(dict(p))
 
     items.sort(
         key=lambda item: (
@@ -724,7 +817,7 @@ def search_products(
 
 @router.get("/catalog/products")
 def list_products(category_id: Optional[str] = None, include_descendants: bool = True):
-    products = _load_full_products()
+    products = _load_products()
     if category_id:
         if include_descendants:
             nodes = _load_nodes()
@@ -739,8 +832,7 @@ def list_products(category_id: Optional[str] = None, include_descendants: bool =
             str(p.get("title") or p.get("name") or "").lower(),
         )
     )
-
-    return {"items": [_serialize_product_list_item(p) for p in products]}
+    return {"items": products}
 
 
 @router.get("/catalog/products/counts")
@@ -794,10 +886,10 @@ def products_page_data(
     nodes = meta["nodes"]
     groups = meta["groups"]
     templates = meta["templates"]
-    templates_db = meta["templates_db"]
 
     group_name_by_id = {str(g.get("id") or ""): str(g.get("name") or "") for g in groups if isinstance(g, dict)}
-    templates_by_category = _templates_by_category(templates_db)
+    template_resolution = _ensure_category_template_resolution(meta, refresh=refresh)
+    marketplace_status_map = _ensure_marketplace_status_summary(_load_products(), refresh=refresh)
     exact_category = (category or "").strip()
     subtree_parent = _collect_subtree_ids(nodes, parent) if parent else None
     subtree_sub = _collect_subtree_ids(nodes, sub) if sub else None
@@ -806,7 +898,6 @@ def products_page_data(
     ym_filter = (ym or "all").strip().lower()
     oz_filter = (oz or "all").strip().lower()
     view_filter = (view or "all").strip().lower()
-    template_cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
     path_cache: Dict[str, str] = {}
 
     def category_path(category_id: str) -> str:
@@ -816,25 +907,8 @@ def products_page_data(
         path_cache[category_id] = path
         return path
 
-    def resolved_template(category_id: str) -> Tuple[str, str, str]:
-        if category_id in template_cache:
-            tid, source_cid = template_cache[category_id]
-        else:
-            tid, source_cid = _resolve_template_for_category(nodes, category_id, templates_by_category)
-            template_cache[category_id] = (tid, source_cid)
-        if not tid:
-            return "", "", ""
-        template_name = ""
-        for row in templates:
-            if str(row.get("id") or "") == str(tid):
-                template_name = str(row.get("name") or "")
-                break
-        return str(tid), template_name, str(source_cid or "")
-
-    marketplace_ctx = _build_marketplace_status_context()
     filtered_items: List[Dict[str, Any]] = []
-    for product in _load_full_products():
-        item = _serialize_product_list_item(product)
+    for item in _load_products():
         category_id = str(item.get("category_id") or "")
         if exact_category:
             if exact:
@@ -853,13 +927,19 @@ def products_page_data(
         if group and group != "__ungrouped__" and group_id != group:
             continue
 
-        template_id, template_name, template_source_category_id = resolved_template(category_id)
+        template_row = template_resolution.get(category_id) or {}
+        template_id = str(template_row.get("template_id") or "")
+        template_name = str(template_row.get("template_name") or "")
+        template_source_category_id = str(template_row.get("source_category_id") or "")
         if template == "__without__" and template_id:
             continue
         if template and template != "__without__" and template_id != template:
             continue
 
-        marketplace_statuses = _marketplace_statuses_for_product(product, marketplace_ctx)
+        marketplace_statuses = marketplace_status_map.get(str(item.get("id") or "").strip()) or {
+            "yandex_market": {"status": "Нет данных", "present": False},
+            "ozon": {"status": "Нет данных", "present": False},
+        }
         export_ym = bool(((marketplace_statuses.get("yandex_market") or {}).get("present")))
         export_oz = bool(((marketplace_statuses.get("ozon") or {}).get("present")))
         if ym_filter == "on" and not export_ym:

@@ -105,7 +105,11 @@ Hot paths, уже переведенные на новый слой:
 - registry projection:
   - `catalog_product_registry_rel`
   - `category_product_counts_rel`
+- product summaries:
+  - `category_template_resolution_rel`
+  - `product_marketplace_status_rel`
 - `stats` summary теперь считает товары из реляционного product store, не из JSON blob
+- `catalog/products-page-data` больше не должен читать полный product blob для шаблонов и marketplace статусов
 
 ### Phase 5
 
@@ -113,6 +117,12 @@ Hot paths, уже переведенные на новый слой:
 - остаточные product summary/read models для тяжелых экранов
 - остаточные вспомогательные JSON-backed слои
 - убрать dual-write для уже вынесенных сущностей
+
+Уже убрано в product-срезе:
+
+- `products.json` больше не является write target для runtime updates;
+- `sku_gt_index.json`, `sku_pim_index.json`, `product_category_index.json`, `catalog_products.json`
+  больше не являются source of truth и не обновляются как рабочий слой.
 
 ## Exit criteria
 
