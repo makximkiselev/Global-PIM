@@ -13,7 +13,12 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
 from app.core.value_mapping import provider_export_value, provider_import_value
-from app.storage.relational_pim_store import load_attribute_mapping_doc, load_catalog_nodes, load_category_mappings
+from app.storage.relational_pim_store import (
+    load_attribute_mapping_doc,
+    load_attribute_value_refs_doc,
+    load_catalog_nodes,
+    load_category_mappings,
+)
 
 router = APIRouter(prefix="/marketplaces/yandex", tags=["marketplaces-yandex"])
 
@@ -256,7 +261,7 @@ def _load_attr_mapping_rows() -> Dict[str, List[Dict[str, Any]]]:
 
 
 def _load_attr_value_refs() -> Dict[str, Dict[str, Any]]:
-    doc = read_doc(ATTR_VALUES_DICT_PATH, default={"items": {}})
+    doc = load_attribute_value_refs_doc()
     items = doc.get("items") if isinstance(doc, dict) else {}
     if not isinstance(items, dict):
         return {}

@@ -27,9 +27,11 @@ from app.storage.json_store import (
 )
 from app.storage.relational_pim_store import (
     load_attribute_mapping_doc,
+    load_attribute_value_refs_doc,
     load_catalog_nodes,
     load_category_mappings,
     save_attribute_mapping_doc,
+    save_attribute_value_refs_doc,
     save_category_mappings,
 )
 from app.core.master_templates import (
@@ -354,7 +356,7 @@ def _load_attr_mapping_doc() -> Dict[str, Any]:
 
 
 def _load_attr_values_dict_doc() -> Dict[str, Any]:
-    doc = read_doc(ATTR_VALUES_DICT_PATH, default={"version": 2, "updated_at": None, "items": {}})
+    doc = load_attribute_value_refs_doc()
     if not isinstance(doc, dict):
         doc = {"version": 2, "updated_at": None, "items": {}}
     if not isinstance(doc.get("items"), dict):
@@ -366,7 +368,7 @@ def _load_attr_values_dict_doc() -> Dict[str, Any]:
 
 def _save_attr_values_dict_doc(doc: Dict[str, Any]) -> None:
     doc["updated_at"] = _now_iso()
-    write_doc(ATTR_VALUES_DICT_PATH, doc)
+    save_attribute_value_refs_doc(doc)
 
 
 def _unique_text_values(values: Any, limit: int = 500) -> List[str]:

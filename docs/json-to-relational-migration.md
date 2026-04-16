@@ -54,6 +54,7 @@
 - read-model для `sources-mapping`
 
 `attribute_mappings` уже переведены на отдельную таблицу `attribute_mappings_rel` с dual-write.
+`attribute_value_dictionary` переведен на отдельную таблицу `attribute_value_refs_rel` с dual-write.
 
 ### Phase 3
 
