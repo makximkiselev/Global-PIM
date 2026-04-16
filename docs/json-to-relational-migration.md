@@ -82,15 +82,31 @@ Runtime strategy та же:
 
 ### Phase 4
 
-Перенести:
+Перенесено:
 
-- `products`
-- product indexes
-- catalog product registry read-model
+- `products` -> `products_rel`
+
+Runtime strategy:
+
+- чтение `products` идет из таблицы;
+- запись идет в таблицу;
+- legacy `products.json` сохраняется как dual-write compatibility layer;
+- SKU/category indexes больше не являются source of truth и собираются из реляционного product store.
+
+Hot paths, уже переведенные на новый слой:
+
+- `app.core.products.repo`
+- `app.core.products.service`
+- `catalog`
+- `catalog_exchange`
+- `templates` product readers
+- `yandex_market`
+- `ozon_market`
 
 ### Phase 5
 
 Перенести:
+- product registry read-model и вспомогательные summary tables
 - остаточные вспомогательные JSON-backed слои
 - убрать dual-write для уже вынесенных сущностей
 

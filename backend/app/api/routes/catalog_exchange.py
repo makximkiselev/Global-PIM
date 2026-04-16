@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
-from app.storage.json_store import load_templates_db, load_competitor_mapping_db
+from app.storage.json_store import load_templates_db, load_competitor_mapping_db, load_products_db, save_products_db
 from app.storage.relational_pim_store import load_catalog_nodes
 from app.api.routes.yandex_market import OfferCardsSyncReq, sync_offer_cards, ExportPreviewReq, yandex_export_preview
 from app.api.routes.competitor_mapping import _ensure_row_shape, _normalize_mapped_specs
@@ -41,13 +41,13 @@ def _now_iso() -> str:
 
 
 def _load_products() -> List[Dict[str, Any]]:
-    doc = read_doc(PRODUCTS_PATH, default={"items": []})
+    doc = load_products_db()
     items = doc.get("items") if isinstance(doc, dict) else []
     return items if isinstance(items, list) else []
 
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
-    write_doc(PRODUCTS_PATH, {"items": items})
+    save_products_db({"items": items})
 
 
 def _load_nodes() -> List[Dict[str, Any]]:

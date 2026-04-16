@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from app.core.json_store import JsonStoreError, read_doc, write_doc
+from app.core.json_store import JsonStoreError
+from app.storage.json_store import load_products_db, save_products_db
 from app.core.products.variants_repo import (
     bulk_create_variants as repo_bulk_create_variants,
     generate_preview as repo_generate_variants_preview,
@@ -17,7 +18,7 @@ PRODUCTS_PATH = BASE_DIR / "data" / "products.json"
 
 
 def _load_products_doc() -> Dict[str, Any]:
-    doc = read_doc(PRODUCTS_PATH, default={"items": []})
+    doc = load_products_db()
     if not isinstance(doc, dict):
         doc = {"items": []}
     items = doc.get("items")
@@ -28,7 +29,7 @@ def _load_products_doc() -> Dict[str, Any]:
 
 def _save_products_doc(doc: Dict[str, Any]) -> None:
     items = doc.get("items") if isinstance(doc.get("items"), list) else []
-    write_doc(PRODUCTS_PATH, {"items": items})
+    save_products_db({"items": items})
 
 
 def _items() -> List[Dict[str, Any]]:

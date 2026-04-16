@@ -9,6 +9,8 @@ from app.core.json_store import read_doc as core_read_json, write_doc as core_wr
 from app.storage.relational_pim_store import (
     load_dictionaries_db_doc as load_dictionaries_db_rel,
     save_dictionaries_db_doc as save_dictionaries_db_rel,
+    load_products_doc as load_products_db_rel,
+    save_products_doc as save_products_db_rel,
     load_templates_db_doc as load_templates_db_rel,
     save_templates_db_doc as save_templates_db_rel,
 )
@@ -405,6 +407,14 @@ def load_dictionaries_db() -> Dict[str, Any]:
 def save_dictionaries_db(db: Dict[str, Any]) -> None:
     db = _migrate_dictionaries_db(db)
     save_dictionaries_db_rel(db)
+
+
+def load_products_db() -> Dict[str, Any]:
+    return load_products_db_rel()
+
+
+def save_products_db(db: Dict[str, Any]) -> None:
+    save_products_db_rel(db)
 
 
 def _norm_title(s: str) -> str:

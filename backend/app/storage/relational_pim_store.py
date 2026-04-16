@@ -21,6 +21,7 @@ ATTRIBUTE_VALUE_DICTIONARY_PATH = DATA_DIR / "marketplaces" / "attribute_value_d
 DICTIONARIES_PATH = DATA_DIR / "dictionaries.json"
 DICTS_DIR = DATA_DIR / "dicts"
 TEMPLATES_PATH = DATA_DIR / "templates.json"
+PRODUCTS_PATH = DATA_DIR / "products.json"
 
 
 def _with_pg_retry(fn):
@@ -293,6 +294,51 @@ def _ensure_tables() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_category_template_links_rel_category_position
                   ON category_template_links_rel(category_id, position)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS products_rel (
+                  id TEXT PRIMARY KEY,
+                  category_id TEXT NOT NULL,
+                  product_type TEXT NOT NULL DEFAULT 'single',
+                  status TEXT NOT NULL DEFAULT 'draft',
+                  title TEXT NOT NULL,
+                  sku_pim TEXT NULL,
+                  sku_gt TEXT NULL,
+                  group_id TEXT NULL,
+                  selected_params TEXT[] NOT NULL DEFAULT '{}'::text[],
+                  feature_params TEXT[] NOT NULL DEFAULT '{}'::text[],
+                  exports_enabled_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  content_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  extra_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_category
+                  ON products_rel(category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_sku_gt
+                  ON products_rel(sku_gt)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_sku_pim
+                  ON products_rel(sku_pim)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_group
+                  ON products_rel(group_id)
                 """
             )
 
@@ -1637,8 +1683,127 @@ def load_templates_db_doc() -> Dict[str, Any]:
             "category_to_template": category_to_template,
             "category_to_templates": category_to_templates,
         }
-
     return _normalize_templates_doc(_with_pg_retry(_run))
+
+
+def _normalize_products_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(doc, dict):
+        doc = {"version": 1, "items": []}
+    items = doc.get("items")
+    if not isinstance(items, list):
+        items = []
+    normalized_items: List[Dict[str, Any]] = []
+    known_keys = {
+        "id",
+        "category_id",
+        "type",
+        "status",
+        "title",
+        "sku_pim",
+        "sku_gt",
+        "group_id",
+        "selected_params",
+        "feature_params",
+        "exports_enabled",
+        "content",
+        "created_at",
+        "updated_at",
+    }
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        pid = str(raw.get("id") or "").strip()
+        category_id = str(raw.get("category_id") or "").strip()
+        title = str(raw.get("title") or raw.get("name") or "").strip()
+        if not pid or not category_id or not title:
+            continue
+        selected_params = raw.get("selected_params") if isinstance(raw.get("selected_params"), list) else []
+        feature_params = raw.get("feature_params") if isinstance(raw.get("feature_params"), list) else []
+        exports_enabled = raw.get("exports_enabled") if isinstance(raw.get("exports_enabled"), dict) else {}
+        content = raw.get("content") if isinstance(raw.get("content"), dict) else {}
+        extra = {k: v for k, v in raw.items() if k not in known_keys}
+        normalized_items.append(
+            {
+                "id": pid,
+                "category_id": category_id,
+                "type": str(raw.get("type") or "single").strip() or "single",
+                "status": str(raw.get("status") or "draft").strip() or "draft",
+                "title": title,
+                "sku_pim": str(raw.get("sku_pim") or "").strip(),
+                "sku_gt": str(raw.get("sku_gt") or "").strip(),
+                "group_id": str(raw.get("group_id") or "").strip() or None,
+                "selected_params": [str(v).strip() for v in selected_params if str(v).strip()],
+                "feature_params": [str(v).strip() for v in feature_params if str(v).strip()],
+                "exports_enabled": exports_enabled,
+                "content": content,
+                "created_at": str(raw.get("created_at") or "").strip() or "",
+                "updated_at": str(raw.get("updated_at") or "").strip() or "",
+                "extra": extra if isinstance(extra, dict) else {},
+            }
+        )
+    return {"version": 1, "items": normalized_items}
+
+
+def _replace_products_table(doc: Dict[str, Any]) -> None:
+    normalized = _normalize_products_doc(doc)
+    items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
+    rows: List[tuple[Any, ...]] = []
+    for item in items:
+        rows.append(
+            (
+                str(item.get("id") or "").strip(),
+                str(item.get("category_id") or "").strip(),
+                str(item.get("type") or "single").strip() or "single",
+                str(item.get("status") or "draft").strip() or "draft",
+                str(item.get("title") or "").strip(),
+                str(item.get("sku_pim") or "").strip() or None,
+                str(item.get("sku_gt") or "").strip() or None,
+                str(item.get("group_id") or "").strip() or None,
+                [str(v).strip() for v in (item.get("selected_params") or []) if str(v).strip()],
+                [str(v).strip() for v in (item.get("feature_params") or []) if str(v).strip()],
+                json.dumps(item.get("exports_enabled") if isinstance(item.get("exports_enabled"), dict) else {}),
+                json.dumps(item.get("content") if isinstance(item.get("content"), dict) else {}),
+                json.dumps(item.get("extra") if isinstance(item.get("extra"), dict) else {}),
+                str(item.get("created_at") or "").strip() or None,
+                str(item.get("updated_at") or "").strip() or None,
+            )
+        )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM products_rel")
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO products_rel (
+                      id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                      selected_params, feature_params, exports_enabled_json, content_json, extra_json,
+                      created_at, updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s,
+                      %s, %s
+                    )
+                    """,
+                    rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_products_from_legacy() -> None:
+    lock = with_lock("products_rel_bootstrap")
+    lock.acquire()
+    try:
+        if _table_count("products_rel") > 0:
+            return
+        doc = read_doc(PRODUCTS_PATH, default={"version": 1, "items": []})
+        if not isinstance(doc, dict):
+            doc = {"version": 1, "items": []}
+        _replace_products_table(doc)
+    finally:
+        lock.release()
 
 
 def save_templates_db_doc(doc: Dict[str, Any]) -> None:
@@ -1646,3 +1811,106 @@ def save_templates_db_doc(doc: Dict[str, Any]) -> None:
     normalized = _normalize_templates_doc(doc)
     _replace_templates_tables(normalized)
     write_doc(TEMPLATES_PATH, normalized)
+
+
+def load_products_doc() -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                  id,
+                  category_id,
+                  product_type,
+                  status,
+                  title,
+                  sku_pim,
+                  sku_gt,
+                  group_id,
+                  selected_params,
+                  feature_params,
+                  exports_enabled_json,
+                  content_json,
+                  extra_json,
+                  created_at,
+                  updated_at
+                FROM products_rel
+                ORDER BY created_at NULLS LAST, id
+                """
+            )
+            db_rows = cur.fetchall() or []
+
+        items: List[Dict[str, Any]] = []
+        for row in db_rows:
+            exports_enabled = row[10] if isinstance(row[10], dict) else {}
+            content = row[11] if isinstance(row[11], dict) else {}
+            extra = row[12] if isinstance(row[12], dict) else {}
+            item = {
+                "id": str(row[0] or "").strip(),
+                "category_id": str(row[1] or "").strip(),
+                "type": str(row[2] or "single").strip() or "single",
+                "status": str(row[3] or "draft").strip() or "draft",
+                "title": str(row[4] or "").strip(),
+                "sku_pim": str(row[5] or "").strip(),
+                "sku_gt": str(row[6] or "").strip(),
+                "selected_params": list(row[8] or []),
+                "feature_params": list(row[9] or []),
+                "exports_enabled": exports_enabled if isinstance(exports_enabled, dict) else {},
+                "content": content if isinstance(content, dict) else {},
+                "created_at": str(row[13] or "") or "",
+                "updated_at": str(row[14] or "") or "",
+            }
+            group_id = str(row[7] or "").strip()
+            if group_id:
+                item["group_id"] = group_id
+            if isinstance(extra, dict):
+                for key, value in extra.items():
+                    if key not in item:
+                        item[key] = value
+            items.append(item)
+        return {"version": 1, "items": items}
+
+    return _normalize_products_doc(_with_pg_retry(_run))
+
+
+def save_products_doc(doc: Dict[str, Any]) -> None:
+    _ensure_tables()
+    normalized = _normalize_products_doc(doc)
+    _replace_products_table(normalized)
+    write_doc(PRODUCTS_PATH, normalized)
+
+
+def load_catalog_product_items() -> List[Dict[str, Any]]:
+    doc = load_products_doc()
+    items = doc.get("items") if isinstance(doc.get("items"), list) else []
+    out: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content") if isinstance(item.get("content"), dict) else {}
+        media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
+        media_pool = media_images if media_images else media_legacy
+        preview_url = ""
+        for media in media_pool:
+            if isinstance(media, dict) and str(media.get("url") or "").strip():
+                preview_url = str(media.get("url") or "").strip()
+                break
+        out.append(
+            {
+                "id": str(item.get("id") or "").strip(),
+                "name": str(item.get("title") or item.get("name") or "").strip(),
+                "title": str(item.get("title") or item.get("name") or "").strip(),
+                "category_id": str(item.get("category_id") or "").strip(),
+                "sku_pim": str(item.get("sku_pim") or "").strip(),
+                "sku_gt": str(item.get("sku_gt") or "").strip(),
+                "group_id": str(item.get("group_id") or "").strip(),
+                "preview_url": preview_url,
+                "exports_enabled": item.get("exports_enabled") if isinstance(item.get("exports_enabled"), dict) else {},
+            }
+        )
+    return out

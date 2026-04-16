@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ..json_store import DATA_DIR, read_doc, write_doc, with_lock, JsonStoreError
-from app.storage.json_store import load_dictionaries_db, save_dictionaries_db, new_id
+from app.storage.json_store import (
+    load_dictionaries_db,
+    save_dictionaries_db,
+    load_products_db,
+    save_products_db,
+    new_id,
+)
 
 PRODUCTS_PATH = DATA_DIR / "products.json"
 GT_INDEX_PATH = DATA_DIR / "sku_gt_index.json"
@@ -379,15 +385,40 @@ def allocate_sku_pairs(count: int) -> List[Dict[str, str]]:
 
 
 def load_products() -> Dict[str, Any]:
-    return read_doc(PRODUCTS_PATH, default={"version": 1, "items": []})
+    return load_products_db()
 
 
 def save_products(doc: Dict[str, Any]) -> None:
-    write_doc(PRODUCTS_PATH, doc)
+    save_products_db(doc)
+
+
+def _build_indexes(products_doc: Dict[str, Any]) -> tuple[Dict[str, str], Dict[str, str], Dict[str, List[str]]]:
+    items = products_doc.get("items") if isinstance(products_doc.get("items"), list) else []
+    gt_map: Dict[str, str] = {}
+    pim_map: Dict[str, str] = {}
+    cat_map: Dict[str, List[str]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        pid = str(item.get("id") or "").strip()
+        if not pid:
+            continue
+        sku_gt = _norm_sku(item.get("sku_gt"))
+        sku_pim = _norm_sku(item.get("sku_pim"))
+        category_id = str(item.get("category_id") or "").strip()
+        if sku_gt and sku_gt not in gt_map:
+            gt_map[sku_gt] = pid
+        if sku_pim and sku_pim not in pim_map:
+            pim_map[sku_pim] = pid
+        if category_id:
+            cat_map.setdefault(category_id, [])
+            cat_map[category_id].append(pid)
+    return gt_map, pim_map, cat_map
 
 
 def load_gt_index() -> Dict[str, Any]:
-    return read_doc(GT_INDEX_PATH, default={"version": 1, "gt_to_product_id": {}})
+    gt_map, _, _ = _build_indexes(load_products())
+    return {"version": 1, "gt_to_product_id": gt_map}
 
 
 def save_gt_index(doc: Dict[str, Any]) -> None:
@@ -395,7 +426,8 @@ def save_gt_index(doc: Dict[str, Any]) -> None:
 
 
 def load_pim_index() -> Dict[str, Any]:
-    return read_doc(PIM_INDEX_PATH, default={"version": 1, "pim_to_product_id": {}})
+    _, pim_map, _ = _build_indexes(load_products())
+    return {"version": 1, "pim_to_product_id": pim_map}
 
 
 def save_pim_index(doc: Dict[str, Any]) -> None:
@@ -403,7 +435,8 @@ def save_pim_index(doc: Dict[str, Any]) -> None:
 
 
 def load_category_index() -> Dict[str, Any]:
-    return read_doc(CAT_INDEX_PATH, default={"version": 1, "category_to_product_ids": {}})
+    _, _, cat_map = _build_indexes(load_products())
+    return {"version": 1, "category_to_product_ids": cat_map}
 
 
 def save_category_index(doc: Dict[str, Any]) -> None:
@@ -415,7 +448,20 @@ def save_category_index(doc: Dict[str, Any]) -> None:
 # =========================
 def _load_catalog_products() -> List[Dict[str, Any]]:
     # catalog.py ожидает список [{id,name,category_id}, ...]
-    return read_doc(CATALOG_PRODUCTS_PATH, default=[])
+    doc = load_products()
+    items = doc.get("items") if isinstance(doc.get("items"), list) else []
+    out: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        out.append(
+            {
+                "id": str(item.get("id") or "").strip(),
+                "name": str(item.get("title") or item.get("name") or "").strip(),
+                "category_id": str(item.get("category_id") or "").strip(),
+            }
+        )
+    return out
 
 
 def _save_catalog_products(items: List[Dict[str, Any]]) -> None:

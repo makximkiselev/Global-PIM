@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
-from app.storage.json_store import load_templates_db, save_templates_db
-from app.storage.relational_pim_store import load_catalog_nodes, save_catalog_nodes
+from app.storage.json_store import load_templates_db, save_templates_db, load_products_db, save_products_db
+from app.storage.relational_pim_store import load_catalog_nodes, save_catalog_nodes, load_catalog_product_items
 from app.core.json_store import read_doc, write_doc
 from app.core.products.service import (
     create_product_service,
@@ -62,7 +62,7 @@ def _save_nodes(nodes: List[Dict[str, Any]]) -> None:
 
 
 def _load_products() -> List[Dict[str, Any]]:
-    return _load_json(PRODUCTS_PATH, [])
+    return load_catalog_product_items()
 
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
@@ -70,13 +70,13 @@ def _save_products(items: List[Dict[str, Any]]) -> None:
 
 
 def _load_full_products() -> List[Dict[str, Any]]:
-    doc = _load_json(FULL_PRODUCTS_PATH, {"items": []})
+    doc = load_products_db()
     items = doc.get("items") if isinstance(doc, dict) else None
     return items if isinstance(items, list) else []
 
 
 def _save_full_products(items: List[Dict[str, Any]]) -> None:
-    _save_json(FULL_PRODUCTS_PATH, {"items": items})
+    save_products_db({"items": items})
 
 
 def _serialize_product_list_item(product: Dict[str, Any]) -> Dict[str, Any]:

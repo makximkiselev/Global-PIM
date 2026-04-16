@@ -15,6 +15,7 @@ from app.core.json_store import read_doc, write_doc, with_lock
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
+    load_products_db,
     load_templates_db,
     save_templates_db,
     new_id,
@@ -137,7 +138,7 @@ def _load_catalog_nodes() -> List[Dict[str, Any]]:
 
 
 def _load_products_doc() -> Dict[str, Any]:
-    data = read_doc(PRODUCTS_PATH, default={"version": 1, "items": []})
+    data = load_products_db()
     return data if isinstance(data, dict) else {"version": 1, "items": []}
 
 
