@@ -1937,6 +1937,23 @@ def _normalize_products_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     return {"version": 1, "items": normalized_items}
 
 
+def _normalize_product_item(raw: Dict[str, Any]) -> Dict[str, Any] | None:
+    normalized = _normalize_products_doc({"version": 1, "items": [raw]}).get("items", [])
+    if not normalized:
+        return None
+    return normalized[0]
+
+
+def _preview_url_for_content(content: Dict[str, Any]) -> str:
+    media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+    media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
+    media_pool = media_images if media_images else media_legacy
+    for media in media_pool:
+        if isinstance(media, dict) and str(media.get("url") or "").strip():
+            return str(media.get("url") or "").strip()
+    return ""
+
+
 def _replace_products_table(doc: Dict[str, Any]) -> None:
     normalized = _normalize_products_doc(doc)
     items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
@@ -1946,14 +1963,7 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
     for item in items:
         category_id = str(item.get("category_id") or "").strip()
         content = item.get("content") if isinstance(item.get("content"), dict) else {}
-        media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
-        media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
-        media_pool = media_images if media_images else media_legacy
-        preview_url = ""
-        for media in media_pool:
-            if isinstance(media, dict) and str(media.get("url") or "").strip():
-                preview_url = str(media.get("url") or "").strip()
-                break
+        preview_url = _preview_url_for_content(content)
         if category_id:
             counts[category_id] = int(counts.get(category_id, 0)) + 1
         rows.append(
@@ -2034,6 +2044,32 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
                 )
 
     _with_pg_retry(_run)
+
+
+def allocate_next_product_identity() -> Dict[str, str]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+
+    def _run() -> Dict[str, str]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                  COALESCE(MAX(CASE WHEN id ~ '^product_[0-9]+$' THEN SUBSTRING(id FROM 9)::bigint END), 0),
+                  COALESCE(MAX(CASE WHEN COALESCE(sku_pim, '') ~ '^[0-9]+$' THEN sku_pim::bigint END), 0),
+                  COALESCE(MAX(CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN sku_gt::bigint END), 50000)
+                FROM products_rel
+                """
+            )
+            row = cur.fetchone() or [0, 0, 50000]
+        return {
+            "product_id": f"product_{int(row[0] or 0) + 1}",
+            "next_sku_pim": str(int(row[1] or 0) + 1),
+            "next_sku_gt": str(int(row[2] or 50000) + 1),
+        }
+
+    return _with_pg_retry(_run)
 
 
 def _bootstrap_products_from_legacy() -> None:
@@ -2120,10 +2156,220 @@ def load_products_doc() -> Dict[str, Any]:
     return _normalize_products_doc(_with_pg_retry(_run))
 
 
+def load_products_by_ids(ids: List[str]) -> List[Dict[str, Any]]:
+    return query_products_full(ids=ids)
+
+
+def load_products_by_category(category_id: str) -> List[Dict[str, Any]]:
+    cid = str(category_id or "").strip()
+    if not cid:
+        return []
+    return query_products_full(category_ids=[cid])
+
+
+def find_product_by_sku_gt(sku_gt: str) -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    needle = str(sku_gt or "").strip()
+    if not needle:
+        return {}
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                  id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                  selected_params, feature_params, exports_enabled_json, content_json, extra_json,
+                  created_at, updated_at
+                FROM products_rel
+                WHERE sku_gt = %s
+                LIMIT 1
+                """,
+                [needle],
+            )
+            row = cur.fetchone()
+        if not row:
+            return {}
+        item = {
+            "id": str(row[0] or "").strip(),
+            "category_id": str(row[1] or "").strip(),
+            "type": str(row[2] or "single").strip() or "single",
+            "status": str(row[3] or "draft").strip() or "draft",
+            "title": str(row[4] or "").strip(),
+            "sku_pim": str(row[5] or "").strip(),
+            "sku_gt": str(row[6] or "").strip(),
+            "selected_params": list(row[8] or []),
+            "feature_params": list(row[9] or []),
+            "exports_enabled": row[10] if isinstance(row[10], dict) else {},
+            "content": row[11] if isinstance(row[11], dict) else {},
+            "created_at": str(row[13] or "") or "",
+            "updated_at": str(row[14] or "") or "",
+        }
+        group_id = str(row[7] or "").strip()
+        if group_id:
+            item["group_id"] = group_id
+        extra = row[12] if isinstance(row[12], dict) else {}
+        for key, value in extra.items():
+            if key not in item:
+                item[key] = value
+        return item
+
+    return _with_pg_retry(_run)
+
+
 def save_products_doc(doc: Dict[str, Any]) -> None:
     _ensure_tables()
     normalized = _normalize_products_doc(doc)
     _replace_products_table(normalized)
+
+
+def _refresh_category_counts_for(category_ids: List[str]) -> None:
+    safe_category_ids = [str(x or "").strip() for x in category_ids if str(x or "").strip()]
+    if not safe_category_ids:
+        return
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM category_product_counts_rel WHERE category_id = ANY(%s)", [safe_category_ids])
+            cur.execute(
+                """
+                INSERT INTO category_product_counts_rel (category_id, products_count, updated_at)
+                SELECT category_id, COUNT(*), NOW()
+                FROM products_rel
+                WHERE category_id = ANY(%s)
+                GROUP BY category_id
+                """,
+                [safe_category_ids],
+            )
+
+    _with_pg_retry(_run)
+
+
+def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    normalized = _normalize_product_item(item if isinstance(item, dict) else {})
+    if not normalized:
+        return {}
+    category_id = str(normalized.get("category_id") or "").strip()
+    content = normalized.get("content") if isinstance(normalized.get("content"), dict) else {}
+    preview_url = _preview_url_for_content(content) or None
+    exports_enabled = normalized.get("exports_enabled") if isinstance(normalized.get("exports_enabled"), dict) else {}
+    extra = normalized.get("extra") if isinstance(normalized.get("extra"), dict) else {}
+    product_id = str(normalized.get("id") or "").strip()
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT category_id FROM products_rel WHERE id = %s", [product_id])
+            old_row = cur.fetchone()
+            old_category_id = str((old_row or [None])[0] or "").strip()
+            cur.execute(
+                """
+                INSERT INTO products_rel (
+                  id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                  selected_params, feature_params, exports_enabled_json, content_json, extra_json,
+                  created_at, updated_at
+                ) VALUES (
+                  %s, %s, %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
+                  %s, %s
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                  category_id = EXCLUDED.category_id,
+                  product_type = EXCLUDED.product_type,
+                  status = EXCLUDED.status,
+                  title = EXCLUDED.title,
+                  sku_pim = EXCLUDED.sku_pim,
+                  sku_gt = EXCLUDED.sku_gt,
+                  group_id = EXCLUDED.group_id,
+                  selected_params = EXCLUDED.selected_params,
+                  feature_params = EXCLUDED.feature_params,
+                  exports_enabled_json = EXCLUDED.exports_enabled_json,
+                  content_json = EXCLUDED.content_json,
+                  extra_json = EXCLUDED.extra_json,
+                  created_at = COALESCE(products_rel.created_at, EXCLUDED.created_at),
+                  updated_at = EXCLUDED.updated_at
+                """,
+                [
+                    product_id,
+                    category_id,
+                    str(normalized.get("type") or "single").strip() or "single",
+                    str(normalized.get("status") or "draft").strip() or "draft",
+                    str(normalized.get("title") or "").strip(),
+                    str(normalized.get("sku_pim") or "").strip() or None,
+                    str(normalized.get("sku_gt") or "").strip() or None,
+                    str(normalized.get("group_id") or "").strip() or None,
+                    [str(v).strip() for v in (normalized.get("selected_params") or []) if str(v).strip()],
+                    [str(v).strip() for v in (normalized.get("feature_params") or []) if str(v).strip()],
+                    json.dumps(exports_enabled),
+                    json.dumps(content),
+                    json.dumps(extra),
+                    str(normalized.get("created_at") or "").strip() or None,
+                    str(normalized.get("updated_at") or "").strip() or None,
+                ],
+            )
+            cur.execute(
+                """
+                INSERT INTO catalog_product_registry_rel (
+                  id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  title = EXCLUDED.title,
+                  category_id = EXCLUDED.category_id,
+                  sku_pim = EXCLUDED.sku_pim,
+                  sku_gt = EXCLUDED.sku_gt,
+                  group_id = EXCLUDED.group_id,
+                  preview_url = EXCLUDED.preview_url,
+                  exports_enabled_json = EXCLUDED.exports_enabled_json,
+                  updated_at = EXCLUDED.updated_at
+                """,
+                [
+                    product_id,
+                    str(normalized.get("title") or "").strip(),
+                    category_id,
+                    str(normalized.get("sku_pim") or "").strip() or None,
+                    str(normalized.get("sku_gt") or "").strip() or None,
+                    str(normalized.get("group_id") or "").strip() or None,
+                    preview_url,
+                    json.dumps(exports_enabled),
+                    str(normalized.get("updated_at") or "").strip() or None,
+                ],
+            )
+            affected_categories = [category_id]
+            if old_category_id and old_category_id != category_id:
+                affected_categories.append(old_category_id)
+        _refresh_category_counts_for(affected_categories)
+
+    _with_pg_retry(_run)
+    return normalized
+
+
+def delete_product_items(ids: List[str]) -> int:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    safe_ids = [str(x or "").strip() for x in ids if str(x or "").strip()]
+    if not safe_ids:
+        return 0
+
+    def _run() -> int:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT category_id FROM products_rel WHERE id = ANY(%s)", [safe_ids])
+            category_rows = cur.fetchall() or []
+            affected_categories = [str(row[0] or "").strip() for row in category_rows if str(row[0] or "").strip()]
+            cur.execute("DELETE FROM catalog_product_registry_rel WHERE id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM catalog_product_page_rel WHERE product_id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM product_marketplace_status_rel WHERE product_id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM products_rel WHERE id = ANY(%s)", [safe_ids])
+            deleted = int(cur.rowcount or 0)
+        _refresh_category_counts_for(affected_categories)
+        return deleted
+
+    return _with_pg_retry(_run)
 
 
 def load_catalog_product_items() -> List[Dict[str, Any]]:

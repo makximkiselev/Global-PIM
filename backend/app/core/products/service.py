@@ -4,7 +4,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from app.core.json_store import JsonStoreError
-from app.storage.json_store import load_products_db, save_products_db
+from app.storage.relational_pim_store import (
+    allocate_next_product_identity,
+    delete_product_items,
+    find_product_by_sku_gt,
+    load_products_by_category,
+    load_products_by_ids,
+    query_products_full,
+    upsert_product_item,
+)
 from app.core.products.variants_repo import (
     bulk_create_variants as repo_bulk_create_variants,
     generate_preview as repo_generate_variants_preview,
@@ -18,18 +26,11 @@ PRODUCTS_PATH = BASE_DIR / "data" / "products.json"
 
 
 def _load_products_doc() -> Dict[str, Any]:
-    doc = load_products_db()
-    if not isinstance(doc, dict):
-        doc = {"items": []}
-    items = doc.get("items")
-    if not isinstance(items, list):
-        doc["items"] = []
-    return doc
+    return {"items": query_products_full()}
 
 
 def _save_products_doc(doc: Dict[str, Any]) -> None:
-    items = doc.get("items") if isinstance(doc.get("items"), list) else []
-    save_products_db({"items": items})
+    raise JsonStoreError("FULL_PRODUCTS_WRITE_DISABLED")
 
 
 def _items() -> List[Dict[str, Any]]:
@@ -103,9 +104,9 @@ def allocate_sku_pairs_service(count: int) -> Dict[str, Any]:
     qty = int(count or 0)
     if qty < 1:
         raise JsonStoreError("BAD_SKU")
-    items = _items()
-    next_pim = _max_numeric(items, "sku_pim", 0) + 1
-    next_gt = _max_numeric(items, "sku_gt", 50000) + 1
+    identity = allocate_next_product_identity()
+    next_pim = _parse_int(identity.get("next_sku_pim"))
+    next_gt = _parse_int(identity.get("next_sku_gt"))
     out: List[Dict[str, str]] = []
     for idx in range(qty):
         out.append(
@@ -128,7 +129,7 @@ def create_product_service(payload: Dict[str, Any]) -> Dict[str, Any]:
     if product_type not in {"single", "multi"}:
         raise JsonStoreError("BAD_TYPE")
 
-    items = _items()
+    items = query_products_full()
     sku_pim = _norm(payload.get("sku_pim"))
     sku_gt = _norm(payload.get("sku_gt"))
     if not sku_pim or not sku_gt:
@@ -154,13 +155,13 @@ def create_product_service(payload: Dict[str, Any]) -> Dict[str, Any]:
         "content": _default_content(),
     }
     items.append(product)
-    _save_items(items)
-    return product
+    saved = upsert_product_item(product)
+    return saved or product
 
 
 def get_product_service(product_id: str, include_variants: bool = True) -> Dict[str, Any]:
     pid = _norm(product_id)
-    items = _items()
+    items = load_products_by_ids([pid])
     product = next((x for x in items if _norm(x.get("id")) == pid), None)
     if not isinstance(product, dict):
         raise JsonStoreError("PRODUCT_NOT_FOUND")
@@ -168,7 +169,7 @@ def get_product_service(product_id: str, include_variants: bool = True) -> Dict[
     if include_variants:
         group_id = _norm(product.get("group_id"))
         if group_id:
-            variants = [x for x in items if _norm(x.get("group_id")) == group_id and _norm(x.get("id")) != pid]
+            variants = [x for x in query_products_full() if _norm(x.get("group_id")) == group_id and _norm(x.get("id")) != pid]
         else:
             variants = []
         result["variants"] = variants
@@ -179,13 +180,13 @@ def get_products_bulk_service(product_ids: List[str]) -> Dict[str, Any]:
     wanted: Set[str] = {_norm(x) for x in (product_ids or []) if _norm(x)}
     if not wanted:
         return {"items": [], "count": 0}
-    out = [item for item in _items() if _norm(item.get("id")) in wanted]
+    out = [item for item in load_products_by_ids(list(wanted)) if _norm(item.get("id")) in wanted]
     return {"items": out, "count": len(out)}
 
 
 def patch_product_service(product_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     pid = _norm(product_id)
-    items = _items()
+    items = query_products_full()
     target: Optional[Dict[str, Any]] = None
     for item in items:
         if _norm(item.get("id")) == pid:
@@ -233,32 +234,29 @@ def patch_product_service(product_id: str, patch: Dict[str, Any]) -> Dict[str, A
         incoming = patch.get("content") if isinstance(patch.get("content"), dict) else {}
         target["content"] = {**existing, **incoming}
 
-    _save_items(items)
-    return {"product": target}
+    saved = upsert_product_item(target)
+    return {"product": saved or target}
 
 
 def list_products_by_category_service(category_id: str) -> Dict[str, Any]:
     cid = _norm(category_id)
-    items = [x for x in _items() if _norm(x.get("category_id")) == cid]
+    items = load_products_by_category(cid)
     return {"items": items, "count": len(items)}
 
 
 def find_product_by_sku_service(sku_gt: Optional[str] = None) -> Dict[str, Any]:
     gt = _norm(sku_gt)
-    for item in _items():
-        if gt and _norm(item.get("sku_gt")) == gt:
-            return {"product": item}
-    return {}
+    product = find_product_by_sku_gt(gt)
+    return {"product": product} if product else {}
 
 
 def delete_products_bulk_service(ids: List[str]) -> Dict[str, Any]:
     id_set: Set[str] = {_norm(x) for x in (ids or []) if _norm(x)}
     if not id_set:
         return {"ok": True, "deleted": 0, "ids": []}
-    items = _items()
-    next_items = [x for x in items if _norm(x.get("id")) not in id_set]
+    items = load_products_by_ids(list(id_set))
     deleted_ids = [_norm(x.get("id")) for x in items if _norm(x.get("id")) in id_set]
-    _save_items(next_items)
+    deleted = delete_product_items(list(id_set))
     return {"ok": True, "deleted": len(deleted_ids), "ids": deleted_ids}
 
 
