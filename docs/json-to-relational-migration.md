@@ -113,6 +113,8 @@ Hot paths, уже переведенные на новый слой:
 - `catalog/products` и `catalog/products/search` идут через SQL query path по `catalog_product_registry_rel`
 - `stats/summary` теперь может подниматься из persisted summary table:
   - `dashboard_stats_rel`
+- `catalog/products-page-data` переводится на page-read-model:
+  - `catalog_product_page_rel`
 
 ### Phase 5
 
@@ -120,6 +122,12 @@ Hot paths, уже переведенные на новый слой:
 - остаточные product summary/read models для тяжелых экранов
 - остаточные вспомогательные JSON-backed слои
 - убрать dual-write для уже вынесенных сущностей
+
+Следующий фокус после этого среза:
+
+- `product_groups`
+- `catalog_exchange`
+- connector/dashboard summaries
 
 Уже убрано в product-срезе:
 

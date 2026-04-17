@@ -402,6 +402,48 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS catalog_product_page_rel (
+                  product_id TEXT PRIMARY KEY,
+                  title TEXT NOT NULL,
+                  category_id TEXT NOT NULL,
+                  category_path TEXT NOT NULL DEFAULT '',
+                  sku_pim TEXT NULL,
+                  sku_gt TEXT NULL,
+                  group_id TEXT NULL,
+                  group_name TEXT NULL,
+                  template_id TEXT NULL,
+                  template_name TEXT NULL,
+                  template_source_category_id TEXT NULL,
+                  yandex_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  ozon_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  preview_url TEXT NULL,
+                  exports_enabled_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_page_rel_category
+                  ON catalog_product_page_rel(category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_page_rel_group
+                  ON catalog_product_page_rel(group_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_page_rel_template
+                  ON catalog_product_page_rel(template_id)
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS dashboard_stats_rel (
                   summary_key TEXT PRIMARY KEY,
                   categories_count INTEGER NOT NULL DEFAULT 0,
@@ -2252,6 +2294,193 @@ def load_product_marketplace_status_map() -> Dict[str, Dict[str, Dict[str, Any]]
                 },
             }
         return out
+
+    return _with_pg_retry(_run)
+
+
+def save_catalog_product_page_rows(rows: List[Dict[str, Any]]) -> None:
+    _ensure_tables()
+    payload: List[tuple[Any, ...]] = []
+    for row in rows or []:
+        product_id = str(row.get("product_id") or row.get("id") or "").strip()
+        if not product_id:
+            continue
+        payload.append(
+            (
+                product_id,
+                str(row.get("title") or row.get("name") or "").strip(),
+                str(row.get("category_id") or "").strip(),
+                str(row.get("category_path") or "").strip(),
+                str(row.get("sku_pim") or "").strip() or None,
+                str(row.get("sku_gt") or "").strip() or None,
+                str(row.get("group_id") or "").strip() or None,
+                str(row.get("group_name") or "").strip() or None,
+                str(row.get("template_id") or "").strip() or None,
+                str(row.get("template_name") or "").strip() or None,
+                str(row.get("template_source_category_id") or "").strip() or None,
+                bool(row.get("yandex_present") or False),
+                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
+                bool(row.get("ozon_present") or False),
+                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
+                str(row.get("preview_url") or "").strip() or None,
+                json.dumps(row.get("exports_enabled") if isinstance(row.get("exports_enabled"), dict) else {}),
+            )
+        )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM catalog_product_page_rel")
+            if payload:
+                cur.executemany(
+                    """
+                    INSERT INTO catalog_product_page_rel (
+                      product_id, title, category_id, category_path, sku_pim, sku_gt, group_id, group_name,
+                      template_id, template_name, template_source_category_id,
+                      yandex_present, yandex_status, ozon_present, ozon_status,
+                      preview_url, exports_enabled_json, updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s,
+                      %s, %s, %s, %s,
+                      %s, %s::jsonb, NOW()
+                    )
+                    """,
+                    payload,
+                )
+
+    _with_pg_retry(_run)
+
+
+def query_catalog_product_page_rows(
+    *,
+    category_ids: List[str] | None = None,
+    exact_category_id: str = "",
+    group_filter: str = "",
+    template_filter: str = "",
+    ym_filter: str = "all",
+    oz_filter: str = "all",
+    view_filter: str = "all",
+    q: str = "",
+    page: int = 1,
+    page_size: int = 50,
+) -> Dict[str, Any]:
+    _ensure_tables()
+    safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
+    exact_category_id = str(exact_category_id or "").strip()
+    group_filter = str(group_filter or "").strip()
+    template_filter = str(template_filter or "").strip()
+    ym_filter = str(ym_filter or "all").strip().lower()
+    oz_filter = str(oz_filter or "all").strip().lower()
+    view_filter = str(view_filter or "all").strip().lower()
+    q = str(q or "").strip().lower()
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 50), 200))
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        sql = """
+            FROM catalog_product_page_rel
+        """
+        clauses: List[str] = []
+        params: List[Any] = []
+        if exact_category_id:
+            clauses.append("category_id = %s")
+            params.append(exact_category_id)
+        elif safe_category_ids:
+            clauses.append("category_id = ANY(%s)")
+            params.append(safe_category_ids)
+
+        if group_filter == "__ungrouped__":
+            clauses.append("COALESCE(group_id, '') = ''")
+        elif group_filter:
+            clauses.append("group_id = %s")
+            params.append(group_filter)
+
+        if template_filter == "__without__":
+            clauses.append("COALESCE(template_id, '') = ''")
+        elif template_filter:
+            clauses.append("template_id = %s")
+            params.append(template_filter)
+
+        if ym_filter == "on":
+            clauses.append("yandex_present = TRUE")
+        elif ym_filter == "off":
+            clauses.append("yandex_present = FALSE")
+
+        if oz_filter == "on":
+            clauses.append("ozon_present = TRUE")
+        elif oz_filter == "off":
+            clauses.append("ozon_present = FALSE")
+
+        if view_filter == "issues":
+            clauses.append("(COALESCE(template_id, '') = '' OR yandex_present = FALSE OR ozon_present = FALSE)")
+        elif view_filter == "no_template":
+            clauses.append("COALESCE(template_id, '') = ''")
+        elif view_filter == "no_ym":
+            clauses.append("yandex_present = FALSE")
+        elif view_filter == "no_oz":
+            clauses.append("ozon_present = FALSE")
+
+        if q:
+            clauses.append(
+                "(LOWER(title) LIKE %s OR LOWER(COALESCE(sku_gt, '')) LIKE %s OR LOWER(COALESCE(category_path, '')) LIKE %s)"
+            )
+            like = f"%{q}%"
+            params.extend([like, like, like])
+
+        where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        order_sql = " ORDER BY CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN 0 ELSE 1 END, CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN LPAD(sku_gt, 32, '0') ELSE LOWER(COALESCE(sku_gt, '')) END, LOWER(title), product_id"
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) {sql}{where_sql}", params)
+            total_row = cur.fetchone()
+            total = int((total_row or [0])[0] or 0)
+            cur.execute(
+                f"""
+                SELECT
+                  product_id, title, category_id, category_path, sku_pim, sku_gt, group_id, group_name,
+                  template_id, template_name, template_source_category_id,
+                  yandex_present, yandex_status, ozon_present, ozon_status,
+                  preview_url, exports_enabled_json
+                {sql}{where_sql}{order_sql}
+                LIMIT %s OFFSET %s
+                """,
+                [*params, page_size, (page - 1) * page_size],
+            )
+            rows = cur.fetchall() or []
+        items: List[Dict[str, Any]] = []
+        for row in rows:
+            exports_enabled = row[16] if isinstance(row[16], dict) else {}
+            items.append(
+                {
+                    "id": str(row[0] or "").strip(),
+                    "product_id": str(row[0] or "").strip(),
+                    "title": str(row[1] or "").strip(),
+                    "name": str(row[1] or "").strip(),
+                    "category_id": str(row[2] or "").strip(),
+                    "category_path": str(row[3] or "").strip(),
+                    "sku_pim": str(row[4] or "").strip(),
+                    "sku_gt": str(row[5] or "").strip(),
+                    "group_id": str(row[6] or "").strip(),
+                    "group_name": str(row[7] or "").strip(),
+                    "effective_template_id": str(row[8] or "").strip(),
+                    "effective_template_name": str(row[9] or "").strip(),
+                    "effective_template_source_category_id": str(row[10] or "").strip(),
+                    "marketplace_statuses": {
+                        "yandex_market": {
+                            "present": bool(row[11] or False),
+                            "status": str(row[12] or "Нет данных").strip() or "Нет данных",
+                        },
+                        "ozon": {
+                            "present": bool(row[13] or False),
+                            "status": str(row[14] or "Нет данных").strip() or "Нет данных",
+                        },
+                    },
+                    "preview_url": str(row[15] or "").strip(),
+                    "exports_enabled": exports_enabled if isinstance(exports_enabled, dict) else {},
+                }
+            )
+        return {"items": items, "total": total}
 
     return _with_pg_retry(_run)
 

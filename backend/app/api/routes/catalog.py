@@ -15,6 +15,8 @@ from app.storage.relational_pim_store import (
     save_catalog_nodes,
     load_catalog_product_items,
     query_catalog_product_items,
+    save_catalog_product_page_rows,
+    query_catalog_product_page_rows,
     load_category_product_counts,
     save_category_template_resolution,
     load_category_template_resolution_map,
@@ -52,8 +54,10 @@ _PRODUCTS_PAGE_RESULT_CACHE_TTL_SECONDS = 15.0
 _products_page_result_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _TEMPLATE_RESOLUTION_CACHE_TTL_SECONDS = 300.0
 _MARKETPLACE_SUMMARY_CACHE_TTL_SECONDS = 60.0
+_PRODUCT_PAGE_SUMMARY_CACHE_TTL_SECONDS = 60.0
 _template_resolution_state: Dict[str, float] = {"ts": 0.0}
 _marketplace_summary_state: Dict[str, float] = {"ts": 0.0}
+_product_page_summary_state: Dict[str, float] = {"ts": 0.0}
 
 
 # =========================
@@ -283,6 +287,63 @@ def _ensure_marketplace_status_summary(products: List[Dict[str, Any]], refresh: 
         if cached:
             return cached
     return _refresh_marketplace_status_summary(products, _build_marketplace_status_context())
+
+
+def _refresh_catalog_product_page_summary(meta: Dict[str, Any], products: List[Dict[str, Any]], template_resolution: Dict[str, Dict[str, str]], marketplace_status_map: Dict[str, Dict[str, Dict[str, Any]]]) -> None:
+    nodes = meta["nodes"]
+    groups = meta["groups"]
+    group_name_by_id = {str(g.get("id") or ""): str(g.get("name") or "") for g in groups if isinstance(g, dict)}
+    path_cache: Dict[str, str] = {}
+
+    def category_path(category_id: str) -> str:
+        if category_id in path_cache:
+            return path_cache[category_id]
+        path = " / ".join(part["name"] for part in _build_category_path(nodes, category_id) if part.get("name"))
+        path_cache[category_id] = path
+        return path
+
+    rows: List[Dict[str, Any]] = []
+    for item in products:
+        category_id = str(item.get("category_id") or "")
+        group_id = str(item.get("group_id") or "").strip()
+        template_row = template_resolution.get(category_id) or {}
+        statuses = marketplace_status_map.get(str(item.get("id") or "").strip()) or {
+            "yandex_market": {"status": "Нет данных", "present": False},
+            "ozon": {"status": "Нет данных", "present": False},
+        }
+        rows.append(
+            {
+                "product_id": str(item.get("id") or "").strip(),
+                "title": str(item.get("title") or item.get("name") or "").strip(),
+                "category_id": category_id,
+                "category_path": category_path(category_id),
+                "sku_pim": str(item.get("sku_pim") or "").strip(),
+                "sku_gt": str(item.get("sku_gt") or "").strip(),
+                "group_id": group_id,
+                "group_name": group_name_by_id.get(group_id, ""),
+                "template_id": str(template_row.get("template_id") or ""),
+                "template_name": str(template_row.get("template_name") or ""),
+                "template_source_category_id": str(template_row.get("source_category_id") or ""),
+                "yandex_present": bool(((statuses.get("yandex_market") or {}).get("present"))),
+                "yandex_status": str(((statuses.get("yandex_market") or {}).get("status")) or "Нет данных"),
+                "ozon_present": bool(((statuses.get("ozon") or {}).get("present"))),
+                "ozon_status": str(((statuses.get("ozon") or {}).get("status")) or "Нет данных"),
+                "preview_url": str(item.get("preview_url") or "").strip(),
+                "exports_enabled": item.get("exports_enabled") if isinstance(item.get("exports_enabled"), dict) else {},
+            }
+        )
+    save_catalog_product_page_rows(rows)
+    _product_page_summary_state["ts"] = time.monotonic()
+
+
+def _ensure_catalog_product_page_summary(meta: Dict[str, Any], refresh: bool = False) -> None:
+    now = time.monotonic()
+    if not refresh and now - float(_product_page_summary_state.get("ts") or 0.0) < _PRODUCT_PAGE_SUMMARY_CACHE_TTL_SECONDS:
+        return
+    products = _load_products()
+    template_resolution = _ensure_category_template_resolution(meta, refresh=refresh)
+    marketplace_status_map = _ensure_marketplace_status_summary(products, refresh=refresh)
+    _refresh_catalog_product_page_summary(meta, products, template_resolution, marketplace_status_map)
 
 
 def _marketplace_statuses_for_product(product: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -874,10 +935,6 @@ def products_page_data(
     nodes = meta["nodes"]
     groups = meta["groups"]
     templates = meta["templates"]
-
-    group_name_by_id = {str(g.get("id") or ""): str(g.get("name") or "") for g in groups if isinstance(g, dict)}
-    template_resolution = _ensure_category_template_resolution(meta, refresh=refresh)
-    marketplace_status_map = _ensure_marketplace_status_summary(_load_products(), refresh=refresh)
     exact_category = (category or "").strip()
     subtree_parent = _collect_subtree_ids(nodes, parent) if parent else None
     subtree_sub = _collect_subtree_ids(nodes, sub) if sub else None
@@ -886,105 +943,34 @@ def products_page_data(
     ym_filter = (ym or "all").strip().lower()
     oz_filter = (oz or "all").strip().lower()
     view_filter = (view or "all").strip().lower()
-    path_cache: Dict[str, str] = {}
-
-    def category_path(category_id: str) -> str:
-        if category_id in path_cache:
-            return path_cache[category_id]
-        path = " / ".join(part["name"] for part in _build_category_path(nodes, category_id) if part.get("name"))
-        path_cache[category_id] = path
-        return path
-
-    filtered_items: List[Dict[str, Any]] = []
-    for item in _load_products():
-        category_id = str(item.get("category_id") or "")
-        if exact_category:
-            if exact:
-                if category_id != exact_category:
-                    continue
-            elif subtree_exact and category_id not in subtree_exact:
-                continue
-        if subtree_parent and category_id not in subtree_parent:
-            continue
-        if subtree_sub and category_id not in subtree_sub:
-            continue
-
-        group_id = str(item.get("group_id") or "").strip()
-        if group == "__ungrouped__" and group_id:
-            continue
-        if group and group != "__ungrouped__" and group_id != group:
-            continue
-
-        template_row = template_resolution.get(category_id) or {}
-        template_id = str(template_row.get("template_id") or "")
-        template_name = str(template_row.get("template_name") or "")
-        template_source_category_id = str(template_row.get("source_category_id") or "")
-        if template == "__without__" and template_id:
-            continue
-        if template and template != "__without__" and template_id != template:
-            continue
-
-        marketplace_statuses = marketplace_status_map.get(str(item.get("id") or "").strip()) or {
-            "yandex_market": {"status": "Нет данных", "present": False},
-            "ozon": {"status": "Нет данных", "present": False},
-        }
-        export_ym = bool(((marketplace_statuses.get("yandex_market") or {}).get("present")))
-        export_oz = bool(((marketplace_statuses.get("ozon") or {}).get("present")))
-        if ym_filter == "on" and not export_ym:
-            continue
-        if ym_filter == "off" and export_ym:
-            continue
-        if oz_filter == "on" and not export_oz:
-            continue
-        if oz_filter == "off" and export_oz:
-            continue
-
-        if view_filter == "issues" and template_id and export_ym and export_oz:
-            continue
-        if view_filter == "no_template" and template_id:
-            continue
-        if view_filter == "no_ym" and export_ym:
-            continue
-        if view_filter == "no_oz" and export_oz:
-            continue
-
-        cat_path = category_path(category_id)
-        if q_normalized:
-            haystack = " ".join(
-                [
-                    str(item.get("title") or ""),
-                    str(item.get("sku_gt") or ""),
-                    cat_path,
-                ]
-            ).lower()
-            if q_normalized not in haystack:
-                continue
-
-        item["category_path"] = cat_path
-        item["group_name"] = group_name_by_id.get(group_id, "")
-        item["effective_template_id"] = template_id
-        item["effective_template_name"] = template_name
-        item["effective_template_source_category_id"] = template_source_category_id
-        item["marketplace_statuses"] = marketplace_statuses
-        filtered_items.append(item)
-
-    filtered_items.sort(
-        key=lambda item: (
-            _gt_sort_key(item.get("sku_gt"))[0],
-            _gt_sort_key(item.get("sku_gt"))[1],
-            _gt_sort_key(item.get("sku_gt"))[2],
-            str(item.get("title") or item.get("name") or "").lower(),
-        )
+    _ensure_catalog_product_page_summary(meta, refresh=refresh)
+    category_scope: Optional[List[str]] = None
+    if exact_category:
+        if exact:
+            category_scope = [exact_category]
+        elif subtree_exact:
+            category_scope = sorted(subtree_exact)
+    if subtree_parent:
+        category_scope = sorted(set(category_scope or []).intersection(subtree_parent)) if category_scope else sorted(subtree_parent)
+    if subtree_sub:
+        category_scope = sorted(set(category_scope or []).intersection(subtree_sub)) if category_scope else sorted(subtree_sub)
+    page_data = query_catalog_product_page_rows(
+        category_ids=category_scope,
+        exact_category_id=exact_category if exact else "",
+        group_filter=group,
+        template_filter=template,
+        ym_filter=ym_filter,
+        oz_filter=oz_filter,
+        view_filter=view_filter,
+        q=q_normalized,
+        page=page,
+        page_size=page_size,
     )
-
-    total = len(filtered_items)
-    start = max(0, (page - 1) * page_size)
-    end = start + page_size
 
     payload = {
         "ok": True,
-        "products": filtered_items[start:end],
-        "total": total,
+        "products": page_data["items"],
+        "total": int(page_data["total"] or 0),
         "page": page,
         "page_size": page_size,
         "nodes": nodes,
