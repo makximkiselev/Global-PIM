@@ -10,7 +10,7 @@
 }
 
 .sm-pageRoot{
-  --page-content-width: 1280px;
+  --page-content-width: min(1920px, calc(100vw - 48px));
 }
 
 .sm-pageRoot > .page-header,
@@ -83,6 +83,18 @@
 @media (max-width: 900px){
   .sm-topHead{
     flex-direction:column;
+  }
+}
+
+@media (max-width: 1600px){
+  .sm-pageRoot{
+    --page-content-width: min(1680px, calc(100vw - 40px));
+  }
+}
+
+@media (max-width: 1360px){
+  .sm-pageRoot{
+    --page-content-width: min(1440px, calc(100vw - 32px));
   }
 }
 

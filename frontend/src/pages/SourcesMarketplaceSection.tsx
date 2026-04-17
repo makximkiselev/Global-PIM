@@ -22,11 +22,80 @@ type SourcesMarketplaceSectionProps = {
   onFeatureViewChange?: (view: "marketplaces" | "competitors") => void;
 };
 
-const SOURCES_MAPPING_CACHE_TTL_MS = 30_000;
-const SOURCES_STATIC_CACHE_TTL_MS = 5 * 60_000;
+const SOURCES_MAPPING_CACHE_TTL_MS = 24 * 60 * 60_000;
+const SOURCES_STATIC_CACHE_TTL_MS = 24 * 60 * 60_000;
+const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v3";
+const SOURCES_ATTR_BOOTSTRAP_CACHE_KEY = "mm_sources_attr_bootstrap_cache_v3";
+const SOURCES_ATTR_DETAILS_CACHE_PREFIX = "mm_sources_attr_details_cache_v3:";
 let categoriesMappingCache: { ts: number; data: CategoriesResp | null } = { ts: 0, data: null };
 let attrBootstrapCache: { ts: number; data: AttrBootstrapResp | null } = { ts: 0, data: null };
 const attrDetailsCache = new Map<string, { ts: number; data: AttrDetailsResp }>();
+
+type PersistentCachePayload<T> = { ts: number; data: T };
+
+function loadPersistentSourcesCache<T>(key: string, ttlMs: number): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const payload = JSON.parse(raw) as PersistentCachePayload<T> | null;
+    if (!payload || typeof payload.ts !== "number") return null;
+    if (Date.now() - payload.ts >= ttlMs) return null;
+    return payload.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistentSourcesCache<T>(key: string, data: T) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: PersistentCachePayload<T> = { ts: Date.now(), data };
+    window.localStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // ignore quota / parse issues
+  }
+}
+
+function clearPersistentSourcesCache(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function clearPersistentAttrDetailsCache(categoryId?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (categoryId) {
+      window.localStorage.removeItem(`${SOURCES_ATTR_DETAILS_CACHE_PREFIX}${categoryId}`);
+      return;
+    }
+    const keysToDelete: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(SOURCES_ATTR_DETAILS_CACHE_PREFIX)) keysToDelete.push(key);
+    }
+    for (const key of keysToDelete) window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function invalidateSourcesReadCaches(categoryId?: string) {
+  categoriesMappingCache = { ts: 0, data: null };
+  attrBootstrapCache = { ts: 0, data: null };
+  if (categoryId) {
+    attrDetailsCache.delete(categoryId);
+  } else {
+    attrDetailsCache.clear();
+  }
+  clearPersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY);
+  clearPersistentSourcesCache(SOURCES_ATTR_BOOTSTRAP_CACHE_KEY);
+  clearPersistentAttrDetailsCache(categoryId);
+}
 
 type Provider = {
   code: string;
@@ -133,6 +202,7 @@ type AttrDetailsResp = {
   mapping: Record<string, string>;
   providers: Record<string, { category_id: string | null; params: AttrParam[]; count: number; cached?: boolean }>;
   rows: AttrRow[];
+  catalog_attr_options?: CatalogAttrOption[];
   suggested_rows?: AttrRow[];
   suggested_rows_count?: number;
   updated_at?: string | null;
@@ -210,9 +280,15 @@ type ParamGroup = (typeof PARAM_GROUPS)[number];
 type AttrTemplateTab = "all" | "base" | "category";
 type AttrRowFilter = "all" | "attention" | "ready" | "unmapped";
 
+type AttrDraftCacheEntry = {
+  rows: AttrRow[];
+  updated_at: string;
+  manual?: boolean;
+};
+
 type AttrDraftCachePayload = {
   version: number;
-  byCategory: Record<string, { rows: AttrRow[]; updated_at: string }>;
+  byCategory: Record<string, AttrDraftCacheEntry>;
 };
 
 function qnorm(s: string) {
@@ -658,7 +734,7 @@ function canonicalLogisticsTitle(rawName?: string): string {
   return "";
 }
 
-const ATTR_DRAFT_CACHE_KEY = "mm_attr_mapping_draft_v4";
+const ATTR_DRAFT_CACHE_KEY = "mm_attr_mapping_draft_v5";
 
 function loadAttrDraftCache(): AttrDraftCachePayload {
   try {
@@ -671,7 +747,7 @@ function loadAttrDraftCache(): AttrDraftCachePayload {
     }
     return {
       version: 1,
-      byCategory: byCategory as Record<string, { rows: AttrRow[]; updated_at: string }>,
+      byCategory: byCategory as Record<string, AttrDraftCacheEntry>,
     };
   } catch {
     return { version: 1, byCategory: {} };
@@ -782,6 +858,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrDetailsLoading, setAttrDetailsLoading] = useState(false);
   const [attrDetails, setAttrDetails] = useState<AttrDetailsResp | null>(null);
   const [attrDetailsError, setAttrDetailsError] = useState("");
+  const [attrDetailsErrorCode, setAttrDetailsErrorCode] = useState("");
   const [attrRows, setAttrRows] = useState<AttrRow[]>([]);
   const [attrSaving, setAttrSaving] = useState(false);
   const [attrAiMatching, setAttrAiMatching] = useState(false);
@@ -825,6 +902,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [attrCacheHydratedFor, setAttrCacheHydratedFor] = useState("");
   const [attrDraftAutoBuilt, setAttrDraftAutoBuilt] = useState(false);
+  const [attrDraftDirty, setAttrDraftDirty] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [clearModalProvider, setClearModalProvider] = useState("");
   const [clearModalCategoryId, setClearModalCategoryId] = useState("");
@@ -860,11 +938,23 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setBindingStates(data.binding_states || {});
       return data;
     }
+    const persisted = loadPersistentSourcesCache<CategoriesResp>(SOURCES_CATEGORIES_CACHE_KEY, SOURCES_MAPPING_CACHE_TTL_MS);
+    if (persisted) {
+      categoriesMappingCache = { ts: Date.now(), data: persisted };
+      setCatalogNodes(persisted.catalog_nodes || []);
+      setCatalogItems(persisted.catalog_items || []);
+      setProviders(persisted.providers || []);
+      setProviderCategories(persisted.provider_categories || {});
+      setMappings(persisted.mappings || {});
+      setBindingStates(persisted.binding_states || {});
+      return persisted;
+    }
     setLoading(true);
     setErr(null);
     try {
       const data = await api<CategoriesResp>("/marketplaces/mapping/import/categories");
       categoriesMappingCache = { ts: Date.now(), data };
+      savePersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY, data);
       setCatalogNodes(data.catalog_nodes || []);
       setCatalogItems(data.catalog_items || []);
       setProviders(data.providers || []);
@@ -891,11 +981,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const now = Date.now();
     setAttrCategoriesLoading(true);
     try {
-      const r =
-        attrBootstrapCache.data && now - attrBootstrapCache.ts < SOURCES_STATIC_CACHE_TTL_MS
-          ? attrBootstrapCache.data
-          : await api<AttrBootstrapResp>("/marketplaces/mapping/import/attributes/bootstrap");
+      let r: AttrBootstrapResp | null = null;
+      if (attrBootstrapCache.data && now - attrBootstrapCache.ts < SOURCES_STATIC_CACHE_TTL_MS) {
+        r = attrBootstrapCache.data;
+      } else {
+        r = loadPersistentSourcesCache<AttrBootstrapResp>(SOURCES_ATTR_BOOTSTRAP_CACHE_KEY, SOURCES_STATIC_CACHE_TTL_MS);
+      }
+      if (!r) {
+        r = await api<AttrBootstrapResp>("/marketplaces/mapping/import/attributes/bootstrap");
+      }
       attrBootstrapCache = { ts: Date.now(), data: r };
+      savePersistentSourcesCache(SOURCES_ATTR_BOOTSTRAP_CACHE_KEY, r);
       const items = r.items || [];
       setAttrCategories(items);
       setCatalogAttrOptions(r.catalog_attr_options || []);
@@ -921,21 +1017,47 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (!categoryId) {
       setAttrDetails(null);
       setAttrRows([]);
+      setCatalogAttrOptions([]);
       setAttrDetailsError("");
+      setAttrDetailsErrorCode("");
       return;
     }
-    setAttrDetailsLoading(true);
-    setAttrDetailsError("");
     try {
       const defs = serviceParamDefs.length ? serviceParamDefs : DEFAULT_SERVICE_PARAM_DEFS;
       const cachedDetails = attrDetailsCache.get(categoryId);
-      let data =
-        cachedDetails && Date.now() - cachedDetails.ts < SOURCES_MAPPING_CACHE_TTL_MS
-          ? cachedDetails.data
-          : await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
+      const persistedDetails = loadPersistentSourcesCache<AttrDetailsResp>(
+        `${SOURCES_ATTR_DETAILS_CACHE_PREFIX}${categoryId}`,
+        SOURCES_MAPPING_CACHE_TTL_MS
+      );
+      const hasFreshCachedDetails = !!(
+        (cachedDetails && Date.now() - cachedDetails.ts < SOURCES_MAPPING_CACHE_TTL_MS) || persistedDetails
+      );
+      if (hasFreshCachedDetails) {
+        setAttrDetailsLoading(false);
+      } else {
+        setAttrDetailsLoading(true);
+        setAttrDetails(null);
+        setAttrRows([]);
+        setCatalogAttrOptions([]);
+        setAttrDetailsError("");
+        setAttrDetailsErrorCode("");
+        setAttrDraftExists(false);
+        setAttrDraftAutoBuilt(false);
+      }
+      const data = cachedDetails && Date.now() - cachedDetails.ts < SOURCES_MAPPING_CACHE_TTL_MS
+        ? cachedDetails.data
+        : persistedDetails || await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
       attrDetailsCache.set(categoryId, { ts: Date.now(), data });
+      savePersistentSourcesCache(`${SOURCES_ATTR_DETAILS_CACHE_PREFIX}${categoryId}`, data);
+      setAttrDetailsError("");
+      setAttrDetailsErrorCode("");
       setAttrDetails(data);
       setSavedTemplateId(String(data.template_id || ""));
+      const detailCatalogAttrOptions =
+        Array.isArray(data.catalog_attr_options) && data.catalog_attr_options.length
+          ? data.catalog_attr_options
+          : [];
+      setCatalogAttrOptions(detailCatalogAttrOptions);
       let rowsSource: AttrRow[] = (data.rows || []) as AttrRow[];
       const cache = loadAttrDraftCache();
       const cached = cache.byCategory?.[categoryId];
@@ -943,16 +1065,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setAttrHasServerSaved(hasServerSaved);
       setAttrEditMode(true);
       setAttrDraftExists(!!(cached && Array.isArray(cached.rows) && cached.rows.length > 0));
-      if (!hasServerSaved && cached && Array.isArray(cached.rows) && cached.rows.length) {
+      if (!hasServerSaved && cached?.manual && Array.isArray(cached.rows) && cached.rows.length) {
         rowsSource = cached.rows;
         setAttrDraftAutoBuilt(false);
-      } else if (!hasServerSaved && (rowsSource.length === 0 || (Array.isArray(data.suggested_rows) && (data.suggested_rows as AttrRow[]).length > rowsSource.length * 2))) {
+      } else if (
+        detailCatalogAttrOptions.length > 0 &&
+        !hasServerSaved &&
+        (rowsSource.length === 0 || (Array.isArray(data.suggested_rows) && (data.suggested_rows as AttrRow[]).length > rowsSource.length * 2))
+      ) {
         const learnedDraft = Array.isArray(data.suggested_rows) ? (data.suggested_rows as AttrRow[]) : [];
         const autoDraft = learnedDraft.length
           ? learnedDraft
           : buildDraftRowsFromYandexParams(
               data.providers?.yandex_market?.params,
-              catalogAttrOptions || [],
+              detailCatalogAttrOptions,
               defs
             );
         if (autoDraft.length) {
@@ -964,15 +1090,24 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       } else {
         setAttrDraftAutoBuilt(false);
       }
-      const mergedBase = mergeRowsWithCatalogOptions(rowsSource, catalogAttrOptions || [], defs);
-      const merged = alignRowsWithCatalogGroups(mergedBase, catalogAttrOptions || []);
+      const mergedBase = mergeRowsWithCatalogOptions(rowsSource, detailCatalogAttrOptions, defs);
+      const merged = alignRowsWithCatalogGroups(mergedBase, detailCatalogAttrOptions);
       const withServiceRows = enforceServiceRowsTop(merged, defs);
       setAttrRows(applyYandexSystemBindings(withServiceRows, defs));
+      setAttrDraftDirty(false);
       setAttrCacheHydratedFor(categoryId);
     } catch (e) {
+      const rawError = (e as Error).message || "Ошибка загрузки категории";
+      const errorCode = rawError.includes("CATEGORY_NOT_DIRECTLY_MAPPED")
+        ? "CATEGORY_NOT_DIRECTLY_MAPPED"
+        : "";
+      const message = errorCode === "CATEGORY_NOT_DIRECTLY_MAPPED"
+        ? "Сначала сопоставьте эту категорию с Я.Маркетом и Ozon во вкладке «Категории и источники»."
+        : rawError;
       setAttrDetails(null);
       setAttrRows([]);
-      setAttrDetailsError((e as Error).message || "Ошибка загрузки категории");
+      setAttrDetailsError(message);
+      setAttrDetailsErrorCode(errorCode);
     } finally {
       setAttrDetailsLoading(false);
     }
@@ -982,9 +1117,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setSyncing(true);
     setSyncMsg("Обновление локального кэша...");
     try {
-      categoriesMappingCache = { ts: 0, data: null };
-      attrBootstrapCache = { ts: 0, data: null };
-      attrDetailsCache.clear();
+      invalidateSourcesReadCaches();
       await loadCategoriesMapping();
       if (mainTab === "import" && importTab === "features") {
         await loadAttrBootstrap();
@@ -1030,18 +1163,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (mainTab !== "import" || importTab !== "features") return;
     if (!activeAttrCategoryId) return;
     if (!attrRows.length) return;
+    if (!attrDraftDirty) return;
     if (attrCacheHydratedFor !== activeAttrCategoryId) return;
     const timer = window.setTimeout(() => {
       const cache = loadAttrDraftCache();
       cache.byCategory[activeAttrCategoryId] = {
         rows: attrRows,
         updated_at: new Date().toISOString(),
+        manual: true,
       };
       saveAttrDraftCache(cache);
       setAttrDraftExists(true);
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [mainTab, importTab, activeAttrCategoryId, attrRows, attrCacheHydratedFor]);
+  }, [mainTab, importTab, activeAttrCategoryId, attrRows, attrCacheHydratedFor, attrDraftDirty]);
 
   const displayProviders = useMemo<DisplayProvider[]>(() => {
     const byCode: Record<string, DisplayProvider> = {};
@@ -1397,11 +1532,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const inheritedFrom = String(
       stateInfo?.inherited_from || (directId ? "" : nearestMappedAncestor(nodeId, providerCode)) || ""
     ).trim();
-    const childBindings = (
-      stateInfo?.child_bindings?.map((binding) => ({
-        providerCategoryId: String(binding.provider_category_id || "").trim(),
-      })) || (directId ? [] : descendantDirectBindings(nodeId, providerCode))
-    );
+    const rawChildBindings = Array.isArray(stateInfo?.child_bindings)
+      ? stateInfo.child_bindings
+          .map((binding) => ({
+            providerCategoryId: String(binding.provider_category_id || "").trim(),
+          }))
+          .filter((binding) => binding.providerCategoryId)
+      : [];
+    const childBindings = rawChildBindings.length > 0
+      ? rawChildBindings
+      : (directId ? [] : descendantDirectBindings(nodeId, providerCode));
     const effectiveId = String(
       stateInfo?.effective_id ||
       directId ||
@@ -1463,6 +1603,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     );
   }
 
+  function descendantCatalogIds(nodeId: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const stack = [...(childrenByParent.get(nodeId) || [])];
+    while (stack.length) {
+      const cur = String(stack.pop() || "");
+      if (!cur || seen.has(cur)) continue;
+      seen.add(cur);
+      out.push(cur);
+      stack.push(...(childrenByParent.get(cur) || []));
+    }
+    return out;
+  }
+
   function leafCoverageState(nodeId: string, providerCode: string): "ok" | "warn" | "none" {
     const children = childrenByParent.get(nodeId) || [];
     const directOrInherited = !!effectiveProviderCategoryId(nodeId, providerCode);
@@ -1501,6 +1655,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           provider_category_id: providerCategoryId,
         }),
       });
+      invalidateSourcesReadCaches(catalogCategoryId);
       setMappings(res.mappings || {});
       if (importTab === "features") {
         await loadAttrBootstrap().catch(() => null);
@@ -1540,6 +1695,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           preserve_templates: clearModalPreserveTemplates,
         }),
       });
+      invalidateSourcesReadCaches(clearModalCategoryId);
       setMappings(res.mappings || {});
       setClearModalOpen(false);
       const preservedCount = Number((res.preserved_template_category_ids || []).length || 0);
@@ -1577,6 +1733,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const id = `row_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setPendingScrollFocus(true);
     setPendingScrollRowId(id);
+    setAttrDraftDirty(true);
     setAttrRows((prev) =>
       enforceServiceRowsTop([
         ...prev,
@@ -1613,6 +1770,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setPendingScrollFocus(false);
       setPendingScrollRowId(rowId);
     }
+    setAttrDraftDirty(true);
     setAttrRows((prev) =>
       enforceServiceRowsTop(
         prev.map((r) => {
@@ -1628,6 +1786,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   function setAllRowsConfirmed(checked: boolean) {
     if (!attrEditMode) return;
+    setAttrDraftDirty(true);
     setAttrRows((prev) =>
       enforceServiceRowsTop(
         prev.map((r) => ({ ...r, confirmed: checked })),
@@ -1639,11 +1798,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   function removeAttrRow(rowId: string) {
     if (!attrEditMode) return;
     if (String(rowId).startsWith("svc:")) return;
+    setAttrDraftDirty(true);
     setAttrRows((prev) => enforceServiceRowsTop(prev.filter((r) => r.id !== rowId), serviceParamDefs));
   }
 
   function setAttrProviderValue(rowId: string, provider: string, value: AttrRowProviderMap) {
     if (!attrEditMode) return;
+    setAttrDraftDirty(true);
     setAttrRows((prev) =>
       enforceServiceRowsTop(
         prev.map((r) => {
@@ -1762,10 +1923,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         method: "PUT",
         body: JSON.stringify({ rows: attrRows, apply_to_category_ids: applyTo }),
       });
+      invalidateSourcesReadCaches(activeAttrCategoryId);
       const cache = loadAttrDraftCache();
       cache.byCategory[activeAttrCategoryId] = {
         rows: attrRows,
         updated_at: new Date().toISOString(),
+        manual: true,
       };
       saveAttrDraftCache(cache);
       setAttrDraftExists(true);
@@ -1773,6 +1936,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       await loadAttrBootstrap();
       await loadAttrDetails(activeAttrCategoryId);
       setAttrHasServerSaved(true);
+      setAttrDraftDirty(false);
       setAttrEditMode(false);
       setSavedToast(true);
     } finally {
@@ -1793,6 +1957,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           body: JSON.stringify({ apply: true }),
         }
       );
+      invalidateSourcesReadCaches(activeAttrCategoryId);
+      setAttrDraftDirty(false);
       setAttrRows(enforceServiceRowsTop(res.rows || [], serviceParamDefs));
       await loadAttrBootstrap();
       await loadAttrDetails(activeAttrCategoryId);
@@ -1808,6 +1974,32 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (!selectedCatalogId) return null;
     return catalogNodes.find((node) => node.id === selectedCatalogId) || null;
   }, [catalogNodes, selectedCatalogId]);
+
+  const selectedCatalogMappedDescendants = useMemo(() => {
+    if (!selectedCatalogNode) return [];
+    return descendantCatalogIds(selectedCatalogNode.id)
+      .map((id) => {
+        const node = nodeById.get(id);
+        if (!node) return null;
+        const providerLabels = displayProviders
+          .filter((prov) => categoryBindingMeta(id, prov.code).state !== "empty")
+          .map((prov) => prov.title);
+        if (!providerLabels.length) return null;
+        return {
+          id,
+          name: node.name,
+          path: pathById.get(id) || node.name,
+          providerLabels,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(a?.path || "").localeCompare(String(b?.path || ""), "ru")) as Array<{
+      id: string;
+      name: string;
+      path: string;
+      providerLabels: string[];
+    }>;
+  }, [selectedCatalogNode, displayProviders, nodeById, pathById, bindingStates, mappings]);
 
   const groupedAttrRows = useMemo(() => {
     const query = qnorm(attrRowQuery);
@@ -1914,6 +2106,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       if (cache.byCategory[activeAttrCategoryId]) {
         delete cache.byCategory[activeAttrCategoryId];
         saveAttrDraftCache(cache);
+        setAttrDraftDirty(false);
       }
       setAttrDraftExists(false);
     loadAttrDetails(activeAttrCategoryId);
@@ -2075,23 +2268,28 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const bindingMeta = categoryBindingMeta(selectedCatalogNode.id, prov.code);
                                 const directId = bindingMeta.directId;
                                 const inheritedFrom = bindingMeta.inheritedFrom;
-                                const childBindings = (
-                                  stateInfo?.child_bindings?.map((binding) => ({
-                                    providerCategoryId: String(binding.provider_category_id || "").trim(),
-                                    providerCategory:
-                                      providerCategoryById[prov.code]?.[String(binding.provider_category_id || "").trim()] ||
-                                      (binding.provider_category_name
-                                        ? {
-                                            id: String(binding.provider_category_id || "").trim(),
-                                            name: String(binding.provider_category_name || "").trim(),
-                                            path: String(binding.provider_category_name || "").trim(),
-                                            is_leaf: true,
-                                          }
-                                        : null),
-                                    catalogIds: binding.catalog_ids || [],
-                                    catalogPaths: binding.catalog_paths || [],
-                                  })) || (directId ? [] : descendantDirectBindings(selectedCatalogNode.id, prov.code))
-                                );
+                                const rawChildBindings = Array.isArray(stateInfo?.child_bindings)
+                                  ? stateInfo.child_bindings
+                                      .map((binding) => ({
+                                        providerCategoryId: String(binding.provider_category_id || "").trim(),
+                                        providerCategory:
+                                          providerCategoryById[prov.code]?.[String(binding.provider_category_id || "").trim()] ||
+                                          (binding.provider_category_name
+                                            ? {
+                                                id: String(binding.provider_category_id || "").trim(),
+                                                name: String(binding.provider_category_name || "").trim(),
+                                                path: String(binding.provider_category_name || "").trim(),
+                                                is_leaf: true,
+                                              }
+                                            : null),
+                                        catalogIds: binding.catalog_ids || [],
+                                        catalogPaths: binding.catalog_paths || [],
+                                      }))
+                                      .filter((binding) => binding.providerCategoryId)
+                                  : [];
+                                const childBindings = rawChildBindings.length > 0
+                                  ? rawChildBindings
+                                  : (directId ? [] : descendantDirectBindings(selectedCatalogNode.id, prov.code));
                                 const effectiveId = bindingMeta.effectiveId;
                                 const canOpen = prov.connected || !!PROVIDER_SLOTS[prov.code];
                                 const canEdit = canOpen && !!directId;
@@ -2309,26 +2507,49 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
                 <div className="mm-attrRight">
                   {!activeAttrCategoryId ? (
-                    <div className="empty-state">Выберите категорию слева.</div>
+                    <div className="empty-state mm-attrStateBlock">Выберите категорию слева.</div>
                   ) : attrDetailsLoading ? (
-                    <div className="muted">Загрузка характеристик...</div>
+                    <div className="muted mm-attrStateBlock">Загрузка характеристик...</div>
                   ) : attrDetailsError ? (
                     <div className="mm-emptyWorkspace">
                       <div className="mm-emptyTitle">
-                        {attrDetailsError.includes("CATEGORY_NOT_MAPPED") ? "Для этой категории еще нет рабочей привязки" : "Не удалось загрузить параметры"}
+                        {attrDetailsErrorCode === "CATEGORY_NOT_DIRECTLY_MAPPED" ? "Для этой категории нет своей рабочей привязки" : "Не удалось загрузить параметры"}
                       </div>
                       <div className="mm-emptyText">
-                        {attrDetailsError.includes("CATEGORY_NOT_MAPPED")
-                          ? "Сначала задай общую привязку категории или перейди в конкретную дочернюю категорию, где привязка уже определена."
+                        {attrDetailsErrorCode === "CATEGORY_NOT_DIRECTLY_MAPPED"
+                          ? selectedCatalogMappedDescendants.length
+                            ? "Это родительская категория без собственного сопоставления параметров. Выбери одну из дочерних категорий ниже, где уже есть рабочая привязка."
+                            : "Сначала задай общую привязку категории или перейди в конкретную дочернюю категорию, где привязка уже определена."
                           : attrDetailsError}
                       </div>
+                      {attrDetailsErrorCode === "CATEGORY_NOT_DIRECTLY_MAPPED" && selectedCatalogMappedDescendants.length ? (
+                        <div className="mm-parentCategoryHelp">
+                          <div className="mm-parentCategoryHelpTitle">Дочерние категории для работы с шаблоном</div>
+                          <div className="mm-parentCategoryHelpList">
+                            {selectedCatalogMappedDescendants.map((item) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="mm-parentCategoryHelpItem"
+                                onClick={() => applySelectedCatalogId(item.id)}
+                              >
+                                <span className="mm-parentCategoryHelpMain">
+                                  <span className="mm-parentCategoryHelpName">{item.name}</span>
+                                  <span className="mm-parentCategoryHelpProviders">{item.providerLabels.join(" · ")}</span>
+                                </span>
+                                <span className="mm-breadcrumbs">{item.path}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : !attrDetails ? (
-                    <div className="muted">Нет данных по категории.</div>
+                    <div className="muted mm-attrStateBlock">Нет данных по категории.</div>
                   ) : (
                     <>
                       {renderFeatureDetailExtra ? (
-                        <div className="mm-tabs" style={{ marginBottom: 12 }}>
+                        <div className="mm-tabs mm-attrTopTabs" style={{ marginBottom: 12 }}>
                           <button
                             type="button"
                             className={`mm-tab ${featureView === "marketplaces" ? "active" : ""}`}
@@ -2355,255 +2576,147 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                         </div>
                       ) : (
                         <>
-                      <div className="mm-attrHeader">
-                        <div className="mm-attrHeaderMain">
-                          <div className="mm-breadcrumbs">{attrDetails.category.path}</div>
-                          <div className="mm-catPath mm-attrCategoryTitle">{attrDetails.category.name}</div>
-                          <div className="mm-attrHeaderSummary">
-                            <span>{Number(attrDetails.master_template?.row_count || 0)} параметров</span>
-                            <span>Подтверждено {Number(attrDetails.master_template?.confirmed_count || 0)}</span>
-                            <span>Основа {Number(attrDetails.master_template?.base_count || 0)}</span>
-                            <span>Категорийные {Number(attrDetails.master_template?.category_count || 0)}</span>
-                          </div>
-                          <div className="mm-attrBindingStrip">
-                            {attrCategoryBindings.map((binding) => (
-                              <div
-                                key={binding.providerCode}
-                                className={`mm-attrBindingPill is-${binding.state}`}
-                                title={
-                                  binding.state === "direct"
-                                    ? `${PROVIDER_SLOTS[binding.providerCode]}: прямая привязка`
-                                    : binding.state === "inherited"
-                                      ? `${PROVIDER_SLOTS[binding.providerCode]}: наследуется от ${binding.inheritedFrom}`
-                                      : `${PROVIDER_SLOTS[binding.providerCode]}: привязка не задана`
-                                }
-                              >
-                                <span className="mm-attrBindingProvider">{PROVIDER_SLOTS[binding.providerCode]}</span>
-                                <span className="mm-attrBindingValue">{binding.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="mm-attrHeaderMeta">
-                          <div className="mm-attrHeaderSourceLine">
-                            {mappingProvidersForUi.map((providerCode) => (
-                              <span key={providerCode} className="mm-attrHeaderSourceItem">
-                                {PROVIDER_SLOTS[providerCode]} {Number(attrDetails.providers?.[providerCode]?.count || 0)}
-                              </span>
-                            ))}
-                          </div>
-                          {attrDetails.template_id ? (
-                            <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
-                              Открыть шаблон
-                            </Link>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mm-tabs" style={{ marginBottom: 12 }}>
-                        <button
-                          type="button"
-                          className={`mm-tab ${attrTemplateTab === "all" ? "active" : ""}`}
-                          onClick={() => setAttrTemplateTab("all")}
-                        >
-                          Все
-                        </button>
-                        <button
-                          type="button"
-                          className={`mm-tab ${attrTemplateTab === "base" ? "active" : ""}`}
-                          onClick={() => setAttrTemplateTab("base")}
-                        >
-                          Основа товара
-                          <span className="mm-tabCount">{attrBaseRowsCount}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`mm-tab ${attrTemplateTab === "category" ? "active" : ""}`}
-                          onClick={() => setAttrTemplateTab("category")}
-                        >
-                          Параметры категории
-                          <span className="mm-tabCount">{attrCategoryRowsCount}</span>
-                        </button>
-                      </div>
-
-                      {attrDraftAutoBuilt && !attrHasServerSaved ? (
-                        <div className="mm-draftNotice">
-                          <div className="mm-draftNoticeTitle">Черновик собран автоматически</div>
-                          <div className="muted" style={{ lineHeight: 1.45 }}>
-                            Для этой категории не было сохраненного маппинга. Система сначала использовала совпадения из уже сохраненных категорий, а недостающее добрала по структуре Я.Маркета. Проверь строки, при необходимости поправь и сохрани мастер-шаблон.
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="mm-attrEditorGrid">
-                        <div className="mm-templateBoard mm-templateBoardWide">
-                          <div className="mm-workbenchHead mm-workbenchHeadCompact">
-                            <div>
-                              <div className="mm-workbenchTitle">Инфомодель PIM</div>
-                              <div className="mm-workbenchSub">Здесь фиксируется смысл параметра: в какой слой PIM он попадает, с какими полями площадок связан и должен ли участвовать в экспорте.</div>
-                            </div>
-                          </div>
-
-                        <div className="mm-paramPool">
-                          <div className="mm-paramPoolHead">
-                            <div>
-                              <div className="mm-workbenchTitle">Пул параметров источников</div>
-                                  <div className="mm-workbenchSub">
-                                    Выбери источник и перетаскивай нужные поля в строки PIM. Все, что уже сопоставлено, из пула скрывается.
-                                  </div>
+                        <div className="mm-attrWorkbenchGrid">
+                          <div className="mm-templateBoard mm-templateBoardWide mm-templateBoardMain">
+                            <div className="mm-attrHeader">
+                              <div className="mm-attrHeaderMain">
+                                <div className="mm-breadcrumbs">{attrDetails.category.path}</div>
+                                <div className="mm-catPath mm-attrCategoryTitle">{attrDetails.category.name}</div>
+                                <div className="mm-attrHeaderSummary">
+                                  <span>{Number(attrDetails.master_template?.row_count || 0)} параметров</span>
+                                  <span>Подтверждено {Number(attrDetails.master_template?.confirmed_count || 0)}</span>
+                                  <span>Основа {Number(attrDetails.master_template?.base_count || 0)}</span>
+                                  <span>Категорийные {Number(attrDetails.master_template?.category_count || 0)}</span>
                                 </div>
-                            <div className="mm-attrSourceTabs">
-                              <button
-                                type="button"
-                                className={`mm-sourceTab ${attrSourceProvider === "all" ? "active" : ""}`}
-                                onClick={() => setAttrSourceProvider("all")}
-                              >
-                                Все источники
-                              </button>
-                              {mappingProvidersForUi.map((providerCode) => (
-                                <button
-                                  key={`src-tab-${providerCode}`}
-                                  type="button"
-                                  className={`mm-sourceTab ${attrSourceProvider === providerCode ? "active" : ""}`}
-                                  onClick={() => setAttrSourceProvider(providerCode)}
-                                >
-                                  {PROVIDER_SLOTS[providerCode]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {selectedSourceParam ? (
-                            <div className="mm-paramPoolSelection">
-                              <div className="mm-paramPoolSelectionText">
-                                Выбран параметр: <strong>{selectedSourceParam.name}</strong>
-                                <span>{PROVIDER_SLOTS[selectedSourceParam.provider] || selectedSourceParam.provider}</span>
-                              </div>
-                              <button
-                                type="button"
-                                className="btn mm-miniBtn"
-                                onClick={() => setSelectedSourceParam(null)}
-                              >
-                                Снять выбор
-                              </button>
-                            </div>
-                          ) : null}
-
-                          <div className="mm-paramPoolGrid">
-                            {sourceProvidersForUi.map((providerCode) => (
-                              <div key={providerCode} className="mm-attrParamCol">
-                                <div className="mm-attrParamColHead">
-                                  <div className="mm-attrParamColTitle">{PROVIDER_SLOTS[providerCode]}</div>
-                                  <div className="mm-attrParamColMeta">
-                                    {(providerParamStats[providerCode]?.visible || 0)} свободно из {(providerParamStats[providerCode]?.total || 0)}
-                                  </div>
-                                </div>
-                                <div className="mm-attrParamList">
-                                  {(visibleProviderParamSections[providerCode] || []).map((section) => (
-                                    <div key={`${providerCode}-${section.key}`} className="mm-attrParamSection">
-                                      <div className="mm-attrParamSectionHead">
-                                        <div className="mm-attrParamSectionTitle">{section.title}</div>
-                                        <div className="mm-attrParamSectionSub">{section.subtitle}</div>
-                                      </div>
-                                      {section.items.length === 0 ? (
-                                        <div className="muted mm-attrParamSectionEmpty">Нет доступных полей.</div>
-                                      ) : (
-                                        section.items.map((p) => (
-                                          <button
-                                            key={`${providerCode}-${p.id}`}
-                                            type="button"
-                                            className={`mm-attrParamItem ${dragParamKey === `${providerCode}:${String(p.id)}` ? "isDragging" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode && selectedSourceParam.id === String(p.id) ? "isSelected" : ""}`}
-                                            draggable={attrEditMode}
-                                            onDragStart={(e) => onDragParam(providerCode, p, e)}
-                                            onDragEnd={onDragEndParam}
-                                            onClick={() => {
-                                              if (!attrEditMode) return;
-                                              const nextId = String(p.id || "");
-                                              setSelectedSourceParam((prev) =>
-                                                prev && prev.provider === providerCode && prev.id === nextId
-                                                  ? null
-                                                  : {
-                                                      provider: providerCode,
-                                                      id: nextId,
-                                                      name: String(p.name || ""),
-                                                      kind: String(p.kind || ""),
-                                                      values: Array.isArray(p.values) ? p.values : [],
-                                                      required: !!p.required,
-                                                    }
-                                              );
-                                            }}
-                                            disabled={!attrEditMode}
-                                          >
-                                            <span className="mm-attrParamTop">
-                                              <span>{p.name}</span>
-                                              <span className="mm-attrParamKind">{humanizeParamKind(p.kind)}</span>
-                                            </span>
-                                            <span className="mm-attrParamValues">{valuesText(p.values)}</span>
-                                          </button>
-                                        ))
-                                      )}
+                                <div className="mm-attrBindingStrip">
+                                  {attrCategoryBindings.map((binding) => (
+                                    <div
+                                      key={binding.providerCode}
+                                      className={`mm-attrBindingPill is-${binding.state}`}
+                                      title={
+                                        binding.state === "direct"
+                                          ? `${PROVIDER_SLOTS[binding.providerCode]}: прямая привязка`
+                                          : binding.state === "inherited"
+                                            ? `${PROVIDER_SLOTS[binding.providerCode]}: наследуется от ${binding.inheritedFrom}`
+                                            : `${PROVIDER_SLOTS[binding.providerCode]}: привязка не задана`
+                                      }
+                                    >
+                                      <span className="mm-attrBindingProvider">{PROVIDER_SLOTS[binding.providerCode]}</span>
+                                      <span className="mm-attrBindingValue">{binding.label}</span>
                                     </div>
                                   ))}
-                                  {(visibleProviderParams[providerCode] || []).length === 0 && (
-                                    <div className="muted">Все параметры из пула уже использованы.</div>
-                                  )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                              <div className="mm-attrHeaderMeta">
+                                <div className="mm-attrHeaderSourceLine">
+                                  {mappingProvidersForUi.map((providerCode) => (
+                                    <span key={providerCode} className="mm-attrHeaderSourceItem">
+                                      {PROVIDER_SLOTS[providerCode]} {Number(attrDetails.providers?.[providerCode]?.count || 0)}
+                                    </span>
+                                  ))}
+                                </div>
+                                {attrDetails.template_id ? (
+                                  <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                                    Открыть шаблон
+                                  </Link>
+                                ) : null}
+                              </div>
+                            </div>
 
-                        <div className="mm-attrToolbar">
-                          <div className="mm-attrToolbarMain">
-                            <input
-                              className="pn-input mm-attrSearch"
-                              placeholder="Поиск по параметрам PIM и связанным полям источников..."
-                              value={attrRowQuery}
-                              onChange={(e) => setAttrRowQuery(e.target.value)}
-                            />
-                            <div className="mm-attrFilterChips">
-                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "attention" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("attention")}>
-                                Внимание
-                                <span>{attrRowsStats.attention}</span>
+                            <div className="mm-tabs mm-attrTemplateTabs" style={{ marginBottom: 12 }}>
+                              <button
+                                type="button"
+                                className={`mm-tab ${attrTemplateTab === "all" ? "active" : ""}`}
+                                onClick={() => setAttrTemplateTab("all")}
+                              >
+                                Все
                               </button>
-                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "unmapped" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("unmapped")}>
-                                Не сопоставлены
-                                <span>{attrRowsStats.unmapped}</span>
+                              <button
+                                type="button"
+                                className={`mm-tab ${attrTemplateTab === "base" ? "active" : ""}`}
+                                onClick={() => setAttrTemplateTab("base")}
+                              >
+                                Основа товара
+                                <span className="mm-tabCount">{attrBaseRowsCount}</span>
                               </button>
-                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "ready" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("ready")}>
-                                Готово
-                                <span>{attrRowsStats.ready}</span>
+                              <button
+                                type="button"
+                                className={`mm-tab ${attrTemplateTab === "category" ? "active" : ""}`}
+                                onClick={() => setAttrTemplateTab("category")}
+                              >
+                                Параметры категории
+                                <span className="mm-tabCount">{attrCategoryRowsCount}</span>
                               </button>
-                              <button type="button" className={`mm-chipBtn ${attrRowFilter === "all" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("all")}>
-                                Все строки
-                                <span>{attrRowsStats.total}</span>
+                            </div>
+
+                            {attrDraftAutoBuilt && !attrHasServerSaved ? (
+                              <div className="mm-draftNotice">
+                                <div className="mm-draftNoticeTitle">Черновик собран автоматически</div>
+                                <div className="muted" style={{ lineHeight: 1.45 }}>
+                                  Для этой категории не было сохраненного маппинга. Система сначала использовала совпадения из уже сохраненных категорий, а недостающее добрала по структуре Я.Маркета. Проверь строки, при необходимости поправь и сохрани мастер-шаблон.
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="mm-attrWorkbenchMain">
+                              <div className="mm-workbenchHead mm-workbenchHeadCompact">
+                                <div>
+                                  <div className="mm-workbenchTitle">Инфомодель PIM</div>
+                                  <div className="mm-workbenchSub">Здесь фиксируется смысл параметра: в какой слой PIM он попадает, с какими полями площадок связан и должен ли участвовать в экспорте.</div>
+                                </div>
+                              </div>
+
+                              <div className="mm-attrToolbar">
+                            <div className="mm-attrToolbarMain">
+                              <input
+                                className="pn-input mm-attrSearch"
+                                placeholder="Поиск по параметрам PIM и связанным полям источников..."
+                                value={attrRowQuery}
+                                onChange={(e) => setAttrRowQuery(e.target.value)}
+                              />
+                              <div className="mm-attrFilterChips">
+                                <button type="button" className={`mm-chipBtn ${attrRowFilter === "attention" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("attention")}>
+                                  Внимание
+                                  <span>{attrRowsStats.attention}</span>
+                                </button>
+                                <button type="button" className={`mm-chipBtn ${attrRowFilter === "unmapped" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("unmapped")}>
+                                  Не сопоставлены
+                                  <span>{attrRowsStats.unmapped}</span>
+                                </button>
+                                <button type="button" className={`mm-chipBtn ${attrRowFilter === "ready" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("ready")}>
+                                  Готово
+                                  <span>{attrRowsStats.ready}</span>
+                                </button>
+                                <button type="button" className={`mm-chipBtn ${attrRowFilter === "all" ? "isActive" : ""}`} onClick={() => setAttrRowFilter("all")}>
+                                  Все строки
+                                  <span>{attrRowsStats.total}</span>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mm-attrToolbarActions">
+                              {!attrHasServerSaved ? (
+                                <button className="btn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
+                                  Очистить черновик
+                                </button>
+                              ) : (
+                                <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving || attrAiMatching}>
+                                  Редактировать
+                                </button>
+                              )}
+                                <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
+                                Добавить параметр
+                                </button>
+                              <button className="btn" type="button" onClick={runAiMatch} disabled={attrAiMatching || attrSaving || !attrEditMode}>
+                                {attrAiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
+                              </button>
+                              <button className="btn btn-primary" type="button" onClick={saveAttrRows} disabled={attrSaving || !attrEditMode}>
+                                {attrSaving ? "Сохраняю..." : "Сохранить шаблон"}
                               </button>
                             </div>
                           </div>
-                          <div className="mm-attrToolbarActions">
-                            {!attrHasServerSaved ? (
-                              <button className="btn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
-                                Очистить черновик
-                              </button>
-                            ) : (
-                              <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving || attrAiMatching}>
-                                Редактировать
-                              </button>
-                            )}
-                              <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
-                              Добавить параметр
-                              </button>
-                            <button className="btn" type="button" onClick={runAiMatch} disabled={attrAiMatching || attrSaving || !attrEditMode}>
-                              {attrAiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
-                            </button>
-                            <button className="btn btn-primary" type="button" onClick={saveAttrRows} disabled={attrSaving || !attrEditMode}>
-                              {attrSaving ? "Сохраняю..." : "Сохранить шаблон"}
-                            </button>
-                          </div>
-                        </div>
 
-                        <div className="mm-attrTableWrap">
-                          <div className="mm-attrTable">
+                          <div className="mm-attrTableWrap">
+                            <div className="mm-attrTable">
                           <div className="mm-attrTh">Параметр PIM</div>
                           {mappingProvidersForUi.map((providerCode) => (
                             <div key={`th-${providerCode}`} className="mm-attrTh">{PROVIDER_SLOTS[providerCode]}</div>
@@ -2735,16 +2848,125 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 : "Пока нет параметров. Добавь параметр PIM и свяжи его с полями площадок и конкурентов."}
                             </div>
                           )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
                         </div>
+                        <aside className="mm-paramPool mm-paramPoolSidebar">
+                          <div className="mm-paramPoolHead">
+                            <div>
+                              <div className="mm-workbenchTitle">Пул параметров источников</div>
+                              <div className="mm-workbenchSub">
+                                Выбери источник и перетаскивай нужные поля в строки PIM. Все, что уже сопоставлено, из пула скрывается.
+                              </div>
+                            </div>
+                            <div className="mm-attrSourceTabs">
+                              <button
+                                type="button"
+                                className={`mm-sourceTab ${attrSourceProvider === "all" ? "active" : ""}`}
+                                onClick={() => setAttrSourceProvider("all")}
+                              >
+                                Все источники
+                              </button>
+                              {mappingProvidersForUi.map((providerCode) => (
+                                <button
+                                  key={`src-tab-${providerCode}`}
+                                  type="button"
+                                  className={`mm-sourceTab ${attrSourceProvider === providerCode ? "active" : ""}`}
+                                  onClick={() => setAttrSourceProvider(providerCode)}
+                                >
+                                  {PROVIDER_SLOTS[providerCode]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {selectedSourceParam ? (
+                            <div className="mm-paramPoolSelection">
+                              <div className="mm-paramPoolSelectionText">
+                                Выбран параметр: <strong>{selectedSourceParam.name}</strong>
+                                <span>{PROVIDER_SLOTS[selectedSourceParam.provider] || selectedSourceParam.provider}</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn mm-miniBtn"
+                                onClick={() => setSelectedSourceParam(null)}
+                              >
+                                Снять выбор
+                              </button>
+                            </div>
+                          ) : null}
+
+                          <div className="mm-paramPoolGrid">
+                            {sourceProvidersForUi.map((providerCode) => (
+                              <div key={providerCode} className="mm-attrParamCol">
+                                <div className="mm-attrParamColHead">
+                                  <div className="mm-attrParamColTitle">{PROVIDER_SLOTS[providerCode]}</div>
+                                  <div className="mm-attrParamColMeta">
+                                    {(providerParamStats[providerCode]?.visible || 0)} свободно из {(providerParamStats[providerCode]?.total || 0)}
+                                  </div>
+                                </div>
+                                <div className="mm-attrParamList mm-attrParamListStandalone">
+                                  {(visibleProviderParamSections[providerCode] || []).map((section) => (
+                                    <div key={`${providerCode}-${section.key}`} className="mm-attrParamSection">
+                                      <div className="mm-attrParamSectionHead">
+                                        <div className="mm-attrParamSectionTitle">{section.title}</div>
+                                        <div className="mm-attrParamSectionSub">{section.subtitle}</div>
+                                      </div>
+                                      {section.items.length === 0 ? (
+                                        <div className="muted mm-attrParamSectionEmpty">Нет доступных полей.</div>
+                                      ) : (
+                                        section.items.map((p) => (
+                                          <button
+                                            key={`${providerCode}-${p.id}`}
+                                            type="button"
+                                            className={`mm-attrParamItem ${dragParamKey === `${providerCode}:${String(p.id)}` ? "isDragging" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode && selectedSourceParam.id === String(p.id) ? "isSelected" : ""}`}
+                                            draggable={attrEditMode}
+                                            onDragStart={(e) => onDragParam(providerCode, p, e)}
+                                            onDragEnd={onDragEndParam}
+                                            onClick={() => {
+                                              if (!attrEditMode) return;
+                                              const nextId = String(p.id || "");
+                                              setSelectedSourceParam((prev) =>
+                                                prev && prev.provider === providerCode && prev.id === nextId
+                                                  ? null
+                                                  : {
+                                                      provider: providerCode,
+                                                      id: nextId,
+                                                      name: String(p.name || ""),
+                                                      kind: String(p.kind || ""),
+                                                      values: Array.isArray(p.values) ? p.values : [],
+                                                      required: !!p.required,
+                                                    }
+                                              );
+                                            }}
+                                            disabled={!attrEditMode}
+                                          >
+                                            <span className="mm-attrParamTop">
+                                              <span>{p.name}</span>
+                                              <span className="mm-attrParamKind">{humanizeParamKind(p.kind)}</span>
+                                            </span>
+                                            <span className="mm-attrParamValues">{valuesText(p.values)}</span>
+                                          </button>
+                                        ))
+                                      )}
+                                    </div>
+                                  ))}
+                                  {(visibleProviderParams[providerCode] || []).length === 0 && (
+                                    <div className="muted">Все параметры из пула уже использованы.</div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </aside>
                       </div>
                       <datalist id="mm-catalog-attr-options">
                         {catalogNameSuggests.map((name) => (
                           <option key={name} value={name} />
                         ))}
                       </datalist>
-                        </>
+                      </>
                       )}
                     </>
                   )}

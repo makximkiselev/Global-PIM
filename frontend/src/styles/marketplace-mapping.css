@@ -1,12 +1,13 @@
 .mm-wrap{
-  width:min(100%, 1160px);
-  margin:0 auto;
-  padding:8px 16px 20px;
+  width:100%;
+  max-width:none;
+  margin:0;
+  padding:8px 24px 20px;
 }
 
 .mm-page{
   width:100%;
-  --mm-content-width: 1040px;
+  --mm-content-width: min(1920px, calc(100vw - 48px));
   display:flex;
   flex-direction:column;
   gap:14px;
@@ -439,6 +440,59 @@
   padding:22px 16px;
   color:var(--muted);
   font-size:13px;
+}
+
+.mm-parentCategoryHelp{
+  margin-top:16px;
+  display:grid;
+  gap:10px;
+}
+
+.mm-parentCategoryHelpTitle{
+  font-size:13px;
+  font-weight:800;
+  color:var(--text);
+}
+
+.mm-parentCategoryHelpList{
+  display:grid;
+  gap:8px;
+  max-width:720px;
+}
+
+.mm-parentCategoryHelpItem{
+  display:grid;
+  gap:4px;
+  padding:12px 14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  text-align:left;
+}
+
+.mm-parentCategoryHelpItem:hover{
+  border-color:#f2b28c;
+  background:#fff8f4;
+}
+
+.mm-parentCategoryHelpMain{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.mm-parentCategoryHelpName{
+  font-size:14px;
+  font-weight:800;
+  color:var(--text);
+}
+
+.mm-parentCategoryHelpProviders{
+  font-size:12px;
+  font-weight:700;
+  color:var(--muted);
+  white-space:nowrap;
 }
 
 .mm-grid{
@@ -989,8 +1043,8 @@
 
 .mm-attrLayout{
   display:grid;
-  grid-template-columns:280px minmax(0, 1fr);
-  gap:12px;
+  grid-template-columns:264px minmax(0, 1fr);
+  gap:18px;
   align-items:start;
 }
 
@@ -1004,7 +1058,23 @@
 }
 
 .mm-attrRight{
-  max-width:1120px;
+  width:100%;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  max-width:none;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:0;
+  box-shadow:none;
+}
+
+.mm-attrLeft{
+  position:sticky;
+  top:92px;
+  align-self:start;
 }
 
 .mm-attrLeftHead{
@@ -1018,7 +1088,7 @@
   display:flex;
   flex-direction:column;
   gap:8px;
-  max-height:68vh;
+  max-height:calc(100vh - 220px);
   overflow:auto;
 }
 
@@ -1283,15 +1353,28 @@
   font-weight:800;
 }
 
-.mm-attrEditorGrid{
+.mm-attrWorkbenchGrid{
   display:grid;
-  grid-template-columns:minmax(0, 1fr);
-  gap:12px;
+  width:100%;
+  grid-template-columns:minmax(820px, 1fr) clamp(360px, 24vw, 440px);
+  gap:16px;
   align-items:start;
 }
 
-@media (max-width: 1500px){
-  .mm-page{ --mm-content-width: 900px; }
+.mm-attrWorkbenchMain{
+  min-width:0;
+  width:100%;
+}
+
+@media (max-width: 1600px){
+  .mm-page{ --mm-content-width: min(1680px, calc(100vw - 40px)); }
+}
+
+@media (max-width: 1360px){
+  .mm-page{ --mm-content-width: min(1440px, calc(100vw - 32px)); }
+  .mm-attrWorkbenchGrid{
+    grid-template-columns:minmax(0, 1fr) 380px;
+  }
 }
 
 .mm-infoCard{
@@ -1394,6 +1477,10 @@
   width:100%;
 }
 
+.mm-templateBoardMain{
+  min-width:0;
+}
+
 .mm-workbenchSidebar{
   position:sticky;
   top:92px;
@@ -1437,7 +1524,20 @@
   border-radius:16px;
   background:rgba(255,255,255,.72);
   padding:12px;
-  margin-bottom:12px;
+  margin-bottom:0;
+}
+
+.mm-paramPoolStandalone{
+  margin-top:12px;
+}
+
+.mm-paramPoolSidebar{
+  position:sticky;
+  top:92px;
+  align-self:start;
+  width:100%;
+  max-height:calc(100vh - 110px);
+  overflow:auto;
 }
 
 .mm-paramPoolHead{
@@ -1450,8 +1550,8 @@
 
 .mm-paramPoolGrid{
   display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:12px;
+  grid-template-columns:1fr;
+  gap:10px;
 }
 
 .mm-paramPoolSelection{
@@ -1464,6 +1564,19 @@
   border:1px solid rgba(61,107,255,.18);
   border-radius:14px;
   background:rgba(61,107,255,.05);
+}
+
+.mm-paramPoolSidebar .mm-workbenchSub{
+  max-width:none;
+}
+
+.mm-paramPoolSidebar .mm-attrSourceTabs{
+  justify-content:flex-start;
+}
+
+.mm-paramPoolSidebar .mm-attrParamList{
+  max-height:calc(100vh - 320px);
+  overflow:auto;
 }
 
 .mm-paramPoolSelectionText{
@@ -1542,6 +1655,10 @@
   max-height:240px;
   overflow:auto;
   padding-right:4px;
+}
+
+.mm-attrParamListStandalone{
+  max-height:320px;
 }
 
 .mm-attrParamSection{
@@ -1641,7 +1758,7 @@
   border:1px solid var(--line);
   border-radius:16px;
   overflow:auto;
-  max-height:64vh;
+  max-height:calc(100vh - 265px);
   box-shadow:0 12px 28px rgba(15,23,42,.04);
   background:#fff;
 }
@@ -1738,9 +1855,9 @@
 }
 
 .mm-attrTable{
-  min-width:1180px;
+  min-width:980px;
   display:grid;
-  grid-template-columns:300px minmax(260px, 1fr) minmax(260px, 1fr) 88px;
+  grid-template-columns:250px minmax(220px, 1fr) minmax(220px, 1fr) 76px;
 }
 
 .mm-attrTh,
@@ -1780,9 +1897,9 @@
 }
 
 .mm-dropCellRich{
-  min-height:60px;
-  height:60px;
-  max-height:60px;
+  min-height:56px;
+  height:56px;
+  max-height:56px;
   align-items:stretch;
   overflow:hidden;
 }
@@ -1867,8 +1984,8 @@
 }
 
 .mm-attrTdCatalog{
-  min-height:60px;
-  height:60px;
+  min-height:56px;
+  height:56px;
 }
 
 .mm-attrCatalogLine{
@@ -2213,15 +2330,19 @@
   .mm-featureRow{ grid-template-columns:1fr; }
   .mm-providerAction{ grid-template-columns:1fr; }
   .mm-attrLayout{ grid-template-columns:1fr; }
-  .mm-attrEditorGrid{ grid-template-columns:1fr; }
+  .mm-attrWorkbenchGrid{ grid-template-columns:1fr; }
   .mm-attrHeader{ flex-direction:column; }
   .mm-attrHeaderMeta{ justify-content:flex-start; }
+  .mm-attrLeft{ position:static; top:auto; }
   .mm-workbenchSidebar{ position:static; top:auto; }
+  .mm-paramPoolSidebar{ position:static; top:auto; }
   .mm-attrParams{ grid-template-columns:1fr; }
   .mm-paramPoolHead{ flex-direction:column; align-items:flex-start; }
   .mm-paramPoolGrid{ grid-template-columns:1fr; }
   .mm-attrToolbar{ flex-direction:column; }
   .mm-attrToolbarActions{ justify-content:flex-start; }
+  .mm-attrTableWrap{ max-height:none; }
+  .mm-attrTable{ min-width:0; grid-template-columns:220px minmax(180px, 1fr) minmax(180px, 1fr) 72px; }
 }
 
 @media (max-width: 720px){
