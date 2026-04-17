@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+import fcntl
+
 _PG_CONN: Any = None
 _PG_KIND: str = ""
 _PG_JSON_ADAPTER: Any = None
@@ -28,12 +30,42 @@ class JsonStoreError(RuntimeError):
 class FileLock:
     path: Path | None = None
     stale_seconds: int = 30
+    _fh: Any = None
 
-    def acquire(self, timeout: float = 5.0, poll: float = 0.05) -> None:
-        return None
+    def acquire(self, timeout: float = 5.0, poll: float = 0.05, blocking: bool = True) -> bool:
+        if self.path is None:
+            return True
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self._fh is None or getattr(self._fh, "closed", True):
+            self._fh = open(self.path, "a+", encoding="utf-8")
+        deadline = time.time() + max(timeout, 0.0)
+        while True:
+            try:
+                flags = fcntl.LOCK_EX
+                if not blocking:
+                    flags |= fcntl.LOCK_NB
+                fcntl.flock(self._fh.fileno(), flags)
+                self._fh.seek(0)
+                self._fh.truncate()
+                self._fh.write(str(os.getpid()))
+                self._fh.flush()
+                return True
+            except BlockingIOError:
+                if not blocking or time.time() >= deadline:
+                    return False
+                time.sleep(max(poll, 0.01))
 
     def release(self) -> None:
-        return None
+        if self._fh is None or getattr(self._fh, "closed", True):
+            return
+        try:
+            fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            try:
+                self._fh.close()
+            except Exception:
+                pass
+            self._fh = None
 
 
 def _env_path() -> Path:
@@ -446,7 +478,11 @@ def write_doc(path: Path, data: Any) -> None:
 
 
 def with_lock(filename: str) -> FileLock:
-    return FileLock(None)
+    safe = "".join(ch if (ch.isalnum() or ch in {"-", "_"}) else "_" for ch in str(filename or "").strip()).strip("_")
+    if not safe:
+        safe = "lock"
+    lock_dir = DATA_DIR / ".locks"
+    return FileLock(lock_dir / f"{safe}.lock")
 
 
 read_json = read_doc

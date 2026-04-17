@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
-from app.core.json_store import read_doc, write_doc, with_lock
+from app.core.json_store import read_doc, with_lock
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
@@ -20,7 +20,12 @@ from app.storage.json_store import (
     new_id,
     slugify_code,
 )
-from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings, query_products_full
+from app.storage.relational_pim_store import (
+    bulk_upsert_product_items,
+    load_catalog_nodes,
+    load_category_mappings,
+    query_products_full,
+)
 from app.core.master_templates import (
     base_field_by_code,
     base_field_by_name,
@@ -41,7 +46,6 @@ YANDEX_CATEGORIES_TREE_PATH = MARKETPLACES_DIR / "yandex_market" / "categories_t
 OZON_CATEGORY_ATTRS_PATH = MARKETPLACES_DIR / "ozon" / "category_attributes.json"
 OZON_CATEGORIES_TREE_PATH = MARKETPLACES_DIR / "ozon" / "categories_tree.json"
 CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
-PRODUCTS_PATH = DATA_DIR / "products.json"
 _EDITOR_REFERENCE_CACHE_TTL_SECONDS = 300.0
 _editor_reference_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 
@@ -911,6 +915,7 @@ def apply_template_to_products(category_id: str, payload: ApplyTemplateToProduct
         items = products_doc.get("items") if isinstance(products_doc.get("items"), list) else []
         matched = 0
         updated = 0
+        changed_items: List[Dict[str, Any]] = []
         for product in items:
             if not isinstance(product, dict):
                 continue
@@ -927,9 +932,9 @@ def apply_template_to_products(category_id: str, payload: ApplyTemplateToProduct
                     next_content["features"] = merged_features
                     product["content"] = next_content
                     product["updated_at"] = now_iso()
+                    changed_items.append(product)
         if not payload.dry_run:
-            products_doc["items"] = items
-            write_doc(PRODUCTS_PATH, products_doc)
+            bulk_upsert_product_items(changed_items)
     finally:
         lock.release()
 
