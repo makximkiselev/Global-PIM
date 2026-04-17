@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db, load_products_db, save_products_db
-from app.storage.relational_pim_store import load_catalog_nodes
+from app.storage.relational_pim_store import load_catalog_nodes, query_products_full
 from app.api.routes.yandex_market import OfferCardsSyncReq, sync_offer_cards, ExportPreviewReq, yandex_export_preview
 from app.api.routes.competitor_mapping import _ensure_row_shape, _normalize_mapped_specs
 from app.core.competitors.extract_competitor_fields import extract_competitor_content
@@ -41,9 +41,7 @@ def _now_iso() -> str:
 
 
 def _load_products() -> List[Dict[str, Any]]:
-    doc = load_products_db()
-    items = doc.get("items") if isinstance(doc, dict) else []
-    return items if isinstance(items, list) else []
+    return query_products_full()
 
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
@@ -159,7 +157,6 @@ def _template_attr_defs(template_id: str) -> Dict[str, Dict[str, Any]]:
 
 
 def _resolve_products(node_ids: List[str], product_ids: List[str], include_descendants: bool) -> List[Dict[str, Any]]:
-    products = _load_products()
     nodes = _load_nodes()
     target_product_ids = {str(x or "").strip() for x in product_ids if str(x or "").strip()}
     target_category_ids: Set[str] = set()
@@ -172,14 +169,13 @@ def _resolve_products(node_ids: List[str], product_ids: List[str], include_desce
         else:
             target_category_ids.add(nid)
     if not target_product_ids and not target_category_ids:
-        return products
-    out: List[Dict[str, Any]] = []
-    for p in products:
-        pid = str(p.get("id") or "").strip()
-        cid = str(p.get("category_id") or "").strip()
-        if pid in target_product_ids or cid in target_category_ids:
-            out.append(p)
-    return out
+        return _load_products()
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for row in query_products_full(ids=sorted(target_product_ids), category_ids=sorted(target_category_ids)):
+        pid = str(row.get("id") or "").strip()
+        if pid and pid not in by_id:
+            by_id[pid] = row
+    return list(by_id.values())
 
 
 def _normalize_text(value: Any) -> str:

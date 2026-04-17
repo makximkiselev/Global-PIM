@@ -2224,6 +2224,73 @@ def query_catalog_product_items(
     return _with_pg_retry(_run)
 
 
+def query_products_full(
+    *,
+    ids: List[str] | None = None,
+    category_ids: List[str] | None = None,
+) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    safe_ids = [str(x or "").strip() for x in (ids or []) if str(x or "").strip()]
+    safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        sql = """
+            SELECT
+              id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+              selected_params, feature_params, exports_enabled_json, content_json, extra_json,
+              created_at, updated_at
+            FROM products_rel
+        """
+        clauses: List[str] = []
+        params: List[Any] = []
+        if safe_ids:
+            clauses.append("id = ANY(%s)")
+            params.append(safe_ids)
+        if safe_category_ids:
+            clauses.append("category_id = ANY(%s)")
+            params.append(safe_category_ids)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at NULLS LAST, id"
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            db_rows = cur.fetchall() or []
+
+        items: List[Dict[str, Any]] = []
+        for row in db_rows:
+            exports_enabled = row[10] if isinstance(row[10], dict) else {}
+            content = row[11] if isinstance(row[11], dict) else {}
+            extra = row[12] if isinstance(row[12], dict) else {}
+            item = {
+                "id": str(row[0] or "").strip(),
+                "category_id": str(row[1] or "").strip(),
+                "type": str(row[2] or "single").strip() or "single",
+                "status": str(row[3] or "draft").strip() or "draft",
+                "title": str(row[4] or "").strip(),
+                "sku_pim": str(row[5] or "").strip(),
+                "sku_gt": str(row[6] or "").strip(),
+                "selected_params": list(row[8] or []),
+                "feature_params": list(row[9] or []),
+                "exports_enabled": exports_enabled if isinstance(exports_enabled, dict) else {},
+                "content": content if isinstance(content, dict) else {},
+                "created_at": str(row[13] or "") or "",
+                "updated_at": str(row[14] or "") or "",
+            }
+            group_id = str(row[7] or "").strip()
+            if group_id:
+                item["group_id"] = group_id
+            if isinstance(extra, dict):
+                for key, value in extra.items():
+                    if key not in item:
+                        item[key] = value
+            items.append(item)
+        return items
+
+    return _normalize_products_doc({"version": 1, "items": _with_pg_retry(_run)}).get("items", [])
+
+
 def load_category_product_counts() -> Dict[str, int]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
