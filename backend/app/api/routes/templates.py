@@ -15,13 +15,12 @@ from app.core.json_store import read_doc, write_doc, with_lock
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
-    load_products_db,
     load_templates_db,
     save_templates_db,
     new_id,
     slugify_code,
 )
-from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings
+from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings, query_products_full
 from app.core.master_templates import (
     base_field_by_code,
     base_field_by_name,
@@ -138,8 +137,7 @@ def _load_catalog_nodes() -> List[Dict[str, Any]]:
 
 
 def _load_products_doc() -> Dict[str, Any]:
-    data = load_products_db()
-    return data if isinstance(data, dict) else {"version": 1, "items": []}
+    return {"version": 1, "items": query_products_full()}
 
 
 def _catalog_path(nodes: List[Dict[str, Any]], category_id: str) -> List[Dict[str, str]]:

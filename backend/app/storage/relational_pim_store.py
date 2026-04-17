@@ -22,6 +22,7 @@ DICTIONARIES_PATH = DATA_DIR / "dictionaries.json"
 DICTS_DIR = DATA_DIR / "dicts"
 TEMPLATES_PATH = DATA_DIR / "templates.json"
 PRODUCTS_PATH = DATA_DIR / "products.json"
+VARIANTS_PATH = DATA_DIR / "product_variants.json"
 PRODUCT_GROUPS_PATH = DATA_DIR / "product_groups.json"
 CONNECTORS_STATE_PATH = DATA_DIR / "marketplaces" / "connectors_scheduler.json"
 
@@ -531,6 +532,35 @@ def _ensure_tables() -> None:
                   updated_at TEXT NULL,
                   PRIMARY KEY (provider, store_id)
                 )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS product_variants_rel (
+                  id TEXT PRIMARY KEY,
+                  product_id TEXT NOT NULL,
+                  sku TEXT NULL,
+                  sku_pim TEXT NULL,
+                  sku_gt TEXT NULL,
+                  title TEXT NULL,
+                  links_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  content_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  status TEXT NOT NULL DEFAULT 'active'
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_variants_rel_product
+                  ON product_variants_rel(product_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_product_variants_rel_sku
+                  ON product_variants_rel(sku)
+                  WHERE COALESCE(sku, '') <> ''
                 """
             )
             cur.execute(
@@ -1944,6 +1974,37 @@ def _normalize_product_item(raw: Dict[str, Any]) -> Dict[str, Any] | None:
     return normalized[0]
 
 
+def _normalize_variant_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(doc, dict):
+        doc = {"version": 1, "items": []}
+    items = doc.get("items")
+    if not isinstance(items, list):
+        items = []
+    normalized_items: List[Dict[str, Any]] = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        variant_id = str(raw.get("id") or "").strip()
+        product_id = str(raw.get("product_id") or "").strip()
+        if not variant_id or not product_id:
+            continue
+        normalized_items.append(
+            {
+                "id": variant_id,
+                "product_id": product_id,
+                "sku": str(raw.get("sku") or "").strip() or None,
+                "sku_pim": str(raw.get("sku_pim") or "").strip() or None,
+                "sku_gt": str(raw.get("sku_gt") or "").strip() or None,
+                "title": str(raw.get("title") or "").strip() or None,
+                "links": raw.get("links") if isinstance(raw.get("links"), list) else [],
+                "content": raw.get("content") if isinstance(raw.get("content"), dict) else {},
+                "options": raw.get("options") if isinstance(raw.get("options"), dict) else {},
+                "status": str(raw.get("status") or "active").strip() or "active",
+            }
+        )
+    return {"version": 1, "items": normalized_items}
+
+
 def _preview_url_for_content(content: Dict[str, Any]) -> str:
     media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
     media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
@@ -2082,6 +2143,61 @@ def _bootstrap_products_from_legacy() -> None:
         if not isinstance(doc, dict):
             doc = {"version": 1, "items": []}
         _replace_products_table(doc)
+    finally:
+        lock.release()
+
+
+def _replace_variants_table(doc: Dict[str, Any]) -> None:
+    normalized = _normalize_variant_doc(doc)
+    items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
+    rows: List[tuple[Any, ...]] = []
+    for item in items:
+        rows.append(
+            (
+                str(item.get("id") or "").strip(),
+                str(item.get("product_id") or "").strip(),
+                str(item.get("sku") or "").strip() or None,
+                str(item.get("sku_pim") or "").strip() or None,
+                str(item.get("sku_gt") or "").strip() or None,
+                str(item.get("title") or "").strip() or None,
+                json.dumps(item.get("links") if isinstance(item.get("links"), list) else []),
+                json.dumps(item.get("content") if isinstance(item.get("content"), dict) else {}),
+                json.dumps(item.get("options") if isinstance(item.get("options"), dict) else {}),
+                str(item.get("status") or "active").strip() or "active",
+            )
+        )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM product_variants_rel")
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO product_variants_rel (
+                      id, product_id, sku, sku_pim, sku_gt, title,
+                      links_json, content_json, options_json, status
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s,
+                      %s::jsonb, %s::jsonb, %s::jsonb, %s
+                    )
+                    """,
+                    rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_variants_from_legacy() -> None:
+    lock = with_lock("product_variants_rel_bootstrap")
+    lock.acquire()
+    try:
+        if _table_count("product_variants_rel") > 0:
+            return
+        doc = read_doc(VARIANTS_PATH, default={"version": 1, "items": []})
+        if not isinstance(doc, dict):
+            doc = {"version": 1, "items": []}
+        _replace_variants_table(doc)
     finally:
         lock.release()
 
@@ -2346,6 +2462,329 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
 
     _with_pg_retry(_run)
     return normalized
+
+
+def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    normalized_items = [
+        normalized
+        for normalized in (_normalize_product_item(item if isinstance(item, dict) else {}) for item in (items or []))
+        if normalized
+    ]
+    if not normalized_items:
+        return []
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        affected_categories: set[str] = set()
+        with conn.cursor() as cur:
+            product_ids = [str(item.get("id") or "").strip() for item in normalized_items if str(item.get("id") or "").strip()]
+            old_category_map: Dict[str, str] = {}
+            if product_ids:
+                cur.execute("SELECT id, category_id FROM products_rel WHERE id = ANY(%s)", [product_ids])
+                for row in cur.fetchall() or []:
+                    pid = str(row[0] or "").strip()
+                    cid = str(row[1] or "").strip()
+                    if pid:
+                        old_category_map[pid] = cid
+
+            product_rows: List[List[Any]] = []
+            registry_rows: List[List[Any]] = []
+            for normalized in normalized_items:
+                product_id = str(normalized.get("id") or "").strip()
+                category_id = str(normalized.get("category_id") or "").strip()
+                content = normalized.get("content") if isinstance(normalized.get("content"), dict) else {}
+                preview_url = _preview_url_for_content(content) or None
+                exports_enabled = normalized.get("exports_enabled") if isinstance(normalized.get("exports_enabled"), dict) else {}
+                extra = normalized.get("extra") if isinstance(normalized.get("extra"), dict) else {}
+                affected_categories.add(category_id)
+                old_category_id = old_category_map.get(product_id, "")
+                if old_category_id and old_category_id != category_id:
+                    affected_categories.add(old_category_id)
+                product_rows.append(
+                    [
+                        product_id,
+                        category_id,
+                        str(normalized.get("type") or "single").strip() or "single",
+                        str(normalized.get("status") or "draft").strip() or "draft",
+                        str(normalized.get("title") or "").strip(),
+                        str(normalized.get("sku_pim") or "").strip() or None,
+                        str(normalized.get("sku_gt") or "").strip() or None,
+                        str(normalized.get("group_id") or "").strip() or None,
+                        [str(v).strip() for v in (normalized.get("selected_params") or []) if str(v).strip()],
+                        [str(v).strip() for v in (normalized.get("feature_params") or []) if str(v).strip()],
+                        json.dumps(exports_enabled),
+                        json.dumps(content),
+                        json.dumps(extra),
+                        str(normalized.get("created_at") or "").strip() or None,
+                        str(normalized.get("updated_at") or "").strip() or None,
+                    ]
+                )
+                registry_rows.append(
+                    [
+                        product_id,
+                        str(normalized.get("title") or "").strip(),
+                        category_id,
+                        str(normalized.get("sku_pim") or "").strip() or None,
+                        str(normalized.get("sku_gt") or "").strip() or None,
+                        str(normalized.get("group_id") or "").strip() or None,
+                        preview_url,
+                        json.dumps(exports_enabled),
+                        str(normalized.get("updated_at") or "").strip() or None,
+                    ]
+                )
+
+            cur.executemany(
+                """
+                INSERT INTO products_rel (
+                  id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                  selected_params, feature_params, exports_enabled_json, content_json, extra_json,
+                  created_at, updated_at
+                ) VALUES (
+                  %s, %s, %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
+                  %s, %s
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                  category_id = EXCLUDED.category_id,
+                  product_type = EXCLUDED.product_type,
+                  status = EXCLUDED.status,
+                  title = EXCLUDED.title,
+                  sku_pim = EXCLUDED.sku_pim,
+                  sku_gt = EXCLUDED.sku_gt,
+                  group_id = EXCLUDED.group_id,
+                  selected_params = EXCLUDED.selected_params,
+                  feature_params = EXCLUDED.feature_params,
+                  exports_enabled_json = EXCLUDED.exports_enabled_json,
+                  content_json = EXCLUDED.content_json,
+                  extra_json = EXCLUDED.extra_json,
+                  created_at = COALESCE(products_rel.created_at, EXCLUDED.created_at),
+                  updated_at = EXCLUDED.updated_at
+                """,
+                product_rows,
+            )
+            cur.executemany(
+                """
+                INSERT INTO catalog_product_registry_rel (
+                  id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                  title = EXCLUDED.title,
+                  category_id = EXCLUDED.category_id,
+                  sku_pim = EXCLUDED.sku_pim,
+                  sku_gt = EXCLUDED.sku_gt,
+                  group_id = EXCLUDED.group_id,
+                  preview_url = EXCLUDED.preview_url,
+                  exports_enabled_json = EXCLUDED.exports_enabled_json,
+                  updated_at = EXCLUDED.updated_at
+                """,
+                registry_rows,
+            )
+        _refresh_category_counts_for(sorted(affected_categories))
+        return normalized_items
+
+    return _with_pg_retry(_run)
+
+
+def allocate_next_variant_identity() -> str:
+    _ensure_tables()
+    _bootstrap_variants_from_legacy()
+
+    def _run() -> str:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(MAX(CASE WHEN id ~ '^variant_[0-9]+$' THEN SUBSTRING(id FROM 9)::bigint END), 0)
+                FROM product_variants_rel
+                """
+            )
+            row = cur.fetchone() or [0]
+        return f"variant_{int((row or [0])[0] or 0) + 1}"
+
+    return str(_with_pg_retry(_run) or "variant_1")
+
+
+def list_product_variants(product_id: str) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    _bootstrap_variants_from_legacy()
+    pid = str(product_id or "").strip()
+    if not pid:
+        return []
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, product_id, sku, sku_pim, sku_gt, title, links_json, content_json, options_json, status
+                FROM product_variants_rel
+                WHERE product_id = %s
+                ORDER BY id
+                """,
+                [pid],
+            )
+            rows = cur.fetchall() or []
+        return [
+            {
+                "id": str(row[0] or "").strip(),
+                "product_id": str(row[1] or "").strip(),
+                "sku": str(row[2] or "").strip(),
+                "sku_pim": str(row[3] or "").strip(),
+                "sku_gt": str(row[4] or "").strip(),
+                "title": str(row[5] or "").strip(),
+                "links": row[6] if isinstance(row[6], list) else [],
+                "content": row[7] if isinstance(row[7], dict) else {},
+                "options": row[8] if isinstance(row[8], dict) else {},
+                "status": str(row[9] or "active").strip() or "active",
+            }
+            for row in rows
+        ]
+
+    return _normalize_variant_doc({"version": 1, "items": _with_pg_retry(_run)}).get("items", [])
+
+
+def find_product_variant(variant_id: str) -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_variants_from_legacy()
+    vid = str(variant_id or "").strip()
+    if not vid:
+        return {}
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, product_id, sku, sku_pim, sku_gt, title, links_json, content_json, options_json, status
+                FROM product_variants_rel
+                WHERE id = %s
+                LIMIT 1
+                """,
+                [vid],
+            )
+            row = cur.fetchone()
+        if not row:
+            return {}
+        return {
+            "id": str(row[0] or "").strip(),
+            "product_id": str(row[1] or "").strip(),
+            "sku": str(row[2] or "").strip(),
+            "sku_pim": str(row[3] or "").strip(),
+            "sku_gt": str(row[4] or "").strip(),
+            "title": str(row[5] or "").strip(),
+            "links": row[6] if isinstance(row[6], list) else [],
+            "content": row[7] if isinstance(row[7], dict) else {},
+            "options": row[8] if isinstance(row[8], dict) else {},
+            "status": str(row[9] or "active").strip() or "active",
+        }
+
+    return _normalize_variant_doc({"version": 1, "items": [_with_pg_retry(_run)]}).get("items", [{}])[0]
+
+
+def find_product_variant_by_sku(sku: str) -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_variants_from_legacy()
+    needle = str(sku or "").strip()
+    if not needle:
+        return {}
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, product_id, sku, sku_pim, sku_gt, title, links_json, content_json, options_json, status
+                FROM product_variants_rel
+                WHERE sku = %s
+                LIMIT 1
+                """,
+                [needle],
+            )
+            row = cur.fetchone()
+        if not row:
+            return {}
+        return {
+            "id": str(row[0] or "").strip(),
+            "product_id": str(row[1] or "").strip(),
+            "sku": str(row[2] or "").strip(),
+            "sku_pim": str(row[3] or "").strip(),
+            "sku_gt": str(row[4] or "").strip(),
+            "title": str(row[5] or "").strip(),
+            "links": row[6] if isinstance(row[6], list) else [],
+            "content": row[7] if isinstance(row[7], dict) else {},
+            "options": row[8] if isinstance(row[8], dict) else {},
+            "status": str(row[9] or "active").strip() or "active",
+        }
+
+    return _normalize_variant_doc({"version": 1, "items": [_with_pg_retry(_run)]}).get("items", [{}])[0]
+
+
+def insert_product_variants(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    _bootstrap_variants_from_legacy()
+    normalized_items = [
+        item
+        for item in (_normalize_variant_doc({"version": 1, "items": items}).get("items") or [])
+        if isinstance(item, dict)
+    ]
+    if not normalized_items:
+        return []
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO product_variants_rel (
+                  id, product_id, sku, sku_pim, sku_gt, title,
+                  links_json, content_json, options_json, status
+                ) VALUES (
+                  %s, %s, %s, %s, %s, %s,
+                  %s::jsonb, %s::jsonb, %s::jsonb, %s
+                )
+                """,
+                [
+                    [
+                        str(item.get("id") or "").strip(),
+                        str(item.get("product_id") or "").strip(),
+                        str(item.get("sku") or "").strip() or None,
+                        str(item.get("sku_pim") or "").strip() or None,
+                        str(item.get("sku_gt") or "").strip() or None,
+                        str(item.get("title") or "").strip() or None,
+                        json.dumps(item.get("links") if isinstance(item.get("links"), list) else []),
+                        json.dumps(item.get("content") if isinstance(item.get("content"), dict) else {}),
+                        json.dumps(item.get("options") if isinstance(item.get("options"), dict) else {}),
+                        str(item.get("status") or "active").strip() or "active",
+                    ]
+                    for item in normalized_items
+                ],
+            )
+
+    _with_pg_retry(_run)
+    return normalized_items
+
+
+def update_product_variant_sku(variant_id: str, sku: str) -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_variants_from_legacy()
+    vid = str(variant_id or "").strip()
+    next_sku = str(sku or "").strip() or None
+    if not vid:
+        return {}
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE product_variants_rel SET sku = %s WHERE id = %s RETURNING id", [next_sku, vid])
+            row = cur.fetchone()
+        return {"id": str((row or [None])[0] or "").strip()}
+
+    result = _with_pg_retry(_run)
+    if not str(result.get("id") or "").strip():
+        return {}
+    return find_product_variant(vid)
 
 
 def delete_product_items(ids: List[str]) -> int:

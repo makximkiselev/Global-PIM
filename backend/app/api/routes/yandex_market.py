@@ -14,13 +14,14 @@ from pydantic import BaseModel, Field
 from app.core.json_store import read_doc, write_doc
 from app.core.value_mapping import provider_export_value, provider_import_value
 from app.storage.relational_pim_store import (
+    bulk_upsert_product_items,
     load_attribute_mapping_doc,
     load_attribute_value_refs_doc,
     load_catalog_nodes,
     load_category_mappings,
     load_product_group_name_map,
+    query_products_full,
 )
-from app.storage.json_store import load_products_db, save_products_db
 
 router = APIRouter(prefix="/marketplaces/yandex", tags=["marketplaces-yandex"])
 
@@ -177,9 +178,7 @@ async def _resolve_yandex_disk_download_url(public_url: str) -> str:
 
 
 def _load_products() -> List[Dict[str, Any]]:
-    doc = load_products_db()
-    items = doc.get("items") if isinstance(doc, dict) else []
-    return items if isinstance(items, list) else []
+    return query_products_full()
 
 
 def _load_group_name_by_id() -> Dict[str, str]:
@@ -195,7 +194,7 @@ def _product_group_name(product: Dict[str, Any], group_name_by_id: Optional[Dict
 
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
-    save_products_db({"version": 1, "items": items})
+    bulk_upsert_product_items(items)
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
@@ -1864,7 +1863,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
             )
 
     if req.apply_to_products and changed_product_ids:
-        _save_products(products)
+        _save_products([product for product in products if str(product.get("id") or "").strip() in changed_product_ids])
         updated_products = len(changed_product_ids)
 
     cache_doc["items"] = cache_items

@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc
-from app.storage.json_store import load_templates_db, load_competitor_mapping_db, load_products_db, save_products_db
-from app.storage.relational_pim_store import load_catalog_nodes, query_products_full
+from app.storage.json_store import load_templates_db, load_competitor_mapping_db
+from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
 from app.api.routes.yandex_market import OfferCardsSyncReq, sync_offer_cards, ExportPreviewReq, yandex_export_preview
 from app.api.routes.competitor_mapping import _ensure_row_shape, _normalize_mapped_specs
 from app.core.competitors.extract_competitor_fields import extract_competitor_content
@@ -45,7 +45,7 @@ def _load_products() -> List[Dict[str, Any]]:
 
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
-    save_products_db({"items": items})
+    bulk_upsert_product_items(items)
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
@@ -691,7 +691,7 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
         conflicts.extend(product_conflicts)
 
     if total_changed_ids:
-        _save_products(products_doc)
+        _save_products([product for product in products_doc if str(product.get("id") or "").strip() in total_changed_ids])
 
     import_overview = {
         "description_ready": sum(1 for row in product_summaries if bool(((row.get("source_summary") or {}).get("description") or {}).get("present"))),
@@ -793,7 +793,7 @@ def resolve_catalog_import(req: CatalogImportResolveReq) -> Dict[str, Any]:
             resolved_keys.add((pid, code))
             break
     if changed_ids:
-        _save_products(products)
+        _save_products([product for product in products if str(product.get("id") or "").strip() in changed_ids])
     resolved = run.get("resolved") if isinstance(run.get("resolved"), list) else []
     for pid, code in resolved_keys:
         key = f"{pid}:{code}"

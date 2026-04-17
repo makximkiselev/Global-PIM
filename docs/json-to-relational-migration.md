@@ -97,6 +97,7 @@ Hot paths, уже переведенные на новый слой:
 
 - `app.core.products.repo`
 - `app.core.products.service`
+- `app.core.products.variants_repo`
 - `catalog`
 - `catalog_exchange`
 - `templates` product readers
@@ -137,6 +138,18 @@ Runtime focus:
 
 - убрать remaining product write/read hot spots, которые все еще пересобирают полный `products` doc на мутациях;
 - потом резать legacy dual-write у уже вынесенных сущностей.
+
+Дополнительно вынесено:
+
+- `product_variants` -> `product_variants_rel`
+
+Runtime effect:
+
+- генерация/создание/чтение вариаций больше не завязаны на
+  - `product_variants.json`
+  - `sku_index.json`
+  - `variant_key_index.json`
+- `catalog_exchange` и `yandex_market` сохраняют только измененные товары через batch SQL upsert, без полной перезаписи product doc.
 
 Следующий фокус после этого среза:
 - `catalog_exchange`

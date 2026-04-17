@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
-from app.storage.json_store import load_templates_db, save_templates_db, load_products_db, save_products_db
+from app.storage.json_store import load_templates_db, save_templates_db
 from app.storage.relational_pim_store import (
     load_catalog_nodes,
     save_catalog_nodes,
@@ -86,16 +86,6 @@ def _load_products() -> List[Dict[str, Any]]:
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
     _save_json(PRODUCTS_PATH, items)
-
-
-def _load_full_products() -> List[Dict[str, Any]]:
-    doc = load_products_db()
-    items = doc.get("items") if isinstance(doc, dict) else None
-    return items if isinstance(items, list) else []
-
-
-def _save_full_products(items: List[Dict[str, Any]]) -> None:
-    save_products_db({"items": items})
 
 
 def _serialize_product_list_item(product: Dict[str, Any]) -> Dict[str, Any]:
