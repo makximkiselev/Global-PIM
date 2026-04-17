@@ -19,7 +19,6 @@ from app.core.products.service import (
     find_product_by_sku_service,
     allocate_sku_pairs_service,
 )
-from app.core.products.repo import load_products as load_products_repo
 from app.core.json_store import JsonStoreError, read_doc, DATA_DIR
 from app.core.object_storage import ObjectStorageError, delete_object, s3_enabled, upload_bytes
 from app.storage.json_store import load_dictionaries_db, load_templates_db
@@ -440,9 +439,8 @@ async def products_uploads(
     storage_key = pid
     if pid and pid != "common":
         try:
-            doc = load_products_repo()
-            items = doc.get("items", []) if isinstance(doc, dict) else []
-            hit = next((x for x in items if str((x or {}).get("id") or "").strip() == pid), None)
+            payload = get_product_service(pid, include_variants=False)
+            hit = payload.get("product") if isinstance(payload, dict) else None
             if isinstance(hit, dict):
                 sku_pim = str(hit.get("sku_pim") or "").strip()
                 if sku_pim:

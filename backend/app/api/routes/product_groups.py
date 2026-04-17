@@ -6,14 +6,15 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.json_store import DATA_DIR, read_doc, write_doc, with_lock
-from app.core.products.repo import load_products
+from app.core.json_store import DATA_DIR, read_doc, with_lock
 from app.storage.json_store import load_dictionaries_db, load_templates_db
 from app.storage.relational_pim_store import (
+    bulk_upsert_product_items,
     load_catalog_nodes,
     load_group_category_counts,
     load_product_group_category_ids,
     load_product_groups_doc,
+    query_products_full,
     query_group_product_summaries,
     save_product_groups_doc,
 )
@@ -22,9 +23,6 @@ router = APIRouter(prefix="/product-groups", tags=["product-groups"])
 
 COUNTERS_PATH = DATA_DIR / "counters.json"
 SERVICE_CODES = {"sku_pim", "sku_gt", "barcode", "group_id", "title"}
-PRODUCTS_PATH = DATA_DIR / "products.json"
-
-
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -371,11 +369,11 @@ def patch_group(group_id: str, req: GroupPatchReq) -> Dict[str, Any]:
         lock = with_lock("products_write")
         lock.acquire()
         try:
-            products_doc = load_products()
-            items = products_doc.get("items", []) or []
+            items = query_products_full()
             if _sync_group_feature_names(items, group_id=group_id, group_name=str(group.get("name") or "").strip()):
-                products_doc["items"] = items
-                write_doc(PRODUCTS_PATH, products_doc)
+                changed_items = [item for item in items if str(item.get("group_id") or "").strip() == group_id]
+                if changed_items:
+                    bulk_upsert_product_items(changed_items)
         finally:
             lock.release()
     return {"group": _ensure_group_shape(group)}
@@ -394,22 +392,24 @@ def patch_group_items(group_id: str, req: GroupItemsPatchReq) -> Dict[str, Any]:
     lock = with_lock("products_write")
     lock.acquire()
     try:
-        products_doc = load_products()
-        items = products_doc.get("items", []) or []
+        items = query_products_full()
         add_set = {str(x) for x in req.add or [] if str(x).strip()}
         remove_set = {str(x) for x in req.remove or [] if str(x).strip()}
 
         changed = 0
+        touched_ids: Set[str] = set()
         for p in items:
             pid = str(p.get("id") or "")
             if pid in add_set:
                 p["group_id"] = group_id
                 p["type"] = "multi"
                 changed += 1
+                touched_ids.add(pid)
             if pid in remove_set and str(p.get("group_id") or "") == group_id:
                 p.pop("group_id", None)
                 p["type"] = "single"
                 changed += 1
+                touched_ids.add(pid)
 
         changed += _sync_group_feature_names(
             items,
@@ -417,9 +417,10 @@ def patch_group_items(group_id: str, req: GroupItemsPatchReq) -> Dict[str, Any]:
             group_name=str(group.get("name") or "").strip(),
             remove_for_product_ids=remove_set,
         )
-
-        products_doc["items"] = items
-        write_doc(PRODUCTS_PATH, products_doc)
+        touched_ids |= remove_set
+        changed_items = [item for item in items if str(item.get("id") or "").strip() in touched_ids]
+        if changed_items:
+            bulk_upsert_product_items(changed_items)
     finally:
         lock.release()
 
