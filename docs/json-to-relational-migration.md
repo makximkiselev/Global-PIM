@@ -118,16 +118,30 @@ Hot paths, уже переведенные на новый слой:
 
 ### Phase 5
 
-Перенести:
-- остаточные product summary/read models для тяжелых экранов
-- остаточные вспомогательные JSON-backed слои
-- убрать dual-write для уже вынесенных сущностей
+Перенесено:
+
+- `product_groups` -> реляционный слой:
+  - `product_groups_rel`
+  - `product_group_variant_params_rel`
+- `connectors status` -> реляционный слой:
+  - `connector_method_state_rel`
+  - `connector_provider_settings_rel`
+  - `connector_import_stores_rel`
+
+Runtime focus:
+
+- `product_groups` list/details/ungrouped больше не должны читать полный `products` blob для обычных read-path;
+- `connectors/status` больше не должен жить на `connectors_scheduler.json` как runtime source of truth.
+
+Следующий шаг:
+
+- убрать remaining product write/read hot spots, которые все еще пересобирают полный `products` doc на мутациях;
+- потом резать legacy dual-write у уже вынесенных сущностей.
 
 Следующий фокус после этого среза:
-
-- `product_groups`
 - `catalog_exchange`
 - connector/dashboard summaries
+- write-path cleanup для `products`
 
 Уже убрано в product-срезе:
 

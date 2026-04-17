@@ -9,13 +9,18 @@ from pydantic import BaseModel, Field
 from app.core.json_store import DATA_DIR, read_doc, write_doc, with_lock
 from app.core.products.repo import load_products
 from app.storage.json_store import load_dictionaries_db, load_templates_db
-from app.storage.relational_pim_store import load_catalog_nodes
+from app.storage.relational_pim_store import (
+    load_catalog_nodes,
+    load_group_category_counts,
+    load_product_group_category_ids,
+    load_product_groups_doc,
+    query_group_product_summaries,
+    save_product_groups_doc,
+)
 
 router = APIRouter(prefix="/product-groups", tags=["product-groups"])
 
-GROUPS_PATH = DATA_DIR / "product_groups.json"
 COUNTERS_PATH = DATA_DIR / "counters.json"
-CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
 SERVICE_CODES = {"sku_pim", "sku_gt", "barcode", "group_id", "title"}
 PRODUCTS_PATH = DATA_DIR / "products.json"
 
@@ -25,11 +30,11 @@ def _now_iso() -> str:
 
 
 def _load_groups() -> Dict[str, Any]:
-    return read_doc(GROUPS_PATH, default={"version": 1, "items": []})
+    return load_product_groups_doc()
 
 
 def _save_groups(doc: Dict[str, Any]) -> None:
-    write_doc(GROUPS_PATH, doc)
+    save_product_groups_doc(doc)
 
 
 def _next_group_id() -> str:
@@ -218,18 +223,8 @@ def _resolve_template_ids_for_category(
 def list_groups() -> Dict[str, Any]:
     doc = _load_groups()
     items = doc.get("items", []) or []
-    products_doc = load_products()
-    products = products_doc.get("items", []) or []
-    counts: Dict[str, int] = {}
-    group_categories: Dict[str, List[str]] = {}
-    for p in products:
-        gid = str(p.get("group_id") or "").strip()
-        if not gid:
-            continue
-        counts[gid] = counts.get(gid, 0) + 1
-        cid = str(p.get("category_id") or "").strip()
-        if cid:
-            group_categories.setdefault(gid, []).append(cid)
+    group_category_counts = load_group_category_counts()
+    counts = {gid: sum(cat_counts.values()) for gid, cat_counts in group_category_counts.items()}
 
     nodes = _load_nodes()
     node_by_id: Dict[str, Dict[str, Any]] = {}
@@ -267,14 +262,14 @@ def list_groups() -> Dict[str, Any]:
         return " / ".join([x for x in chain if x])
 
     def dominant_root_for_group(group_id: str) -> Tuple[Optional[str], Optional[str]]:
-        cat_ids = group_categories.get(group_id) or []
-        if not cat_ids:
+        cat_counts = group_category_counts.get(group_id) or {}
+        if not cat_counts:
             return None, None
         freq: Dict[str, int] = {}
-        for cid in cat_ids:
+        for cid, count in cat_counts.items():
             rid = root_category_id(cid)
             if rid:
-                freq[rid] = freq.get(rid, 0) + 1
+                freq[rid] = freq.get(rid, 0) + int(count or 0)
         if not freq:
             return None, None
         top = sorted(freq.items(), key=lambda x: (-x[1], str(node_by_id.get(x[0], {}).get("name") or "").lower(), x[0]))[0][0]
@@ -282,17 +277,10 @@ def list_groups() -> Dict[str, Any]:
         return top, rname
 
     def dominant_category_for_group(group_id: str) -> Tuple[Optional[str], Optional[str]]:
-        cat_ids = group_categories.get(group_id) or []
-        if not cat_ids:
+        cat_counts = group_category_counts.get(group_id) or {}
+        if not cat_counts:
             return None, None
-        freq: Dict[str, int] = {}
-        for cid in cat_ids:
-            s = str(cid or "").strip()
-            if s:
-                freq[s] = freq.get(s, 0) + 1
-        if not freq:
-            return None, None
-        top = sorted(freq.items(), key=lambda x: (-x[1], _sort_key_path(category_path(x[0])), x[0]))[0][0]
+        top = sorted(cat_counts.items(), key=lambda x: (-int(x[1] or 0), _sort_key_path(category_path(x[0])), x[0]))[0][0]
         return top, category_path(top)
 
     out = []
@@ -322,26 +310,14 @@ def list_groups() -> Dict[str, Any]:
 
 @router.get("/ungrouped")
 def list_ungrouped() -> Dict[str, Any]:
-    products_doc = load_products()
-    products = products_doc.get("items", []) or []
-    items = [_product_summary(p) for p in products if not str(p.get("group_id") or "").strip()]
-    items.sort(key=lambda x: (x.get("title") or "").lower())
-    return {"items": items}
+    return {"items": query_group_product_summaries(ungrouped_only=True)}
 
 
 @router.get("/{group_id}")
 def group_details(group_id: str) -> Dict[str, Any]:
     doc = _load_groups()
     group = _ensure_group_shape(_get_group(doc, group_id))
-    products_doc = load_products()
-    products = products_doc.get("items", []) or []
-    items = [_product_summary(p) for p in products if str(p.get("group_id") or "") == group_id]
-    items.sort(
-        key=lambda x: (
-            _sort_key_sku_gt(str(x.get("sku_gt") or "")),
-            _sort_key_group_name(str(x.get("title") or "")),
-        )
-    )
+    items = query_group_product_summaries(group_id=group_id)
     return {"group": group, "items": items}
 
 
@@ -455,14 +431,7 @@ def list_group_variant_params(group_id: str) -> Dict[str, Any]:
     groups_doc = _load_groups()
     group = _ensure_group_shape(_get_group(groups_doc, group_id))
     selected_set = set(group.get("variant_param_ids") or [])
-
-    products_doc = load_products()
-    products = products_doc.get("items", []) or []
-    group_products = [p for p in products if str(p.get("group_id") or "") == group_id]
-
-    category_ids = sorted(
-        {str(p.get("category_id") or "").strip() for p in group_products if str(p.get("category_id") or "").strip()}
-    )
+    category_ids = load_product_group_category_ids(group_id)
 
     templates_db = load_templates_db()
     dict_db = load_dictionaries_db()

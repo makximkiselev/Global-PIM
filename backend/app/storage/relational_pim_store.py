@@ -22,6 +22,8 @@ DICTIONARIES_PATH = DATA_DIR / "dictionaries.json"
 DICTS_DIR = DATA_DIR / "dicts"
 TEMPLATES_PATH = DATA_DIR / "templates.json"
 PRODUCTS_PATH = DATA_DIR / "products.json"
+PRODUCT_GROUPS_PATH = DATA_DIR / "product_groups.json"
+CONNECTORS_STATE_PATH = DATA_DIR / "marketplaces" / "connectors_scheduler.json"
 
 
 def _with_pg_retry(fn):
@@ -453,6 +455,88 @@ def _ensure_tables() -> None:
                   connectors_total INTEGER NOT NULL DEFAULT 0,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS product_groups_rel (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS product_group_variant_params_rel (
+                  group_id TEXT NOT NULL,
+                  param_id TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (group_id, param_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_group_variant_params_rel_group
+                  ON product_group_variant_params_rel(group_id, position)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS connector_method_state_rel (
+                  provider TEXT NOT NULL,
+                  method TEXT NOT NULL,
+                  schedule TEXT NOT NULL,
+                  last_run_at TEXT NULL,
+                  last_success_at TEXT NULL,
+                  last_error_at TEXT NULL,
+                  last_error TEXT NOT NULL DEFAULT '',
+                  fail_count INTEGER NOT NULL DEFAULT 0,
+                  status TEXT NOT NULL DEFAULT 'ok',
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (provider, method)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS connector_provider_settings_rel (
+                  provider TEXT NOT NULL,
+                  setting_key TEXT NOT NULL,
+                  setting_value TEXT NOT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (provider, setting_key)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS connector_import_stores_rel (
+                  provider TEXT NOT NULL,
+                  store_id TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  business_id TEXT NULL,
+                  client_id TEXT NULL,
+                  api_key TEXT NULL,
+                  token TEXT NULL,
+                  auth_mode TEXT NULL,
+                  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                  notes TEXT NULL,
+                  last_check_at TEXT NULL,
+                  last_check_status TEXT NULL,
+                  last_check_error TEXT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL,
+                  PRIMARY KEY (provider, store_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_connector_import_stores_rel_provider
+                  ON connector_import_stores_rel(provider, enabled)
                 """
             )
 
@@ -2547,3 +2631,464 @@ def load_dashboard_stats_summary() -> Dict[str, Any]:
         }
 
     return _with_pg_retry(_run)
+
+
+def _normalize_product_groups_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
+    items = doc.get("items") if isinstance(doc, dict) else []
+    out: List[Dict[str, Any]] = []
+    for raw in items if isinstance(items, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        gid = str(raw.get("id") or "").strip()
+        if not gid:
+            continue
+        seen: set[str] = set()
+        variant_param_ids: List[str] = []
+        for value in raw.get("variant_param_ids") if isinstance(raw.get("variant_param_ids"), list) else []:
+            sid = str(value or "").strip()
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            variant_param_ids.append(sid)
+        out.append(
+            {
+                "id": gid,
+                "name": str(raw.get("name") or "").strip(),
+                "variant_param_ids": variant_param_ids,
+                "created_at": str(raw.get("created_at") or "").strip() or None,
+                "updated_at": str(raw.get("updated_at") or "").strip() or None,
+            }
+        )
+    out.sort(key=lambda row: (str(row.get("name") or "").lower(), str(row.get("id") or "")))
+    return {"version": 1, "items": out}
+
+
+def _replace_product_groups_table(doc: Dict[str, Any]) -> None:
+    rows = _normalize_product_groups_doc(doc).get("items", [])
+    group_rows = [
+        (
+            str(row.get("id") or "").strip(),
+            str(row.get("name") or "").strip(),
+            str(row.get("created_at") or "").strip() or None,
+            str(row.get("updated_at") or "").strip() or None,
+        )
+        for row in rows
+    ]
+    variant_rows = []
+    for row in rows:
+        gid = str(row.get("id") or "").strip()
+        for index, param_id in enumerate(row.get("variant_param_ids") or []):
+            variant_rows.append((gid, str(param_id or "").strip(), index))
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM product_group_variant_params_rel")
+            cur.execute("DELETE FROM product_groups_rel")
+            if group_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO product_groups_rel (id, name, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    group_rows,
+                )
+            if variant_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO product_group_variant_params_rel (group_id, param_id, position)
+                    VALUES (%s, %s, %s)
+                    """,
+                    variant_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_product_groups_from_legacy() -> None:
+    _ensure_tables()
+    lock = with_lock("product_groups_rel_bootstrap")
+    lock.acquire()
+    try:
+        if _table_count("product_groups_rel") > 0:
+            return
+        doc = read_doc(PRODUCT_GROUPS_PATH, default={"version": 1, "items": []})
+        if not isinstance(doc, dict):
+            doc = {"version": 1, "items": []}
+        _replace_product_groups_table(doc)
+    finally:
+        lock.release()
+
+
+def load_product_groups_doc() -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_product_groups_from_legacy()
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT g.id, g.name, g.created_at, g.updated_at, vp.param_id
+                FROM product_groups_rel g
+                LEFT JOIN product_group_variant_params_rel vp
+                  ON vp.group_id = g.id
+                ORDER BY LOWER(g.name), g.id, vp.position, vp.param_id
+                """
+            )
+            rows = cur.fetchall() or []
+        out: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            gid = str(row[0] or "").strip()
+            if not gid:
+                continue
+            group = out.setdefault(
+                gid,
+                {
+                    "id": gid,
+                    "name": str(row[1] or "").strip(),
+                    "variant_param_ids": [],
+                    "created_at": str(row[2] or "").strip() or None,
+                    "updated_at": str(row[3] or "").strip() or None,
+                },
+            )
+            param_id = str(row[4] or "").strip()
+            if param_id:
+                group["variant_param_ids"].append(param_id)
+        return {"version": 1, "items": list(out.values())}
+
+    return _with_pg_retry(_run)
+
+
+def save_product_groups_doc(doc: Dict[str, Any]) -> None:
+    _ensure_tables()
+    _replace_product_groups_table(doc if isinstance(doc, dict) else {"version": 1, "items": []})
+
+
+def load_product_group_name_map() -> Dict[str, str]:
+    _ensure_tables()
+    _bootstrap_product_groups_from_legacy()
+
+    def _run() -> Dict[str, str]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name FROM product_groups_rel ORDER BY id")
+            rows = cur.fetchall() or []
+        return {
+            str(row[0] or "").strip(): str(row[1] or "").strip()
+            for row in rows
+            if str(row[0] or "").strip()
+        }
+
+    return _with_pg_retry(_run)
+
+
+def query_group_product_summaries(*, group_id: str = "", ungrouped_only: bool = False) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    group_id = str(group_id or "").strip()
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        sql = """
+            SELECT id, title, sku_pim, sku_gt, group_id, category_id
+            FROM products_rel
+        """
+        clauses: List[str] = []
+        params: List[Any] = []
+        if group_id:
+            clauses.append("group_id = %s")
+            params.append(group_id)
+        elif ungrouped_only:
+            clauses.append("COALESCE(group_id, '') = ''")
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN 0 ELSE 1 END, CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN LPAD(sku_gt, 32, '0') ELSE LOWER(COALESCE(sku_gt, '')) END, LOWER(title), id"
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall() or []
+        return [
+            {
+                "id": str(row[0] or "").strip(),
+                "title": str(row[1] or "").strip(),
+                "sku_pim": str(row[2] or "").strip(),
+                "sku_gt": str(row[3] or "").strip(),
+                "group_id": str(row[4] or "").strip(),
+                "category_id": str(row[5] or "").strip(),
+            }
+            for row in rows
+            if str(row[0] or "").strip()
+        ]
+
+    return _with_pg_retry(_run)
+
+
+def load_group_category_counts() -> Dict[str, Dict[str, int]]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+
+    def _run() -> Dict[str, Dict[str, int]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT group_id, category_id, COUNT(*)
+                FROM products_rel
+                WHERE COALESCE(group_id, '') <> ''
+                GROUP BY group_id, category_id
+                """
+            )
+            rows = cur.fetchall() or []
+        out: Dict[str, Dict[str, int]] = {}
+        for row in rows:
+            gid = str(row[0] or "").strip()
+            cid = str(row[1] or "").strip()
+            if not gid or not cid:
+                continue
+            out.setdefault(gid, {})[cid] = int(row[2] or 0)
+        return out
+
+    return _with_pg_retry(_run)
+
+
+def load_group_product_category_ids(group_id: str) -> List[str]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    group_id = str(group_id or "").strip()
+    if not group_id:
+        return []
+
+    def _run() -> List[str]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT category_id
+                FROM products_rel
+                WHERE group_id = %s AND COALESCE(category_id, '') <> ''
+                ORDER BY category_id
+                """,
+                [group_id],
+            )
+            rows = cur.fetchall() or []
+        return [str(row[0] or "").strip() for row in rows if str(row[0] or "").strip()]
+
+    return _with_pg_retry(_run)
+
+
+def load_product_group_category_ids(group_id: str) -> List[str]:
+    return load_group_product_category_ids(group_id)
+
+
+def _default_connectors_state() -> Dict[str, Any]:
+    return {"version": 1, "updated_at": None, "providers": {}}
+
+
+def _replace_connectors_state_tables(doc: Dict[str, Any]) -> None:
+    providers = doc.get("providers") if isinstance(doc, dict) else {}
+    method_rows: List[tuple[Any, ...]] = []
+    settings_rows: List[tuple[Any, ...]] = []
+    store_rows: List[tuple[Any, ...]] = []
+
+    for provider, prow in providers.items() if isinstance(providers, dict) else []:
+        pcode = str(provider or "").strip()
+        if not pcode or not isinstance(prow, dict):
+            continue
+        methods = prow.get("methods") if isinstance(prow.get("methods"), dict) else {}
+        settings = prow.get("settings") if isinstance(prow.get("settings"), dict) else {}
+        import_stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
+
+        for method, mrow in methods.items() if isinstance(methods, dict) else []:
+            mcode = str(method or "").strip()
+            if not mcode or not isinstance(mrow, dict):
+                continue
+            method_rows.append(
+                (
+                    pcode,
+                    mcode,
+                    str(mrow.get("schedule") or "").strip() or "1h",
+                    str(mrow.get("last_run_at") or "").strip() or None,
+                    str(mrow.get("last_success_at") or "").strip() or None,
+                    str(mrow.get("last_error_at") or "").strip() or None,
+                    str(mrow.get("last_error") or "").strip(),
+                    int(mrow.get("fail_count") or 0),
+                    str(mrow.get("status") or "ok").strip() or "ok",
+                )
+            )
+
+        for key, value in settings.items() if isinstance(settings, dict) else []:
+            skey = str(key or "").strip()
+            if not skey:
+                continue
+            settings_rows.append((pcode, skey, str(value or "").strip()))
+
+        for raw in import_stores:
+            if not isinstance(raw, dict):
+                continue
+            store_id = str(raw.get("id") or "").strip()
+            if not store_id:
+                continue
+            store_rows.append(
+                (
+                    pcode,
+                    store_id,
+                    str(raw.get("title") or "").strip(),
+                    str(raw.get("business_id") or "").strip() or None,
+                    str(raw.get("client_id") or "").strip() or None,
+                    str(raw.get("api_key") or "").strip() or None,
+                    str(raw.get("token") or "").strip() or None,
+                    str(raw.get("auth_mode") or "").strip() or None,
+                    bool(raw.get("enabled", True)),
+                    str(raw.get("notes") or "").strip() or None,
+                    str(raw.get("last_check_at") or "").strip() or None,
+                    str(raw.get("last_check_status") or "").strip() or None,
+                    str(raw.get("last_check_error") or "").strip() or None,
+                    str(raw.get("created_at") or "").strip() or None,
+                    str(raw.get("updated_at") or "").strip() or None,
+                )
+            )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM connector_method_state_rel")
+            cur.execute("DELETE FROM connector_provider_settings_rel")
+            cur.execute("DELETE FROM connector_import_stores_rel")
+            if method_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO connector_method_state_rel (
+                      provider, method, schedule, last_run_at, last_success_at, last_error_at,
+                      last_error, fail_count, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    method_rows,
+                )
+            if settings_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO connector_provider_settings_rel (
+                      provider, setting_key, setting_value
+                    ) VALUES (%s, %s, %s)
+                    """,
+                    settings_rows,
+                )
+            if store_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO connector_import_stores_rel (
+                      provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
+                      enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    store_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_connectors_state_from_legacy() -> None:
+    _ensure_tables()
+    lock = with_lock("connectors_state_rel_bootstrap")
+    lock.acquire()
+    try:
+        if _table_count("connector_method_state_rel") > 0:
+            return
+        doc = read_doc(CONNECTORS_STATE_PATH, default=_default_connectors_state())
+        if not isinstance(doc, dict):
+            doc = _default_connectors_state()
+        _replace_connectors_state_tables(doc)
+    finally:
+        lock.release()
+
+
+def load_connectors_state_doc() -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_connectors_state_from_legacy()
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT provider, method, schedule, last_run_at, last_success_at, last_error_at, last_error, fail_count, status
+                FROM connector_method_state_rel
+                ORDER BY provider, method
+                """
+            )
+            method_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT provider, setting_key, setting_value
+                FROM connector_provider_settings_rel
+                ORDER BY provider, setting_key
+                """
+            )
+            setting_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
+                       enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                FROM connector_import_stores_rel
+                ORDER BY provider, title, store_id
+                """
+            )
+            store_rows = cur.fetchall() or []
+
+        providers: Dict[str, Any] = {}
+        for row in method_rows:
+            provider = str(row[0] or "").strip()
+            method = str(row[1] or "").strip()
+            if not provider or not method:
+                continue
+            prow = providers.setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+            prow["methods"][method] = {
+                "schedule": str(row[2] or "").strip() or "1h",
+                "last_run_at": str(row[3] or "").strip() or None,
+                "last_success_at": str(row[4] or "").strip() or None,
+                "last_error_at": str(row[5] or "").strip() or None,
+                "last_error": str(row[6] or "").strip(),
+                "fail_count": int(row[7] or 0),
+                "status": str(row[8] or "").strip() or "ok",
+            }
+
+        for row in setting_rows:
+            provider = str(row[0] or "").strip()
+            key = str(row[1] or "").strip()
+            if not provider or not key:
+                continue
+            prow = providers.setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+            prow["settings"][key] = str(row[2] or "").strip()
+
+        for row in store_rows:
+            provider = str(row[0] or "").strip()
+            if not provider:
+                continue
+            prow = providers.setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+            prow["import_stores"].append(
+                {
+                    "id": str(row[1] or "").strip(),
+                    "title": str(row[2] or "").strip(),
+                    "business_id": str(row[3] or "").strip(),
+                    "client_id": str(row[4] or "").strip(),
+                    "api_key": str(row[5] or "").strip(),
+                    "token": str(row[6] or "").strip(),
+                    "auth_mode": str(row[7] or "").strip(),
+                    "enabled": bool(row[8]),
+                    "notes": str(row[9] or "").strip(),
+                    "last_check_at": str(row[10] or "").strip() or None,
+                    "last_check_status": str(row[11] or "").strip(),
+                    "last_check_error": str(row[12] or "").strip(),
+                    "created_at": str(row[13] or "").strip() or None,
+                    "updated_at": str(row[14] or "").strip() or None,
+                }
+            )
+
+        return {"version": 1, "updated_at": None, "providers": providers}
+
+    return _with_pg_retry(_run)
+
+
+def save_connectors_state_doc(doc: Dict[str, Any]) -> None:
+    _ensure_tables()
+    _replace_connectors_state_tables(doc if isinstance(doc, dict) else _default_connectors_state())

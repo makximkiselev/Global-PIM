@@ -18,6 +18,7 @@ from app.storage.relational_pim_store import (
     load_attribute_value_refs_doc,
     load_catalog_nodes,
     load_category_mappings,
+    load_product_group_name_map,
 )
 from app.storage.json_store import load_products_db, save_products_db
 
@@ -182,19 +183,7 @@ def _load_products() -> List[Dict[str, Any]]:
 
 
 def _load_group_name_by_id() -> Dict[str, str]:
-    doc = read_doc(PRODUCT_GROUPS_PATH, default={"items": []})
-    items = doc.get("items") if isinstance(doc, dict) else []
-    if not isinstance(items, list):
-        return {}
-    out: Dict[str, str] = {}
-    for row in items:
-        if not isinstance(row, dict):
-            continue
-        gid = str(row.get("id") or "").strip()
-        name = str(row.get("name") or "").strip()
-        if gid and name:
-            out[gid] = name
-    return out
+    return load_product_group_name_map()
 
 
 def _product_group_name(product: Dict[str, Any], group_name_by_id: Optional[Dict[str, str]] = None) -> str:

@@ -9,8 +9,9 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.json_store import read_doc, write_doc, with_lock
+from app.core.json_store import with_lock
 from app.api.routes import marketplace_mapping, yandex_market, ozon_market, comfyui
+from app.storage.relational_pim_store import load_connectors_state_doc, save_connectors_state_doc
 
 router = APIRouter(prefix="/connectors/status", tags=["connectors-status"])
 
@@ -69,6 +70,8 @@ PROVIDERS_DEF: Dict[str, Dict[str, Any]] = {
 
 _runner_task: Optional[asyncio.Task] = None
 _runner_lock = asyncio.Lock()
+_scheduler_process_lock = with_lock("connectors_scheduler_runner")
+_scheduler_is_owner = False
 
 
 def _now_iso() -> str:
@@ -114,7 +117,7 @@ def _default_state() -> Dict[str, Any]:
 
 
 def _load_state() -> Dict[str, Any]:
-    doc = read_doc(STATE_PATH, default=_default_state())
+    doc = load_connectors_state_doc()
     if not isinstance(doc, dict):
         doc = _default_state()
     if not isinstance(doc.get("providers"), dict):
@@ -207,7 +210,7 @@ def _load_state() -> Dict[str, Any]:
 
 def _save_state(doc: Dict[str, Any]) -> None:
     doc["updated_at"] = _now_iso()
-    write_doc(STATE_PATH, doc)
+    save_connectors_state_doc(doc)
 
 
 def _next_run_at(method_row: Dict[str, Any]) -> Optional[str]:
@@ -799,14 +802,21 @@ async def _scheduler_loop() -> None:
 
 
 def start_scheduler() -> None:
-    global _runner_task
-    if _runner_task is None or _runner_task.done():
-        _runner_task = asyncio.create_task(_scheduler_loop())
+    global _runner_task, _scheduler_is_owner
+    if _runner_task is not None and not _runner_task.done():
+        return
+    _scheduler_is_owner = _scheduler_process_lock.acquire(timeout=0.0, blocking=False)
+    if not _scheduler_is_owner:
+        return
+    _runner_task = asyncio.create_task(_scheduler_loop())
 
 
 async def stop_scheduler() -> None:
-    global _runner_task
+    global _runner_task, _scheduler_is_owner
     if _runner_task is None:
+        if _scheduler_is_owner:
+            _scheduler_process_lock.release()
+            _scheduler_is_owner = False
         return
     _runner_task.cancel()
     try:
@@ -816,3 +826,6 @@ async def stop_scheduler() -> None:
     except Exception:
         pass
     _runner_task = None
+    if _scheduler_is_owner:
+        _scheduler_process_lock.release()
+        _scheduler_is_owner = False

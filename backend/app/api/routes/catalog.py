@@ -14,6 +14,7 @@ from app.storage.relational_pim_store import (
     load_catalog_nodes,
     save_catalog_nodes,
     load_catalog_product_items,
+    load_product_groups_doc,
     query_catalog_product_items,
     save_catalog_product_page_rows,
     query_catalog_product_page_rows,
@@ -129,7 +130,7 @@ def _products_page_meta() -> Dict[str, Any]:
         return cached_payload
 
     nodes = _load_nodes()
-    groups_doc = read_doc(DATA_DIR / "product_groups.json", default={"items": []})
+    groups_doc = load_product_groups_doc()
     group_items = groups_doc.get("items") if isinstance(groups_doc, dict) else []
     groups = group_items if isinstance(group_items, list) else []
 
