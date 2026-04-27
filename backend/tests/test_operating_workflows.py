@@ -25,6 +25,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         with (
             patch.object(templates, "load_templates_db", return_value=deepcopy(db)),
             patch.object(templates, "save_templates_db", side_effect=save),
+            patch.object(templates, "ensure_global_attribute", side_effect=lambda title, type_, code, scope: {"id": f"attr-{code}", "dict_id": f"dict-{code}"}),
             patch.object(templates, "new_id", return_value="tpl-draft-quest"),
             patch.object(templates, "now_iso", return_value="2026-04-27T00:00:00+00:00"),
         ):
