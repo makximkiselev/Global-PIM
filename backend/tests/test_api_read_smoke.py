@@ -11,6 +11,7 @@ from app.main import app
 from app.core import auth as auth_core
 from app.api.routes import catalog as catalog_routes
 from app.api.routes import connectors_status as connectors_status_routes
+from app.api.routes import info_models as info_models_routes
 from app.api.routes import marketplace_mapping as marketplace_mapping_routes
 from app.api.routes import templates as templates_routes
 
@@ -275,3 +276,37 @@ class ApiReadSmokeTests(unittest.TestCase):
         body = response.json()
         self.assertIn("counts", body)
         self.assertEqual(body["counts"]["cat-1"], 3)
+
+    def test_info_model_draft_endpoint(self) -> None:
+        with patch.object(
+            info_models_routes.draft_service,
+            "create_draft_from_sources",
+            return_value={
+                "ok": True,
+                "template": {"id": "tpl-draft-vr", "category_id": "cat-vr", "name": "Draft: VR"},
+                "info_model": {"status": "draft"},
+                "candidates": [{"id": "cand-memory", "name": "Встроенная память"}],
+            },
+        ):
+            response = self.client.post("/api/info-models/draft-from-sources", json={"category_id": "cat-vr", "sources": ["products"]})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["template"]["id"], "tpl-draft-vr")
+        self.assertEqual(body["info_model"]["status"], "draft")
+
+    def test_info_model_approve_endpoint(self) -> None:
+        with patch.object(
+            info_models_routes.draft_service,
+            "approve_draft",
+            return_value={
+                "ok": True,
+                "template": {"id": "tpl-draft-vr"},
+                "info_model": {"status": "approved"},
+                "attributes": [{"id": "attr-memory", "name": "Встроенная память"}],
+            },
+        ):
+            response = self.client.post("/api/info-models/tpl-draft-vr/approve")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["info_model"]["status"], "approved")

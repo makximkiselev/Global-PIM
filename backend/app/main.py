@@ -17,6 +17,7 @@ from app.api.routes import (
     products,
     variants,
     templates,
+    info_models,
     competitor_mapping,
     dictionaries,
     attributes,   # ✅ add
@@ -85,6 +86,7 @@ app.include_router(catalog.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
 app.include_router(variants.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
+app.include_router(info_models.router, prefix="/api")
 app.include_router(competitor_mapping.router, prefix="/api")
 app.include_router(dictionaries.router, prefix="/api")
 app.include_router(attributes.router, prefix="/api")
