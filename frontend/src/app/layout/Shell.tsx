@@ -68,7 +68,7 @@ const groups: ShellNavGroup[] = [
       {
         title: "Контур",
         items: [
-          { href: "/sources-mapping", label: "Маппинг", page: "sources_mapping" },
+          { href: "/sources", label: "Маппинг", page: "sources_mapping" },
           { href: "/connectors/status", label: "Коннекторы", page: "connectors_status" },
         ],
       },

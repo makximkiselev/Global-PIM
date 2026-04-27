@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
-import CompetitorMappingFeature from "./CompetitorMappingFeature";
 import CompetitorDiscoveryPanel from "./CompetitorDiscoveryPanel";
 import PageTabs from "../../components/ui/PageTabs";
 import Badge from "../../components/ui/Badge";
@@ -23,8 +22,11 @@ const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v1";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
 function normalizeTab(value: string | null): SourcesTab {
+  if (value === "mp_categories" || value === "marketplace_categories") return "sources";
   if (value === "params") return "params";
+  if (value === "mp_attributes" || value === "attributes") return "params";
   if (value === "values") return "values";
+  if (value === "competitor_links" || value === "competitor" || value === "discovery") return "competitors";
   if (value === "competitors") return "competitors";
   return "sources";
 }
@@ -75,7 +77,7 @@ export default function SourcesMappingFeature() {
   const tabDescription = useMemo(
     () =>
       tab === "sources"
-        ? "Рабочий экран для связки категорий PIM с маркетплейсами и конкурентными источниками."
+        ? "Чистый экран для связки категорий PIM с категориями маркетплейсов."
         : tab === "params"
           ? "Рабочий экран для связи параметров инфо-модели с полями каналов и конкурентных площадок."
           : tab === "values"
@@ -211,7 +213,7 @@ export default function SourcesMappingFeature() {
           <div className="sourcesMappingCanvasIntro">
             <div className="sourcesMappingCanvasTitle">Категории и источники</div>
             <div className="sourcesMappingCanvasSub">
-              Единое дерево категорий для привязок маркетплейсов и ссылок конкурентов без переходов между отдельными экранами.
+              Единое дерево категорий для привязок маркетплейсов. Конкурентные источники вынесены в отдельную вкладку.
             </div>
           </div>
         ) : null}
@@ -228,11 +230,6 @@ export default function SourcesMappingFeature() {
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}
-            renderCategoryDetailExtra={(categoryId, categoryName) => (
-              <div className="sm-section sm-sectionBordered">
-                <CompetitorMappingFeature embedded view="links" categoryId={categoryId} categoryName={categoryName} />
-              </div>
-            )}
           />
         )}
 

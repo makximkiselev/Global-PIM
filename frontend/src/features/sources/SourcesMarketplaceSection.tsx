@@ -2594,7 +2594,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               <div className="mm-workbenchBlock">
               <div className="mm-head mm-headWorkspace">
                 <div>
-                  <div className="mm-title">Сопоставление категорий и конкурентов</div>
+                  <div className="mm-title">Сопоставление категорий маркетплейсов</div>
                   <div className="muted">Добавляйте сопоставления на любом уровне дерева. Наследование применяется только вниз.</div>
                 </div>
                 <div className="mm-tools">
@@ -2603,7 +2603,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               </div>
 
               <div className="muted mm-note">
-                Выберите категорию слева, затем сопоставляйте площадки и ссылки конкурентов справа.
+                Выберите категорию слева, затем сопоставляйте категории Я.Маркета и Ozon справа.
               </div>
 
               {!displayProviders.length ? (

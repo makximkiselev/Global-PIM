@@ -7,7 +7,7 @@ export const PAGE_DEFAULT_PATHS: Record<string, string> = {
   catalog_export: "/catalog/export",
   templates: "/templates",
   dictionaries: "/dictionaries",
-  sources_mapping: "/sources-mapping",
+  sources_mapping: "/sources",
   connectors_status: "/connectors/status",
   infographics: "/images/infographics",
   stats_card_quality: "/stats/card-quality",
