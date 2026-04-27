@@ -145,6 +145,8 @@
 34. `Catalog SKU Move Flow` подключен в `ProductRegistry.catalogClean`: строка SKU получила действие `Переместить`, modal выбирает новую категорию, сохранение идет через существующий `PATCH /products/{id}` и после успеха обновляет список/counts;
 35. browser-check через `@browser-use` на `https://pim.id-smart.ru/catalog` подтвердил отсутствие старых рабочих терминов в main catalog DOM, наличие clean tree/table/actions и открытие move modal без отправки реального изменения данных;
 36. текущий активный фокус: `Catalog Extended Visual QA`.
+37. продуктовый принцип `Info Model Draft Workflow` согласован: основной путь создания инфо-модели — `draft из источников -> модерация -> утверждение`, ручное создание остается запасным режимом.
+38. `/templates/:categoryId` должен быть пересобран вокруг state machine `none / collecting / draft / review / approved / needs_update`; `/sources` не должен создавать базовую модель, а должен работать как mapping-layer после появления модели.
 
 ### Что использовать как инструкцию прямо сейчас
 
@@ -3291,7 +3293,65 @@ Verification:
    - locked system fields как read-only reference rows;
    - editable category fields как настоящий конструктор;
    - groups/sections модели как отдельный уровень структуры;
-3. это уже не “подкрутить CSS”, а отдельный UX slice `Info Model Field Builder`.
+3. это уже не “подкрутить CSS”, а отдельный UX slice `Info Model Field Builder`;
+4. после продуктового решения от 2026-04-27 этот slice должен строиться не как ручной editor-first flow, а как `draft из источников -> модерация -> утверждение`.
+
+### 21.14 Product correction: Draft-first Info Model Workflow
+
+Дата: 2026-04-27.
+
+Принятое решение:
+
+1. основной сценарий создания инфо-модели — `draft из источников -> модерация -> утверждение`;
+2. ручное создание модели остается запасным режимом;
+3. источники draft:
+   - Я.Маркет;
+   - Ozon;
+   - Excel/import;
+   - competitors `re-store` и `store77`;
+   - уже существующие товары выбранной категории;
+   - похожие или наследуемые категории;
+4. каждый предложенный параметр должен показывать provenance:
+   - источник;
+   - исходное имя;
+   - пример значения;
+   - частотность;
+   - confidence;
+   - предложенную группу;
+   - предложенный тип;
+5. `/sources` не создает базовую модель, а работает только как mapping-layer:
+   - category mapping;
+   - parameter mapping;
+   - value mapping;
+   - competitor candidates;
+6. карточка товара использует утвержденную модель, показывает trace значений и readiness, но не редактирует структуру инфо-модели.
+
+Обязательная state machine для `/templates/:categoryId`:
+
+1. `none` — модели нет, главное действие `Собрать draft-модель`;
+2. `collecting` — система собирает источники и строит кандидатов;
+3. `draft` — пользователь модерирует группы и параметры;
+4. `review` — модель готова к утверждению;
+5. `approved` — модель утверждена и используется товарами;
+6. `needs_update` — появились новые источники или параметры, которые требуют пересмотра.
+
+Новый implementation scope для следующего прохода по `Info Model Workspace`:
+
+1. сделать state screens `none / draft / approved`;
+2. добавить действие `Собрать draft-модель`;
+3. заменить длинные disabled forms на draft moderation layout;
+4. разделить:
+   - source candidates;
+   - editable PIM fields;
+   - locked system/reference fields;
+   - groups/sections;
+5. добавить source/provenance panel для выбранного параметра;
+6. в `/sources` показать понятный empty state, если у категории нет модели;
+7. после browser-use проверки обновить этот master-plan.
+
+Документированный spec:
+
+- [`docs/superpowers/specs/2026-04-27-info-model-draft-workflow-design.md`](/Users/maksimkiselev/Desktop/Global%20PIM/docs/superpowers/specs/2026-04-27-info-model-draft-workflow-design.md)
 
 ---
 
