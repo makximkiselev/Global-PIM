@@ -2975,6 +2975,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     </div>
                   ) : !attrDetails ? (
                     <div className="muted mm-attrStateBlock">Нет данных по категории.</div>
+                  ) : !attrDetails.template_id ? (
+                    <div className="mm-emptyWorkspace">
+                      <div className="mm-emptyTitle">Сначала соберите инфо-модель</div>
+                      <div className="mm-emptyText">
+                        Сопоставление параметров открывается после draft-модели. Перейдите в поля товара категории, соберите draft из источников и утвердите рабочую структуру.
+                      </div>
+                      <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                        Открыть инфо-модель
+                      </Link>
+                    </div>
                   ) : (
                     <>
                       <div className="mm-attrWorkbenchGrid">
