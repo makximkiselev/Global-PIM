@@ -796,6 +796,56 @@
   box-shadow: 0 16px 40px rgba(var(--brand-rgb), 0.22);
 }
 
+.tplDraftCard {
+  display: grid;
+  gap: 16px;
+}
+
+.tplDraftHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.tplDraftHeader h3 {
+  margin: 4px 0 6px;
+  font-size: 22px;
+}
+
+.tplDraftHeader p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+}
+
+.tplDraftList {
+  display: grid;
+  gap: 8px;
+}
+
+.tplDraftRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.tplDraftRow strong,
+.tplDraftRow span {
+  display: block;
+}
+
+.tplDraftRow span,
+.tplDraftExamples {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .templates-page .workspaceFrameSidebar,
 .templates-page .workspaceFrameInspector {
   position: sticky;

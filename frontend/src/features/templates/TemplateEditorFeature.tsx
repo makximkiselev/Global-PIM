@@ -18,6 +18,8 @@ import PageHeader from "../../components/ui/PageHeader";
 import PageTabs from "../../components/ui/PageTabs";
 import TextInput from "../../components/ui/TextInput";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
+import type { InfoModelCandidate, InfoModelSummary } from "./infoModelDraft";
+import { candidateTone, modelStatusLabel } from "./infoModelDraft";
 
 type AttrType = "text" | "number" | "select" | "bool" | "date" | "json";
 type ScopeT = "common" | "variant";
@@ -212,8 +214,10 @@ export default function TemplateEditor() {
   const [tplName, setTplName] = useState("");
   const [attrs, setAttrs] = useState<AttrT[]>([]);
   const [master, setMaster] = useState<TemplateMaster | null>(null);
+  const [infoModel, setInfoModel] = useState<InfoModelSummary>({ status: "none" });
   const [attrTab, setAttrTabState] = useState<"all" | "base" | "category">(normalizeAttrTab(searchParams.get("tab")));
   const [saving, setSaving] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
 
   const [importOpen, setImportOpen] = useState(false);
   const [importTplName, setImportTplName] = useState("");
@@ -323,6 +327,7 @@ export default function TemplateEditor() {
         inherited_from: CategoryInfo | null;
         attributes: AttrT[];
         master?: TemplateMaster | null;
+        info_model?: InfoModelSummary;
       }>(`/templates/editor-bootstrap/${encodeURIComponent(categoryId)}`);
 
       const nextAttrs = sortAttrs(data.attributes || []).map((a: any) => ({
@@ -338,6 +343,7 @@ export default function TemplateEditor() {
       setTplName(data.owner_template?.name || "");
       setAttrs(nextAttrs);
       setMaster(data.master || null);
+      setInfoModel(data.info_model || { status: data.owner_template?.id ? "approved" : "none" });
       setSelectedAttrIdx(nextAttrs.length ? 0 : null);
       setImportTplName("");
     } catch (error) {
@@ -349,6 +355,7 @@ export default function TemplateEditor() {
       setTplName("");
       setAttrs([]);
       setMaster(null);
+      setInfoModel({ status: "none" });
       setSelectedAttrIdx(null);
     } finally {
       setBootstrapLoading(false);
@@ -618,6 +625,41 @@ export default function TemplateEditor() {
       showToast("Создано");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function collectDraftModel() {
+    if (!categoryId || draftBusy) return;
+    setDraftBusy(true);
+    try {
+      const response = await api<{ template: TemplateT; info_model: InfoModelSummary; candidates: InfoModelCandidate[] }>("/info-models/draft-from-sources", {
+        method: "POST",
+        body: JSON.stringify({ category_id: categoryId, sources: ["products"] }),
+      });
+      setOwnerTpl(response.template);
+      setTpl(response.template);
+      setInfoModel({ ...(response.info_model || { status: "draft" }), candidates: response.candidates || [] });
+      showToast("Draft-модель собрана");
+      await load();
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function approveDraftModel() {
+    const templateId = ownerTpl?.id || tpl?.id;
+    if (!templateId || draftBusy) return;
+    setDraftBusy(true);
+    try {
+      const response = await api<{ info_model: InfoModelSummary; attributes: AttrT[] }>(`/info-models/${encodeURIComponent(templateId)}/approve`, {
+        method: "POST",
+      });
+      setInfoModel(response.info_model || { status: "approved" });
+      setAttrs(sortAttrs((response.attributes || []) as AttrT[]));
+      showToast("Инфо-модель утверждена");
+      await load();
+    } finally {
+      setDraftBusy(false);
     }
   }
 
@@ -948,14 +990,17 @@ export default function TemplateEditor() {
             ) : !tpl ? (
               <Card className="tplCanvasCard">
                 <EmptyState
-                  title="Модель еще не создана"
-                  body="Создай свою модель на категории или импортируй Excel, чтобы начать структуру полей."
+                  title="Инфо-модель еще не собрана"
+                  body="Сначала соберите draft из реальных источников: товаров категории, импортов и подключенных каналов. После модерации модель можно утвердить и использовать в товарах."
                   action={
                     <div className="tplEmptyActions">
-                      <Button variant="primary" onClick={createTemplateIfMissing} disabled={!categoryId || saving}>
-                        Создать модель
+                      <Button variant="primary" onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
+                        {draftBusy ? "Собираю…" : "Собрать draft-модель"}
                       </Button>
-                      <Button onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
+                      <Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>
+                        Создать вручную
+                      </Button>
+                      <Button onClick={() => setImportOpen(true)} disabled={!categoryId || saving || draftBusy}>
                         Импортировать Excel
                       </Button>
                     </div>
@@ -970,7 +1015,9 @@ export default function TemplateEditor() {
                       <div className="tplSectionEyebrow">Поля товара</div>
                       <h2>{tplName || tpl.name}</h2>
                       <p>
-                        {canEdit
+                        {infoModel.status === "draft"
+                          ? "Это draft из источников. Проверьте предложенные параметры ниже и утвердите модель перед маппингом каналов."
+                          : canEdit
                           ? "Рабочий список полей для товаров этой категории. Системные поля заблокированы, категорийные поля можно добавлять и упорядочивать."
                           : "Открыта наследуемая модель. Ее можно смотреть, но редактирование доступно только после создания собственной модели."}
                       </p>
@@ -994,13 +1041,56 @@ export default function TemplateEditor() {
                   </Field>
                 </Card>
 
+                {infoModel.status === "draft" ? (
+                  <Card className="tplCanvasCard tplDraftCard">
+                    <div className="tplDraftHeader">
+                      <div>
+                        <div className="tplSectionEyebrow">Draft из источников</div>
+                        <h3>Проверьте предложенные параметры</h3>
+                        <p>
+                          Система собрала параметры из реальных данных. Примите полезные поля, отклоните мусор и затем утвердите модель.
+                        </p>
+                      </div>
+                      <Button variant="primary" onClick={approveDraftModel} disabled={draftBusy || !(infoModel.candidates || []).length}>
+                        {draftBusy ? "Утверждаю…" : "Утвердить модель"}
+                      </Button>
+                    </div>
+                    <div className="tplDraftList">
+                      {(infoModel.candidates || []).length ? (
+                        (infoModel.candidates || []).map((candidate) => (
+                          <div className="tplDraftRow" key={candidate.id}>
+                            <div>
+                              <strong>{candidate.name}</strong>
+                              <span>
+                                {candidate.group} · {candidate.type} · confidence {Math.round(candidate.confidence * 100)}%
+                              </span>
+                            </div>
+                            <div className="tplDraftExamples">{candidate.examples?.slice(0, 3).join(", ") || "Без примеров"}</div>
+                            <Badge tone={candidateTone(candidate)}>
+                              {candidate.status === "accepted" ? "Принять" : candidate.status === "rejected" ? "Отклонено" : "Проверить"}
+                            </Badge>
+                          </div>
+                        ))
+                      ) : (
+                        <EmptyState
+                          title="Источники не дали параметров"
+                          body="В этой категории пока нет товарных характеристик для draft. Можно создать модель вручную или импортировать Excel."
+                          action={<Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>Создать вручную</Button>}
+                        />
+                      )}
+                    </div>
+                  </Card>
+                ) : null}
+
                 <Card className="tplCanvasCard tplEditorMainCard">
                   <DataToolbar
                     title="Поля"
                     subtitle={`${REQUIRED_HELP_TEXT}${!canEdit ? " Сейчас открыт наследуемый контур — редактирование отключено." : ""}`}
                     actions={
                       <>
-                        <Badge tone={canEdit ? "active" : "pending"}>{canEdit ? "Редактирование" : "Только чтение"}</Badge>
+                        <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : canEdit ? "active" : "pending"}>
+                          {modelStatusLabel(infoModel.status)}
+                        </Badge>
                         <Button onClick={addAttr} disabled={!canEdit || attrTab === "base"}>
                           Добавить поле
                         </Button>
