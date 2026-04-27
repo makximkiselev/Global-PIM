@@ -147,6 +147,7 @@
 36. текущий активный фокус: `Catalog Extended Visual QA`.
 37. продуктовый принцип `Info Model Draft Workflow` согласован: основной путь создания инфо-модели — `draft из источников -> модерация -> утверждение`, ручное создание остается запасным режимом.
 38. `/templates/:categoryId` должен быть пересобран вокруг state machine `none / collecting / draft / review / approved / needs_update`; `/sources` не должен создавать базовую модель, а должен работать как mapping-layer после появления модели.
+39. активный implementation plan для перехода к реальным данным: [`docs/superpowers/plans/2026-04-27-info-model-draft-real-data.md`](/Users/maksimkiselev/Desktop/Global%20PIM/docs/superpowers/plans/2026-04-27-info-model-draft-real-data.md).
 
 ### Что использовать как инструкцию прямо сейчас
 
@@ -3352,6 +3353,10 @@ Verification:
 Документированный spec:
 
 - [`docs/superpowers/specs/2026-04-27-info-model-draft-workflow-design.md`](/Users/maksimkiselev/Desktop/Global%20PIM/docs/superpowers/specs/2026-04-27-info-model-draft-workflow-design.md)
+
+Implementation plan:
+
+- [`docs/superpowers/plans/2026-04-27-info-model-draft-real-data.md`](/Users/maksimkiselev/Desktop/Global%20PIM/docs/superpowers/plans/2026-04-27-info-model-draft-real-data.md)
 
 ---
 
