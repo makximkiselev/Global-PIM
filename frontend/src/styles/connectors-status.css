@@ -12,6 +12,172 @@
   gap:12px;
 }
 
+.cs-controlCard,
+.cs-summaryStrip,
+.cs-issuesCard{
+  padding:16px;
+}
+
+.cs-readinessGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+.cs-readinessCard{
+  min-height:122px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:14px;
+  background:linear-gradient(180deg, #fff 0%, #fbfaf8 100%);
+  box-shadow:0 14px 36px rgba(15, 23, 42, 0.06);
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.cs-readinessCard.isReady{
+  border-color:rgba(22, 163, 74, 0.28);
+  background:linear-gradient(180deg, #ffffff 0%, #f2fbf5 100%);
+}
+
+.cs-readinessCard.isBlocked{
+  border-color:rgba(248, 113, 67, 0.34);
+  background:linear-gradient(180deg, #ffffff 0%, #fff5ef 100%);
+}
+
+.cs-readinessTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.cs-readinessTop span{
+  color:#9a5a35;
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.cs-readinessTop strong{
+  color:var(--text);
+  font-size:28px;
+  line-height:1;
+  font-weight:1000;
+}
+
+.cs-readinessCard p,
+.cs-pathCard p,
+.cs-issueRow p{
+  margin:0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:650;
+}
+
+.cs-workflowGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.cs-pathCard{
+  padding:16px;
+  min-height:160px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  border-radius:20px;
+  background:linear-gradient(140deg, #ffffff 0%, #fff8f1 100%);
+}
+
+.cs-pathKicker{
+  width:max-content;
+  color:#ef6b3f;
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.cs-pathCard strong{
+  font-size:19px;
+  line-height:1.15;
+  font-weight:1000;
+}
+
+.cs-pathBadge{
+  width:max-content;
+  margin-top:auto;
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:12px;
+  font-weight:900;
+}
+
+.cs-pathBadge.isReady{
+  background:#ecfdf3;
+  color:#067647;
+}
+
+.cs-pathBadge.isBlocked{
+  background:#fff1ed;
+  color:#c2410c;
+}
+
+.cs-issueList{
+  display:grid;
+  gap:10px;
+}
+
+.cs-issueRow{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:12px 14px;
+  background:#fff;
+}
+
+.cs-issueRow.critical{
+  border-color:#fed7aa;
+  background:#fff7ed;
+}
+
+.cs-issueRow.warn{
+  border-color:#fde68a;
+  background:#fffbeb;
+}
+
+.cs-issueRow strong{
+  display:block;
+  margin:4px 0 5px;
+  font-size:15px;
+  line-height:1.25;
+}
+
+.cs-issueRow em{
+  display:block;
+  margin-top:6px;
+  color:#7c2d12;
+  font-size:12px;
+  font-style:normal;
+  font-weight:850;
+}
+
+.cs-issueScope{
+  color:#ef6b3f;
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
 .cs-summaryHead{
   display:flex;
   align-items:center;
@@ -293,6 +459,28 @@
   font-weight:800;
   font-size:14px;
   line-height:1.2;
+}
+
+.cs-methodIntent{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-top:2px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.25;
+  font-weight:850;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.cs-methodIntent strong{
+  color:#2f3a4f;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:0;
+  text-transform:none;
 }
 
 .cs-methodMeta{
