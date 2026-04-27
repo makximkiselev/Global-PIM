@@ -1,0 +1,843 @@
+.sourcesMappingPage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.sourcesMappingTopbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 74px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    radial-gradient(260px 140px at 4% 0%, rgba(var(--brand-rgb),.08), transparent 66%),
+    linear-gradient(180deg, rgba(var(--card-rgb),.82), rgba(var(--card-rgb),.62));
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingTopbarMain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sourcesMappingEyebrow {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sourcesMappingTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sourcesMappingTitle {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+}
+
+.sourcesMappingSubtitle {
+  margin: 0;
+  max-width: 780px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 750;
+}
+
+.sourcesMappingTopbarMeta {
+  min-width: 280px;
+  max-width: 360px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(var(--bg-rgb),.22);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingMetaLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sourcesMappingMetaValue {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.sourcesMappingTabs.page-tabs {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}
+
+.sourcesMappingTabs .page-tab {
+  min-height: 38px;
+  padding: 9px 14px;
+  border-radius: 13px;
+}
+
+.sourcesMappingCanvas {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.sourcesMappingCanvasIntro {
+  display: none;
+}
+
+.sourcesMappingCanvasTitle {
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.sourcesMappingCanvasSub {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sourcesMappingPage .mm-wrap {
+  padding: 0;
+}
+
+.sourcesMappingPage .mm-page {
+  gap: 12px;
+  --mm-content-width: 100%;
+}
+
+.sourcesMappingPage .mm-card {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sourcesMappingPage .mm-summaryCard {
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
+  padding: 16px;
+  gap: 12px;
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingPage .mm-summaryHead {
+  align-items: flex-start;
+}
+
+.sourcesMappingPage .mm-title,
+.sourcesMappingPage .mm-workbenchTitle {
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.12;
+}
+
+.sourcesMappingPage .mm-workbenchSub,
+.sourcesMappingPage .mm-note,
+.sourcesMappingPage .mm-featurePaneHint,
+.sourcesMappingPage .mm-emptyText {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sourcesMappingPage .mm-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.sourcesMappingPage .mm-kpi {
+  min-height: 84px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, var(--surface));
+  padding: 14px;
+  gap: 6px;
+}
+
+.sourcesMappingPage .mm-kpiLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sourcesMappingPage .mm-kpiValue {
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.sourcesMappingPage .mm-workbenchBlock {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sourcesMappingPage .mm-headWorkspace {
+  margin-bottom: 0;
+}
+
+.sourcesMappingPage .mm-workspace {
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: min(720px, calc(100vh - 240px));
+}
+
+.sourcesMappingPage .mm-treePane,
+.sourcesMappingPage .mm-detailPane,
+.sourcesMappingPage .mm-paramPoolSidebar,
+.sourcesMappingPage .mm-featureMappingPanel {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingPage .mm-treePaneShared.csb-shell {
+  padding: 14px;
+  background: transparent;
+}
+
+.sourcesMappingPage .mm-treePaneShared .csb-head {
+  margin-bottom: 12px;
+}
+
+.sourcesMappingPage .csb-title {
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.sourcesMappingPage .csb-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sourcesMappingPage .csb-toolbar {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sourcesMappingPage .csb-search {
+  min-height: 42px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 92%, var(--surface));
+}
+
+.sourcesMappingPage .csb-search input {
+  font-size: 13px;
+}
+
+.sourcesMappingPage .csb-body {
+  max-height: min(690px, calc(100vh - 330px));
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.competitorDiscovery {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.competitorDiscoveryHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+}
+
+.competitorDiscoveryActions,
+.competitorDiscoveryInspectorActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.competitorDiscoveryMetrics.metricGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.competitorDiscoverySources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.competitorDiscoverySource {
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(var(--card-rgb), 0.78);
+  box-shadow: var(--shadow-soft);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.competitorDiscoverySource > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.competitorDiscoverySource strong {
+  font-size: 14px;
+}
+
+.competitorDiscoverySource span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.competitorDiscoveryNotice,
+.competitorDiscoveryError {
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.competitorDiscoveryNotice {
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+.competitorDiscoveryError {
+  border: 1px solid rgba(255, 96, 96, 0.4);
+  color: #ff7a7a;
+  background: rgba(255, 96, 96, 0.09);
+}
+
+.competitorDiscoveryWorkspace {
+  display: grid;
+  grid-template-columns: minmax(680px, 1fr) minmax(320px, 380px);
+  gap: 18px;
+  align-items: stretch;
+  min-height: min(640px, calc(100vh - 310px));
+}
+
+.competitorDiscoveryTablePanel {
+  min-width: 0;
+  overflow: auto;
+}
+
+.competitorDiscoveryTablePanel .dataTable {
+  min-width: 760px;
+}
+
+.competitorDiscoveryRowButton {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.competitorDiscoveryRowButton strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.competitorDiscoveryRowButton span {
+  max-width: 520px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.competitorDiscoveryInspector.inspectorPanel {
+  min-width: 0;
+}
+
+.competitorDiscoveryFacts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.competitorDiscoveryFacts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.competitorDiscoveryFacts span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.competitorDiscoveryFacts strong {
+  min-width: 0;
+  text-align: right;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.competitorDiscoveryFacts .competitorDiscoveryReasons {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.competitorDiscoveryReasons em {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(var(--bg-rgb), 0.36);
+  color: var(--text);
+  font-size: 12px;
+  font-style: normal;
+  padding: 8px 10px;
+}
+
+.sourcesMappingPage .csb-treeNode {
+  min-height: 34px;
+  border-radius: 12px;
+}
+
+.sourcesMappingPage .csb-treeSelectBtn {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sourcesMappingPage .csb-treeName {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sourcesMappingPage .mm-treeMappingCount {
+  min-width: 44px;
+  justify-content: center;
+}
+
+.sourcesMappingPage .mm-detailPane {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-paneHead {
+  padding: 0;
+}
+
+.sourcesMappingPage .mm-paneTitle {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.sourcesMappingPage .mm-catBindingStrip {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sourcesMappingPage .mm-catBindingPill {
+  border-radius: 999px;
+  padding: 8px 12px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 94%, var(--surface));
+}
+
+.sourcesMappingPage .mm-detailContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.sourcesMappingPage .mm-detailMain,
+.sourcesMappingPage .mm-detailSide,
+.sourcesMappingPage .mm-categoryExtraSide,
+.sourcesMappingPage .mm-featureMappingBody {
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-providerStack,
+.sourcesMappingPage .mm-detailSide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sourcesMappingPage .mm-providerDetailCard,
+.sourcesMappingPage .mm-categoryExtra,
+.sourcesMappingPage .mm-paramPoolSidebar,
+.sourcesMappingPage .mm-featureMappingPanel {
+  padding: 14px;
+}
+
+.sourcesMappingPage .mm-providerDetailCard {
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--surface));
+}
+
+.sourcesMappingPage .mm-providerDetailHead,
+.sourcesMappingPage .mm-providerActionsBar,
+.sourcesMappingPage .mm-featureMappingHead,
+.sourcesMappingPage .mm-paramPoolHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sourcesMappingPage .mm-providerLead {
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-lineContent,
+.sourcesMappingPage .mm-aggList,
+.sourcesMappingPage .mm-attrCategoryBindings,
+.sourcesMappingPage .mm-attrSourceBlocks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sourcesMappingPage .mm-attrWorkbenchGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(320px, 360px);
+  gap: 18px;
+  align-items: start;
+  min-height: min(720px, calc(100vh - 250px));
+}
+
+.sourcesMappingPage .mm-attrLeftRail,
+.sourcesMappingPage .mm-attrRight,
+.sourcesMappingPage .mm-paramPoolSidebar {
+  min-height: 0;
+}
+
+.sourcesMappingPage .mm-attrLeftRail,
+.sourcesMappingPage .mm-paramPoolSidebar {
+  position: sticky;
+  top: 18px;
+}
+
+.sourcesMappingPage .mm-attrLeftRail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sourcesMappingPage .mm-attrLeftHead {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingPage .mm-treePaneFeatures.csb-shell {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingPage .mm-attrRight {
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 99%, transparent), color-mix(in srgb, var(--surface) 96%, transparent));
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-templateBoardMain {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 88%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 100%, transparent), color-mix(in srgb, var(--surface) 97%, transparent));
+}
+
+.sourcesMappingPage .mm-paramPoolSidebar {
+  border: 1px solid var(--line-strong);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 98%, transparent), color-mix(in srgb, var(--surface) 95%, transparent));
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.sourcesMappingPage .mm-templateBoard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sourcesMappingPage .mm-attrBottomScroll {
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 94%, var(--surface));
+}
+
+.sourcesMappingPage .pg-modal,
+.sourcesMappingPage .pg-modal.pg-modalWide {
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 97%, transparent), color-mix(in srgb, var(--surface) 95%, transparent));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.sourcesMappingPage .pg-modalBackdrop {
+  background: rgba(10, 15, 29, 0.56);
+  backdrop-filter: blur(10px);
+  padding: 28px;
+}
+
+.sourcesMappingPage .pg-modalHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 98%, transparent), color-mix(in srgb, var(--surface) 95%, transparent));
+}
+
+.sourcesMappingPage .pg-modalHead .card-title {
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.sourcesMappingPage .pg-modalBody {
+  max-height: min(72vh, 920px);
+  overflow: auto;
+  padding: 18px 20px 20px;
+}
+
+.sourcesMappingPage .pg-modalBody .muted,
+.sourcesMappingPage .pg-modalBody .mm-breadcrumbs {
+  color: var(--text-soft);
+}
+
+.sourcesMappingPage .pg-modalBody .pg-addActions {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 88%, var(--surface));
+}
+
+.sourcesMappingPage .pg-modalBody .pg-addList {
+  padding-bottom: 120px;
+}
+
+.sourcesMappingPage .pg-modalActions,
+.sourcesMappingPage .mm-modalActionsRow {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 18px -20px -20px;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 100%, transparent), color-mix(in srgb, var(--surface) 100%, transparent));
+}
+
+.sourcesMappingPage .mm-savedToast {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 88%, var(--surface));
+  box-shadow: var(--shadow-soft);
+}
+
+.sourcesMappingPage .mm-savedToast a {
+  font-weight: 700;
+}
+
+.sourcesMappingPage .mm-emptyWorkspace {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 95%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+  padding: 18px;
+}
+
+.sourcesMappingPage .mm-emptyTitle {
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.15;
+  margin-bottom: 8px;
+}
+
+.sourcesMappingPage .mm-parentCategoryHelp {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sourcesMappingPage .mm-parentCategoryHelpTitle {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sourcesMappingPage .mm-parentCategoryHelpList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sourcesMappingPage .mm-parentCategoryHelpItem {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--surface));
+  padding: 12px 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sourcesMappingPage .mm-parentCategoryHelpMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.sourcesMappingPage .mm-parentCategoryHelpName {
+  font-weight: 750;
+}
+
+.sourcesMappingPage .mm-parentCategoryHelpProviders {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1580px) {
+  .sourcesMappingPage .mm-workspace,
+  .sourcesMappingPage .mm-attrWorkbenchGrid {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .sourcesMappingPage .mm-paramPoolSidebar {
+    grid-column: 1 / -1;
+    position: static;
+  }
+
+  .sourcesMappingPage .mm-detailContent {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourcesMappingPage .mm-detailSide,
+  .sourcesMappingPage .mm-categoryExtraSide {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 1240px) {
+  .sourcesMappingTopbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sourcesMappingTopbarMeta {
+    max-width: none;
+  }
+
+  .sourcesMappingPage .mm-kpis,
+  .sourcesMappingPage .mm-workspace,
+  .sourcesMappingPage .mm-attrWorkbenchGrid,
+  .sourcesMappingPage .mm-detailSide,
+  .sourcesMappingPage .mm-categoryExtraSide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourcesMappingPage .mm-treePaneShared.csb-shell,
+  .sourcesMappingPage .mm-detailPane,
+  .sourcesMappingPage .mm-attrLeftHead,
+  .sourcesMappingPage .mm-treePaneFeatures.csb-shell,
+  .sourcesMappingPage .mm-attrRight,
+  .sourcesMappingPage .mm-paramPoolSidebar {
+    position: static;
+  }
+}

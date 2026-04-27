@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import DataToolbar from "../components/data/DataToolbar";
+import InspectorPanel from "../components/data/InspectorPanel";
+import MetricGrid from "../components/data/MetricGrid";
+import Alert from "../components/ui/Alert";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import Field from "../components/ui/Field";
+import Modal from "../components/ui/Modal";
+import PageHeader from "../components/ui/PageHeader";
+import Select from "../components/ui/Select";
+import TextInput from "../components/ui/TextInput";
 import "../styles/connectors-status.css";
 
 type ScheduleOption = { code: string; label: string };
@@ -281,80 +292,64 @@ export default function ConnectorsStatus() {
 
   return (
     <div className="cs-page page-shell">
-      <div className="page-header">
-        <div className="page-header-main">
-          <div className="page-title">Статус коннекторов</div>
-          <div className="page-subtitle">Состояние методов API, расписание запусков и ручное обновление по каждой площадке.</div>
-        </div>
-      </div>
+      <PageHeader
+        title="Статус коннекторов"
+        subtitle="Состояние методов API, расписание запусков и ручное обновление по каждой площадке."
+      />
 
-      {error ? (
-        <div className="card" style={{ marginBottom: 10 }}>
-          <div style={{ color: "#b42318", fontWeight: 700 }}>{error}</div>
-        </div>
-      ) : null}
+      {error ? <Alert tone="error">{error}</Alert> : null}
 
-      <div className="card cs-summaryCard">
-        <div className="cs-summaryHead">
-          <div>
-            <div className="cs-summaryTitle">Сводка</div>
-            <div className="page-subtitle" style={{ marginTop: 2 }}>Состояние коннекторов, ручной запуск и расписание синхронизаций.</div>
-          </div>
-          <button className="btn" type="button" onClick={load} disabled={loading || !!runningProvider || saving}>
-            {loading ? "Обновляю..." : "Обновить все"}
-          </button>
-        </div>
-        <div className="cs-kpis">
-          <div className="cs-kpi">
-            <div className="cs-kpiLabel">Всего методов</div>
-            <div className="cs-kpiValue">{totalMethods}</div>
-          </div>
-          <div className="cs-kpi">
-            <div className="cs-kpiLabel">OK</div>
-            <div className="cs-kpiValue">{okCount}</div>
-          </div>
-          <div className="cs-kpi">
-            <div className="cs-kpiLabel">Проблемы</div>
-            <div className="cs-kpiValue">{warnCount}</div>
-          </div>
-          <div className="cs-kpi">
-            <div className="cs-kpiLabel">Критичные</div>
-            <div className="cs-kpiValue">{criticalCount}</div>
-          </div>
-        </div>
-      </div>
+      <Card className="cs-summaryCard">
+        <DataToolbar
+          title="Сводка"
+          subtitle="Состояние коннекторов, ручной запуск и расписание синхронизаций."
+          actions={
+            <Button onClick={load} disabled={loading || !!runningProvider || saving}>
+              {loading ? "Обновляю..." : "Обновить все"}
+            </Button>
+          }
+        />
+        <MetricGrid
+          className="cs-kpis"
+          items={[
+            { label: "Всего методов", value: totalMethods },
+            { label: "OK", value: okCount },
+            { label: "Проблемы", value: warnCount },
+            { label: "Критичные", value: criticalCount },
+          ]}
+        />
+      </Card>
 
-      <div className="card cs-card">
+      <Card className="cs-card">
         <div className="cs-providers">
           {providers.map((p) => (
-            <section key={p.code} className="cs-providerCard">
-              <div className="cs-providerHead">
-                <div>
-                  <div className="cs-providerTitleRow">
-                    <div className="cs-providerTitle">{p.title}</div>
-                    <button
-                      className="btn btn-primary"
-                      type="button"
-                      onClick={() => runProvider(p.code)}
-                      disabled={!!runningProvider || loading || saving}
-                    >
+            <InspectorPanel
+              key={p.code}
+              className="cs-providerCard"
+              title={p.title}
+              subtitle={`${p.methods.length} методов`}
+              actions={
+                <Button
+                  variant="primary"
+                  onClick={() => runProvider(p.code)}
+                  disabled={!!runningProvider || loading || saving}
+                >
                       {runningProvider === p.code ? "Запуск..." : "Обновить"}
-                    </button>
-                  </div>
-                  <div className="cs-providerSub">{p.methods.length} методов</div>
+                </Button>
+              }
+            >
                   {p.code === "yandex_market" || p.code === "ozon" ? (
                     <div className="cs-providerControls">
                       {p.code === "yandex_market" ? (
-                        <label className="cs-selectLabel" style={{ marginTop: 10, maxWidth: 260 }}>
-                          ID для offerId
-                          <input value="SKU GT" disabled />
-                        </label>
+                        <Field label="ID для offerId" className="cs-providerField">
+                          <TextInput value="SKU GT" disabled />
+                        </Field>
                       ) : null}
                       <div className="cs-storeHead">
                         <div className="cs-storeTitle">Магазины импорта</div>
-                        <button className="btn btn-primary" type="button" onClick={() => openCreateStore(p.code)} disabled={saving || !!runningProvider}>
+                        <Button variant="primary" onClick={() => openCreateStore(p.code)} disabled={saving || !!runningProvider}>
                           Добавить магазин
-                        </button>
+                        </Button>
                       </div>
                       <div className="cs-storeList">
                         {(p.import_stores || []).length ? (p.import_stores || []).map((store) => (
@@ -386,11 +381,11 @@ export default function ConnectorsStatus() {
                                 {store.enabled ? "Включен" : "Выключен"}
                               </span>
                               <div className="cs-storeActions">
-                                <button className="btn" type="button" onClick={() => checkStore(p.code, store.id)} disabled={saving || !!runningProvider || checkingStoreId === store.id}>
+                                <Button onClick={() => checkStore(p.code, store.id)} disabled={saving || !!runningProvider || checkingStoreId === store.id}>
                                   {checkingStoreId === store.id ? "Проверяю" : "Проверить"}
-                                </button>
-                                <button className="btn" type="button" onClick={() => openEditStore(p.code, store)} disabled={saving || !!runningProvider}>Изменить</button>
-                                <button className="btn" type="button" onClick={() => deleteStore(p.code, store.id)} disabled={saving || !!runningProvider}>Удалить</button>
+                                </Button>
+                                <Button onClick={() => openEditStore(p.code, store)} disabled={saving || !!runningProvider}>Изменить</Button>
+                                <Button onClick={() => deleteStore(p.code, store.id)} disabled={saving || !!runningProvider}>Удалить</Button>
                               </div>
                             </div>
                           </div>
@@ -400,9 +395,6 @@ export default function ConnectorsStatus() {
                       </div>
                     </div>
                   ) : null}
-                </div>
-              </div>
-
               <div className="cs-methodGrid">
                 {p.methods.map((m) => {
                   const statusClass = m.status === "ok" ? "ok" : m.status === "warn" ? "warn" : "critical";
@@ -446,9 +438,8 @@ export default function ConnectorsStatus() {
                       <div className="cs-methodMeta">Последний запуск: {fmtDate(m.last_run_at)}</div>
                       <div className="cs-methodMeta">Следующий запуск: {fmtDate(m.next_run_at)}</div>
 
-                      <label className="cs-selectLabel">
-                        Расписание
-                        <select
+                      <Field label="Расписание" className="cs-methodField">
+                        <Select
                           value={m.schedule}
                           onChange={(e) => updateSchedule(p.code, m.code, e.target.value)}
                           disabled={saving || !!runningProvider}
@@ -456,77 +447,71 @@ export default function ConnectorsStatus() {
                           {scheduleOptions.map((o) => (
                             <option key={o.code} value={o.code}>{o.label}</option>
                           ))}
-                        </select>
-                      </label>
+                        </Select>
+                      </Field>
                     </article>
                   );
                 })}
               </div>
-            </section>
+            </InspectorPanel>
           ))}
         </div>
-      </div>
+      </Card>
 
-      {storeModalOpen ? (
-        <div className="cs-modalBackdrop" onClick={closeStoreModal}>
-          <div className="cs-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="cs-modalTitle">{storeModalMode === "create" ? "Добавить магазин" : "Изменить магазин"}</div>
-            <label className="cs-selectLabel">
-              Название магазина
-              <input className="cs-textInput" value={storeTitle} onChange={(e) => setStoreTitle(e.target.value)} />
-            </label>
+      <Modal
+        open={storeModalOpen}
+        onClose={closeStoreModal}
+        title={storeModalMode === "create" ? "Добавить магазин" : "Изменить магазин"}
+      >
+            <Field label="Название магазина">
+              <TextInput value={storeTitle} onChange={(e) => setStoreTitle(e.target.value)} />
+            </Field>
             {storeProvider === "yandex_market" ? (
               <>
-                <label className="cs-selectLabel">
-                  Business ID
-                  <input className="cs-textInput" value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
-                </label>
-                <label className="cs-selectLabel">
-                  Токен
-                  <input className="cs-textInput" value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
-                  <span className="cs-fieldHint">`ACMA:...` используйте как `Api-Key`. `y0_...` относится к OAuth/Bearer.</span>
-                </label>
-                <label className="cs-selectLabel">
-                  Тип авторизации
-                  <select value={storeAuthMode} onChange={(e) => setStoreAuthMode(e.target.value as "auto" | "api-key" | "oauth" | "bearer")}>
+                <Field label="Business ID">
+                  <TextInput value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
+                </Field>
+                <Field
+                  label="Токен"
+                  hint="`ACMA:...` используйте как `Api-Key`. `y0_...` относится к OAuth/Bearer."
+                >
+                  <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
+                </Field>
+                <Field label="Тип авторизации">
+                  <Select value={storeAuthMode} onChange={(e) => setStoreAuthMode(e.target.value as "auto" | "api-key" | "oauth" | "bearer")}>
                     <option value="auto">Авто</option>
                     <option value="api-key">Api-Key</option>
                     <option value="oauth">OAuth</option>
                     <option value="bearer">Bearer</option>
-                  </select>
-                </label>
+                  </Select>
+                </Field>
               </>
             ) : (
               <>
-                <label className="cs-selectLabel">
-                  Client ID
-                  <input className="cs-textInput" value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
-                </label>
-                <label className="cs-selectLabel">
-                  Api-Key
-                  <input className="cs-textInput" value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
-                </label>
+                <Field label="Client ID">
+                  <TextInput value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
+                </Field>
+                <Field label="Api-Key">
+                  <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
+                </Field>
               </>
             )}
-            <label className="cs-selectLabel">
-              Комментарий
-              <textarea className="cs-textArea" value={storeNotes} onChange={(e) => setStoreNotes(e.target.value)} />
-            </label>
+            <Field label="Комментарий">
+              <textarea className="uiTextarea cs-textArea" value={storeNotes} onChange={(e) => setStoreNotes(e.target.value)} />
+            </Field>
             <label className="cs-checkRow">
               <input type="checkbox" checked={storeEnabled} onChange={(e) => setStoreEnabled(e.target.checked)} />
               <span>Использовать для импорта</span>
             </label>
             <div className="cs-modalActions">
-              <button className="btn btn-primary" type="button" onClick={saveStore} disabled={saving}>
+              <Button variant="primary" onClick={saveStore} disabled={saving}>
                 {storeModalMode === "create" ? "Создать" : "Сохранить"}
-              </button>
-              <button className="btn" type="button" onClick={closeStoreModal} disabled={saving}>
+              </Button>
+              <Button onClick={closeStoreModal} disabled={saving}>
                 Отмена
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
-      ) : null}
+      </Modal>
     </div>
   );
 }

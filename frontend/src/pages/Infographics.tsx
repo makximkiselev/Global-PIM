@@ -1,19 +1,16 @@
+import PageHeader from "../components/ui/PageHeader";
+import Card from "../components/ui/Card";
+
 export default function Infographics() {
   return (
     <div className="page page-shell">
-      <div className="page-header">
-        <div className="page-header-main">
-          <div className="page-title">Генерация инфографики</div>
-          <div className="page-subtitle">Подготовка изображений для OZON и Я.Маркет через ComfyUI.</div>
-        </div>
-      </div>
+      <PageHeader title="Генерация инфографики" subtitle="Подготовка изображений для OZON и Я.Маркет через ComfyUI." />
 
-      <div className="card">
-        <div className="card-title">Скоро здесь будет генератор</div>
+      <Card title="Скоро здесь будет генератор">
         <div className="muted">
           Следующий шаг: форма выбора товара, шаблона и кнопка запуска генерации.
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

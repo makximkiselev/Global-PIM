@@ -12,6 +12,7 @@ from app.api.routes import (
     health,
     uploads,
     auth,
+    platform,
     catalog,
     products,
     variants,
@@ -29,6 +30,14 @@ from app.api.routes import (
     catalog_exchange,
 )
 from app.core.auth import PUBLIC_API_PATHS, auth_from_request
+from app.core import auth as auth_core
+from app.core import control_plane as control_plane_core
+from app.core.json_store import _reset_pg_connection
+from app.core.tenant_context import (
+    resolve_tenant_context_from_auth,
+    reset_current_tenant_organization_id,
+    set_current_tenant_organization_id,
+)
 
 try:
     from dotenv import load_dotenv
@@ -71,6 +80,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 app.include_router(health.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(platform.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
 app.include_router(variants.router, prefix="/api")
@@ -90,21 +100,37 @@ app.include_router(catalog_exchange.router, prefix="/api")
 
 @app.middleware("http")
 async def _auth_guard_middleware(request: Request, call_next):
+    tenant_token = None
     path = request.url.path
-    if path == "/api" or path.startswith("/api/"):
-        if not path.startswith("/api/uploads") and path not in PUBLIC_API_PATHS:
-            auth_ctx = auth_from_request(request)
-            request.state.auth = auth_ctx
-            if not auth_ctx.user:
-                return Response('{"detail":"AUTH_REQUIRED"}', status_code=401, media_type="application/json")
-        else:
-            request.state.auth = auth_from_request(request)
-    return await call_next(request)
+    try:
+        if path == "/api" or path.startswith("/api/"):
+            if not path.startswith("/api/uploads") and path not in PUBLIC_API_PATHS:
+                auth_ctx = auth_from_request(request)
+                request.state.auth = auth_ctx
+                request.state.tenant = resolve_tenant_context_from_auth(auth_ctx)
+                tenant_token = set_current_tenant_organization_id(
+                    getattr(request.state.tenant, "organization_id", None)
+                )
+                if not auth_ctx.user:
+                    return Response('{"detail":"AUTH_REQUIRED"}', status_code=401, media_type="application/json")
+            else:
+                request.state.auth = auth_from_request(request)
+                request.state.tenant = resolve_tenant_context_from_auth(request.state.auth)
+                tenant_token = set_current_tenant_organization_id(
+                    getattr(request.state.tenant, "organization_id", None)
+                )
+        return await call_next(request)
+    finally:
+        if tenant_token is not None:
+            reset_current_tenant_organization_id(tenant_token)
 
 
 @app.on_event("startup")
 async def _startup_connectors_scheduler() -> None:
+    auth_core.load_auth_base_db()
+    control_plane_core.ensure_control_plane_foundation()
     stats.warm_stats_summary()
+    _reset_pg_connection()
     connectors_status.start_scheduler()
 
 

@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.core.json_store import with_lock
+from app.core.control_plane import DEFAULT_ORGANIZATION_ID
+from app.core.tenant_context import TenantContext
 from app.api.routes import marketplace_mapping, yandex_market, ozon_market, comfyui
 from app.storage.relational_pim_store import load_connectors_state_doc, save_connectors_state_doc
 
@@ -116,8 +118,26 @@ def _default_state() -> Dict[str, Any]:
     return {"version": 1, "updated_at": None, "providers": providers}
 
 
-def _load_state() -> Dict[str, Any]:
-    doc = load_connectors_state_doc()
+def _normalize_organization_id(value: Any) -> str:
+    org_id = str(value or "").strip()
+    return org_id or DEFAULT_ORGANIZATION_ID
+
+
+def _request_organization_id(request: Optional[Request]) -> str:
+    tenant = getattr(getattr(request, "state", None), "tenant", None)
+    if isinstance(tenant, TenantContext):
+        return _normalize_organization_id(tenant.organization_id)
+    return DEFAULT_ORGANIZATION_ID
+
+
+def _state_lock(organization_id: Optional[str]):
+    org_id = _normalize_organization_id(organization_id)
+    return with_lock(f"connectors_scheduler_state:{org_id}")
+
+
+def _load_state(organization_id: Optional[str] = None) -> Dict[str, Any]:
+    org_id = _normalize_organization_id(organization_id)
+    doc = load_connectors_state_doc(org_id)
     if not isinstance(doc, dict):
         doc = _default_state()
     if not isinstance(doc.get("providers"), dict):
@@ -208,9 +228,9 @@ def _load_state() -> Dict[str, Any]:
     return doc
 
 
-def _save_state(doc: Dict[str, Any]) -> None:
+def _save_state(doc: Dict[str, Any], organization_id: Optional[str] = None) -> None:
     doc["updated_at"] = _now_iso()
-    save_connectors_state_doc(doc)
+    save_connectors_state_doc(doc, _normalize_organization_id(organization_id))
 
 
 def _next_run_at(method_row: Dict[str, Any]) -> Optional[str]:
@@ -234,8 +254,8 @@ def _mapped_provider_category_ids(provider_code: str) -> List[str]:
     return sorted(set(out))
 
 
-def _first_enabled_yandex_store() -> Dict[str, Any]:
-    state = _load_state()
+def _first_enabled_yandex_store(organization_id: Optional[str] = None) -> Dict[str, Any]:
+    state = _load_state(organization_id)
     prow = state.get("providers", {}).get("yandex_market", {})
     stores = prow.get("import_stores") if isinstance(prow, dict) else []
     if isinstance(stores, list):
@@ -249,8 +269,8 @@ def _first_enabled_yandex_store() -> Dict[str, Any]:
     return {}
 
 
-def _first_enabled_ozon_store() -> Dict[str, Any]:
-    state = _load_state()
+def _first_enabled_ozon_store(organization_id: Optional[str] = None) -> Dict[str, Any]:
+    state = _load_state(organization_id)
     prow = state.get("providers", {}).get("ozon", {})
     stores = prow.get("import_stores") if isinstance(prow, dict) else []
     if isinstance(stores, list):
@@ -269,8 +289,8 @@ def _normalize_store_auth_mode(value: Any) -> str:
     return mode if mode in {"auto", "api-key", "oauth", "bearer"} else "auto"
 
 
-async def _run_yandex_categories_tree() -> None:
-    store = _first_enabled_yandex_store()
+async def _run_yandex_categories_tree(organization_id: Optional[str] = None) -> None:
+    store = _first_enabled_yandex_store(organization_id)
     req = yandex_market.ImportCategoriesReq(
         language="RU",
         token=str(store.get("token") or "").strip() or None,
@@ -279,9 +299,9 @@ async def _run_yandex_categories_tree() -> None:
     await yandex_market.import_categories_tree(req)
 
 
-async def _run_yandex_category_parameters() -> None:
+async def _run_yandex_category_parameters(organization_id: Optional[str] = None) -> None:
     ids = _mapped_provider_category_ids("yandex_market")
-    store = _first_enabled_yandex_store()
+    store = _first_enabled_yandex_store(organization_id)
     for cid in ids:
         req = yandex_market.ImportCategoryParamsReq(
             category_id=cid,
@@ -292,8 +312,8 @@ async def _run_yandex_category_parameters() -> None:
         await yandex_market.import_category_parameters(req)
 
 
-async def _run_yandex_offer_cards_import() -> None:
-    state = _load_state()
+async def _run_yandex_offer_cards_import(organization_id: Optional[str] = None) -> None:
+    state = _load_state(organization_id)
     prow = state.get("providers", {}).get("yandex_market", {})
     stores = prow.get("import_stores") if isinstance(prow, dict) else []
     enabled_stores = [x for x in (stores or []) if isinstance(x, dict) and bool(x.get("enabled")) and str(x.get("business_id") or "").strip()]
@@ -315,8 +335,8 @@ async def _run_yandex_offer_cards_import() -> None:
         await yandex_market.sync_offer_cards(req)
 
 
-async def _run_ozon_categories_tree() -> None:
-    store = _first_enabled_ozon_store()
+async def _run_ozon_categories_tree(organization_id: Optional[str] = None) -> None:
+    store = _first_enabled_ozon_store(organization_id)
     req = ozon_market.ImportCategoriesReq(
         language="DEFAULT",
         token=str(store.get("api_key") or "").strip() or None,
@@ -325,9 +345,9 @@ async def _run_ozon_categories_tree() -> None:
     await ozon_market.import_categories_tree(req)
 
 
-async def _run_ozon_category_attributes() -> None:
+async def _run_ozon_category_attributes(organization_id: Optional[str] = None) -> None:
     ids = _mapped_provider_category_ids("ozon")
-    store = _first_enabled_ozon_store()
+    store = _first_enabled_ozon_store(organization_id)
     for cid in ids:
         req = ozon_market.ImportCategoryAttrsReq(
             category_id=cid,
@@ -338,8 +358,8 @@ async def _run_ozon_category_attributes() -> None:
         await ozon_market.import_category_attributes(req)
 
 
-async def _run_ozon_product_content_status() -> None:
-    state = _load_state()
+async def _run_ozon_product_content_status(organization_id: Optional[str] = None) -> None:
+    state = _load_state(organization_id)
     prow = state.get("providers", {}).get("ozon", {})
     stores = prow.get("import_stores") if isinstance(prow, dict) else []
     enabled_stores = [x for x in (stores or []) if isinstance(x, dict) and bool(x.get("enabled")) and str(x.get("client_id") or "").strip() and str(x.get("api_key") or "").strip()]
@@ -357,11 +377,11 @@ async def _run_ozon_product_content_status() -> None:
         await ozon_market.sync_product_statuses(req)
 
 
-async def _run_comfyui_healthcheck() -> None:
+async def _run_comfyui_healthcheck(organization_id: Optional[str] = None) -> None:
     await comfyui.comfyui_status()
 
 
-METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[], Awaitable[None]]] = {
+METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[Optional[str]], Awaitable[None]]] = {
     ("yandex_market", "categories_tree"): _run_yandex_categories_tree,
     ("yandex_market", "category_parameters"): _run_yandex_category_parameters,
     ("yandex_market", "offer_cards_import"): _run_yandex_offer_cards_import,
@@ -372,15 +392,16 @@ METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[], Awaitable[None]]] = {
 }
 
 
-async def _run_method(provider: str, method: str) -> None:
+async def _run_method(provider: str, method: str, organization_id: Optional[str] = None) -> None:
+    org_id = _normalize_organization_id(organization_id)
     fn = METHOD_RUNNERS.get((provider, method))
     if fn is None:
         raise HTTPException(status_code=404, detail="METHOD_NOT_FOUND")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
     finally:
         lock.release()
 
@@ -389,7 +410,7 @@ async def _run_method(provider: str, method: str) -> None:
     mrow["last_run_at"] = _now_iso()
 
     try:
-        await fn()
+        await fn(org_id)
         mrow["last_success_at"] = _now_iso()
         mrow["last_error"] = ""
         mrow["fail_count"] = 0
@@ -401,22 +422,22 @@ async def _run_method(provider: str, method: str) -> None:
         mrow["status"] = _severity(mrow["fail_count"])
         raise
     finally:
-        lock = with_lock("connectors_scheduler_state")
+        lock = _state_lock(org_id)
         lock.acquire()
         try:
-            _save_state(state)
+            _save_state(state, org_id)
         finally:
             lock.release()
 
 
-async def _run_provider(provider: str) -> Dict[str, Any]:
+async def _run_provider(provider: str, organization_id: Optional[str] = None) -> Dict[str, Any]:
     if provider not in PROVIDERS_DEF:
         raise HTTPException(status_code=404, detail="PROVIDER_NOT_FOUND")
     methods = list(PROVIDERS_DEF[provider]["methods"].keys())
     results: List[Dict[str, Any]] = []
     for m in methods:
         try:
-            await _run_method(provider, m)
+            await _run_method(provider, m, organization_id)
             results.append({"method": m, "ok": True})
         except Exception as e:
             results.append({"method": m, "ok": False, "error": str(e)})
@@ -493,13 +514,15 @@ class ImportStoreReq(BaseModel):
 
 
 @router.get("")
-def connectors_status() -> Dict[str, Any]:
-    state = _load_state()
+def connectors_status(request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
+    state = _load_state(org_id)
     return _state_payload(state)
 
 
 @router.put("/schedule")
-def connectors_update_schedule(req: UpdateScheduleReq) -> Dict[str, Any]:
+def connectors_update_schedule(req: UpdateScheduleReq, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     provider = str(req.provider or "").strip()
     method = str(req.method or "").strip()
     schedule = str(req.schedule or "").strip()
@@ -510,12 +533,12 @@ def connectors_update_schedule(req: UpdateScheduleReq) -> Dict[str, Any]:
     if method not in PROVIDERS_DEF[provider]["methods"]:
         raise HTTPException(status_code=404, detail="METHOD_NOT_FOUND")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         state["providers"][provider]["methods"][method]["schedule"] = schedule
-        _save_state(state)
+        _save_state(state, org_id)
     finally:
         lock.release()
 
@@ -523,22 +546,23 @@ def connectors_update_schedule(req: UpdateScheduleReq) -> Dict[str, Any]:
 
 
 @router.put("/provider-settings")
-def connectors_update_provider_settings(req: UpdateProviderSettingsReq) -> Dict[str, Any]:
+def connectors_update_provider_settings(req: UpdateProviderSettingsReq, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     provider = str(req.provider or "").strip()
     if provider not in PROVIDERS_DEF:
         raise HTTPException(status_code=404, detail="PROVIDER_NOT_FOUND")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}})
         settings = prow.get("settings") if isinstance(prow.get("settings"), dict) else {}
         if provider == "yandex_market":
             settings["offer_id_source"] = "sku_gt"
         prow["settings"] = settings
         state["providers"][provider] = prow
-        _save_state(state)
+        _save_state(state, org_id)
     finally:
         lock.release()
 
@@ -546,15 +570,16 @@ def connectors_update_provider_settings(req: UpdateProviderSettingsReq) -> Dict[
 
 
 @router.post("/import-stores")
-def connectors_create_import_store(req: ImportStoreReq) -> Dict[str, Any]:
+def connectors_create_import_store(req: ImportStoreReq, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     provider = str(req.provider or "").strip()
     if provider not in {"yandex_market", "ozon"}:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
         stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
         now = _now_iso()
@@ -600,22 +625,23 @@ def connectors_create_import_store(req: ImportStoreReq) -> Dict[str, Any]:
             )
         prow["import_stores"] = stores
         state["providers"][provider] = prow
-        _save_state(state)
+        _save_state(state, org_id)
     finally:
         lock.release()
     return _state_payload(state)
 
 
 @router.put("/import-stores/{provider}/{store_id}")
-def connectors_update_import_store(provider: str, store_id: str, req: ImportStoreReq) -> Dict[str, Any]:
+def connectors_update_import_store(provider: str, store_id: str, req: ImportStoreReq, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     provider = str(provider or "").strip()
     if provider not in {"yandex_market", "ozon"}:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
         stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
         target = None
@@ -657,43 +683,45 @@ def connectors_update_import_store(provider: str, store_id: str, req: ImportStor
         target["updated_at"] = _now_iso()
         prow["import_stores"] = stores
         state["providers"][provider] = prow
-        _save_state(state)
+        _save_state(state, org_id)
     finally:
         lock.release()
     return _state_payload(state)
 
 
 @router.delete("/import-stores/{provider}/{store_id}")
-def connectors_delete_import_store(provider: str, store_id: str) -> Dict[str, Any]:
+def connectors_delete_import_store(provider: str, store_id: str, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     provider = str(provider or "").strip()
     if provider not in {"yandex_market", "ozon"}:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
         stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
         next_stores = [x for x in stores if not (isinstance(x, dict) and str(x.get("id") or "").strip() == str(store_id or "").strip())]
         prow["import_stores"] = next_stores
         state["providers"][provider] = prow
-        _save_state(state)
+        _save_state(state, org_id)
     finally:
         lock.release()
     return _state_payload(state)
 
 
 @router.post("/import-stores/{provider}/{store_id}/check")
-async def connectors_check_import_store(provider: str, store_id: str) -> Dict[str, Any]:
+async def connectors_check_import_store(provider: str, store_id: str, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     provider = str(provider or "").strip()
     if provider not in {"yandex_market", "ozon"}:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
         stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
         target = None
@@ -731,10 +759,10 @@ async def connectors_check_import_store(provider: str, store_id: str) -> Dict[st
         error_text = str(e)
 
     checked_at = _now_iso()
-    lock = with_lock("connectors_scheduler_state")
+    lock = _state_lock(org_id)
     lock.acquire()
     try:
-        state = _load_state()
+        state = _load_state(org_id)
         prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
         stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
         for store in stores:
@@ -748,7 +776,7 @@ async def connectors_check_import_store(provider: str, store_id: str) -> Dict[st
                 break
         prow["import_stores"] = stores
         state["providers"][provider] = prow
-        _save_state(state)
+        _save_state(state, org_id)
     finally:
         lock.release()
 
@@ -759,22 +787,23 @@ async def connectors_check_import_store(provider: str, store_id: str) -> Dict[st
         "checked_at": checked_at,
         "auth_mode": detected_auth_mode,
         "error": error_text,
-        "state": _state_payload(_load_state()),
+        "state": _state_payload(_load_state(org_id)),
     }
 
 
 @router.post("/run/{provider}")
-async def connectors_run_provider(provider: str) -> Dict[str, Any]:
+async def connectors_run_provider(provider: str, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
     async with _runner_lock:
-        result = await _run_provider(str(provider or "").strip())
-    state = _load_state()
+        result = await _run_provider(str(provider or "").strip(), org_id)
+    state = _load_state(org_id)
     return {"ok": True, "run": result, "state": _state_payload(state)}
 
 
 async def _scheduler_loop() -> None:
     while True:
         await asyncio.sleep(30)
-        state = _load_state()
+        state = _load_state(DEFAULT_ORGANIZATION_ID)
         now = datetime.now(timezone.utc)
         due: List[Tuple[str, str]] = []
         for pcode, pdef in PROVIDERS_DEF.items():
@@ -795,7 +824,7 @@ async def _scheduler_loop() -> None:
         async with _runner_lock:
             for pcode, mcode in due:
                 try:
-                    await _run_method(pcode, mcode)
+                    await _run_method(pcode, mcode, DEFAULT_ORGANIZATION_ID)
                 except Exception:
                     # state already updated in _run_method
                     continue

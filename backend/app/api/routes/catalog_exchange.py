@@ -13,7 +13,18 @@ from pydantic import BaseModel, Field
 from app.core.json_store import read_doc, write_doc
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
 from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
-from app.api.routes.yandex_market import OfferCardsSyncReq, sync_offer_cards, ExportPreviewReq, yandex_export_preview
+from app.api.routes.yandex_market import (
+    OfferCardsSyncReq,
+    sync_offer_cards,
+    ExportPreviewReq,
+    yandex_export_preview,
+    _effective_attr_rows,
+    _extract_product_value,
+    _load_attr_mapping_rows,
+    _load_category_mapping,
+    _parent_map,
+    _preferred_offer_id,
+)
 from app.api.routes.competitor_mapping import _ensure_row_shape, _normalize_mapped_specs
 from app.core.competitors.extract_competitor_fields import extract_competitor_content
 
@@ -487,6 +498,154 @@ class CatalogExportRunReq(BaseModel):
     limit: int = Field(default=1000, ge=1, le=5000)
 
 
+def _effective_provider_category_id(
+    category_id: str,
+    provider: str,
+    mappings: Dict[str, Dict[str, str]],
+    parent_by_id: Dict[str, str],
+) -> str:
+    cur = str(category_id or "").strip()
+    seen: Set[str] = set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        row = mappings.get(cur) if isinstance(mappings.get(cur), dict) else {}
+        provider_id = str(row.get(provider) or "").strip()
+        if provider_id:
+            return provider_id
+        cur = parent_by_id.get(cur, "")
+    return ""
+
+
+def _provider_row(rows: List[Dict[str, Any]], provider: str, provider_id: str) -> Optional[Dict[str, Any]]:
+    target = str(provider_id or "").strip()
+    if not target:
+        return None
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        prow = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
+        if str(prow.get("id") or "").strip() == target:
+            return row
+    return None
+
+
+def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
+    if not isinstance(row, dict):
+        return False
+    pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+    prow = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
+    return bool(prow.get("export"))
+
+
+def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
+    products = _load_products()
+    nodes = _load_nodes()
+    parent_by_id = _parent_map(nodes)
+    mappings = _load_category_mapping()
+    attr_rows_by_cid = _load_attr_mapping_rows()
+    ids_filter = {str(x or "").strip() for x in (product_ids or []) if str(x or "").strip()}
+
+    items: List[Dict[str, Any]] = []
+    ready_count = 0
+    for product in products:
+        pid = str(product.get("id") or "").strip()
+        if not pid or (ids_filter and pid not in ids_filter):
+            continue
+        if len(items) >= int(limit):
+            break
+
+        category_id = str(product.get("category_id") or "").strip()
+        ozon_category_id = _effective_provider_category_id(category_id, "ozon", mappings, parent_by_id)
+        rows = _effective_attr_rows(category_id, attr_rows_by_cid, parent_by_id)
+        offer_id = _preferred_offer_id(product)
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
+        media = media_images if media_images else media_legacy
+        pictures = [str(x.get("url") or "").strip() for x in media if isinstance(x, dict) and str(x.get("url") or "").strip()]
+
+        type_row = _provider_row(rows, "ozon", "8229")
+        brand_row = _provider_row(rows, "ozon", "85")
+        model_group_row = _provider_row(rows, "ozon", "9048")
+        name_row = _provider_row(rows, "ozon", "4180")
+        description_row = _provider_row(rows, "ozon", "4191")
+        vendor = _extract_product_value(product, str((brand_row or {}).get("catalog_name") or "Бренд"))
+        name = _extract_product_value(product, str((name_row or {}).get("catalog_name") or "Наименование товара")) or str(product.get("title") or "").strip()
+        description = _extract_product_value(product, str((description_row or {}).get("catalog_name") or "Описание товара"))
+        type_value = _extract_product_value(product, str((type_row or {}).get("catalog_name") or "Тип"))
+        model_group = _extract_product_value(product, str((model_group_row or {}).get("catalog_name") or "Название модели"))
+
+        attributes: List[Dict[str, Any]] = []
+        present_attr_ids: Set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+            oz = pmap.get("ozon") if isinstance(pmap.get("ozon"), dict) else {}
+            if not isinstance(oz, dict) or not bool(oz.get("export")):
+                continue
+            attr_id = str(oz.get("id") or "").strip()
+            if not attr_id:
+                continue
+            value = _extract_product_value(product, str(row.get("catalog_name") or ""))
+            if not value:
+                continue
+            present_attr_ids.add(attr_id)
+            attributes.append(
+                {
+                    "id": attr_id,
+                    "name": str(oz.get("name") or row.get("catalog_name") or "").strip(),
+                    "values": [{"value": value}],
+                    "sourceCatalogName": str(row.get("catalog_name") or "").strip(),
+                }
+            )
+
+        missing: List[str] = []
+        if not offer_id:
+            missing.append("SKU GT (offer_id) не заполнен")
+        if not ozon_category_id:
+            missing.append("Нет сопоставления категории с Ozon")
+        if not name:
+            missing.append("Название товара не заполнено")
+        if not pictures:
+            missing.append("Нет изображений")
+        if not _provider_row_enabled(type_row, "ozon") or not type_value:
+            missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
+        if not _provider_row_enabled(brand_row, "ozon") or not vendor:
+            missing.append("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст")
+        if not _provider_row_enabled(model_group_row, "ozon") or not model_group:
+            missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
+
+        ready = len(missing) == 0
+        if ready:
+            ready_count += 1
+
+        items.append(
+            {
+                "product_id": pid,
+                "ready": ready,
+                "missing": missing,
+                "payload_item": {
+                    "offer_id": offer_id,
+                    "name": name,
+                    "description_category_id": ozon_category_id,
+                    "images": pictures,
+                    "attributes": attributes,
+                },
+            }
+        )
+
+    return {
+        "ok": True,
+        "engine": "ozon_import_products_preview",
+        "items": items,
+        "count": len(items),
+        "ready_count": ready_count,
+        "not_ready_count": max(0, len(items) - ready_count),
+    }
+
+
 def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
     return "|".join(
         [
@@ -851,15 +1010,16 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
             selected_stores = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids] if selected_store_ids else [s for s in stores if bool(s.get("enabled", True))]
             if not selected_stores:
                 selected_stores = [{"id": "default", "title": "Все магазины"}]
+            preview = _ozon_export_preview(product_ids, len(product_ids) or 1000)
             for store in selected_stores:
                 batches.append({
                     "provider": provider,
                     "store_id": str(store.get("id") or "default"),
                     "store_title": str(store.get("title") or "Все магазины"),
-                    "status": "not_implemented",
-                    "ready_count": 0,
-                    "count": len(product_ids),
-                    "items": [],
+                    "status": "preview_ready",
+                    "ready_count": int(preview.get("ready_count") or 0),
+                    "count": int(preview.get("count") or 0),
+                    "items": preview.get("items") if isinstance(preview.get("items"), list) else [],
                 })
     run_id = f"export_{uuid4().hex[:10]}"
     runs = _load_runs(EXPORT_RUNS_PATH)

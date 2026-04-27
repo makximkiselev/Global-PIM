@@ -1,6 +1,7 @@
 # backend/app/api/routes/templates.py
 from __future__ import annotations
 
+from copy import deepcopy
 import io
 from datetime import datetime, timezone
 import time
@@ -24,6 +25,7 @@ from app.storage.relational_pim_store import (
     bulk_upsert_product_items,
     load_catalog_nodes,
     load_category_mappings,
+    load_template_editor_payload,
     query_products_full,
 )
 from app.core.master_templates import (
@@ -36,6 +38,7 @@ from app.core.master_templates import (
 )
 
 router = APIRouter(prefix="/templates", tags=["templates"])
+_DEFAULT_ATTRS_CACHE: List[Dict[str, Any]] | None = None
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = BASE_DIR / "data"
@@ -104,6 +107,10 @@ def _norm_scope(v: Any) -> str:
 
 
 def _build_default_attrs() -> List[Dict[str, Any]]:
+    global _DEFAULT_ATTRS_CACHE
+    if _DEFAULT_ATTRS_CACHE is not None:
+        return deepcopy(_DEFAULT_ATTRS_CACHE)
+
     out: List[Dict[str, Any]] = []
     for idx, a in enumerate(base_template_fields()):
         global_attr = ensure_global_attribute(
@@ -133,7 +140,8 @@ def _build_default_attrs() -> List[Dict[str, Any]]:
                 "locked": True,
             }
         )
-    return out
+    _DEFAULT_ATTRS_CACHE = out
+    return deepcopy(out)
 
 
 def _load_catalog_nodes() -> List[Dict[str, Any]]:
@@ -346,16 +354,11 @@ def _ensure_default_attrs(attrs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return attrs
 
 def _get_catalog_nodes() -> List[Dict[str, Any]]:
-    """
-    Берём nodes из каталога (как делает /catalog/nodes), но без жёсткого импорта,
-    чтобы не ловить циклические зависимости.
-    """
     try:
-        from app.api.routes import catalog as catalog_routes  # lazy import
-
-        resp = catalog_routes.list_nodes()
-        nodes = resp.get("nodes", []) if isinstance(resp, dict) else []
-        return nodes
+        # Editor bootstrap needs only the category tree. It must not pull
+        # product counts for the whole catalog, because that path is much
+        # heavier and blocks opening the model workspace.
+        return load_catalog_nodes()
     except Exception:
         return []
 
@@ -495,14 +498,14 @@ def _templates_by_category(db: Dict[str, Any]) -> Dict[str, List[str]]:
     return out
 
 
-def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any]], *, include_sources: bool = True) -> Dict[str, Any]:
     split = split_template_attrs(attrs)
     meta = template.get("meta") if isinstance(template.get("meta"), dict) else {}
     sources = meta.get("sources") if isinstance(meta.get("sources"), dict) else {}
     base_attrs = split["base"]
     category_attrs = split["category"]
 
-    if isinstance(template, dict):
+    if include_sources and isinstance(template, dict):
         category_id = str(template.get("category_id") or "").strip()
         provider_mapped_rows: Dict[str, int] = {"yandex_market": 0, "ozon": 0}
         for attr in attrs or []:
@@ -657,6 +660,7 @@ def templates_list() -> Dict[str, Any]:
                     "master": _template_master_payload(
                         t,
                         _ensure_default_attrs((db.get("attributes", {}) or {}).get(str(t.get("id") or tid), []) or []),
+                        include_sources=False,
                     ),
                 }
             )
@@ -719,7 +723,7 @@ def get_by_category(category_id: str) -> Dict[str, Any]:
         tpl = None
         attrs = []
 
-    master = _template_master_payload(tpl, attrs) if isinstance(tpl, dict) else {
+    master = _template_master_payload(tpl, attrs, include_sources=False) if isinstance(tpl, dict) else {
         "version": 2,
         "base_attributes": _build_default_attrs(),
         "category_attributes": [],
@@ -790,29 +794,15 @@ def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
     if not path:
         raise HTTPException(status_code=404, detail="CATEGORY_NOT_FOUND")
 
-    db = load_templates_db()
-    templates = db.get("templates", {}) or {}
-    attrs_by_tpl = db.get("attributes", {}) or {}
-    cat_map = _templates_by_category(db)
-
-    owner_path_item = None
-    owner_tpl = None
-    owner_attrs: List[Dict[str, Any]] = []
-    for path_item in reversed(path):
-        cid = str(path_item.get("id") or "").strip()
-        tids = cat_map.get(cid, []) or []
-        if not tids:
-            continue
-        tpl = templates.get(tids[0])
-        if not isinstance(tpl, dict):
-            continue
-        owner_path_item = path_item
-        owner_tpl = tpl
-        owner_attrs = _ensure_default_attrs(attrs_by_tpl.get(tids[0], []) or [])
-        break
+    path_ids = [str(item.get("id") or "").strip() for item in path if str(item.get("id") or "").strip()]
+    payload = load_template_editor_payload(path_ids)
+    owner_tpl = payload.get("template") if isinstance(payload.get("template"), dict) else None
+    owner_attrs = _ensure_default_attrs(payload.get("attributes") if isinstance(payload.get("attributes"), list) else [])
+    owner_category_id = str(payload.get("owner_category_id") or "").strip()
+    owner_path_item = next((item for item in path if str(item.get("id") or "").strip() == owner_category_id), None)
 
     if isinstance(owner_tpl, dict):
-        master = _template_master_payload(owner_tpl, owner_attrs)
+        master = _template_master_payload(owner_tpl, owner_attrs, include_sources=False)
     else:
         master = {
             "version": 2,

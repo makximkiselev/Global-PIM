@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
 from app.core.json_store import read_doc as core_read_json, write_doc as core_write_json
+from app.core.tenant_context import current_tenant_organization_id
 from app.storage.relational_pim_store import (
     load_dictionaries_db_doc as load_dictionaries_db_rel,
     save_dictionaries_db_doc as save_dictionaries_db_rel,
@@ -19,6 +20,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]  # backend/
 DATA_DIR = BACKEND_DIR / "data"
 
 TEMPLATES_FILE = DATA_DIR / "templates.json"
+_DICTIONARIES_DB_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 # =========================
@@ -211,8 +213,40 @@ DEFAULT_COMPETITOR_MAPPING: Dict[str, Any] = {
 }
 
 
+def _tenant_safe_key(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value or "").strip())
+    return cleaned.strip("_") or "default"
+
+
+def _competitor_mapping_file_path() -> Path:
+    org_key = _tenant_safe_key(current_tenant_organization_id())
+    return DATA_DIR / f"competitor_mapping_{org_key}.json"
+
+
+def _competitor_mapping_has_business_data(db: Dict[str, Any]) -> bool:
+    if not isinstance(db, dict):
+        return False
+    for key in ("categories", "templates"):
+        value = db.get(key)
+        if isinstance(value, dict) and value:
+            return True
+    discovery = db.get("discovery")
+    if isinstance(discovery, dict):
+        for key in ("candidates", "links", "runs"):
+            value = discovery.get(key)
+            if isinstance(value, dict) and value:
+                return True
+    return False
+
+
 def load_competitor_mapping_db() -> Dict[str, Any]:
-    db = _read_json(COMPETITOR_MAPPING_FILE, DEFAULT_COMPETITOR_MAPPING)
+    path = _competitor_mapping_file_path()
+    db = _read_json(path, DEFAULT_COMPETITOR_MAPPING)
+    if path != COMPETITOR_MAPPING_FILE and current_tenant_organization_id() == "org_default":
+        legacy = _read_json(COMPETITOR_MAPPING_FILE, DEFAULT_COMPETITOR_MAPPING)
+        if isinstance(legacy, dict) and _competitor_mapping_has_business_data(legacy) and not _competitor_mapping_has_business_data(db):
+            db = legacy
+            _write_json_atomic(path, db)
     if not isinstance(db, dict):
         db = _clone_default(DEFAULT_COMPETITOR_MAPPING)
 
@@ -266,7 +300,7 @@ def save_competitor_mapping_db(db: Dict[str, Any]) -> None:
         db["categories"] = {}
     if "templates" not in db or not isinstance(db.get("templates"), dict):
         db["templates"] = {}
-    _write_json_atomic(COMPETITOR_MAPPING_FILE, db)
+    _write_json_atomic(_competitor_mapping_file_path(), db)
 
 
 # =========================
@@ -401,12 +435,20 @@ def _migrate_dictionaries_db(db: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_dictionaries_db() -> Dict[str, Any]:
-    return _migrate_dictionaries_db(load_dictionaries_db_rel())
+    org_id = current_tenant_organization_id() or "__default__"
+    cached = _DICTIONARIES_DB_CACHE.get(org_id)
+    if isinstance(cached, dict):
+        return _migrate_dictionaries_db(_clone_default(cached))
+    db = _migrate_dictionaries_db(load_dictionaries_db_rel())
+    _DICTIONARIES_DB_CACHE[org_id] = _clone_default(db)
+    return db
 
 
 def save_dictionaries_db(db: Dict[str, Any]) -> None:
     db = _migrate_dictionaries_db(db)
     save_dictionaries_db_rel(db)
+    org_id = current_tenant_organization_id() or "__default__"
+    _DICTIONARIES_DB_CACHE[org_id] = _clone_default(db)
 
 
 def load_products_db() -> Dict[str, Any]:
@@ -523,22 +565,35 @@ def ensure_global_attribute(
         item_code = str(it.get("code") or "").strip().lower()
         if item_id != canonical_dict_id and item_code != final_code.lower():
             continue
+        changed = False
         meta = it.get("meta")
         if final_code.lower() in service_codes and (not isinstance(meta, dict) or not meta.get("service")):
             it["meta"] = {**(meta or {}), "service": True}
+            changed = True
         cur_scope = (it.get("scope") or "both").strip()
         if cur_scope not in ALLOWED_SCOPES:
             cur_scope = "both"
         if cur_scope != "both" and scope == "both":
             it["scope"] = "both"
+            changed = True
         if (it.get("type") or "") not in ALLOWED_ATTR_TYPES:
             it["type"] = type_
-        it["title"] = title
-        it["code"] = final_code
-        it["dict_id"] = canonical_dict_id
-        it["attr_id"] = it.get("attr_id") or f"attr_{final_code}_{new_id()[:6]}"
-        it["updated_at"] = ""
-        save_dictionaries_db(db)
+            changed = True
+        if str(it.get("title") or "") != title:
+            it["title"] = title
+            changed = True
+        if str(it.get("code") or "") != final_code:
+            it["code"] = final_code
+            changed = True
+        if str(it.get("dict_id") or "") != canonical_dict_id:
+            it["dict_id"] = canonical_dict_id
+            changed = True
+        if not it.get("attr_id"):
+            it["attr_id"] = f"attr_{final_code}_{new_id()[:6]}"
+            changed = True
+        if changed:
+            it["updated_at"] = ""
+            save_dictionaries_db(db)
         return {
             "id": it.get("attr_id") or it.get("id"),
             "title": it.get("title"),
@@ -550,23 +605,28 @@ def ensure_global_attribute(
 
     for it in items:
         if _norm_title(it.get("title") or "") == tn:
+            changed = False
             code = (it.get("code") or "").strip().lower()
             if code in service_codes:
                 meta = it.get("meta")
                 if not isinstance(meta, dict) or not meta.get("service"):
                     it["meta"] = {**(meta or {}), "service": True}
-                    save_dictionaries_db(db)
+                    changed = True
             cur_scope = (it.get("scope") or "both").strip()
             if cur_scope not in ALLOWED_SCOPES:
                 cur_scope = "both"
             if cur_scope != "both" and scope == "both":
                 it["scope"] = "both"
+                changed = True
             if (it.get("type") or "") not in ALLOWED_ATTR_TYPES:
                 it["type"] = "select"
+                changed = True
             if not it.get("dict_id"):
                 it["dict_id"] = it.get("id")
-            it["updated_at"] = ""
-            save_dictionaries_db(db)
+                changed = True
+            if changed:
+                it["updated_at"] = ""
+                save_dictionaries_db(db)
             return {
                 "id": it.get("attr_id") or it.get("id"),
                 "title": it.get("title"),

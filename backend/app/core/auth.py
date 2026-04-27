@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 from fastapi import Request
 
+from app.core.control_plane import can_access_organization, ensure_user_membership_context, load_user_session_context
 from app.core.json_store import DATA_DIR, read_doc, write_doc
 
 AUTH_BASE_PATH = DATA_DIR / "auth" / "access.json"
@@ -120,6 +121,8 @@ PUBLIC_API_PATHS = {
     "/api/auth/login",
     "/api/auth/session",
     "/api/auth/logout",
+    "/api/platform/register",
+    "/api/platform/invites/accept",
 }
 
 
@@ -298,9 +301,11 @@ def _effective_codes(roles: Iterable[Dict[str, Any]], field: str) -> Set[str]:
     return out
 
 
-def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]]) -> Dict[str, Any]:
+def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]], session: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     pages = sorted(_effective_codes(roles, "pages"))
     actions = sorted(_effective_codes(roles, "actions"))
+    current_org_id = _normalize_text((session or {}).get("current_organization_id"))
+    org_ctx = load_user_session_context(user, roles, current_organization_id=current_org_id)
     return {
         "authenticated": True,
         "user": {
@@ -313,6 +318,14 @@ def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]]) -> Dict[s
             "pages": pages,
             "actions": actions,
         },
+        "platform_roles": org_ctx.get("platform_roles") or [],
+        "organizations": org_ctx.get("organizations") or [],
+        "current_organization": org_ctx.get("current_organization"),
+        "effective_access": {
+            "pages": pages,
+            "actions": actions,
+        },
+        "flags": org_ctx.get("flags") or {"is_developer": False},
         "roles": [
             {
                 "id": role.get("id"),
@@ -336,6 +349,7 @@ class AuthContext:
     pages: Set[str]
     actions: Set[str]
     session_id: Optional[str] = None
+    session: Optional[Dict[str, Any]] = None
 
     @property
     def is_authenticated(self) -> bool:
@@ -352,9 +366,14 @@ def _resolve_roles(db: Dict[str, Any], role_ids: Iterable[Any]) -> List[Dict[str
     return out
 
 
-def build_auth_context(db: Dict[str, Any], user: Optional[Dict[str, Any]], session_id: Optional[str] = None) -> AuthContext:
+def build_auth_context(
+    db: Dict[str, Any],
+    user: Optional[Dict[str, Any]],
+    session_id: Optional[str] = None,
+    session: Optional[Dict[str, Any]] = None,
+) -> AuthContext:
     if not isinstance(user, dict):
-        return AuthContext(None, [], set(), set(), session_id=session_id)
+        return AuthContext(None, [], set(), set(), session_id=session_id, session=session)
     roles = _resolve_roles(db, user.get("role_ids") or [])
     return AuthContext(
         user=user,
@@ -362,6 +381,7 @@ def build_auth_context(db: Dict[str, Any], user: Optional[Dict[str, Any]], sessi
         pages=_effective_codes(roles, "pages"),
         actions=_effective_codes(roles, "actions"),
         session_id=session_id,
+        session=session,
     )
 
 
@@ -393,6 +413,18 @@ def authenticate(login: str, password: str) -> Optional[Dict[str, Any]]:
         if verify_password(password, str(user.get("password_hash") or ""), str(user.get("password_salt") or "")):
             return user
         return None
+    return None
+
+
+def find_user_by_login_or_email(login_or_email: str) -> Optional[Dict[str, Any]]:
+    db = load_auth_base_db()
+    users = db.get("users") if isinstance(db.get("users"), dict) else {}
+    target = _normalize_login(login_or_email)
+    for user in users.values():
+        if not isinstance(user, dict):
+            continue
+        if _normalize_login(user.get("login")) == target or _normalize_text(user.get("email")).lower() == target:
+            return user
     return None
 
 
@@ -498,13 +530,14 @@ def admin_reset_password(user_id: str, new_password: Optional[str] = None) -> Di
     return {"user": user, "password": password_value}
 
 
-def create_session(user_id: str) -> str:
+def create_session(user_id: str, current_organization_id: Optional[str] = None) -> str:
     sessions = _load_auth_sessions()
     token = secrets.token_urlsafe(32)
     token_hash = _hash_session_token(token)
     sessions[token_hash] = {
         "id": token_hash,
         "user_id": user_id,
+        "current_organization_id": _normalize_text(current_organization_id),
         "created_at": _iso(),
         "last_seen_at": _iso(),
         "expires_at": _iso(_now() + timedelta(days=SESSION_TTL_DAYS)),
@@ -562,17 +595,28 @@ def auth_from_request(request: Request) -> AuthContext:
         session["last_seen_at"] = _iso()
         sessions[token_hash] = session
         _save_auth_sessions(sessions)
-    return build_auth_context(db, user, session_id=token_hash)
+    return build_auth_context(db, user, session_id=token_hash, session=session)
 
 
 def ensure_owner_account(login: str, password: str, name: str = "Владелец", email: str = "") -> Dict[str, Any]:
+    return ensure_user_account(login=login, password=password, name=name, email=email, role_code="owner")
+
+
+def ensure_user_account(
+    *,
+    login: str,
+    password: str,
+    name: str,
+    email: str = "",
+    role_code: str = "viewer",
+) -> Dict[str, Any]:
     db = load_auth_db()
     users = db.get("users") if isinstance(db.get("users"), dict) else {}
-    owner_role = find_role_by_code(db, "owner")
-    if not owner_role:
+    role = find_role_by_code(db, role_code)
+    if not role:
         db = _ensure_system_roles(db)
-        owner_role = find_role_by_code(db, "owner")
-    assert owner_role is not None
+        role = find_role_by_code(db, role_code)
+    assert role is not None
     login_s = _normalize_login(login)
     email_s = _normalize_text(email).lower()
     existing_user: Optional[Dict[str, Any]] = None
@@ -595,10 +639,10 @@ def ensure_owner_account(login: str, password: str, name: str = "Владеле�
             {
                 "login": login_s,
                 "email": email_s,
-                "name": _normalize_text(name) or "Владелец",
+                "name": _normalize_text(name) or login_s or email_s,
                 "password_hash": password_hash,
                 "password_salt": password_salt,
-                "role_ids": [owner_role["id"]],
+                "role_ids": [role["id"]],
                 "is_active": True,
                 "updated_at": now,
             }
@@ -606,16 +650,17 @@ def ensure_owner_account(login: str, password: str, name: str = "Владеле�
         users[existing_id] = existing_user
         db["users"] = users
         save_auth_db(db)
+        ensure_user_membership_context(existing_user, [role])
         return existing_user
     user_id = f"user_{secrets.token_hex(6)}"
     user = {
         "id": user_id,
         "login": login_s,
         "email": email_s,
-        "name": _normalize_text(name) or "Владелец",
+        "name": _normalize_text(name) or login_s or email_s,
         "password_hash": password_hash,
         "password_salt": password_salt,
-        "role_ids": [owner_role["id"]],
+        "role_ids": [role["id"]],
         "is_active": True,
         "created_at": now,
         "updated_at": now,
@@ -624,7 +669,27 @@ def ensure_owner_account(login: str, password: str, name: str = "Владеле�
     users[user_id] = user
     db["users"] = users
     save_auth_db(db)
+    ensure_user_membership_context(user, [role])
     return user
+
+
+def update_session_current_organization(auth: AuthContext, organization_id: str) -> Dict[str, Any]:
+    if not auth.user or not auth.session_id:
+        raise ValueError("AUTH_REQUIRED")
+    target = _normalize_text(organization_id)
+    if not target:
+        raise ValueError("ORGANIZATION_REQUIRED")
+    if not can_access_organization(auth.user, auth.roles, target):
+        raise ValueError("ORGANIZATION_FORBIDDEN")
+    sessions = _load_auth_sessions()
+    session = sessions.get(str(auth.session_id))
+    if not isinstance(session, dict):
+        raise ValueError("SESSION_NOT_FOUND")
+    session["current_organization_id"] = target
+    session["last_seen_at"] = _iso()
+    sessions[str(auth.session_id)] = session
+    _save_auth_sessions(sessions)
+    return session
 
 
 def auth_cookie_secure() -> bool:

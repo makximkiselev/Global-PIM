@@ -63,7 +63,7 @@ type MappingState = {
 };
 
 type StatusKind = "ok" | "warn" | "bad";
-type CompetitorMappingView = "all" | "links" | "mapping";
+type CompetitorMappingView = "all" | "links" | "mapping" | "pool";
 type CompetitorMappingProps = {
   embedded?: boolean;
   view?: CompetitorMappingView;
@@ -558,6 +558,37 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
     return n;
   }, [visibleFields, viewState.links, viewState.mappingBySite]);
 
+  const competitorPoolSections = useMemo(() => {
+    return (["restore", "store77"] as SiteKey[]).map((site) => {
+      const meta = fieldsMetaBySite[site] || [];
+      const rawFields = fieldsBySite[site] || [];
+      const items = meta.length
+        ? meta
+            .map((item) => ({
+              key: String(item.key || item.name || "").trim(),
+              name: String(item.name || item.key || "").trim(),
+              section: String(item.section || "").trim(),
+            }))
+            .filter((item) => item.key && item.name)
+        : rawFields
+            .map((item) => {
+              const value = String(item || "").trim();
+              return { key: value, name: value, section: "" };
+            })
+            .filter((item) => item.key);
+
+      return {
+        site,
+        title: site === "restore" ? "re:Store" : "Store77",
+        hasLink: !!viewState.links[site].trim(),
+        visibleCount: items.length,
+        error: fieldsErrorBySite[site] || "",
+        attempted: fieldsAttemptedBySite[site],
+        items,
+      };
+    });
+  }, [fieldsBySite, fieldsMetaBySite, fieldsErrorBySite, fieldsAttemptedBySite, viewState.links]);
+
   // ✅ статус для выбранного шаблона (для левого списка)
   const activeStatus: { kind: StatusKind; text: string } = useMemo(() => {
     const hasAnyLink = !!(viewState.links.restore || "").trim() || !!(viewState.links.store77 || "").trim();
@@ -697,6 +728,31 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
     };
   }, [API, selectedId, emptyState, categoryId]);
 
+  useEffect(() => {
+    if (view !== "pool") return;
+    const activeId = categoryId || selectedId;
+    if (!activeId) return;
+    const hasAnyFields = (fieldsMetaBySite.restore.length + fieldsMetaBySite.store77.length + fieldsBySite.restore.length + fieldsBySite.store77.length) > 0;
+    const hasAnyLink = !!saved.links.restore.trim() || !!saved.links.store77.trim();
+    const alreadyAttempted = fieldsAttemptedBySite.restore || fieldsAttemptedBySite.store77;
+    if (hasAnyFields || !hasAnyLink || alreadyAttempted) return;
+
+    void fetchFieldsForLinks(saved.links, activeId).catch((e: any) => {
+      setErr(String(e?.message || e));
+    });
+  }, [
+    view,
+    categoryId,
+    selectedId,
+    saved.links,
+    fieldsMetaBySite.restore.length,
+    fieldsMetaBySite.store77.length,
+    fieldsBySite.restore.length,
+    fieldsBySite.store77.length,
+    fieldsAttemptedBySite.restore,
+    fieldsAttemptedBySite.store77,
+  ]);
+
   // -------------------- draft setters --------------------
   function setLink(site: SiteKey, value: string) {
     setDraft((p) => ({ ...p, links: { ...p.links, [site]: value } }));
@@ -728,19 +784,11 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
   }
 
   // -------------------- load fields --------------------
-  async function loadFieldsBoth() {
-    const inlineLinksMode = !!categoryId && view === "links";
-    if (!isEditing && !inlineLinksMode) return;
+  async function fetchFieldsForLinks(linksIn: Record<SiteKey, string>, persistKey?: string) {
+    const rUrl = (linksIn.restore || "").trim();
+    const sUrl = (linksIn.store77 || "").trim();
+    if (!rUrl && !sUrl) return;
 
-    const rUrl = (draft.links.restore || "").trim();
-    const sUrl = (draft.links.store77 || "").trim();
-
-    if (!rUrl && !sUrl) {
-      setErr("Сначала вставь хотя бы одну ссылку конкурента.");
-      return;
-    }
-
-    setErr("");
     setFieldsErrorBySite({});
     setFieldsLoadingAll(true);
     setFieldsAttemptedBySite({
@@ -751,9 +799,9 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
     try {
       const resp = await API.competitorFieldsBatch({ restore: rUrl, store77: sUrl });
 
-      const nextFields: Record<SiteKey, string[]> = { ...fieldsBySite };
+      const nextFields: Record<SiteKey, string[]> = { restore: [], store77: [] };
       const nextErrs: Partial<Record<SiteKey, string>> = {};
-      const nextMeta: Record<SiteKey, FieldMeta[]> = { ...fieldsMetaBySite };
+      const nextMeta: Record<SiteKey, FieldMeta[]> = { restore: [], store77: [] };
 
       (["restore", "store77"] as SiteKey[]).forEach((k) => {
         const it = resp?.results?.[k];
@@ -767,8 +815,6 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
           }
         } else {
           nextErrs[k] = (it as FieldsBatchItemErr).error || "Ошибка";
-          nextFields[k] = [];
-          nextMeta[k] = [];
         }
       });
 
@@ -776,22 +822,39 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
       setFieldsMetaBySite(nextMeta);
       setFieldsErrorBySite(nextErrs);
 
-      const activeId = categoryId || selectedId;
-      if (activeId) {
+      if (persistKey) {
         try {
           localStorage.setItem(
-            `competitor.fields.${activeId}`,
+            `competitor.fields.${persistKey}`,
             JSON.stringify({ restore: nextFields.restore, store77: nextFields.store77, meta: nextMeta })
           );
         } catch {
           // ignore storage errors
         }
       }
-
-    } catch (e: any) {
-      setErr(String(e?.message || e));
     } finally {
       setFieldsLoadingAll(false);
+    }
+  }
+
+  async function loadFieldsBoth() {
+    const inlineLinksMode = !!categoryId && view === "links";
+    if (!isEditing && !inlineLinksMode) return;
+
+    const rUrl = (draft.links.restore || "").trim();
+    const sUrl = (draft.links.store77 || "").trim();
+
+    if (!rUrl && !sUrl) {
+      setErr("Сначала вставь хотя бы одну ссылку конкурента.");
+      return;
+    }
+
+    setErr("");
+    try {
+      const activeId = categoryId || selectedId || undefined;
+      await fetchFieldsForLinks({ restore: rUrl, store77: sUrl }, activeId);
+    } catch (e: any) {
+      setErr(String(e?.message || e));
     }
   }
 
@@ -864,6 +927,7 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
   const hasStore77 = !!viewState.links.store77.trim();
   const inlineLinksMode = !!categoryId && view === "links";
   const linksEditable = inlineLinksMode || isEditing;
+  const compactPoolMode = !!categoryId && view === "pool";
   const canMapRestore = (fieldsMetaBySite.restore.length || fieldsBySite.restore.length) > 0;
   const canMapStore = (fieldsMetaBySite.store77.length || fieldsBySite.store77.length) > 0;
 
@@ -997,6 +1061,60 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
             </div>
           ) : (
             <>
+              {compactPoolMode ? (
+                <>
+                  <div className="mm-providerDetailHead">
+                    <div className="mm-providerLead">
+                      <div className="mm-lineProvider cm-title">Конкуренты</div>
+                    </div>
+                    <div className="mm-providerActionBtns">
+                      <button
+                        type="button"
+                        className="btn mm-miniBtn mm-ghostBtn"
+                        onClick={loadFieldsBoth}
+                        disabled={fieldsLoadingAll || (!saved.links.restore.trim() && !saved.links.store77.trim())}
+                        title="Обновить поля конкурентов"
+                      >
+                        {fieldsLoadingAll ? "Обновляю..." : "Обновить"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="cm-compactPool">
+                    {competitorPoolSections.map((section) => (
+                      <div key={section.site} className="cm-compactPoolCard">
+                        <div className="cm-compactPoolHead">
+                          <div className="cm-compactPoolTitle">{section.title}</div>
+                          <div className="cm-compactPoolMeta">
+                            {section.visibleCount > 0 ? `${section.visibleCount} полей` : section.hasLink ? "Поля не загружены" : "Источник не задан"}
+                          </div>
+                        </div>
+                        {section.error ? (
+                          <div className="cm-help">{section.error}</div>
+                        ) : section.visibleCount > 0 ? (
+                          <div className="cm-compactPoolList">
+                            {section.items.map((item) => (
+                              <div key={`${section.site}-${item.key}`} className="cm-compactPoolItem">
+                                <span className="cm-compactPoolItemName">{item.name}</span>
+                                {item.section ? <span className="cm-compactPoolItemSection">{item.section}</span> : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="cm-help">
+                            {section.hasLink
+                              ? section.attempted
+                                ? "Не удалось получить поля."
+                                : "Жду загрузку полей по сохраненной ссылке."
+                              : "Для этой категории пока нет источника конкурента."}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
               {inlineLinksMode ? (
                 <>
                   <div className="mm-providerDetailHead">
@@ -1024,8 +1142,8 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
                     <div className="mm-lineProvider cm-title">{categoryId ? (categoryName || "Категория") : (tplInfo?.template?.name || "Мастер-шаблон")}</div>
                     <div className="cm-sub mm-breadcrumbs">
                       {categoryId
-                        ? `Ссылки и сопоставления конкурентов для категории.${tplInfo?.template?.name ? ` Эффективный шаблон: ${tplInfo.template.name}.` : ""}`
-                        : "Настрой ссылки и сопоставь атрибуты."}
+                        ? `Ссылки и поля конкурентов.${tplInfo?.template?.name ? ` Шаблон: ${tplInfo.template.name}.` : ""}`
+                        : "Настрой ссылки и сопоставь поля."}
                     </div>
                   </div>
 
@@ -1053,7 +1171,7 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
                     <LinkCard
                       site="restore"
                       title="re:Store"
-                      hint="Вставь страницу товара/каталога"
+                      hint="Ссылка на источник"
                       link={viewState.links.restore}
                       onLinkChange={(v) => setLink("restore", v)}
                       onLinkCommit={() => {
@@ -1069,7 +1187,7 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
                     <LinkCard
                       site="store77"
                       title="Store77"
-                      hint="Вставь страницу товара/каталога"
+                      hint="Ссылка на источник"
                       link={viewState.links.store77}
                       onLinkChange={(v) => setLink("store77", v)}
                       onLinkCommit={() => {
@@ -1197,10 +1315,10 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
                                     <div className="cm-help">
                                       {fieldsErrorBySite.restore
                                         ? `Поля не загрузились: ${fieldsErrorBySite.restore}. Возможно, сайт защитил страницу.`
-                                        : "Поля не загрузились. Проверьте ссылку или защиту сайта."}
+                                        : "Поля не загрузились. Проверь ссылку или защиту сайта."}
                                     </div>
                                   ) : !canMapRestore && hasRestore ? (
-                                    <div className="cm-help">Нажмите “Загрузить параметры”, чтобы увидеть поля конкурента.</div>
+                                    <div className="cm-help">Загрузи поля, чтобы продолжить сопоставление.</div>
                                   ) : null}
                                 </div>
 
@@ -1230,10 +1348,10 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
                                     <div className="cm-help">
                                       {fieldsErrorBySite.store77
                                         ? `Поля не загрузились: ${fieldsErrorBySite.store77}. Возможно, сайт защитил страницу.`
-                                        : "Поля не загрузились. Проверьте ссылку или защиту сайта."}
+                                        : "Поля не загрузились. Проверь ссылку или защиту сайта."}
                                     </div>
                                   ) : !canMapStore && hasStore77 ? (
-                                    <div className="cm-help">Нажмите “Загрузить параметры”, чтобы увидеть поля конкурента.</div>
+                                    <div className="cm-help">Загрузи поля, чтобы продолжить сопоставление.</div>
                                   ) : null}
                                 </div>
                               </div>
@@ -1245,6 +1363,8 @@ export default function CompetitorMapping(props: CompetitorMappingProps = {}) {
                   ))}
                     </div>
                   )}
+                </>
+              )}
                 </>
               )}
             </>

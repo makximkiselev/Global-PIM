@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.json_store import DATA_DIR, read_doc, with_lock
+from app.core.json_store import DATA_DIR, read_doc, with_lock, write_doc
 from app.storage.json_store import load_dictionaries_db, load_templates_db
 from app.storage.relational_pim_store import (
     bulk_upsert_product_items,

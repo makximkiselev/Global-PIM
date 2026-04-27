@@ -51,6 +51,7 @@ type ProductsPageDataResp = {
 const DEFAULT_PAGE_SIZE = 50;
 const PRODUCTS_REGISTRY_CACHE_TTL_MS = 30_000;
 const productsRegistryCache = new Map<string, { ts: number; data: ProductsPageDataResp }>();
+type ViewFilter = "all" | "issues" | "no_template" | "no_ym" | "no_oz" | "no_photo" | "no_group";
 
 function productStatusTone(status: string, present: boolean): "" | "isOn" {
   const normalized = String(status || "").trim().toLowerCase();
@@ -61,20 +62,24 @@ function productStatusTone(status: string, present: boolean): "" | "isOn" {
 
 type Props = {
   mode?: "page" | "embedded";
+  variant?: "full" | "catalogClean";
   scopeCategoryId?: string;
   scopeTitle?: string;
   paramPrefix?: string;
   showHeader?: boolean;
   prefetchCategoryIds?: string[];
+  onProductMoved?: () => void | Promise<void>;
 };
 
 export default function ProductRegistry({
   mode = "page",
+  variant = "full",
   scopeCategoryId = "",
   scopeTitle = "Товары",
   paramPrefix = "",
   showHeader = true,
   prefetchCategoryIds = [],
+  onProductMoved,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -86,6 +91,10 @@ export default function ProductRegistry({
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [moveProduct, setMoveProduct] = useState<ProductItem | null>(null);
+  const [moveCategoryId, setMoveCategoryId] = useState("");
+  const [moveLoading, setMoveLoading] = useState(false);
+  const [moveError, setMoveError] = useState("");
 
   const query = searchParams.get(`${paramPrefix}q`) || "";
   const parentCategoryId = scopeCategoryId ? "" : searchParams.get(`${paramPrefix}parent`) || "";
@@ -94,8 +103,13 @@ export default function ProductRegistry({
   const templateFilter = searchParams.get(`${paramPrefix}template`) || "";
   const marketFilter = searchParams.get(`${paramPrefix}ym`) === "on" || searchParams.get(`${paramPrefix}ym`) === "off" ? (searchParams.get(`${paramPrefix}ym`) as "on" | "off") : "all";
   const ozonFilter = searchParams.get(`${paramPrefix}oz`) === "on" || searchParams.get(`${paramPrefix}oz`) === "off" ? (searchParams.get(`${paramPrefix}oz`) as "on" | "off") : "all";
-  const viewFilter = ["all", "issues", "no_template", "no_ym", "no_oz"].includes(searchParams.get(`${paramPrefix}view`) || "")
-    ? (searchParams.get(`${paramPrefix}view`) as "all" | "issues" | "no_template" | "no_ym" | "no_oz") || "all"
+  const isCatalogClean = variant === "catalogClean";
+  const allowedViewFilters: ViewFilter[] = isCatalogClean
+    ? ["all", "issues", "no_photo", "no_group"]
+    : ["all", "issues", "no_template", "no_ym", "no_oz"];
+  const rawViewFilter = searchParams.get(`${paramPrefix}view`) || "";
+  const viewFilter = allowedViewFilters.includes(rawViewFilter as ViewFilter)
+    ? (rawViewFilter as ViewFilter) || "all"
     : "all";
   const currentPage = Math.max(1, Number(searchParams.get(`${paramPrefix}page`) || "1") || 1);
 
@@ -112,7 +126,7 @@ export default function ProductRegistry({
       template: string;
       ym: "all" | "on" | "off";
       oz: "all" | "on" | "off";
-      view: "all" | "issues" | "no_template" | "no_ym" | "no_oz";
+      view: ViewFilter;
       page: number;
     }>,
   ) {
@@ -150,9 +164,9 @@ export default function ProductRegistry({
       if (subCategoryId) params.set("sub", subCategoryId);
     }
     if (groupFilter) params.set("group", groupFilter);
-    if (templateFilter) params.set("template", templateFilter);
-    if (marketFilter !== "all") params.set("ym", marketFilter);
-    if (ozonFilter !== "all") params.set("oz", ozonFilter);
+    if (!isCatalogClean && templateFilter) params.set("template", templateFilter);
+    if (!isCatalogClean && marketFilter !== "all") params.set("ym", marketFilter);
+    if (!isCatalogClean && ozonFilter !== "all") params.set("oz", ozonFilter);
     if (viewFilter !== "all") params.set("view", viewFilter);
     params.set("page", String(overrides?.currentPage || currentPage));
     params.set("page_size", String(DEFAULT_PAGE_SIZE));
@@ -219,7 +233,7 @@ export default function ProductRegistry({
 
   useEffect(() => {
     void load();
-  }, [query, scopeCategoryId, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, viewFilter, currentPage]);
+  }, [query, scopeCategoryId, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, viewFilter, currentPage, isCatalogClean]);
 
   useEffect(() => {
     if (!scopeCategoryId || !prefetchCategoryIds.length) return;
@@ -312,17 +326,76 @@ export default function ProductRegistry({
       .sort((a, b) => a.name.localeCompare(b.name, "ru"));
   }, [templates]);
 
+  const categoryOptions = useMemo(() => {
+    const pathCache = new Map<string, string>();
+    const buildPath = (categoryId: string): string => {
+      if (!categoryId) return "";
+      if (pathCache.has(categoryId)) return pathCache.get(categoryId) || "";
+      const node = nodeById.get(categoryId);
+      if (!node) return "";
+      const parentPath = node.parent_id ? buildPath(String(node.parent_id)) : "";
+      const path = parentPath ? `${parentPath} / ${node.name}` : node.name;
+      pathCache.set(categoryId, path);
+      return path;
+    };
+    return (nodes || [])
+      .map((node) => ({ id: String(node.id || ""), name: buildPath(String(node.id || "")) || String(node.name || "") }))
+      .filter((node) => node.id && node.name)
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  }, [nodes, nodeById]);
+
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
   const pageFrom = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const pageTo = Math.min(total, currentPage * pageSize);
   const hasActiveFilters = Boolean(
-    query || (!scopeCategoryId && (parentCategoryId || subCategoryId)) || groupFilter || templateFilter || marketFilter !== "all" || ozonFilter !== "all" || viewFilter !== "all",
+    query || (!scopeCategoryId && (parentCategoryId || subCategoryId)) || groupFilter || (!isCatalogClean && (templateFilter || marketFilter !== "all" || ozonFilter !== "all")) || viewFilter !== "all",
   );
   const searchPending = searchDraft.trim() !== query;
   const listBusy = loading || searchPending;
+  const quickFilters: Array<{ key: ViewFilter; label: string }> = isCatalogClean
+    ? [
+        { key: "all", label: "Все товары" },
+        { key: "no_photo", label: "Без фото" },
+        { key: "no_group", label: "Без группы" },
+      ]
+    : [
+        { key: "all", label: "Все товары" },
+        { key: "issues", label: "Проблемные" },
+        { key: "no_template", label: "Без мастер-файла" },
+        { key: "no_ym", label: "Без Я.Маркета" },
+        { key: "no_oz", label: "Без Ozon" },
+      ];
+
+  function openMoveDialog(product: ProductItem) {
+    setMoveProduct(product);
+    setMoveCategoryId(String(product.category_id || ""));
+    setMoveError("");
+  }
+
+  async function submitMoveProduct() {
+    const productId = String(moveProduct?.id || "").trim();
+    const nextCategoryId = String(moveCategoryId || "").trim();
+    if (!productId || !nextCategoryId || moveLoading) return;
+    setMoveLoading(true);
+    setMoveError("");
+    try {
+      await api<{ product: ProductItem }>(`/products/${encodeURIComponent(productId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ category_id: nextCategoryId }),
+      });
+      productsRegistryCache.clear();
+      setMoveProduct(null);
+      await load();
+      await onProductMoved?.();
+    } catch (error) {
+      setMoveError((error as Error).message || "Не удалось переместить товар");
+    } finally {
+      setMoveLoading(false);
+    }
+  }
 
   return (
-    <div className={`products-registry ${mode === "embedded" ? "isEmbedded" : ""}`}>
+    <div className={`products-registry ${mode === "embedded" ? "isEmbedded" : ""} ${isCatalogClean ? "isCatalogClean" : ""}`}>
       {showHeader ? (
         <div className="page-header">
           <div className="page-header-main">
@@ -367,18 +440,12 @@ export default function ProductRegistry({
           </div>
         </div>
         <div className="products-quickFilters">
-          {[
-            { key: "all", label: "Все товары" },
-            { key: "issues", label: "Проблемные" },
-            { key: "no_template", label: "Без мастер-файла" },
-            { key: "no_ym", label: "Без Я.Маркета" },
-            { key: "no_oz", label: "Без Ozon" },
-          ].map((item) => (
+          {quickFilters.map((item) => (
             <button
               key={item.key}
               type="button"
               className={`products-quickChip ${viewFilter === item.key ? "isActive" : ""}`}
-              onClick={() => updateFilters({ view: item.key as "all" | "issues" | "no_template" | "no_ym" | "no_oz", page: 1 })}
+              onClick={() => updateFilters({ view: item.key, page: 1 })}
             >
               {item.label}
             </button>
@@ -413,40 +480,55 @@ export default function ProductRegistry({
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
-          <select className="pn-input products-filterControl" value={templateFilter} onChange={(e) => updateFilters({ template: e.target.value, page: 1 })}>
-            <option value="">Все мастер-файлы</option>
-            <option value="__without__">Без мастер-файла</option>
-            {templateOptions.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-          <select className="pn-input products-filterControl" value={marketFilter} onChange={(e) => updateFilters({ ym: e.target.value as "all" | "on" | "off", page: 1 })}>
-            <option value="all">Я.Маркет: все</option>
-            <option value="on">Я.Маркет: включено</option>
-            <option value="off">Я.Маркет: выключено</option>
-          </select>
-          <select className="pn-input products-filterControl" value={ozonFilter} onChange={(e) => updateFilters({ oz: e.target.value as "all" | "on" | "off", page: 1 })}>
-            <option value="all">OZON: все</option>
-            <option value="on">OZON: включено</option>
-            <option value="off">OZON: выключено</option>
-          </select>
+          {!isCatalogClean ? (
+            <>
+              <select className="pn-input products-filterControl" value={templateFilter} onChange={(e) => updateFilters({ template: e.target.value, page: 1 })}>
+                <option value="">Все мастер-файлы</option>
+                <option value="__without__">Без мастер-файла</option>
+                {templateOptions.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <select className="pn-input products-filterControl" value={marketFilter} onChange={(e) => updateFilters({ ym: e.target.value as "all" | "on" | "off", page: 1 })}>
+                <option value="all">Я.Маркет: все</option>
+                <option value="on">Я.Маркет: включено</option>
+                <option value="off">Я.Маркет: выключено</option>
+              </select>
+              <select className="pn-input products-filterControl" value={ozonFilter} onChange={(e) => updateFilters({ oz: e.target.value as "all" | "on" | "off", page: 1 })}>
+                <option value="all">OZON: все</option>
+                <option value="on">OZON: включено</option>
+                <option value="off">OZON: выключено</option>
+              </select>
+            </>
+          ) : null}
         </div>
       </div>
 
       <div className={`card products-tableWrap ${listBusy ? "isLoading" : ""}`}>
         <table className="products-table">
           <thead>
-            <tr>
-              <th rowSpan={2} className="products-colSku">SKU GT</th>
-              <th rowSpan={2}>Товар</th>
-              <th rowSpan={2} className="products-colGroup">Входит в группу</th>
-              <th rowSpan={2} className="products-colTemplate">Мастер-файл</th>
-              <th colSpan={2}>Площадки</th>
-            </tr>
-            <tr>
-              <th>Я.Маркет</th>
-              <th>OZON</th>
-            </tr>
+            {isCatalogClean ? (
+              <tr>
+                <th className="products-colSku">SKU GT</th>
+                <th>Товар</th>
+                <th className="products-colGroup">Группа</th>
+                <th className="products-colAction">Действие</th>
+              </tr>
+            ) : (
+              <>
+                <tr>
+                  <th rowSpan={2} className="products-colSku">SKU GT</th>
+                  <th rowSpan={2}>Товар</th>
+                  <th rowSpan={2} className="products-colGroup">Входит в группу</th>
+                  <th rowSpan={2} className="products-colTemplate">Мастер-файл</th>
+                  <th colSpan={2}>Площадки</th>
+                </tr>
+                <tr>
+                  <th>Я.Маркет</th>
+                  <th>OZON</th>
+                </tr>
+              </>
+            )}
           </thead>
           <tbody>
             {!loading && products.map((p) => {
@@ -487,33 +569,48 @@ export default function ProductRegistry({
                       {gname ? <Link to={`/catalog/groups?group=${encodeURIComponent(gid)}`} className="products-cellLink">{gname}</Link> : <span className="muted">Без группы</span>}
                     </div>
                   </td>
-                  <td className="products-colTemplate">
-                    <div className="products-sideCell">
-                      {templateName ? (
-                        <Link to={`/templates/${encodeURIComponent(templateSourceCategoryId)}`} className="products-cellLink">
-                          {templateName}
+                  {isCatalogClean ? (
+                    <td className="products-colAction">
+                      <div className="products-rowActions">
+                        <Link to={`/products/${encodeURIComponent(p.id)}`} className="btn sm products-openBtn">
+                          Открыть
                         </Link>
-                      ) : (
-                        <span className="muted">Не назначен</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="products-statusCell">
-                      <span className={`products-status ${productStatusTone(ymStatus, ymPresent)}`}>{ymStatus}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="products-statusCell">
-                      <span className={`products-status ${productStatusTone(ozStatus, ozPresent)}`}>{ozStatus}</span>
-                    </div>
-                  </td>
+                        <button className="btn sm products-openBtn" type="button" onClick={() => openMoveDialog(p)}>
+                          Переместить
+                        </button>
+                      </div>
+                    </td>
+                  ) : (
+                    <>
+                      <td className="products-colTemplate">
+                        <div className="products-sideCell">
+                          {templateName ? (
+                            <Link to={`/templates/${encodeURIComponent(templateSourceCategoryId)}`} className="products-cellLink">
+                              {templateName}
+                            </Link>
+                          ) : (
+                            <span className="muted">Не назначен</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="products-statusCell">
+                          <span className={`products-status ${productStatusTone(ymStatus, ymPresent)}`}>{ymStatus}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="products-statusCell">
+                          <span className={`products-status ${productStatusTone(ozStatus, ozPresent)}`}>{ozStatus}</span>
+                        </div>
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}
             {products.length === 0 ? (
               <tr>
-                <td colSpan={6} className="products-empty">Товары не найдены</td>
+                <td colSpan={isCatalogClean ? 4 : 6} className="products-empty">Товары не найдены</td>
               </tr>
             ) : null}
             {loading && Array.from({ length: 8 }).map((_, idx) => (
@@ -521,9 +618,15 @@ export default function ProductRegistry({
                 <td className="products-colSku"><span className="products-skeleton products-skeletonSku" /></td>
                 <td><div className="products-skeletonMain"><span className="products-skeleton products-skeletonThumb" /><div className="products-skeletonMeta"><span className="products-skeleton products-skeletonTitle" /><span className="products-skeleton products-skeletonCrumbs" /></div></div></td>
                 <td className="products-colGroup"><span className="products-skeleton products-skeletonShort" /></td>
-                <td className="products-colTemplate"><span className="products-skeleton products-skeletonMid" /></td>
-                <td><span className="products-skeleton products-skeletonStatus" /></td>
-                <td><span className="products-skeleton products-skeletonStatus" /></td>
+                {isCatalogClean ? (
+                  <td className="products-colAction"><span className="products-skeleton products-skeletonStatus" /></td>
+                ) : (
+                  <>
+                    <td className="products-colTemplate"><span className="products-skeleton products-skeletonMid" /></td>
+                    <td><span className="products-skeleton products-skeletonStatus" /></td>
+                    <td><span className="products-skeleton products-skeletonStatus" /></td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -544,6 +647,34 @@ export default function ProductRegistry({
           </button>
         </div>
       </div>
+
+      {isCatalogClean && moveProduct ? (
+        <div className="products-moveOverlay" onMouseDown={() => setMoveProduct(null)}>
+          <div className="products-moveDialog" onMouseDown={(event) => event.stopPropagation()}>
+            <div>
+              <div className="products-moveKicker">Перемещение SKU</div>
+              <h3>{String(moveProduct.title || moveProduct.name || moveProduct.id)}</h3>
+              <p>Выберите категорию, куда нужно перенести товар.</p>
+            </div>
+            <select className="pn-input" value={moveCategoryId} onChange={(event) => setMoveCategoryId(event.target.value)}>
+              {categoryOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            {moveError ? <div className="products-moveError">{moveError}</div> : null}
+            <div className="products-moveActions">
+              <button className="btn" type="button" onClick={() => setMoveProduct(null)} disabled={moveLoading}>
+                Отмена
+              </button>
+              <button className="btn primary" type="button" onClick={submitMoveProduct} disabled={moveLoading || !moveCategoryId}>
+                {moveLoading ? "Перемещаю..." : "Переместить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

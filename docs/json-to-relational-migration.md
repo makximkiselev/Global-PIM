@@ -4,6 +4,16 @@
 
 Убрать hot-path сущности из `json_documents` и перевести их на реальные таблицы Postgres без одномоментной остановки продового контура.
 
+## Important current note
+
+Runtime у проекта уже `Postgres-only`.
+
+Это значит:
+
+- sqlite не является поддерживаемым runtime backend;
+- старые JSON-файлы не являются production source of truth;
+- текущий переход идет не из "файлов в Postgres", а из document-layer в Postgres (`json_documents`) в нормализованные таблицы.
+
 ## Current state
 
 Сейчас предметные данные в основном читаются через:
@@ -13,7 +23,7 @@
 - `read_doc(backend/data/products.json)`
 - `read_doc(backend/data/templates.json)`
 
-Физически это хранится в `public.json_documents(path, payload, updated_at)`.
+Физически document-layer хранится в `public.json_documents(path, payload, updated_at)`.
 
 ## Phase 1
 
@@ -24,13 +34,11 @@
 
 ### Runtime strategy
 
-- bootstrap из legacy JSON в таблицы при первом обращении;
-- дальнейшее чтение из таблиц;
-- запись одновременно:
-  - в таблицы
-  - в legacy JSON
+- чтение новых hot-path доменов переносится на таблицы;
+- запись переносится на таблицы;
+- если домен еще не дорезан полностью, `json_documents` остается compatibility storage до конца выноса.
 
-Это дает совместимость для кода, который еще не переведен.
+Исторические упоминания legacy JSON в этом документе относятся к происхождению данных и ранним фазам миграции, а не к текущему runtime contract.
 
 ## Hot paths moved in Phase 1
 
@@ -59,11 +67,11 @@
   - `dictionary_provider_refs_rel`
   - `dictionary_export_maps_rel`
 
-Все три слоя работают через dual-write:
+Все три слоя работают через compatibility write/read strategy:
 
 - чтение идет из таблиц;
 - запись идет в таблицы;
-- legacy JSON пока сохраняется для совместимости.
+- document-layer в Postgres пока сохраняется для совместимости.
 
 ### Phase 3
 
@@ -78,7 +86,7 @@ Runtime strategy та же:
 
 - чтение идет из таблиц;
 - запись идет в таблицы;
-- legacy `templates.json` сохраняется как dual-write compatibility layer.
+- document-layer для шаблонов сохраняется как compatibility layer.
 
 ### Phase 4
 
@@ -90,7 +98,7 @@ Runtime strategy:
 
 - чтение `products` идет из таблицы;
 - запись идет в таблицу;
-- legacy `products.json` сохраняется как dual-write compatibility layer;
+- document-layer для products сохраняется как compatibility layer;
 - SKU/category indexes больше не являются source of truth и собираются из реляционного product store.
 
 Hot paths, уже переведенные на новый слой:
@@ -177,6 +185,6 @@ Runtime effect:
 
 После переноса всех hot entities:
 
-- `json_documents` остается только как legacy fallback;
-- потом legacy dual-write удаляется;
-- затем удаляются JSON-backed paths из runtime. 
+- `json_documents` остается только для остаточных non-hot сущностей или служебных документов, если такие еще нужны;
+- compatibility write/read слой удаляется там, где домен полностью вынесен;
+- runtime перестает зависеть от document-backed path для hot domains.

@@ -4,28 +4,31 @@ import Shell from "./layout/Shell";
 import { useAuth } from "./auth/AuthContext";
 import { firstAllowedPath } from "./auth/permissions";
 
-import Dashboard from "../pages/Dashboard";
-import Catalog from "../pages/CatalogV2";
-import Templates from "../pages/Templates";
-import TemplateEditor from "../pages/TemplateEditor";
-import ProductNew from "../pages/ProductNew";
-import Product from "../pages/Product";
-import ProductGroups from "../pages/ProductGroups";
+import DashboardRoute from "../routes/DashboardRoute";
+import CatalogRoute from "../routes/CatalogRoute";
+import ProductListRoute from "../routes/ProductListRoute";
+import ProductNewRoute from "../routes/ProductNewRoute";
+import ProductRoute from "../routes/ProductRoute";
+import ProductGroupsRoute from "../routes/ProductGroupsRoute";
 import Infographics from "../pages/Infographics";
-import ProductsPage from "../pages/Products";
-import CatalogImportPage from "../pages/CatalogImport";
-import CatalogExportPage from "../pages/CatalogExport";
+import CatalogImportRoute from "../routes/CatalogImportRoute";
+import CatalogExportRoute from "../routes/CatalogExportRoute";
 
 // ✅ mapping
-import SourcesMapping from "../pages/SourcesMapping";
-import ConnectorsStatus from "../pages/ConnectorsStatus";
 import Placeholder from "../pages/Placeholder";
 
 // ✅ dictionaries
-import Dictionaries from "../pages/Dictionary";
-import DictionaryEditor from "../pages/DictionaryEditor";
 import Login from "../pages/Login";
-import AdminAccess from "../pages/AdminAccess";
+import Register from "../pages/Register";
+import InviteAccept from "../pages/InviteAccept";
+import AdminAccessRoute from "../routes/AdminAccessRoute";
+import OrganizationsRoute from "../routes/OrganizationsRoute";
+import ConnectorsStatusRoute from "../routes/ConnectorsStatusRoute";
+import DictionariesRoute from "../routes/DictionariesRoute";
+import DictionaryEditorRoute from "../routes/DictionaryEditorRoute";
+import SourcesMappingRoute from "../routes/SourcesMappingRoute";
+import TemplateEditorRoute from "../routes/TemplateEditorRoute";
+import TemplatesRoute from "../routes/TemplatesRoute";
 
 function SessionKickToLogin({ reason }: { reason: "denied" | "expired" }) {
   useEffect(() => {
@@ -49,30 +52,34 @@ function ProtectedApp() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<RequirePage page="dashboard"><Dashboard /></RequirePage>} />
-        <Route path="/catalog" element={<RequirePage page="catalog"><Catalog /></RequirePage>} />
-        <Route path="/catalog/groups" element={<RequirePage page="product_groups"><ProductGroups /></RequirePage>} />
+        <Route path="/" element={<RequirePage page="dashboard"><DashboardRoute /></RequirePage>} />
+        <Route path="/catalog" element={<RequirePage page="catalog"><CatalogRoute /></RequirePage>} />
+        <Route path="/catalog/groups" element={<RequirePage page="product_groups"><ProductGroupsRoute /></RequirePage>} />
         <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
-        <Route path="/products" element={<RequirePage page="products"><ProductsPage /></RequirePage>} />
-        <Route path="/catalog/import" element={<RequirePage page="catalog_import"><CatalogImportPage /></RequirePage>} />
-        <Route path="/catalog/export" element={<RequirePage page="catalog_export"><CatalogExportPage /></RequirePage>} />
+        <Route path="/products" element={<RequirePage page="products"><ProductListRoute /></RequirePage>} />
+        <Route path="/catalog/import" element={<RequirePage page="catalog_import"><CatalogImportRoute /></RequirePage>} />
+        <Route path="/catalog/export" element={<RequirePage page="catalog_export"><CatalogExportRoute /></RequirePage>} />
 
-        <Route path="/templates" element={<RequirePage page="templates"><Templates /></RequirePage>} />
-        <Route path="/templates/:categoryId" element={<RequirePage page="templates"><TemplateEditor /></RequirePage>} />
+        <Route path="/templates" element={<RequirePage page="templates"><TemplatesRoute /></RequirePage>} />
+        <Route path="/templates/:categoryId" element={<RequirePage page="templates"><TemplateEditorRoute /></RequirePage>} />
 
-        <Route path="/products/new" element={<RequirePage page="products"><ProductNew /></RequirePage>} />
-        <Route path="/products/:productId" element={<RequirePage page="products"><Product /></RequirePage>} />
+        <Route path="/products/new" element={<RequirePage page="products"><ProductNewRoute /></RequirePage>} />
+        <Route path="/products/:productId" element={<RequirePage page="products"><ProductRoute /></RequirePage>} />
 
-        <Route path="/dictionaries" element={<RequirePage page="dictionaries"><Dictionaries /></RequirePage>} />
-        <Route path="/dictionaries/:dictId" element={<RequirePage page="dictionaries"><DictionaryEditor /></RequirePage>} />
+        <Route path="/dictionaries" element={<RequirePage page="dictionaries"><DictionariesRoute /></RequirePage>} />
+        <Route path="/dictionaries/:dictId" element={<RequirePage page="dictionaries"><DictionaryEditorRoute /></RequirePage>} />
 
-        <Route path="/sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMapping /></RequirePage>} />
+        <Route path="/sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
         <Route path="/competitor-mapping" element={<Navigate to="/sources-mapping?tab=competitor_links" replace />} />
         <Route path="/marketplace-mapping" element={<Navigate to="/sources-mapping?tab=mp_categories" replace />} />
-        <Route path="/connectors/status" element={<RequirePage page="connectors_status"><ConnectorsStatus /></RequirePage>} />
+        <Route path="/connectors/status" element={<RequirePage page="connectors_status"><ConnectorsStatusRoute /></RequirePage>} />
         <Route path="/images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />
 
-        <Route path="/admin/access" element={<RequirePage page="admin_access"><AdminAccess /></RequirePage>} />
+        <Route path="/admin/access" element={<RequirePage page="admin_access"><AdminAccessRoute /></RequirePage>} />
+        <Route path="/admin/organizations" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="organizations" /></RequirePage>} />
+        <Route path="/admin/members" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="members" /></RequirePage>} />
+        <Route path="/admin/invites" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="invites" /></RequirePage>} />
+        <Route path="/admin/platform" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="platform" /></RequirePage>} />
       </Routes>
     </Shell>
   );
@@ -81,11 +88,25 @@ function ProtectedApp() {
 export default function App() {
   const { authenticated, loading, user } = useAuth();
   if (loading) return <div className="pageLoading">Загрузка...</div>;
+  if (!authenticated) {
+    return (
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/invite/accept" element={<InviteAccept />} />
+        <Route path="/auth" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  }
   return (
     <Routes>
-      <Route path="/login" element={authenticated ? <Navigate to={firstAllowedPath(user?.pages || [])} replace /> : <Login />} />
+      <Route path="/login" element={<Navigate to={firstAllowedPath(user?.pages || [])} replace />} />
+      <Route path="/register" element={<Navigate to={firstAllowedPath(user?.pages || [])} replace />} />
+      <Route path="/invite/accept" element={<InviteAccept />} />
       <Route path="/auth" element={<Navigate to="/login" replace />} />
-      <Route path="/*" element={authenticated ? <ProtectedApp /> : <Navigate to="/login" replace />} />
+      <Route path="/*" element={<ProtectedApp />} />
     </Routes>
   );
 }

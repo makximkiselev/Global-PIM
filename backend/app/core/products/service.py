@@ -9,6 +9,7 @@ from app.storage.relational_pim_store import (
     delete_product_items,
     find_product_by_sku_gt,
     load_products_by_category,
+    load_products_by_group,
     load_products_by_ids,
     query_products_full,
     upsert_product_item,
@@ -169,7 +170,7 @@ def get_product_service(product_id: str, include_variants: bool = True) -> Dict[
     if include_variants:
         group_id = _norm(product.get("group_id"))
         if group_id:
-            variants = [x for x in query_products_full() if _norm(x.get("group_id")) == group_id and _norm(x.get("id")) != pid]
+            variants = [x for x in load_products_by_group(group_id) if _norm(x.get("id")) != pid]
         else:
             variants = []
         result["variants"] = variants

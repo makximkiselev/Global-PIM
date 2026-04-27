@@ -25,6 +25,7 @@ from app.storage.relational_pim_store import (
     load_product_marketplace_status_map,
 )
 from app.core.json_store import read_doc, write_doc
+from app.core.tenant_context import current_tenant_organization_id
 from app.core.products.service import (
     create_product_service,
     allocate_sku_pairs_service,
@@ -50,15 +51,28 @@ PRODUCTS_PATH = DATA_DIR / "catalog_products.json"
 FULL_PRODUCTS_PATH = DATA_DIR / "products.json"
 
 _PRODUCTS_PAGE_CACHE_TTL_SECONDS = 20.0
-_products_page_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_products_page_cache: Dict[str, Dict[str, Any]] = {}
 _PRODUCTS_PAGE_RESULT_CACHE_TTL_SECONDS = 15.0
-_products_page_result_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_products_page_result_cache: Dict[str, Dict[str, Tuple[float, Dict[str, Any]]]] = {}
 _TEMPLATE_RESOLUTION_CACHE_TTL_SECONDS = 300.0
 _MARKETPLACE_SUMMARY_CACHE_TTL_SECONDS = 60.0
 _PRODUCT_PAGE_SUMMARY_CACHE_TTL_SECONDS = 60.0
-_template_resolution_state: Dict[str, float] = {"ts": 0.0}
-_marketplace_summary_state: Dict[str, float] = {"ts": 0.0}
-_product_page_summary_state: Dict[str, float] = {"ts": 0.0}
+_template_resolution_state: Dict[str, float] = {}
+_marketplace_summary_state: Dict[str, float] = {}
+_product_page_summary_state: Dict[str, float] = {}
+
+
+def _current_org_id() -> str:
+    return str(current_tenant_organization_id() or "").strip() or "org_default"
+
+
+def _products_page_cache_entry() -> Dict[str, Any]:
+    org_id = _current_org_id()
+    return _products_page_cache.setdefault(org_id, {"ts": 0.0, "payload": None})
+
+
+def _products_page_result_cache_entry() -> Dict[str, Tuple[float, Dict[str, Any]]]:
+    return _products_page_result_cache.setdefault(_current_org_id(), {})
 
 
 # =========================
@@ -113,9 +127,10 @@ def _serialize_product_list_item(product: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _products_page_meta() -> Dict[str, Any]:
+    cache_entry = _products_page_cache_entry()
     now = time.monotonic()
-    cached_payload = _products_page_cache.get("payload")
-    cached_ts = float(_products_page_cache.get("ts") or 0.0)
+    cached_payload = cache_entry.get("payload")
+    cached_ts = float(cache_entry.get("ts") or 0.0)
     if cached_payload and now - cached_ts < _PRODUCTS_PAGE_CACHE_TTL_SECONDS:
         return cached_payload
 
@@ -145,8 +160,8 @@ def _products_page_meta() -> Dict[str, Any]:
         "templates": template_items,
         "templates_db": templates_db,
     }
-    _products_page_cache["ts"] = now
-    _products_page_cache["payload"] = payload
+    cache_entry["ts"] = now
+    cache_entry["payload"] = payload
     return payload
 
 
@@ -190,13 +205,13 @@ def _refresh_category_template_resolution(nodes: List[Dict[str, Any]], templates
             "source_category_id": source_category_id,
         }
     save_category_template_resolution(rows)
-    _template_resolution_state["ts"] = time.monotonic()
+    _template_resolution_state[_current_org_id()] = time.monotonic()
     return out
 
 
 def _ensure_category_template_resolution(meta: Dict[str, Any], refresh: bool = False) -> Dict[str, Dict[str, str]]:
     now = time.monotonic()
-    if not refresh and now - float(_template_resolution_state.get("ts") or 0.0) < _TEMPLATE_RESOLUTION_CACHE_TTL_SECONDS:
+    if not refresh and now - float(_template_resolution_state.get(_current_org_id()) or 0.0) < _TEMPLATE_RESOLUTION_CACHE_TTL_SECONDS:
         cached = load_category_template_resolution_map()
         if cached:
             return cached
@@ -267,13 +282,13 @@ def _refresh_marketplace_status_summary(products: List[Dict[str, Any]], ctx: Dic
         )
         out[product_id] = statuses
     save_product_marketplace_status(rows)
-    _marketplace_summary_state["ts"] = time.monotonic()
+    _marketplace_summary_state[_current_org_id()] = time.monotonic()
     return out
 
 
 def _ensure_marketplace_status_summary(products: List[Dict[str, Any]], refresh: bool = False) -> Dict[str, Dict[str, Dict[str, Any]]]:
     now = time.monotonic()
-    if not refresh and now - float(_marketplace_summary_state.get("ts") or 0.0) < _MARKETPLACE_SUMMARY_CACHE_TTL_SECONDS:
+    if not refresh and now - float(_marketplace_summary_state.get(_current_org_id()) or 0.0) < _MARKETPLACE_SUMMARY_CACHE_TTL_SECONDS:
         cached = load_product_marketplace_status_map()
         if cached:
             return cached
@@ -324,12 +339,12 @@ def _refresh_catalog_product_page_summary(meta: Dict[str, Any], products: List[D
             }
         )
     save_catalog_product_page_rows(rows)
-    _product_page_summary_state["ts"] = time.monotonic()
+    _product_page_summary_state[_current_org_id()] = time.monotonic()
 
 
 def _ensure_catalog_product_page_summary(meta: Dict[str, Any], refresh: bool = False) -> None:
     now = time.monotonic()
-    if not refresh and now - float(_product_page_summary_state.get("ts") or 0.0) < _PRODUCT_PAGE_SUMMARY_CACHE_TTL_SECONDS:
+    if not refresh and now - float(_product_page_summary_state.get(_current_org_id()) or 0.0) < _PRODUCT_PAGE_SUMMARY_CACHE_TTL_SECONDS:
         return
     products = _load_products()
     template_resolution = _ensure_category_template_resolution(meta, refresh=refresh)
@@ -896,13 +911,16 @@ def products_page_data(
     page_size: int = Query(50, ge=1, le=200),
     refresh: bool = Query(False),
 ):
+    result_cache = _products_page_result_cache_entry()
     if refresh:
-        _products_page_cache["ts"] = 0.0
-        _products_page_cache["payload"] = None
-        _products_page_result_cache.clear()
+        cache_entry = _products_page_cache_entry()
+        cache_entry["ts"] = 0.0
+        cache_entry["payload"] = None
+        result_cache.clear()
 
     cache_key = "|".join(
         [
+            f"org={_current_org_id()}",
             f"q={q}",
             f"category={category}",
             f"exact={int(bool(exact))}",
@@ -918,7 +936,7 @@ def products_page_data(
         ]
     )
     now = time.monotonic()
-    cached_result = _products_page_result_cache.get(cache_key)
+    cached_result = result_cache.get(cache_key)
     if cached_result and now - cached_result[0] < _PRODUCTS_PAGE_RESULT_CACHE_TTL_SECONDS:
         return cached_result[1]
 
@@ -968,7 +986,7 @@ def products_page_data(
         "groups": groups,
         "templates": templates,
     }
-    _products_page_result_cache[cache_key] = (now, payload)
+    result_cache[cache_key] = (now, payload)
     return payload
 
 

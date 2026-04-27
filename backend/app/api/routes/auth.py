@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.core.auth import (
@@ -189,11 +190,11 @@ def auth_session(request: Request):
     auth = current_auth(request)
     if not auth.user:
         return {"authenticated": False, "catalog": {"pages": PAGE_CATALOG, "actions": ACTION_CATALOG}}
-    return session_payload(auth.user, auth.roles)
+    return session_payload(auth.user, auth.roles, session=auth.session)
 
 
 @router.post("/login")
-def auth_login(payload: LoginReq, request: Request, response: Response):
+def auth_login(payload: LoginReq, request: Request):
     user = authenticate(payload.login, payload.password)
     if not user:
         record_login_failure(payload.login, ip=_client_ip(request), user_agent=_user_agent(request))
@@ -202,6 +203,8 @@ def auth_login(payload: LoginReq, request: Request, response: Response):
     token = create_session(str(user.get("id") or ""))
     db = load_auth_base_db()
     roles = build_auth_context(db, db.get("users", {}).get(str(user.get("id") or ""))).roles
+    payload_body = session_payload(user, roles)
+    response = JSONResponse(payload_body)
     response.set_cookie(
         SESSION_COOKIE,
         token,
@@ -211,7 +214,7 @@ def auth_login(payload: LoginReq, request: Request, response: Response):
         max_age=60 * 60 * 24 * 30,
         path="/",
     )
-    return session_payload(user, roles)
+    return response
 
 
 @router.post("/change-password")

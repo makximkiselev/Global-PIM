@@ -2,20 +2,16 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import CompetitorMapping from "./CompetitorMapping";
+import PageHeader from "../components/ui/PageHeader";
+import PageTabs from "../components/ui/PageTabs";
 import "../styles/product-groups.css";
 import "../styles/competitor-mapping.css";
 
 type SourcesTab = "sources" | "params";
-type ParamsView = "marketplaces" | "competitors";
 
 function normalizeTab(value: string | null): SourcesTab {
   if (value === "params") return "params";
   return "sources";
-}
-
-function normalizeParamsView(value: string | null): ParamsView {
-  if (value === "competitors") return "competitors";
-  return "marketplaces";
 }
 
 export default function SourcesMapping() {
@@ -23,16 +19,11 @@ export default function SourcesMapping() {
   const [tab, setTabState] = useState<SourcesTab>(normalizeTab(searchParams.get("tab")));
   const [selectedCategoryId, setSelectedCategoryId] = useState(searchParams.get("category") || "");
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
-  const [paramsView, setParamsViewState] = useState<ParamsView>(normalizeParamsView(searchParams.get("params_view")));
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
     setTabState((prev) => (prev === nextTab ? prev : nextTab));
     setSelectedCategoryId(searchParams.get("category") || "");
-    setParamsViewState((prev) => {
-      const nextView = normalizeParamsView(searchParams.get("params_view"));
-      return prev === nextView ? prev : nextView;
-    });
   }, [searchParams]);
 
   function setTab(nextTab: SourcesTab) {
@@ -51,32 +42,21 @@ export default function SourcesMapping() {
     setSearchParams(next, { replace: true });
   }
 
-  function setParamsView(nextView: ParamsView) {
-    setParamsViewState(nextView);
-    const next = new URLSearchParams(searchParams);
-    next.set("params_view", nextView);
-    setSearchParams(next, { replace: true });
-  }
-
   return (
     <div className="dashboard-page page-shell sm-pageRoot" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div className="page-header sm-pageHeader">
-        <div className="page-header-main">
-          <div className="page-title">Маппинг источников</div>
-          <div className="page-subtitle">Единый блок сопоставления категорий и параметров по маркетплейсам и конкурентам.</div>
-        </div>
-        <div className="page-header-actions">
-          <Link className="btn" to="/">← На главную</Link>
-        </div>
-      </div>
-      <div className="page-tabs sm-pageTabs">
-        <button className={`page-tab ${tab === "sources" ? "active" : ""}`} onClick={() => setTab("sources")}>
-          Категории и источники
-        </button>
-        <button className={`page-tab ${tab === "params" ? "active" : ""}`} onClick={() => setTab("params")}>
-          Сопоставление параметров
-        </button>
-      </div>
+      <PageHeader
+        title="Маппинг источников"
+        subtitle="Единый блок сопоставления категорий и параметров по маркетплейсам и конкурентам."
+        actions={<Link className="btn" to="/">На главную</Link>}
+      />
+      <PageTabs
+        activeKey={tab}
+        onChange={(key) => setTab(key as SourcesTab)}
+        items={[
+          { key: "sources", label: "Категории и источники" },
+          { key: "params", label: "Сопоставление параметров" },
+        ]}
+      />
 
       <div className="card sm-shell">
         {tab === "sources" ? (
@@ -119,19 +99,6 @@ export default function SourcesMapping() {
             setSelectedCategory(categoryId, categoryName);
           }}
           useCatalogTreeForFeatures
-          featureView={paramsView}
-          onFeatureViewChange={setParamsView}
-          renderFeatureDetailExtra={(categoryId, categoryName) => (
-            <div className="sm-section sm-sectionBordered">
-              <div className="sm-sectionHead">
-                <div>
-                  <div className="sm-sectionTitle">Параметры конкурентов</div>
-                  <div className="sm-sectionSub">Сопоставление полей конкурентов с тем же шаблоном выбранной категории.</div>
-                </div>
-              </div>
-              <CompetitorMapping embedded view="mapping" categoryId={categoryId} categoryName={categoryName} />
-            </div>
-          )}
         />
       )}
       </div>

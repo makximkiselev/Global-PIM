@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import CategorySidebar from "../components/CategorySidebar";
@@ -18,8 +18,7 @@ type SourcesMarketplaceSectionProps = {
   useCatalogTreeForFeatures?: boolean;
   renderCategoryDetailExtra?: (categoryId: string, categoryName: string) => ReactNode;
   renderFeatureDetailExtra?: (categoryId: string, categoryName: string) => ReactNode;
-  featureView?: "marketplaces" | "competitors";
-  onFeatureViewChange?: (view: "marketplaces" | "competitors") => void;
+  renderFeatureSidebarExtra?: (categoryId: string, categoryName: string) => ReactNode;
 };
 
 const SOURCES_MAPPING_CACHE_TTL_MS = 24 * 60 * 60_000;
@@ -142,8 +141,13 @@ type CategoriesResp = {
       provider_category_name?: string;
       catalog_ids: string[];
       catalog_paths: string[];
-    }>;
-  }>>;
+      }>;
+    }>>;
+  competitor_states?: Record<string, {
+    configured: boolean;
+    template_id?: string | null;
+    source_category_id?: string | null;
+  }>;
 };
 
 type AttrParam = {
@@ -241,6 +245,31 @@ type AttrSaveResp = {
   sources?: Record<string, any>;
 };
 
+type CompetitorSiteKey = "restore" | "store77";
+type CompetitorFieldMeta = {
+  name: string;
+  section?: string;
+  key?: string;
+};
+
+type CompetitorCategoryResp = {
+  ok: boolean;
+  category_id: string;
+  template_id?: string | null;
+  template?: { id?: string; name?: string; category_id?: string | null } | null;
+  master_fields: Array<{ code: string; name?: string | null; required?: boolean | null; type?: string | null }>;
+  data: {
+    links?: Partial<Record<CompetitorSiteKey, string>>;
+    mapping_by_site?: Partial<Record<CompetitorSiteKey, Record<string, string>>>;
+    mapping?: Record<string, string>;
+  };
+};
+
+type CompetitorFieldsBatchResp = {
+  ok: boolean;
+  results: Record<string, { ok: boolean; fields?: string[]; fields_meta?: CompetitorFieldMeta[]; skipped?: boolean; error?: string }>;
+};
+
 type LinkResp = {
   ok: boolean;
   catalog_category_id: string;
@@ -328,6 +357,11 @@ const PROVIDER_SLOTS: Record<string, string> = {
 };
 
 const MAPPING_PROVIDER_CODES = Object.keys(PROVIDER_SLOTS);
+const COMPETITOR_PROVIDER_SLOTS: Record<CompetitorSiteKey, string> = {
+  restore: "re:Store",
+  store77: "Store77",
+};
+const COMPETITOR_PROVIDER_CODES = Object.keys(COMPETITOR_PROVIDER_SLOTS) as CompetitorSiteKey[];
 
 const DEFAULT_SERVICE_PARAM_DEFS: ServiceParamDef[] = [
   { key: "sku_gt", title: "SKU GT" },
@@ -470,6 +504,17 @@ function serviceKeyFromRow(row: AttrRow, serviceDefs: ServiceParamDef[]): string
     if (aliases.some((alias) => qnorm(alias) === nm)) return serviceKey;
   }
   return "";
+}
+
+function competitorFieldLabel(fieldKey: string, meta: CompetitorFieldMeta[]): string {
+  const key = String(fieldKey || "").trim();
+  if (!key) return "";
+  const hit = (meta || []).find((item) => String(item.key || item.name || "").trim() === key);
+  return String(hit?.name || key);
+}
+
+function sourceProviderLabel(providerCode: string): string {
+  return PROVIDER_SLOTS[providerCode] || COMPETITOR_PROVIDER_SLOTS[providerCode as CompetitorSiteKey] || providerCode;
 }
 
 function enforceServiceRowsTop(rowsIn: AttrRow[], serviceDefs: ServiceParamDef[]): AttrRow[] {
@@ -836,8 +881,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     useCatalogTreeForFeatures = false,
     renderCategoryDetailExtra,
     renderFeatureDetailExtra,
-    featureView = "marketplaces",
-    onFeatureViewChange,
+    renderFeatureSidebarExtra,
   } = props;
   const [mainTab, setMainTab] = useState<MainTab>(forcedMainTab || "import");
   const [importTab, setImportTab] = useState<ImportTab>(forcedImportTab || "categories");
@@ -857,6 +901,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrSelectedCategoryId, setAttrSelectedCategoryId] = useState("");
   const [attrDetailsLoading, setAttrDetailsLoading] = useState(false);
   const [attrDetails, setAttrDetails] = useState<AttrDetailsResp | null>(null);
+  const [competitorTemplateFields, setCompetitorTemplateFields] = useState<CompetitorCategoryResp["master_fields"]>([]);
+  const [competitorLinks, setCompetitorLinks] = useState<Record<CompetitorSiteKey, string>>({ restore: "", store77: "" });
+  const [competitorMappingBySite, setCompetitorMappingBySite] = useState<Record<CompetitorSiteKey, Record<string, string>>>({ restore: {}, store77: {} });
+  const [competitorFieldMetaBySite, setCompetitorFieldMetaBySite] = useState<Record<CompetitorSiteKey, CompetitorFieldMeta[]>>({ restore: [], store77: [] });
+  const [competitorFieldsBySite, setCompetitorFieldsBySite] = useState<Record<CompetitorSiteKey, string[]>>({ restore: [], store77: [] });
   const [attrDetailsError, setAttrDetailsError] = useState("");
   const [attrDetailsErrorCode, setAttrDetailsErrorCode] = useState("");
   const [attrRows, setAttrRows] = useState<AttrRow[]>([]);
@@ -867,10 +916,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrDraftExists, setAttrDraftExists] = useState(false);
   const [catalogAttrOptions, setCatalogAttrOptions] = useState<CatalogAttrOption[]>([]);
   const [serviceParamDefs, setServiceParamDefs] = useState<ServiceParamDef[]>(DEFAULT_SERVICE_PARAM_DEFS);
+  const [attrCatalogCollapsed, setAttrCatalogCollapsed] = useState(false);
   const [attrTemplateTab, setAttrTemplateTab] = useState<AttrTemplateTab>("all");
   const [attrRowFilter, setAttrRowFilter] = useState<AttrRowFilter>("attention");
   const [attrRowQuery, setAttrRowQuery] = useState("");
-  const [attrSourceProvider, setAttrSourceProvider] = useState<"all" | string>("yandex_market");
+  const [collapsedSourceProviders, setCollapsedSourceProviders] = useState<Record<string, boolean>>({});
+  const [collapsedSidebarExtras, setCollapsedSidebarExtras] = useState<Record<string, boolean>>({});
+  const [competitorMappingCollapsed, setCompetitorMappingCollapsed] = useState(false);
   const [dragParamKey, setDragParamKey] = useState("");
   const [dragProvider, setDragProvider] = useState("");
   const [dropCellKey, setDropCellKey] = useState("");
@@ -884,6 +936,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   } | null>(null);
   const [pendingScrollRowId, setPendingScrollRowId] = useState("");
   const [pendingScrollFocus, setPendingScrollFocus] = useState(false);
+  const [attrTableScrollWidth, setAttrTableScrollWidth] = useState(0);
 
   const [catalogQuery, setCatalogQuery] = useState("");
   const [selectedCatalogIdState, setSelectedCatalogIdState] = useState("");
@@ -897,8 +950,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [savedToast, setSavedToast] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState("");
   const [savedToastText, setSavedToastText] = useState("Сохранено");
+  const attrTableWrapRef = useRef<HTMLDivElement | null>(null);
+  const attrTableRef = useRef<HTMLDivElement | null>(null);
+  const attrBottomScrollRef = useRef<HTMLDivElement | null>(null);
+  const syncingAttrScrollRef = useRef<"table" | "bottom" | null>(null);
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
   const [bindingStates, setBindingStates] = useState<CategoriesResp["binding_states"]>({});
+  const [competitorStates, setCompetitorStates] = useState<CategoriesResp["competitor_states"]>({});
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [attrCacheHydratedFor, setAttrCacheHydratedFor] = useState("");
   const [attrDraftAutoBuilt, setAttrDraftAutoBuilt] = useState(false);
@@ -936,6 +994,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setProviderCategories(data.provider_categories || {});
       setMappings(data.mappings || {});
       setBindingStates(data.binding_states || {});
+      setCompetitorStates(data.competitor_states || {});
       return data;
     }
     const persisted = loadPersistentSourcesCache<CategoriesResp>(SOURCES_CATEGORIES_CACHE_KEY, SOURCES_MAPPING_CACHE_TTL_MS);
@@ -947,6 +1006,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setProviderCategories(persisted.provider_categories || {});
       setMappings(persisted.mappings || {});
       setBindingStates(persisted.binding_states || {});
+      setCompetitorStates(persisted.competitor_states || {});
       return persisted;
     }
     setLoading(true);
@@ -961,6 +1021,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setProviderCategories(data.provider_categories || {});
       setMappings(data.mappings || {});
       setBindingStates(data.binding_states || {});
+      setCompetitorStates(data.competitor_states || {});
       return data;
     } catch (e) {
       setErr((e as Error).message || "Ошибка загрузки");
@@ -1113,6 +1174,77 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
+  async function loadCompetitorDetails(categoryId: string) {
+    if (!categoryId) {
+      setCompetitorTemplateFields([]);
+      setCompetitorLinks({ restore: "", store77: "" });
+      setCompetitorMappingBySite({ restore: {}, store77: {} });
+      setCompetitorFieldMetaBySite({ restore: [], store77: [] });
+      setCompetitorFieldsBySite({ restore: [], store77: [] });
+      return;
+    }
+
+    const data = await api<CompetitorCategoryResp>(`/competitor-mapping/category/${encodeURIComponent(categoryId)}`);
+    const links = {
+      restore: String(data?.data?.links?.restore || ""),
+      store77: String(data?.data?.links?.store77 || ""),
+    };
+    const mappingBySite = {
+      restore: { ...(((data?.data?.mapping_by_site || {}).restore || data?.data?.mapping || {}) as Record<string, string>) },
+      store77: { ...(((data?.data?.mapping_by_site || {}).store77 || {}) as Record<string, string>) },
+    };
+
+    setCompetitorTemplateFields(Array.isArray(data.master_fields) ? data.master_fields : []);
+    setCompetitorLinks(links);
+    setCompetitorMappingBySite(mappingBySite);
+
+    const cacheKey = `competitor.fields.${categoryId}`;
+    let cachedFields = { restore: [], store77: [] } as Record<CompetitorSiteKey, string[]>;
+    let cachedMeta = { restore: [], store77: [] } as Record<CompetitorSiteKey, CompetitorFieldMeta[]>;
+    try {
+      const raw = window.localStorage.getItem(cacheKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      cachedFields = {
+        restore: Array.isArray(parsed?.restore) ? parsed.restore : [],
+        store77: Array.isArray(parsed?.store77) ? parsed.store77 : [],
+      };
+      cachedMeta = {
+        restore: Array.isArray(parsed?.meta?.restore) ? parsed.meta.restore : [],
+        store77: Array.isArray(parsed?.meta?.store77) ? parsed.meta.store77 : [],
+      };
+    } catch {
+      // ignore cache parse issues
+    }
+
+    setCompetitorFieldsBySite(cachedFields);
+    setCompetitorFieldMetaBySite(cachedMeta);
+
+    const hasSavedLinks = !!links.restore.trim() || !!links.store77.trim();
+    const hasCachedFields = cachedMeta.restore.length + cachedMeta.store77.length + cachedFields.restore.length + cachedFields.store77.length > 0;
+    if (!hasSavedLinks || hasCachedFields) return;
+
+    const fieldsResp = await api<CompetitorFieldsBatchResp>("/competitor-mapping/competitor-fields-batch", {
+      method: "POST",
+      body: JSON.stringify({ links }),
+    });
+    const nextFields: Record<CompetitorSiteKey, string[]> = { restore: [], store77: [] };
+    const nextMeta: Record<CompetitorSiteKey, CompetitorFieldMeta[]> = { restore: [], store77: [] };
+    for (const site of COMPETITOR_PROVIDER_CODES) {
+      const item = fieldsResp?.results?.[site];
+      if (item?.ok) {
+        nextFields[site] = Array.isArray(item.fields) ? item.fields : [];
+        nextMeta[site] = Array.isArray(item.fields_meta) ? item.fields_meta : [];
+      }
+    }
+    setCompetitorFieldsBySite(nextFields);
+    setCompetitorFieldMetaBySite(nextMeta);
+    try {
+      window.localStorage.setItem(cacheKey, JSON.stringify({ restore: nextFields.restore, store77: nextFields.store77, meta: nextMeta }));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   async function runBackgroundSync() {
     setSyncing(true);
     setSyncMsg("Обновление локального кэша...");
@@ -1156,6 +1288,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (useCatalogTreeForFeatures && selectedCatalogId && attrSelectedCategoryId !== selectedCatalogId) return;
     setAttrCacheHydratedFor("");
     loadAttrDetails(activeAttrCategoryId);
+    loadCompetitorDetails(activeAttrCategoryId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAttrCategoryId, attrSelectedCategoryId, selectedCatalogId, mainTab, importTab, useCatalogTreeForFeatures]);
 
@@ -1177,6 +1310,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }, 180);
     return () => window.clearTimeout(timer);
   }, [mainTab, importTab, activeAttrCategoryId, attrRows, attrCacheHydratedFor, attrDraftDirty]);
+
+  function syncAttrScroll(source: "table" | "bottom") {
+    const table = attrTableWrapRef.current;
+    const bottom = attrBottomScrollRef.current;
+    if (!table || !bottom) return;
+    if (syncingAttrScrollRef.current && syncingAttrScrollRef.current !== source) return;
+    syncingAttrScrollRef.current = source;
+    const nextLeft = source === "table" ? table.scrollLeft : bottom.scrollLeft;
+    if (source === "table" && bottom.scrollLeft !== nextLeft) bottom.scrollLeft = nextLeft;
+    if (source === "bottom" && table.scrollLeft !== nextLeft) table.scrollLeft = nextLeft;
+    window.requestAnimationFrame(() => {
+      syncingAttrScrollRef.current = null;
+    });
+  }
 
   const displayProviders = useMemo<DisplayProvider[]>(() => {
     const byCode: Record<string, DisplayProvider> = {};
@@ -1231,6 +1378,40 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
     return m;
   }, [catalogNodes]);
+
+  const categorySuccessById = useMemo(() => {
+    const out = new Map<string, boolean>();
+    for (const node of catalogNodes || []) {
+      const marketplaceConfigured = displayProviders.some((prov) => categoryBindingMeta(node.id, prov.code).state !== "empty");
+      const competitorConfigured = !!competitorStates?.[node.id]?.configured;
+      out.set(node.id, marketplaceConfigured && competitorConfigured);
+    }
+    return out;
+  }, [catalogNodes, displayProviders, competitorStates, bindingStates, mappings, childrenByParent, parentById]);
+
+  const subtreeSuccessById = useMemo(() => {
+    const cache = new Map<string, boolean>();
+    const visit = (nodeId: string): boolean => {
+      const cached = cache.get(nodeId);
+      if (cached !== undefined) return cached;
+      const direct = !!categorySuccessById.get(nodeId);
+      if (direct) {
+        cache.set(nodeId, true);
+        return true;
+      }
+      const children = childrenByParent.get(nodeId) || [];
+      for (const child of children) {
+        if (visit(child.id)) {
+          cache.set(nodeId, true);
+          return true;
+        }
+      }
+      cache.set(nodeId, false);
+      return false;
+    };
+    for (const node of catalogNodes || []) visit(node.id);
+    return cache;
+  }, [catalogNodes, childrenByParent, categorySuccessById]);
 
   const treeSearchVisible = useMemo(() => {
     const q = qnorm(catalogQuery);
@@ -1291,6 +1472,32 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return out;
   }, [attrDetails]);
 
+  const mappingProvidersForUi = useMemo(
+    () => MAPPING_PROVIDER_CODES.filter((code) => !!PROVIDER_SLOTS[code]),
+    []
+  );
+
+  const competitorProvidersForUi = useMemo(
+    () => COMPETITOR_PROVIDER_CODES.filter((code) => !!COMPETITOR_PROVIDER_SLOTS[code]),
+    []
+  );
+
+  const sourceProvidersForUi = useMemo(
+    () => [...mappingProvidersForUi, ...competitorProvidersForUi],
+    [mappingProvidersForUi, competitorProvidersForUi]
+  );
+
+  const tableProvidersForUi = sourceProvidersForUi;
+
+  useEffect(() => {
+    const measure = () => {
+      setAttrTableScrollWidth(attrTableRef.current?.scrollWidth || 0);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [attrRows, tableProvidersForUi.length, competitorMappingBySite]);
+
   const usedAttrParamIds = useMemo(() => {
     const out: Record<string, Set<string>> = Object.fromEntries(MAPPING_PROVIDER_CODES.map((code) => [code, new Set<string>()])) as Record<string, Set<string>>;
     for (const row of attrRows || []) {
@@ -1301,6 +1508,49 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
     return out;
   }, [attrRows]);
+
+  const competitorTemplateFieldByCode = useMemo(() => {
+    const out = new Map<string, { code: string; name?: string | null; required?: boolean | null; type?: string | null }>();
+    for (const field of competitorTemplateFields || []) {
+      const code = String(field.code || "").trim();
+      if (code) out.set(code, field);
+    }
+    return out;
+  }, [competitorTemplateFields]);
+
+  const competitorMasterCodeByRowId = useMemo(() => {
+    const byCode = new Map<string, string>();
+    const byName = new Map<string, string>();
+    for (const field of competitorTemplateFields || []) {
+      const code = String(field.code || "").trim();
+      const name = qnorm(field.name || field.code || "");
+      if (code) byCode.set(qnorm(code), code);
+      if (code && name) byName.set(name, code);
+    }
+    const out = new Map<string, string>();
+    for (const row of attrRows || []) {
+      const serviceKey = serviceKeyFromRow(row, serviceParamDefs);
+      const catalogName = qnorm(row.catalog_name || "");
+      const code =
+        (serviceKey && (byCode.get(qnorm(serviceKey)) || byName.get(qnorm(serviceKey)))) ||
+        byName.get(catalogName) ||
+        byCode.get(catalogName) ||
+        "";
+      out.set(row.id, code || "");
+    }
+    return out;
+  }, [attrRows, competitorTemplateFields, serviceParamDefs]);
+
+  const usedCompetitorFieldIds = useMemo(() => {
+    const out: Record<CompetitorSiteKey, Set<string>> = { restore: new Set<string>(), store77: new Set<string>() };
+    for (const site of COMPETITOR_PROVIDER_CODES) {
+      for (const value of Object.values(competitorMappingBySite[site] || {})) {
+        const fieldId = String(value || "").trim();
+        if (fieldId) out[site].add(fieldId);
+      }
+    }
+    return out;
+  }, [competitorMappingBySite]);
 
   const visibleProviderParams = useMemo(() => {
     const byProv: Record<string, AttrParam[]> = Object.fromEntries(MAPPING_PROVIDER_CODES.map((code) => [code, []])) as Record<string, AttrParam[]>;
@@ -1314,8 +1564,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }, [attrProviderParams, usedAttrParamIds]);
 
   const visibleProviderParamSections = useMemo(() => {
-    const byProv: Record<string, Array<{ key: string; title: string; subtitle: string; items: AttrParam[] }>> =
-      Object.fromEntries(MAPPING_PROVIDER_CODES.map((code) => [code, []])) as Record<string, Array<{ key: string; title: string; subtitle: string; items: AttrParam[] }>>;
+    const byProv: Record<string, Array<{ key: string; title: string; subtitle: string; items: Array<{ id: string; name: string; kind?: string; values?: string[]; required?: boolean }> }>> =
+      Object.fromEntries(sourceProvidersForUi.map((code) => [code, []])) as Record<string, Array<{ key: string; title: string; subtitle: string; items: Array<{ id: string; name: string; kind?: string; values?: string[]; required?: boolean }> }>>;
     MAPPING_PROVIDER_CODES.forEach((providerCode) => {
       const items = visibleProviderParams[providerCode] || [];
       const systemItems = items.filter((item) => !!item.system);
@@ -1325,47 +1575,80 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         sections.push({
           key: "system",
           title: "Системные поля Я.Маркета",
-          subtitle: "Поля payload канала: offerId, name, vendor, description, pictures, barcode.",
+          subtitle: "offerId, name, vendor, description, pictures, barcode.",
           items: systemItems,
         });
       }
       sections.push({
         key: "category",
         title: providerCode === "yandex_market" ? "Параметры категории Я.Маркета" : "Параметры категории Ozon",
-        subtitle: providerCode === "yandex_market" ? "Поля шаблона категории, пришедшие из API Я.Маркета." : "Поля шаблона категории, пришедшие из API Ozon.",
+        subtitle: providerCode === "yandex_market" ? "Поля из шаблона категории." : "Поля из шаблона категории.",
         items: providerCode === "yandex_market" ? categoryItems : items,
       });
       byProv[providerCode] = sections;
     });
+    COMPETITOR_PROVIDER_CODES.forEach((providerCode) => {
+      const meta = competitorFieldMetaBySite[providerCode] || [];
+      const rawFields = competitorFieldsBySite[providerCode] || [];
+      const items = (meta.length
+        ? meta.map((item) => ({
+            id: String(item.key || item.name || "").trim(),
+            name: String(item.name || item.key || "").trim(),
+            kind: item.section ? "Источник" : "Поле",
+            values: item.section ? [String(item.section)] : [],
+            required: false,
+          }))
+        : rawFields.map((value) => ({
+            id: String(value || "").trim(),
+            name: String(value || "").trim(),
+            kind: "Поле",
+            values: [],
+            required: false,
+          })))
+        .filter((item) => item.id && !usedCompetitorFieldIds[providerCode].has(item.id))
+        .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+      byProv[providerCode] = [
+        {
+          key: "competitor",
+          title: `Поля ${COMPETITOR_PROVIDER_SLOTS[providerCode]}`,
+          subtitle: competitorLinks[providerCode]
+            ? "Поля уже загруженного конкурентного источника."
+            : "Для этой категории нет сохраненного конкурентного источника.",
+          items,
+        },
+      ];
+    });
     return byProv;
-  }, [visibleProviderParams]);
+  }, [visibleProviderParams, sourceProvidersForUi, competitorFieldMetaBySite, competitorFieldsBySite, competitorLinks, usedCompetitorFieldIds]);
 
   const providerParamStats = useMemo(() => {
     const out: Record<string, { total: number; visible: number; hiddenUsed: number }> =
-      Object.fromEntries(MAPPING_PROVIDER_CODES.map((code) => [code, { total: 0, visible: 0, hiddenUsed: 0 }])) as Record<string, { total: number; visible: number; hiddenUsed: number }>;
+      Object.fromEntries(sourceProvidersForUi.map((code) => [code, { total: 0, visible: 0, hiddenUsed: 0 }])) as Record<string, { total: number; visible: number; hiddenUsed: number }>;
     MAPPING_PROVIDER_CODES.forEach((providerCode) => {
       const total = (attrProviderParams[providerCode] || []).length;
       const visible = (visibleProviderParams[providerCode] || []).length;
       out[providerCode] = { total, visible, hiddenUsed: Math.max(0, total - visible) };
     });
+    COMPETITOR_PROVIDER_CODES.forEach((providerCode) => {
+      const total = (competitorFieldMetaBySite[providerCode] || []).length || (competitorFieldsBySite[providerCode] || []).length;
+      const visible = (visibleProviderParamSections[providerCode] || []).reduce((sum, section) => sum + section.items.length, 0);
+      out[providerCode] = { total, visible, hiddenUsed: Math.max(0, total - visible) };
+    });
     return out;
-  }, [attrProviderParams, visibleProviderParams]);
+  }, [attrProviderParams, visibleProviderParams, sourceProvidersForUi, competitorFieldMetaBySite, competitorFieldsBySite, visibleProviderParamSections]);
 
-  const mappingProvidersForUi = useMemo(
-    () => MAPPING_PROVIDER_CODES.filter((code) => !!PROVIDER_SLOTS[code]),
-    []
-  );
+  function toggleSourceProviderPanel(providerCode: string) {
+    setCollapsedSourceProviders((prev) => ({ ...prev, [providerCode]: !prev[providerCode] }));
+  }
 
-  useEffect(() => {
-    if (attrSourceProvider === "all") return;
-    if (mappingProvidersForUi.includes(attrSourceProvider)) return;
-    setAttrSourceProvider(mappingProvidersForUi[0] || "all");
-  }, [attrSourceProvider, mappingProvidersForUi]);
+  function openAllSourcePanels() {
+    setCollapsedSourceProviders({});
+    setCollapsedSidebarExtras({});
+  }
 
-  const sourceProvidersForUi = useMemo(
-    () => (attrSourceProvider === "all" ? mappingProvidersForUi : mappingProvidersForUi.filter((code) => code === attrSourceProvider)),
-    [attrSourceProvider, mappingProvidersForUi]
-  );
+  function toggleSidebarExtra(key: string) {
+    setCollapsedSidebarExtras((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   const catalogNameSuggests = useMemo(() => {
     const names = new Set<string>();
@@ -1464,9 +1747,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const hasChildren = children.length > 0;
     const expanded = qnorm(catalogQuery) ? true : !!treeExpanded[node.id];
     const isSelected = selectedCatalogId === node.id;
-    const providerStates = displayProviders.map((prov) => categoryBindingMeta(node.id, prov.code).state);
-    const mappedProvidersCount = providerStates.filter((state) => state !== "empty").length;
-    const hasWarnProviders = providerStates.includes("aggregated");
+    const isFullNode = !!categorySuccessById.get(node.id);
+    const successChildrenCount = children.filter((child) => !!subtreeSuccessById.get(child.id)).length;
+    const totalCount = hasChildren ? children.length : 1;
+    const mappedProvidersCount = hasChildren ? successChildrenCount : (isFullNode ? 1 : 0);
+    const hasWarnProviders = hasChildren ? successChildrenCount > 0 && successChildrenCount < children.length : !isFullNode;
     return (
       <div key={node.id}>
         <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
@@ -1499,7 +1784,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             )}
             <span className="csb-treeName" title={node.name}>{node.name}</span>
             <span className={`csb-treeCount mm-treeMappingCount ${mappedProvidersCount > 0 ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""}`}>
-              {mappedProvidersCount}/{displayProviders.length || 0}
+              {mappedProvidersCount}/{totalCount}
             </span>
           </div>
         </div>
@@ -1824,11 +2109,33 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     );
   }
 
+  function setCompetitorProviderValue(rowId: string, provider: CompetitorSiteKey, fieldId: string) {
+    if (!attrEditMode) return;
+    const masterCode = competitorMasterCodeByRowId.get(rowId) || "";
+    if (!masterCode) return;
+    setAttrDraftDirty(true);
+    setCompetitorMappingBySite((prev) => {
+      const nextSite = { ...(prev[provider] || {}) };
+      const normalized = String(fieldId || "").trim();
+      if (!normalized) delete nextSite[masterCode];
+      else nextSite[masterCode] = normalized;
+      return { ...prev, [provider]: nextSite };
+    });
+  }
+
   function applySourceParamToRow(
     rowId: string,
     provider: string,
     param: { id: string; name: string; kind?: string; values?: string[]; required?: boolean }
   ) {
+    if ((COMPETITOR_PROVIDER_CODES as string[]).includes(provider)) {
+      setCompetitorProviderValue(rowId, provider as CompetitorSiteKey, String(param.id || ""));
+      setSelectedSourceParam(null);
+      setDragParamKey("");
+      setDragProvider("");
+      setDropCellKey("");
+      return;
+    }
     setAttrProviderValue(rowId, provider, {
       id: String(param.id || ""),
       name: String(param.name || ""),
@@ -1844,6 +2151,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }
 
   function clearAttrProviderValue(rowId: string, provider: string) {
+    if ((COMPETITOR_PROVIDER_CODES as string[]).includes(provider)) {
+      setCompetitorProviderValue(rowId, provider as CompetitorSiteKey, "");
+      return;
+    }
     setAttrProviderValue(rowId, provider, {
       id: "",
       name: "",
@@ -1923,6 +2234,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         method: "PUT",
         body: JSON.stringify({ rows: attrRows, apply_to_category_ids: applyTo }),
       });
+      await api(`/competitor-mapping/category/${encodeURIComponent(activeAttrCategoryId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ mapping_by_site: competitorMappingBySite }),
+      });
       invalidateSourcesReadCaches(activeAttrCategoryId);
       const cache = loadAttrDraftCache();
       cache.byCategory[activeAttrCategoryId] = {
@@ -1935,6 +2250,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setSavedTemplateId(String(resp.template_id || ""));
       await loadAttrBootstrap();
       await loadAttrDetails(activeAttrCategoryId);
+      await loadCompetitorDetails(activeAttrCategoryId);
       setAttrHasServerSaved(true);
       setAttrDraftDirty(false);
       setAttrEditMode(false);
@@ -2016,10 +2332,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       const service = isServiceRow(row, serviceParamDefs);
       if (attrTemplateTab === "base" && !service) continue;
       if (attrTemplateTab === "category" && service) continue;
-      const providerBindings = mappingProvidersForUi.filter((providerCode) => {
-        const value = row.provider_map?.[providerCode];
-        return !!String(value?.id || "").trim();
+      const marketplaceBindings = mappingProvidersForUi.filter((providerCode) => !!String(row.provider_map?.[providerCode]?.id || "").trim()).length;
+      const competitorBindings = competitorProvidersForUi.filter((providerCode) => {
+        const masterCode = competitorMasterCodeByRowId.get(row.id) || "";
+        return !!(masterCode && String(competitorMappingBySite[providerCode]?.[masterCode] || "").trim());
       }).length;
+      const providerBindings = marketplaceBindings + competitorBindings;
       const isUnmapped = providerBindings === 0;
       const needsAttention = !row.confirmed || isUnmapped;
       if (attrRowFilter === "ready" && !row.confirmed) continue;
@@ -2033,6 +2351,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             const value = row.provider_map?.[providerCode];
             return [value?.name || "", value?.kind || "", ...(Array.isArray(value?.values) ? value!.values : [])];
           }),
+          ...competitorProvidersForUi.map((providerCode) => {
+            const masterCode = competitorMasterCodeByRowId.get(row.id) || "";
+            const fieldId = masterCode ? String(competitorMappingBySite[providerCode]?.[masterCode] || "") : "";
+            return competitorFieldLabel(fieldId, competitorFieldMetaBySite[providerCode] || []);
+          }),
         ]
           .join(" ")
           .toLowerCase();
@@ -2045,7 +2368,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       byGroup[g].sort((a, b) => String(a.catalog_name || "").localeCompare(String(b.catalog_name || ""), "ru"));
     }
     return PARAM_GROUPS.map((g) => ({ group: g, rows: byGroup[g] })).filter((x) => x.rows.length > 0);
-  }, [attrRows, attrTemplateTab, serviceParamDefs, attrRowFilter, attrRowQuery, mappingProvidersForUi]);
+  }, [attrRows, attrTemplateTab, serviceParamDefs, attrRowFilter, attrRowQuery, mappingProvidersForUi, competitorProvidersForUi, competitorMasterCodeByRowId, competitorMappingBySite, competitorFieldMetaBySite]);
 
   const attrBaseRowsCount = useMemo(
     () => (attrRows || []).filter((row) => isServiceRow(row, serviceParamDefs)).length,
@@ -2066,7 +2389,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     let unmapped = 0;
     let attention = 0;
     for (const row of attrRows || []) {
-      const providerBindings = mappingProvidersForUi.filter((providerCode) => !!String(row.provider_map?.[providerCode]?.id || "").trim()).length;
+      const marketplaceBindings = mappingProvidersForUi.filter((providerCode) => !!String(row.provider_map?.[providerCode]?.id || "").trim()).length;
+      const competitorBindings = competitorProvidersForUi.filter((providerCode) => {
+        const masterCode = competitorMasterCodeByRowId.get(row.id) || "";
+        return !!(masterCode && String(competitorMappingBySite[providerCode]?.[masterCode] || "").trim());
+      }).length;
+      const providerBindings = marketplaceBindings + competitorBindings;
       const isUnmapped = providerBindings === 0;
       const needsAttention = !row.confirmed || isUnmapped;
       if (row.confirmed) ready += 1;
@@ -2080,7 +2408,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       attention,
       visible: groupedAttrRows.reduce((sum, section) => sum + section.rows.length, 0),
     };
-  }, [attrRows, mappingProvidersForUi, groupedAttrRows]);
+  }, [attrRows, mappingProvidersForUi, competitorProvidersForUi, competitorMasterCodeByRowId, competitorMappingBySite, groupedAttrRows]);
 
   const attrCategoryBindings = useMemo(() => {
     if (!activeAttrCategoryId) return [];
@@ -2440,68 +2768,101 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                 </>
               ) : null}
 
-              <div className="mm-attrLayout">
-                <div className="mm-attrLeft">
-                  <div className="mm-attrLeftHead">
-                    <div className="card-title">Категории</div>
-                    <div className="muted">{useCatalogTreeForFeatures ? catalogItems.length : attrCategories.length}</div>
-                  </div>
-                  {useCatalogTreeForFeatures ? (
-                    <CategorySidebar
-                      className="mm-treePaneShared mm-treePaneFeatures"
-                      title="Категории"
-                      hint="Структура каталога"
-                      searchValue={catalogQuery}
-                      onSearchChange={setCatalogQuery}
-                      searchPlaceholder="Быстрый поиск"
-                      controls={
-                        <button className="btn sm" type="button" onClick={hasExpandedNodes ? () => setTreeExpanded({}) : () => {
-                          const next: Record<string, boolean> = {};
-                          for (const [parentId, children] of childrenByParent.entries()) {
-                            if (parentId && children.length > 0) next[parentId] = true;
-                          }
-                          setTreeExpanded(next);
-                        }}>
-                          {hasExpandedNodes ? "Свернуть" : "Развернуть"}
-                        </button>
-                      }
-                    >
-                      <div className="csb-tree">
-                        {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
+              <div className={`mm-attrLayout ${attrCatalogCollapsed ? "isCatalogCollapsed" : ""}`}>
+                <div className={`mm-attrLeft ${attrCatalogCollapsed ? "isCollapsed" : ""}`}>
+                  {attrCatalogCollapsed ? (
+                    <div className="mm-attrLeftRail">
+                      <button
+                        type="button"
+                        className="mm-catalogToggleBtn"
+                        onClick={() => setAttrCatalogCollapsed(false)}
+                        aria-label="Показать каталог"
+                        title="Показать каталог"
+                      >
+                        <span className="mm-catalogToggleIcon">&gt;</span>
+                      </button>
+                      <div className="mm-attrLeftRailMeta">
+                        <div className="mm-attrLeftRailLabel">Каталог</div>
+                        <div className="mm-attrLeftRailValue">
+                          {attrDetails?.category?.name || selectedCatalogNode?.name || "Выбрано"}
+                        </div>
                       </div>
-                    </CategorySidebar>
-                  ) : attrCategoriesLoading ? (
-                    <div className="muted">Загрузка...</div>
-                  ) : attrCategories.length === 0 ? (
-                    <div className="muted">Нет сопоставленных категорий.</div>
-                  ) : (
-                    <div className="mm-attrCatList">
-                      {attrCategories.map((c) => {
-                        const active = activeAttrCategoryId === c.id;
-                        const status = c.status;
-                        const extraCount = Number(c.group_extra_count || 0);
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            className={`mm-attrCatItem ${active ? "active" : ""}`}
-                            onClick={() => {
-                              setAttrSelectedCategoryId(c.id);
-                              if (useCatalogTreeForFeatures) applySelectedCatalogId(c.id);
-                            }}
-                          >
-                            <span className={`mm-nodeDot ${status === "ok" ? "ok" : status === "warn" || status === "new" ? "warn" : "none"}`} />
-                            <span className="mm-attrCatContent">
-                              <span className="mm-attrCatTop">
-                                <span className="mm-catPath">{c.name}</span>
-                                {extraCount > 0 ? <span className="mm-attrCatBadge">+{extraCount}</span> : null}
-                              </span>
-                              <span className="mm-breadcrumbs">{c.path}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
                     </div>
+                  ) : (
+                    <>
+                      <div className="mm-attrLeftHead">
+                        <div>
+                          <div className="card-title">Категории</div>
+                          <div className="muted">{useCatalogTreeForFeatures ? catalogItems.length : attrCategories.length}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="mm-catalogToggleBtn"
+                          onClick={() => setAttrCatalogCollapsed(true)}
+                          aria-label="Скрыть каталог"
+                          title="Скрыть каталог"
+                        >
+                          <span className="mm-catalogToggleIcon">&lt;</span>
+                        </button>
+                      </div>
+                      {useCatalogTreeForFeatures ? (
+                        <CategorySidebar
+                          className="mm-treePaneShared mm-treePaneFeatures"
+                          title="Категории"
+                          hint="Структура каталога"
+                          searchValue={catalogQuery}
+                          onSearchChange={setCatalogQuery}
+                          searchPlaceholder="Быстрый поиск"
+                          controls={
+                            <button className="btn sm" type="button" onClick={hasExpandedNodes ? () => setTreeExpanded({}) : () => {
+                              const next: Record<string, boolean> = {};
+                              for (const [parentId, children] of childrenByParent.entries()) {
+                                if (parentId && children.length > 0) next[parentId] = true;
+                              }
+                              setTreeExpanded(next);
+                            }}>
+                              {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+                            </button>
+                          }
+                        >
+                          <div className="csb-tree">
+                            {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
+                          </div>
+                        </CategorySidebar>
+                      ) : attrCategoriesLoading ? (
+                        <div className="muted">Загрузка...</div>
+                      ) : attrCategories.length === 0 ? (
+                        <div className="muted">Нет сопоставленных категорий.</div>
+                      ) : (
+                        <div className="mm-attrCatList">
+                          {attrCategories.map((c) => {
+                            const active = activeAttrCategoryId === c.id;
+                            const status = c.status;
+                            const extraCount = Number(c.group_extra_count || 0);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className={`mm-attrCatItem ${active ? "active" : ""}`}
+                                onClick={() => {
+                                  setAttrSelectedCategoryId(c.id);
+                                  if (useCatalogTreeForFeatures) applySelectedCatalogId(c.id);
+                                }}
+                              >
+                                <span className={`mm-nodeDot ${status === "ok" ? "ok" : status === "warn" || status === "new" ? "warn" : "none"}`} />
+                                <span className="mm-attrCatContent">
+                                  <span className="mm-attrCatTop">
+                                    <span className="mm-catPath">{c.name}</span>
+                                    {extraCount > 0 ? <span className="mm-attrCatBadge">+{extraCount}</span> : null}
+                                  </span>
+                                  <span className="mm-breadcrumbs">{c.path}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -2548,35 +2909,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     <div className="muted mm-attrStateBlock">Нет данных по категории.</div>
                   ) : (
                     <>
-                      {renderFeatureDetailExtra ? (
-                        <div className="mm-tabs mm-attrTopTabs" style={{ marginBottom: 12 }}>
-                          <button
-                            type="button"
-                            className={`mm-tab ${featureView === "marketplaces" ? "active" : ""}`}
-                            onClick={() => onFeatureViewChange?.("marketplaces")}
-                          >
-                            Маркетплейсы
-                          </button>
-                          <button
-                            type="button"
-                            className={`mm-tab ${featureView === "competitors" ? "active" : ""}`}
-                            onClick={() => onFeatureViewChange?.("competitors")}
-                          >
-                            Конкуренты
-                          </button>
-                        </div>
-                      ) : null}
-
-                      {renderFeatureDetailExtra && featureView === "competitors" && activeAttrCategoryId ? (
-                        <div className="mm-featurePaneSingle">
-                          {renderFeatureDetailExtra(
-                            activeAttrCategoryId,
-                            attrDetails?.category?.name || selectedCatalogNode?.name || ""
-                          )}
-                        </div>
-                      ) : (
-                        <>
-                        <div className="mm-attrWorkbenchGrid">
+                      <div className="mm-attrWorkbenchGrid">
                           <div className="mm-templateBoard mm-templateBoardWide mm-templateBoardMain">
                             <div className="mm-attrHeader">
                               <div className="mm-attrHeaderMain">
@@ -2651,9 +2984,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
                             {attrDraftAutoBuilt && !attrHasServerSaved ? (
                               <div className="mm-draftNotice">
-                                <div className="mm-draftNoticeTitle">Черновик собран автоматически</div>
+                                <div className="mm-draftNoticeHead">
+                                  <div className="mm-draftNoticeTitle">Черновик собран автоматически</div>
+                                  <button className="btn mm-miniBtn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
+                                    Очистить
+                                  </button>
+                                </div>
                                 <div className="muted" style={{ lineHeight: 1.45 }}>
-                                  Для этой категории не было сохраненного маппинга. Система сначала использовала совпадения из уже сохраненных категорий, а недостающее добрала по структуре Я.Маркета. Проверь строки, при необходимости поправь и сохрани мастер-шаблон.
+                                  Категория собрана из уже сохраненных совпадений и структуры источников. Проверь строки и сохрани итоговый шаблон.
                                 </div>
                               </div>
                             ) : null}
@@ -2662,11 +3000,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               <div className="mm-workbenchHead mm-workbenchHeadCompact">
                                 <div>
                                   <div className="mm-workbenchTitle">Инфомодель PIM</div>
-                                  <div className="mm-workbenchSub">Здесь фиксируется смысл параметра: в какой слой PIM он попадает, с какими полями площадок связан и должен ли участвовать в экспорте.</div>
+                                  <div className="mm-workbenchSub">Слева смысл параметра PIM, справа привязки ко всем источникам выбранной категории.</div>
                                 </div>
                               </div>
 
-                              <div className="mm-attrToolbar">
+                            <div className="mm-attrToolbar">
                             <div className="mm-attrToolbarMain">
                               <input
                                 className="pn-input mm-attrSearch"
@@ -2694,15 +3032,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               </div>
                             </div>
                             <div className="mm-attrToolbarActions">
-                              {!attrHasServerSaved ? (
-                                <button className="btn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
-                                  Очистить черновик
-                                </button>
-                              ) : (
+                              {attrHasServerSaved ? (
                                 <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving || attrAiMatching}>
                                   Редактировать
                                 </button>
-                              )}
+                              ) : null}
                                 <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
                                 Добавить параметр
                                 </button>
@@ -2715,11 +3049,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             </div>
                           </div>
 
-                          <div className="mm-attrTableWrap">
-                            <div className="mm-attrTable">
+                          <div
+                            ref={attrTableWrapRef}
+                            className="mm-attrTableWrap"
+                            onScroll={() => syncAttrScroll("table")}
+                          >
+                            <div
+                              ref={attrTableRef}
+                              className="mm-attrTable"
+                              style={{ gridTemplateColumns: `250px repeat(${tableProvidersForUi.length}, minmax(220px, 1fr)) 76px` }}
+                            >
                           <div className="mm-attrTh">Параметр PIM</div>
-                          {mappingProvidersForUi.map((providerCode) => (
-                            <div key={`th-${providerCode}`} className="mm-attrTh">{PROVIDER_SLOTS[providerCode]}</div>
+                          {tableProvidersForUi.map((providerCode) => (
+                            <div key={`th-${providerCode}`} className="mm-attrTh">{sourceProviderLabel(providerCode)}</div>
                           ))}
                           <div className="mm-attrTh mm-attrThReady">
                             <label className="mm-check mm-checkHeader">
@@ -2767,9 +3109,65 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         </select>
                                       </div>
                                     </div>
-                                    {mappingProvidersForUi.map((providerCode) => {
-                                      const providerValue = row.provider_map?.[providerCode] || { id: "", name: "", kind: "", values: [], export: false };
+                                    {tableProvidersForUi.map((providerCode) => {
                                       const dropKey = `${row.id}:${providerCode}`;
+                                      const isCompetitor = (COMPETITOR_PROVIDER_CODES as string[]).includes(providerCode);
+                                      const masterCode = competitorMasterCodeByRowId.get(row.id) || "";
+                                      const competitorValue = isCompetitor && masterCode ? String(competitorMappingBySite[providerCode as CompetitorSiteKey]?.[masterCode] || "") : "";
+                                      const competitorLabel = isCompetitor ? competitorFieldLabel(competitorValue, competitorFieldMetaBySite[providerCode as CompetitorSiteKey] || []) : "";
+                                      if (isCompetitor) {
+                                        const hasTemplateField = !!masterCode;
+                                        return (
+                                          <div
+                                            key={dropKey}
+                                            className={`mm-attrTd mm-dropCell mm-dropCellRich ${dropCellKey === dropKey ? "isDragOver" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode ? "isSelectable" : ""}`}
+                                            onDragOver={(e) => {
+                                              if (dragProvider && dragProvider !== providerCode) {
+                                                e.dataTransfer.dropEffect = "none";
+                                                setDropCellKey((prev) => (prev === dropKey ? "" : prev));
+                                                return;
+                                              }
+                                              if (!attrEditMode || !hasTemplateField) {
+                                                e.dataTransfer.dropEffect = "none";
+                                                return;
+                                              }
+                                              e.preventDefault();
+                                              e.dataTransfer.dropEffect = "copy";
+                                              setDropCellKey(dropKey);
+                                            }}
+                                            onDragLeave={() => setDropCellKey((prev) => (prev === dropKey ? "" : prev))}
+                                            onDrop={(e) => onDropParam(row.id, providerCode, e)}
+                                            onClick={() => {
+                                              if (!attrEditMode || !hasTemplateField || !selectedSourceParam || selectedSourceParam.provider !== providerCode) return;
+                                              applySourceParamToRow(row.id, providerCode, selectedSourceParam);
+                                            }}
+                                          >
+                                            {!hasTemplateField ? (
+                                              <span className="muted">Нет поля шаблона для конкурентов</span>
+                                            ) : competitorValue ? (
+                                              <div className="mm-dropCellContent">
+                                                <div className="mm-dropCellTop">
+                                                  <div className="mm-dropName">
+                                                    <span>{competitorLabel || competitorValue}</span>
+                                                    <span className="mm-attrParamKind">Конкурент</span>
+                                                  </div>
+                                                </div>
+                                                <div className="mm-dropMeta">
+                                                  <span className="mm-attrParamValues">{competitorValue}</span>
+                                                  <button className="btn mm-miniBtn" type="button" onClick={() => clearAttrProviderValue(row.id, providerCode)} disabled={!attrEditMode}>Очистить</button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <span className="muted">
+                                                {selectedSourceParam && selectedSourceParam.provider === providerCode
+                                                  ? "Нажмите, чтобы привязать выбранный параметр"
+                                                  : "Перетащите поле конкурента или выберите его кликом"}
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      }
+                                      const providerValue = row.provider_map?.[providerCode] || { id: "", name: "", kind: "", values: [], export: false };
                                       return (
                                         <div
                                           key={dropKey}
@@ -2850,115 +3248,162 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                           )}
                             </div>
                           </div>
+                          <div
+                            ref={attrBottomScrollRef}
+                            className="mm-attrBottomScroll"
+                            onScroll={() => syncAttrScroll("bottom")}
+                          >
+                            <div className="mm-attrBottomScrollInner" style={{ width: Math.max(attrTableScrollWidth, 1) }} />
+                          </div>
+                          {renderFeatureDetailExtra ? (
+                            <div className={`mm-featureMappingPanel ${competitorMappingCollapsed ? "isCollapsed" : ""}`}>
+                              <div className="mm-featureMappingHead">
+                                <div>
+                                  <div className="mm-workbenchTitle">Источники конкурентов</div>
+                                  <div className="mm-workbenchSub">Те же строки PIM, но для конкурентных площадок этой категории.</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn mm-miniBtn"
+                                  onClick={() => setCompetitorMappingCollapsed((prev) => !prev)}
+                                >
+                                  {competitorMappingCollapsed ? "Развернуть" : "Свернуть"}
+                                </button>
+                              </div>
+                              {!competitorMappingCollapsed ? (
+                                <div className="mm-featureMappingBody">
+                                  {renderFeatureDetailExtra(activeAttrCategoryId, attrDetails.category.name)}
+                                </div>
+                              ) : (
+                                <div className="mm-featurePaneHint">Блок сопоставления конкурентов скрыт. Разверни его, когда нужно добить категорию до полного покрытия.</div>
+                              )}
+                            </div>
+                          ) : null}
                         </div>
                         </div>
                         <aside className="mm-paramPool mm-paramPoolSidebar">
-                          <div className="mm-paramPoolHead">
-                            <div>
-                              <div className="mm-workbenchTitle">Пул параметров источников</div>
-                              <div className="mm-workbenchSub">
-                                Выбери источник и перетаскивай нужные поля в строки PIM. Все, что уже сопоставлено, из пула скрывается.
-                              </div>
-                            </div>
-                            <div className="mm-attrSourceTabs">
-                              <button
-                                type="button"
-                                className={`mm-sourceTab ${attrSourceProvider === "all" ? "active" : ""}`}
-                                onClick={() => setAttrSourceProvider("all")}
-                              >
-                                Все источники
-                              </button>
-                              {mappingProvidersForUi.map((providerCode) => (
-                                <button
-                                  key={`src-tab-${providerCode}`}
-                                  type="button"
-                                  className={`mm-sourceTab ${attrSourceProvider === providerCode ? "active" : ""}`}
-                                  onClick={() => setAttrSourceProvider(providerCode)}
-                                >
-                                  {PROVIDER_SLOTS[providerCode]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {selectedSourceParam ? (
-                            <div className="mm-paramPoolSelection">
-                              <div className="mm-paramPoolSelectionText">
-                                Выбран параметр: <strong>{selectedSourceParam.name}</strong>
-                                <span>{PROVIDER_SLOTS[selectedSourceParam.provider] || selectedSourceParam.provider}</span>
-                              </div>
-                              <button
-                                type="button"
-                                className="btn mm-miniBtn"
-                                onClick={() => setSelectedSourceParam(null)}
-                              >
-                                Снять выбор
-                              </button>
-                            </div>
-                          ) : null}
-
-                          <div className="mm-paramPoolGrid">
-                            {sourceProvidersForUi.map((providerCode) => (
-                              <div key={providerCode} className="mm-attrParamCol">
-                                <div className="mm-attrParamColHead">
-                                  <div className="mm-attrParamColTitle">{PROVIDER_SLOTS[providerCode]}</div>
-                                  <div className="mm-attrParamColMeta">
-                                    {(providerParamStats[providerCode]?.visible || 0)} свободно из {(providerParamStats[providerCode]?.total || 0)}
+                            <div className="mm-paramPoolHead">
+                              <div className="mm-paramPoolHeadMain">
+                                <div>
+                                  <div className="mm-workbenchTitle">Источники категории</div>
+                                  <div className="mm-workbenchSub">
+                                    Открывай только нужные секции. Все уже сопоставленное скрывается из списков автоматически.
                                   </div>
                                 </div>
-                                <div className="mm-attrParamList mm-attrParamListStandalone">
-                                  {(visibleProviderParamSections[providerCode] || []).map((section) => (
-                                    <div key={`${providerCode}-${section.key}`} className="mm-attrParamSection">
-                                      <div className="mm-attrParamSectionHead">
-                                        <div className="mm-attrParamSectionTitle">{section.title}</div>
-                                        <div className="mm-attrParamSectionSub">{section.subtitle}</div>
-                                      </div>
-                                      {section.items.length === 0 ? (
-                                        <div className="muted mm-attrParamSectionEmpty">Нет доступных полей.</div>
-                                      ) : (
-                                        section.items.map((p) => (
-                                          <button
-                                            key={`${providerCode}-${p.id}`}
-                                            type="button"
-                                            className={`mm-attrParamItem ${dragParamKey === `${providerCode}:${String(p.id)}` ? "isDragging" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode && selectedSourceParam.id === String(p.id) ? "isSelected" : ""}`}
-                                            draggable={attrEditMode}
-                                            onDragStart={(e) => onDragParam(providerCode, p, e)}
-                                            onDragEnd={onDragEndParam}
-                                            onClick={() => {
-                                              if (!attrEditMode) return;
-                                              const nextId = String(p.id || "");
-                                              setSelectedSourceParam((prev) =>
-                                                prev && prev.provider === providerCode && prev.id === nextId
-                                                  ? null
-                                                  : {
-                                                      provider: providerCode,
-                                                      id: nextId,
-                                                      name: String(p.name || ""),
-                                                      kind: String(p.kind || ""),
-                                                      values: Array.isArray(p.values) ? p.values : [],
-                                                      required: !!p.required,
-                                                    }
-                                              );
-                                            }}
-                                            disabled={!attrEditMode}
-                                          >
-                                            <span className="mm-attrParamTop">
-                                              <span>{p.name}</span>
-                                              <span className="mm-attrParamKind">{humanizeParamKind(p.kind)}</span>
-                                            </span>
-                                            <span className="mm-attrParamValues">{valuesText(p.values)}</span>
-                                          </button>
-                                        ))
-                                      )}
-                                    </div>
+                                <div className="mm-attrSourceTabs mm-attrSourceTabsStacked mm-sourceQuickToggles">
+                                  <button
+                                    type="button"
+                                    className="mm-sourceTab active"
+                                    onClick={openAllSourcePanels}
+                                  >
+                                    Все
+                                  </button>
+                                  {sourceProvidersForUi.map((providerCode) => (
+                                    <button
+                                      key={`src-tab-${providerCode}`}
+                                      type="button"
+                                      className={`mm-sourceTab ${collapsedSourceProviders[providerCode] ? "" : "active"}`}
+                                      onClick={() => toggleSourceProviderPanel(providerCode)}
+                                    >
+                                      {sourceProviderLabel(providerCode)}
+                                    </button>
                                   ))}
-                                  {(visibleProviderParams[providerCode] || []).length === 0 && (
-                                    <div className="muted">Все параметры из пула уже использованы.</div>
-                                  )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
+                            </div>
+
+                            {selectedSourceParam ? (
+                              <div className="mm-paramPoolSelection">
+                                <div className="mm-paramPoolSelectionText">
+                                  Выбран параметр: <strong>{selectedSourceParam.name}</strong>
+                                  <span>{sourceProviderLabel(selectedSourceParam.provider)}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn mm-miniBtn"
+                                  onClick={() => setSelectedSourceParam(null)}
+                                >
+                                  Снять выбор
+                                </button>
+                              </div>
+                            ) : null}
+
+                            <div className="mm-paramPoolGrid">
+                              {sourceProvidersForUi.map((providerCode) => {
+                                const collapsed = !!collapsedSourceProviders[providerCode];
+                                return (
+                                  <div key={providerCode} className="mm-attrParamCol">
+                                    <div className="mm-attrParamColHead">
+                                      <button
+                                        type="button"
+                                        className="mm-attrParamColTitleBtn"
+                                        onClick={() => toggleSourceProviderPanel(providerCode)}
+                                      >
+                                        <span className="mm-attrParamColTitle">{sourceProviderLabel(providerCode)}</span>
+                                        <span className="mm-attrParamColToggle">{collapsed ? "Показать" : "Скрыть"}</span>
+                                      </button>
+                                      <div className="mm-attrParamColMeta">
+                                        {(providerParamStats[providerCode]?.visible || 0)} свободно из {(providerParamStats[providerCode]?.total || 0)}
+                                      </div>
+                                    </div>
+                                    {!collapsed ? (
+                                      <div className="mm-attrParamList mm-attrParamListStandalone">
+                                        {(visibleProviderParamSections[providerCode] || []).map((section) => (
+                                          <div key={`${providerCode}-${section.key}`} className="mm-attrParamSection">
+                                            <div className="mm-attrParamSectionHead">
+                                              <div className="mm-attrParamSectionTitle">{section.title}</div>
+                                              <div className="mm-attrParamSectionSub">{section.subtitle}</div>
+                                            </div>
+                                            {section.items.length === 0 ? (
+                                              <div className="muted mm-attrParamSectionEmpty">Нет доступных полей.</div>
+                                            ) : (
+                                              section.items.map((p) => (
+                                                <button
+                                                  key={`${providerCode}-${p.id}`}
+                                                  type="button"
+                                                  className={`mm-attrParamItem ${dragParamKey === `${providerCode}:${String(p.id)}` ? "isDragging" : ""} ${selectedSourceParam && selectedSourceParam.provider === providerCode && selectedSourceParam.id === String(p.id) ? "isSelected" : ""}`}
+                                                  draggable={attrEditMode}
+                                                  onDragStart={(e) => onDragParam(providerCode, p, e)}
+                                                  onDragEnd={onDragEndParam}
+                                                  onClick={() => {
+                                                    if (!attrEditMode) return;
+                                                    const nextId = String(p.id || "");
+                                                    setSelectedSourceParam((prev) =>
+                                                      prev && prev.provider === providerCode && prev.id === nextId
+                                                        ? null
+                                                        : {
+                                                            provider: providerCode,
+                                                            id: nextId,
+                                                            name: String(p.name || ""),
+                                                            kind: String(p.kind || ""),
+                                                            values: Array.isArray(p.values) ? p.values : [],
+                                                            required: !!p.required,
+                                                          }
+                                                    );
+                                                  }}
+                                                  disabled={!attrEditMode}
+                                                >
+                                                  <span className="mm-attrParamTop">
+                                                    <span>{p.name}</span>
+                                                    <span className="mm-attrParamKind">{humanizeParamKind(p.kind)}</span>
+                                                  </span>
+                                                  <span className="mm-attrParamValues">{valuesText(p.values)}</span>
+                                                </button>
+                                              ))
+                                            )}
+                                          </div>
+                                        ))}
+                                        {(visibleProviderParams[providerCode] || []).length === 0 && (
+                                          <div className="muted">Все параметры из пула уже использованы.</div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="mm-featurePaneHint">Блок скрыт. Нажми «Показать», чтобы вернуть параметры в работу.</div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                         </aside>
                       </div>
                       <datalist id="mm-catalog-attr-options">
@@ -2966,8 +3411,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                           <option key={name} value={name} />
                         ))}
                       </datalist>
-                      </>
-                      )}
                     </>
                   )}
                 </div>

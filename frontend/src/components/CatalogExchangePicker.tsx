@@ -26,6 +26,7 @@ type Props = {
   onSelectedProductIdsChange: (ids: string[]) => void;
   includeDescendants: boolean;
   onIncludeDescendantsChange: (value: boolean) => void;
+  embedded?: boolean;
 };
 
 function qnorm(s: string) {
@@ -54,6 +55,7 @@ export default function CatalogExchangePicker(props: Props) {
     onSelectedProductIdsChange,
     includeDescendants,
     onIncludeDescendantsChange,
+    embedded = false,
   } = props;
 
   const [nodeQuery, setNodeQuery] = useState("");
@@ -288,7 +290,7 @@ export default function CatalogExchangePicker(props: Props) {
   }
 
   return (
-    <div className="cx-pickerGrid">
+    <div className={`cx-pickerGrid${embedded ? " isEmbedded" : ""}`}>
       <CategorySidebar
         className="cx-pane cx-paneSidebar"
         title="Каталог"

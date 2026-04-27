@@ -1,25 +1,39 @@
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
 import { api } from "../../lib/api";
+import { useAuth } from "../auth/AuthContext";
+import AppShell from "../../components/layout/AppShell";
+import ShellSidebarNav, { type ShellNavGroup } from "../../components/layout/ShellSidebarNav";
+import ShellThemeToggle from "../../components/layout/ShellThemeToggle";
+import ShellWorkspaceBar from "../../components/layout/ShellWorkspaceBar";
+import Alert from "../../components/ui/Alert";
+import Button from "../../components/ui/Button";
+import Field from "../../components/ui/Field";
+import Modal from "../../components/ui/Modal";
+import TextInput from "../../components/ui/TextInput";
 
-type NavItem = { href: string; label: string; page?: string };
-type NavSection = { title: string; items: NavItem[] };
-type NavGroup = { title: string; items?: NavItem[]; sections?: NavSection[] };
-
-const groups: NavGroup[] = [
+const groups: ShellNavGroup[] = [
   {
-    title: "Главная",
-    items: [{ href: "/", label: "Дашборд", page: "dashboard" }],
+    title: "Рабочее пространство",
+    icon: "workspace",
+    summary: "Главная точка входа: обзор, качество и быстрые действия.",
+    sections: [
+      {
+        title: "Обзор",
+        items: [{ href: "/", label: "Дашборд", page: "dashboard" }],
+      },
+    ],
   },
   {
     title: "Каталог",
+    icon: "catalog",
+    summary: "Категории, товары, группы и обмен данными по каталогу.",
     sections: [
       {
         title: "Товары",
         items: [
           { href: "/catalog", label: "Каталог", page: "catalog" },
-          { href: "/catalog/groups", label: "Группы товаров", page: "product_groups" },
+          { href: "/catalog/groups", label: "Группы", page: "product_groups" },
           { href: "/catalog/content-index", label: "Контент-индекс", page: "stats_card_quality" },
         ],
       },
@@ -33,40 +47,67 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: "Шаблоны",
-    items: [
-      { href: "/templates", label: "Мастер-шаблоны", page: "templates" },
-      { href: "/dictionaries", label: "Параметры", page: "dictionaries" },
+    title: "Модели",
+    icon: "models",
+    summary: "Шаблоны, параметры и структура товарных моделей.",
+    sections: [
+      {
+        title: "Структура",
+        items: [
+          { href: "/templates", label: "Мастер-шаблоны", page: "templates" },
+          { href: "/dictionaries", label: "Параметры", page: "dictionaries" },
+        ],
+      },
     ],
   },
   {
     title: "Источники",
+    icon: "sources",
+    summary: "Маппинг источников, маркетплейсов и коннекторный контур.",
     sections: [
       {
-        title: "Маппинг",
+        title: "Контур",
         items: [
-          { href: "/sources-mapping", label: "Маппинг источников", page: "sources_mapping" },
+          { href: "/sources-mapping", label: "Маппинг", page: "sources_mapping" },
+          { href: "/connectors/status", label: "Коннекторы", page: "connectors_status" },
         ],
-      },
-      {
-        title: "Коннекторы",
-        items: [{ href: "/connectors/status", label: "Статус коннекторов", page: "connectors_status" }],
       },
     ],
   },
   {
     title: "Медиа",
-    items: [{ href: "/images/infographics", label: "Генерация инфографики", page: "infographics" }],
+    icon: "media",
+    summary: "Контентные материалы и генерация визуальных артефактов.",
+    sections: [
+      {
+        title: "Контент",
+        items: [{ href: "/images/infographics", label: "Инфографика", page: "infographics" }],
+      },
+    ],
   },
   {
     title: "Администрирование",
-    items: [{ href: "/admin/access", label: "Доступ и роли", page: "admin_access" }],
+    icon: "admin",
+    summary: "Организации, пользователи, приглашения и platform access.",
+    sections: [
+      {
+        title: "Организация",
+        items: [
+          { href: "/admin/organizations", label: "Организации", page: "admin_access" },
+          { href: "/admin/members", label: "Сотрудники", page: "admin_access" },
+          { href: "/admin/invites", label: "Приглашения", page: "admin_access" },
+        ],
+      },
+      {
+        title: "Платформа",
+        items: [
+          { href: "/admin/platform", label: "Орг-контур", page: "admin_access" },
+          { href: "/admin/access", label: "Доступ и роли", page: "admin_access" },
+        ],
+      },
+    ],
   },
 ];
-
-function groupItems(group: NavGroup): NavItem[] {
-  return group.items ?? group.sections?.flatMap((section) => section.items) ?? [];
-}
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -74,35 +115,83 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function groupActive(pathname: string, group: NavGroup): boolean {
-  return groupItems(group).some((item) => isActive(pathname, item.href));
+function filterGroups(canPage: (code: string) => boolean): ShellNavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      sections: group.sections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => !item.page || canPage(item.page)),
+        }))
+        .filter((section) => section.items.length > 0),
+    }))
+    .filter((group) => group.sections.length > 0);
+}
+
+function findCurrentLabel(pathname: string, groupsList: ShellNavGroup[]) {
+  for (const group of groupsList) {
+    for (const section of group.sections) {
+      for (const item of section.items) {
+        if (isActive(pathname, item.href)) return item.label;
+      }
+    }
+  }
+  return "";
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  const { canPage, user, logout } = useAuth();
+  const {
+    canPage,
+    user,
+    logout,
+    organizations,
+    currentOrganization,
+    switchOrganization,
+    isDeveloper,
+    provisioningStatus,
+  } = useAuth();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [passwordOk, setPasswordOk] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [switchingOrganization, setSwitchingOrganization] = useState(false);
 
-  const visibleGroups = useMemo(() => {
-    return groups
-      .map((group) => {
-        const items = (group.items || []).filter((item) => !item.page || canPage(item.page));
-        const sections = (group.sections || [])
-          .map((section) => ({ ...section, items: section.items.filter((item) => !item.page || canPage(item.page)) }))
-          .filter((section) => section.items.length > 0);
-        if (!items.length && !sections.length) return null;
-        return { ...group, items: items.length ? items : undefined, sections: sections.length ? sections : undefined };
-      })
-      .filter(Boolean) as NavGroup[];
-  }, [canPage]);
+  const visibleGroups = useMemo(() => filterGroups(canPage), [canPage]);
+  const currentLabel = useMemo(() => findCurrentLabel(pathname, visibleGroups), [pathname, visibleGroups]);
+  const [activeGroupTitle, setActiveGroupTitle] = useState("");
+  const showWorkspaceBar = false;
+  const showShellHeading = false;
+  const organizationStatus = String(provisioningStatus?.organization?.status || currentOrganization?.status || "unknown");
+  const userLabel = user?.name || user?.login || user?.email || "Пользователь";
+  const userMeta = user?.login || user?.email || "";
+  const roleLabel = isDeveloper ? "Developer" : currentOrganization?.membership_role || "member";
+  const userInitials = userLabel
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "SP";
 
-  const currentGroupTitle = useMemo(() => {
-    return visibleGroups.find((g) => groupActive(pathname, g))?.title || visibleGroups[0]?.title || "";
+  useEffect(() => {
+    const activeGroup =
+      visibleGroups.find((group) =>
+        group.sections.some((section) => section.items.some((item) => isActive(pathname, item.href))),
+      ) || visibleGroups[0];
+    setActiveGroupTitle((current) => {
+      if (!activeGroup?.title) return current;
+      if (!current) return activeGroup.title;
+      const currentVisible = visibleGroups.some((group) => group.title === current);
+      if (!currentVisible) return activeGroup.title;
+      const routeInsideCurrent = visibleGroups
+        .find((group) => group.title === current)
+        ?.sections.some((section) => section.items.some((item) => isActive(pathname, item.href)));
+      return routeInsideCurrent ? current : activeGroup.title;
+    });
   }, [pathname, visibleGroups]);
 
   async function submitPasswordChange() {
@@ -124,120 +213,144 @@ export default function Shell({ children }: { children: ReactNode }) {
     }
   }
 
+  async function handleOrganizationChange(nextOrganizationId: string) {
+    if (!nextOrganizationId || nextOrganizationId === currentOrganization?.id) return;
+    setSwitchingOrganization(true);
+    try {
+      await switchOrganization(nextOrganizationId);
+    } finally {
+      setSwitchingOrganization(false);
+    }
+  }
+
   return (
-    <div className="shell shellTopLayout">
-      <header className="shellTopNav">
-        <div className="shellTopNavInner">
-          <Link to="/" className="shellBrand">
-            <div className="logo" />
-            <div className="shellBrandText">
-              <div className="shellBrandTitle">GT PIM</div>
-              <div className="shellBrandSub">Global PIM</div>
-            </div>
-          </Link>
-
-          <nav className="shellPrimaryNav" aria-label="Основная навигация">
-            {visibleGroups.map((group) => {
-              const selected = currentGroupTitle === group.title;
-              const items = groupItems(group);
-              const isDirect = !group.sections && items.length === 1;
-
-              if (isDirect) {
-                return (
-                  <Link
-                    key={group.title}
-                    to={items[0].href}
-                    className={`shellPrimaryLink shellPrimaryLinkDirect${selected ? " active" : ""}`}
-                  >
-                    {group.title}
-                  </Link>
-                );
-              }
-
-              return (
-                <div key={group.title} className="shellPrimaryItem">
-                  <button type="button" className={`shellPrimaryLink${selected ? " active" : ""}`}>
-                    {group.title}
-                    <span className="shellPrimaryCaret">▾</span>
-                  </button>
-
-                  <div className={`shellMegaPanel ${group.sections ? "isSections" : "isList"}`}>
-                    {group.sections ? (
-                      group.sections.map((section) => (
-                        <div key={section.title} className="shellMegaSection">
-                          <div className="shellMegaSectionTitle">{section.title}</div>
-                          <div className="shellMegaLinks">
-                            {section.items.map((item) => (
-                              <Link
-                                key={item.href}
-                                to={item.href}
-                                className={`shellMegaLink${isActive(pathname, item.href) ? " active" : ""}`}
-                              >
-                                {item.label}
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="shellMegaLinks">
-                        {items.map((item) => (
-                          <Link
-                            key={item.href}
-                            to={item.href}
-                            className={`shellMegaLink${isActive(pathname, item.href) ? " active" : ""}`}
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
+    <>
+      <AppShell
+        eyebrow="Рабочий контур"
+        title={currentLabel || "SmartPim"}
+        showHeading={showShellHeading}
+        topbar={showWorkspaceBar ? (
+          <ShellWorkspaceBar
+            organizations={organizations}
+            currentOrganization={currentOrganization}
+            switching={switchingOrganization}
+            onChange={(organizationId) => void handleOrganizationChange(organizationId)}
+            organizationStatus={String(provisioningStatus?.organization?.status || currentOrganization?.status || "unknown")}
+            isDeveloper={isDeveloper}
+            userName={user?.name || "Пользователь"}
+            userMeta={user?.login || user?.email || ""}
+            onChangePassword={() => setShowPasswordModal(true)}
+            onLogout={() => {
+              void logout();
+            }}
+          />
+        ) : undefined}
+        sidebar={
+          <aside className="shellSidebar">
+            <div className="shellSidebarInner">
+              <div className="shellSidebarBrand">
+                <Link to="/" className="shellSidebarBrandLink">
+                  <div className="logo" />
+                  <div className="shellSidebarBrandText">
+                    <div className="shellSidebarBrandTitle">SmartPim</div>
+                    <div className="shellSidebarBrandSub">Control surface</div>
                   </div>
-                </div>
-              );
-            })}
-          </nav>
+                </Link>
+              </div>
 
-          <div className="shellUser">
-            <div className="shellUserMeta">
-              <div className="shellUserName">{user?.name || "Пользователь"}</div>
-              <div className="shellUserEmail">{user?.login || user?.email || ""}</div>
+              <div className="shellSidebarWorkspace">
+                <ShellSidebarNav
+                  pathname={pathname}
+                  groups={visibleGroups}
+                  activeGroupTitle={activeGroupTitle}
+                  onSelectGroup={setActiveGroupTitle}
+                  isActive={isActive}
+                  railFooter={
+                    <>
+                      <ShellThemeToggle />
+                      <button
+                        type="button"
+                        className="shellRailUser"
+                        aria-label={`Пользователь: ${userLabel}`}
+                        title={`${userLabel}${userMeta ? ` · ${userMeta}` : ""}`}
+                        onClick={() => setShowPasswordModal(true)}
+                      >
+                        {userInitials}
+                      </button>
+                    </>
+                  }
+                  panelFooter={
+                    <div className="shellNavAccount">
+                      <div className="shellNavAccountOrg">
+                        <div className="shellNavAccountLabel">Организация</div>
+                        {organizations.length > 1 ? (
+                          <select
+                            className="shellNavAccountSelect"
+                            value={currentOrganization?.id || ""}
+                            disabled={switchingOrganization}
+                            onChange={(event) => void handleOrganizationChange(event.target.value)}
+                          >
+                            {organizations.map((organization) => (
+                              <option key={organization.id} value={organization.id}>
+                                {organization.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="shellNavAccountName">{currentOrganization?.name || "Default organization"}</div>
+                        )}
+                        <div className={`shellStatusBadge is-${organizationStatus.toLowerCase()}`}>{organizationStatus}</div>
+                      </div>
+                      <div className="shellNavAccountUser">
+                        <div className="shellNavAvatar">{userInitials}</div>
+                        <div className="shellNavUserCopy">
+                          <div className="shellNavUserName">{userLabel}</div>
+                          <div className="shellNavUserMeta">{userMeta || roleLabel}</div>
+                        </div>
+                        <div className="shellRoleBadge">{roleLabel}</div>
+                      </div>
+                      <div className="shellNavAccountActions">
+                        <button type="button" className="shellNavAccountButton" onClick={() => setShowPasswordModal(true)}>
+                          Сменить пароль
+                        </button>
+                        <button
+                          type="button"
+                          className="shellNavAccountButton"
+                          onClick={() => {
+                            void logout();
+                          }}
+                        >
+                          Выйти
+                        </button>
+                      </div>
+                    </div>
+                  }
+                />
+              </div>
             </div>
-            <button type="button" className="btn" onClick={() => setShowPasswordModal(true)}>
+          </aside>
+        }
+      >
+        {children}
+      </AppShell>
+
+      <Modal open={showPasswordModal} onClose={() => setShowPasswordModal(false)} title="Смена пароля" subtitle="Обнови пароль текущего аккаунта." width="compact">
+        <div className="authForm">
+          <Field label="Текущий пароль">
+            <TextInput type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          </Field>
+          <Field label="Новый пароль">
+            <TextInput type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          </Field>
+          {passwordError ? <Alert tone="error">{passwordError}</Alert> : null}
+          {passwordOk ? <Alert tone="success">{passwordOk}</Alert> : null}
+          <div className="accessActions">
+            <Button variant="primary" onClick={submitPasswordChange} disabled={savingPassword}>
               Сменить пароль
-            </button>
-            <button type="button" className="btn" onClick={() => logout()}>
-              Выйти
-            </button>
+            </Button>
           </div>
         </div>
-      </header>
-
-      <main className="main shellMain">{children}</main>
-      {showPasswordModal ? (
-        <div className="modalBackdrop" onClick={() => setShowPasswordModal(false)}>
-          <div className="modalCard modalCardCompact" onClick={(e) => e.stopPropagation()}>
-            <div className="modalHeader">
-              <div>
-                <div className="modalTitle">Смена пароля</div>
-                <div className="modalSubtitle">Обнови пароль текущего аккаунта.</div>
-              </div>
-              <button type="button" className="btn" onClick={() => setShowPasswordModal(false)}>Закрыть</button>
-            </div>
-            <div className="authForm">
-              <label className="authField"><span>Текущий пароль</span><input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
-              <label className="authField"><span>Новый пароль</span><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
-              {passwordError ? <div className="authError">{passwordError}</div> : null}
-              {passwordOk ? <div className="page-inlineSuccess">{passwordOk}</div> : null}
-              <div className="accessActions">
-                <button type="button" className="btn primary" onClick={submitPasswordChange} disabled={savingPassword}>
-                  Сменить пароль
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+      </Modal>
+    </>
   );
 }

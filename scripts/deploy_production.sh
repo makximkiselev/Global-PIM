@@ -9,6 +9,7 @@ APP_SERVICE_NAME="${APP_SERVICE_NAME:-global-pim.service}"
 APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
 DB_CA_CERT_PATH="${DB_CA_CERT_PATH:-$HOME/Downloads/ca.crt}"
+APP_PUBLIC_BASE_URL="${APP_PUBLIC_BASE_URL:-https://pim.id-smart.ru}"
 SSH_TARGET="${APP_SERVER_USER}@${APP_SERVER_HOST}"
 RELEASE_ID="$(date +%Y%m%d-%H%M%S)"
 REMOTE_TMP_ARCHIVE="/tmp/global-pim-${RELEASE_ID}.tgz"
@@ -16,6 +17,8 @@ REMOTE_TMP_EXTRACT="/tmp/global-pim-${RELEASE_ID}"
 LOCAL_TMP_DIR="$(mktemp -d /tmp/global-pim-deploy.XXXXXX)"
 LOCAL_ARCHIVE="/tmp/global-pim-${RELEASE_ID}.tgz"
 REMOTE_SCRIPT_LOCAL="/tmp/global-pim-${RELEASE_ID}.remote.sh"
+APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
+APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
 
 cleanup() {
   rm -rf "${LOCAL_TMP_DIR}" "${LOCAL_ARCHIVE}" "${REMOTE_SCRIPT_LOCAL}"
@@ -43,6 +46,7 @@ require_cmd tar
 require_cmd scp
 require_cmd ssh
 require_cmd rsync
+require_cmd curl
 if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
   require_cmd expect
 fi
@@ -144,7 +148,7 @@ fi
 
 systemctl restart "\${APP_SERVICE_NAME}"
 sleep 2
-curl -s http://127.0.0.1:18010/api/health >/dev/null
+curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null
 
 rm -rf "\${REMOTE_TMP_EXTRACT}" "\${REMOTE_TMP_ARCHIVE}" "/tmp/global-pim-\${RELEASE_ID}.remote.sh"
 EOF
@@ -154,9 +158,14 @@ scp_run "${LOCAL_ARCHIVE}" "${REMOTE_TMP_ARCHIVE}"
 scp_run "${REMOTE_SCRIPT_LOCAL}" "/tmp/global-pim-${RELEASE_ID}.remote.sh"
 
 echo "==> Deploying on server"
-ssh_run "'bash /tmp/global-pim-${RELEASE_ID}.remote.sh'"
+ssh_run "bash /tmp/global-pim-${RELEASE_ID}.remote.sh"
+
+echo "==> Post-deploy smoke"
+ssh_run "systemctl is-active ${APP_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL}"
+curl -fsS "${APP_PUBLIC_HEALTH_URL}" >/dev/null
+curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
 
 echo "==> Deploy complete"
 echo "Server: ${SSH_TARGET}"
 echo "App path: ${APP_SERVER_PATH}"
-echo "Health: https://pim.id-smart.ru/api/health"
+echo "Health: ${APP_PUBLIC_HEALTH_URL}"

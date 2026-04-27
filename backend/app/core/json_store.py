@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import time
 from copy import deepcopy
 from dataclasses import dataclass
@@ -11,9 +12,7 @@ from typing import Any, Optional
 
 import fcntl
 
-_PG_CONN: Any = None
-_PG_KIND: str = ""
-_PG_JSON_ADAPTER: Any = None
+_PG_STATE = threading.local()
 _PG_TABLE_READY = False
 _DOC_CACHE_TTL_SECONDS = 15.0
 _DOC_CACHE: dict[str, tuple[float, Any]] = {}
@@ -153,42 +152,46 @@ def _db_connect_sqlite() -> sqlite3.Connection:
 
 
 def _pg_connect():
-    global _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
     dsn = _database_url()
     if not dsn:
         raise JsonStoreError("DATABASE_URL_MISSING")
-    if _PG_CONN is not None:
+    conn = getattr(_PG_STATE, "conn", None)
+    kind = getattr(_PG_STATE, "kind", "")
+    adapter = getattr(_PG_STATE, "json_adapter", None)
+    if conn is not None:
         try:
-            if _PG_KIND == "psycopg":
-                if not getattr(_PG_CONN, "closed", True):
-                    return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
-            elif _PG_KIND == "psycopg2":
-                if getattr(_PG_CONN, "closed", 1) == 0:
-                    return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
+            if kind == "psycopg":
+                if not getattr(conn, "closed", True):
+                    return conn, kind, adapter
+            elif kind == "psycopg2":
+                if getattr(conn, "closed", 1) == 0:
+                    return conn, kind, adapter
         except Exception:
-            _PG_CONN = None
-            _PG_KIND = ""
-            _PG_JSON_ADAPTER = None
+            _PG_STATE.conn = None
+            _PG_STATE.kind = ""
+            _PG_STATE.json_adapter = None
     driver, kind = _load_psycopg()
     if kind == "psycopg":
-        _PG_CONN = driver.connect(dsn, autocommit=True)
-        _PG_KIND = kind
-        _PG_JSON_ADAPTER = None
-        return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
+        conn = driver.connect(dsn, autocommit=True)
+        _PG_STATE.conn = conn
+        _PG_STATE.kind = kind
+        _PG_STATE.json_adapter = None
+        return conn, kind, None
     psycopg2_mod, Json = driver
-    _PG_CONN = psycopg2_mod.connect(dsn)
-    _PG_CONN.autocommit = True
-    _PG_KIND = kind
-    _PG_JSON_ADAPTER = Json
-    return _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER
+    conn = psycopg2_mod.connect(dsn)
+    conn.autocommit = True
+    _PG_STATE.conn = conn
+    _PG_STATE.kind = kind
+    _PG_STATE.json_adapter = Json
+    return conn, kind, Json
 
 
 def _reset_pg_connection() -> None:
-    global _PG_CONN, _PG_KIND, _PG_JSON_ADAPTER, _PG_TABLE_READY
-    conn = _PG_CONN
-    _PG_CONN = None
-    _PG_KIND = ""
-    _PG_JSON_ADAPTER = None
+    global _PG_TABLE_READY
+    conn = getattr(_PG_STATE, "conn", None)
+    _PG_STATE.conn = None
+    _PG_STATE.kind = ""
+    _PG_STATE.json_adapter = None
     _PG_TABLE_READY = False
     if conn is None:
         return

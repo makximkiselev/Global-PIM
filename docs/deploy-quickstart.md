@@ -1,5 +1,12 @@
 # Deploy Quickstart
 
+## Preconditions
+
+- runtime storage у проекта `Postgres-only`
+- на сервере должен быть рабочий `backend/.env`
+- локально должен существовать CA certificate, если `DATABASE_URL` использует `sslrootcert`
+- после любой выкладки нужен явный smoke-check
+
 ## Full production deploy
 
 Use the project deploy script when you want to ship the current backend app, frontend dist, and cert bundle.
@@ -11,6 +18,12 @@ DB_CA_CERT_PATH="$HOME/Downloads/ca.crt" \
 ./scripts/deploy_production.sh
 ```
 
+Или из корня:
+
+```bash
+make deploy-prod
+```
+
 What it updates:
 
 - `/opt/projects/global-pim/backend/app`
@@ -18,6 +31,22 @@ What it updates:
 - `/opt/projects/global-pim/backend/main.py`
 - `/opt/projects/global-pim/frontend/dist`
 - `/opt/projects/global-pim/certs/ca.crt`
+
+Что скрипт не делает за тебя:
+
+- не проверяет бизнес-функции приложения;
+- не заменяет post-deploy smoke-check;
+- не должен считаться успешным просто по факту завершения shell-команды.
+
+Минимальная проверка после выкладки обязательна.
+
+## Recommended post-deploy smoke
+
+```bash
+ssh root@5.129.199.228 "systemctl is-active global-pim && curl -s http://127.0.0.1:18010/api/health"
+curl -s https://pim.id-smart.ru/api/health
+curl -I -s https://pim.id-smart.ru
+```
 
 ## Backend-only hot patch
 
@@ -62,4 +91,10 @@ External:
 
 ```bash
 curl -s https://pim.id-smart.ru/api/health
+```
+
+Frontend shell:
+
+```bash
+curl -I -s https://pim.id-smart.ru
 ```

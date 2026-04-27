@@ -48,6 +48,14 @@ ssh root@5.129.199.228 "journalctl -u global-pim -f"
 - cert: `/opt/projects/global-pim/certs/ca.crt`
 - systemd unit: `/etc/systemd/system/global-pim.service`
 - nginx site: `/etc/nginx/sites-available/pim.id-smart.ru.conf`
+- venv: `/opt/projects/global-pim/.venv`
+- app process port: `18010`
+
+## Runtime notes
+
+- backend runtime storage: `Postgres-only`
+- frontend в production отдается из `frontend/dist`
+- systemd запускает `uvicorn app.main:app --workers 4`
 
 ## Fast checks after deploy
 
@@ -62,3 +70,4 @@ curl -I -s https://pim.id-smart.ru
 - frontend `index.html` should be served without cache; hashed assets can stay immutable
 - backend is intended to run with multiple workers
 - for backend-only fixes, prefer hot patch tarball instead of full deploy when frontend is dirty locally
+- после каждого deploy нужен явный smoke-check, даже если deploy script завершился без ошибки

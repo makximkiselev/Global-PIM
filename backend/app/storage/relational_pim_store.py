@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from app.core.control_plane import DEFAULT_ORGANIZATION_ID
+from app.core.tenant_context import current_tenant_organization_id
 from app.core.json_store import (
     DATA_DIR,
     _is_retryable_pg_error,
@@ -25,6 +28,12 @@ PRODUCTS_PATH = DATA_DIR / "products.json"
 VARIANTS_PATH = DATA_DIR / "product_variants.json"
 PRODUCT_GROUPS_PATH = DATA_DIR / "product_groups.json"
 CONNECTORS_STATE_PATH = DATA_DIR / "marketplaces" / "connectors_scheduler.json"
+_TABLES_READY = False
+_TABLES_READY_LOCK = threading.Lock()
+_CATALOG_NODES_READY = False
+_CATALOG_NODES_READY_LOCK = threading.Lock()
+_TEMPLATES_TENANT_READY: set[str] = set()
+_TEMPLATES_TENANT_READY_LOCK = threading.Lock()
 
 
 def _with_pg_retry(fn):
@@ -37,7 +46,18 @@ def _with_pg_retry(fn):
         return fn()
 
 
-def _ensure_tables() -> None:
+def _normalize_organization_id(value: Optional[str]) -> str:
+    org_id = str(value or "").strip()
+    return org_id or DEFAULT_ORGANIZATION_ID
+
+
+def _resolve_organization_id(value: Optional[str]) -> str:
+    if value is None:
+        return _normalize_organization_id(current_tenant_organization_id())
+    return _normalize_organization_id(value)
+
+
+def _ensure_tables_impl() -> None:
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
@@ -75,8 +95,27 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS category_mappings_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  catalog_category_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  provider_category_id TEXT NOT NULL,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, catalog_category_id, provider)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_category_mappings_rel_provider
                   ON category_mappings_rel(provider, provider_category_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_category_mappings_tenant_rel_provider
+                  ON category_mappings_tenant_rel(organization_id, provider, provider_category_id)
                 """
             )
             cur.execute(
@@ -106,8 +145,40 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS attribute_mappings_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  catalog_category_id TEXT NOT NULL,
+                  row_id TEXT NOT NULL,
+                  catalog_name TEXT NOT NULL,
+                  param_group TEXT NOT NULL DEFAULT '',
+                  confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_param_id TEXT NULL,
+                  yandex_param_name TEXT NULL,
+                  yandex_kind TEXT NULL,
+                  yandex_values TEXT[] NULL,
+                  yandex_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_param_id TEXT NULL,
+                  ozon_param_name TEXT NULL,
+                  ozon_kind TEXT NULL,
+                  ozon_values TEXT[] NULL,
+                  ozon_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, catalog_category_id, row_id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_attribute_mappings_rel_category
                   ON attribute_mappings_rel(catalog_category_id, catalog_name)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_attribute_mappings_tenant_rel_category
+                  ON attribute_mappings_tenant_rel(organization_id, catalog_category_id, catalog_name)
                 """
             )
             cur.execute(
@@ -143,8 +214,46 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS attribute_value_refs_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  catalog_category_id TEXT NOT NULL,
+                  catalog_name_key TEXT NOT NULL,
+                  catalog_name TEXT NOT NULL,
+                  param_group TEXT NOT NULL DEFAULT '',
+                  attribute_id TEXT NULL,
+                  dict_id TEXT NULL,
+                  value_type TEXT NULL,
+                  confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_provider_category_id TEXT NULL,
+                  yandex_param_id TEXT NULL,
+                  yandex_param_name TEXT NULL,
+                  yandex_kind TEXT NULL,
+                  yandex_allowed_values TEXT[] NULL,
+                  yandex_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_provider_category_id TEXT NULL,
+                  ozon_param_id TEXT NULL,
+                  ozon_param_name TEXT NULL,
+                  ozon_kind TEXT NULL,
+                  ozon_allowed_values TEXT[] NULL,
+                  ozon_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  rows_count INTEGER NOT NULL DEFAULT 0,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, catalog_category_id, catalog_name_key)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_attribute_value_refs_rel_category
                   ON attribute_value_refs_rel(catalog_category_id, catalog_name)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_attribute_value_refs_tenant_rel_category
+                  ON attribute_value_refs_tenant_rel(organization_id, catalog_category_id, catalog_name)
                 """
             )
             cur.execute(
@@ -167,14 +276,46 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS dictionaries_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  id TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  code TEXT NOT NULL,
+                  attr_id TEXT NOT NULL,
+                  attr_type TEXT NOT NULL DEFAULT 'select',
+                  scope TEXT NOT NULL DEFAULT 'both',
+                  is_service BOOLEAN NOT NULL DEFAULT FALSE,
+                  is_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  param_group TEXT NULL,
+                  template_layer TEXT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL,
+                  PRIMARY KEY (organization_id, id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_dictionaries_rel_code
                   ON dictionaries_rel(code)
                 """
             )
             cur.execute(
                 """
+                CREATE INDEX IF NOT EXISTS idx_dictionaries_tenant_rel_code
+                  ON dictionaries_tenant_rel(organization_id, code)
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_dictionaries_rel_attr_id
                   ON dictionaries_rel(attr_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_dictionaries_tenant_rel_attr_id
+                  ON dictionaries_tenant_rel(organization_id, attr_id)
                 """
             )
             cur.execute(
@@ -192,8 +333,28 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS dictionary_values_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  dict_id TEXT NOT NULL,
+                  value_key TEXT NOT NULL,
+                  value_text TEXT NOT NULL,
+                  value_count INTEGER NOT NULL DEFAULT 0,
+                  last_seen TEXT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (organization_id, dict_id, value_key)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_dictionary_values_rel_dict_position
                   ON dictionary_values_rel(dict_id, position, value_text)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_dictionary_values_tenant_rel_dict_position
+                  ON dictionary_values_tenant_rel(organization_id, dict_id, position, value_text)
                 """
             )
             cur.execute(
@@ -209,11 +370,34 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS dictionary_value_sources_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  dict_id TEXT NOT NULL,
+                  value_key TEXT NOT NULL,
+                  source_name TEXT NOT NULL,
+                  source_count INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (organization_id, dict_id, value_key, source_name)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS dictionary_aliases_rel (
                   dict_id TEXT NOT NULL,
                   alias_key TEXT NOT NULL,
                   canonical_value TEXT NOT NULL,
                   PRIMARY KEY (dict_id, alias_key)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_aliases_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  dict_id TEXT NOT NULL,
+                  alias_key TEXT NOT NULL,
+                  canonical_value TEXT NOT NULL,
+                  PRIMARY KEY (organization_id, dict_id, alias_key)
                 )
                 """
             )
@@ -233,12 +417,39 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS dictionary_provider_refs_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  dict_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  provider_param_id TEXT NULL,
+                  provider_param_name TEXT NULL,
+                  kind TEXT NULL,
+                  is_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  allowed_values TEXT[] NULL,
+                  PRIMARY KEY (organization_id, dict_id, provider)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS dictionary_export_maps_rel (
                   dict_id TEXT NOT NULL,
                   provider TEXT NOT NULL,
                   canonical_key TEXT NOT NULL,
                   provider_value TEXT NOT NULL,
                   PRIMARY KEY (dict_id, provider, canonical_key)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dictionary_export_maps_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  dict_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  canonical_key TEXT NOT NULL,
+                  provider_value TEXT NOT NULL,
+                  PRIMARY KEY (organization_id, dict_id, provider, canonical_key)
                 )
                 """
             )
@@ -255,8 +466,27 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS templates_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  id TEXT NOT NULL,
+                  name TEXT NOT NULL,
+                  category_id TEXT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL,
+                  PRIMARY KEY (organization_id, id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_templates_rel_category
                   ON templates_rel(category_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_templates_tenant_rel_category
+                  ON templates_tenant_rel(organization_id, category_id)
                 """
             )
             cur.execute(
@@ -279,8 +509,33 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS template_attributes_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  template_id TEXT NOT NULL,
+                  attr_id TEXT NOT NULL,
+                  name TEXT NOT NULL,
+                  code TEXT NOT NULL,
+                  attr_type TEXT NOT NULL,
+                  is_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  scope TEXT NOT NULL DEFAULT 'common',
+                  attribute_id TEXT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+                  options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  PRIMARY KEY (organization_id, template_id, attr_id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_template_attributes_rel_template_position
                   ON template_attributes_rel(template_id, position, code)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_template_attributes_tenant_rel_template_position
+                  ON template_attributes_tenant_rel(organization_id, template_id, position, code)
                 """
             )
             cur.execute(
@@ -295,8 +550,25 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS category_template_links_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  category_id TEXT NOT NULL,
+                  template_id TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY (organization_id, category_id, template_id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_category_template_links_rel_category_position
                   ON category_template_links_rel(category_id, position)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_category_template_links_tenant_rel_category_position
+                  ON category_template_links_tenant_rel(organization_id, category_id, position)
                 """
             )
             cur.execute(
@@ -393,6 +665,25 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS category_template_resolution_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  category_id TEXT NOT NULL,
+                  template_id TEXT NULL,
+                  template_name TEXT NULL,
+                  source_category_id TEXT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, category_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_category_template_resolution_tenant_rel_category
+                  ON category_template_resolution_tenant_rel(organization_id, category_id)
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS product_marketplace_status_rel (
                   product_id TEXT PRIMARY KEY,
                   yandex_present BOOLEAN NOT NULL DEFAULT FALSE,
@@ -400,6 +691,20 @@ def _ensure_tables() -> None:
                   ozon_present BOOLEAN NOT NULL DEFAULT FALSE,
                   ozon_status TEXT NOT NULL DEFAULT 'Нет данных',
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS product_marketplace_status_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  product_id TEXT NOT NULL,
+                  yandex_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  ozon_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, product_id)
                 )
                 """
             )
@@ -429,6 +734,32 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS catalog_product_page_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  product_id TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  category_id TEXT NOT NULL,
+                  category_path TEXT NOT NULL DEFAULT '',
+                  sku_pim TEXT NULL,
+                  sku_gt TEXT NULL,
+                  group_id TEXT NULL,
+                  group_name TEXT NULL,
+                  template_id TEXT NULL,
+                  template_name TEXT NULL,
+                  template_source_category_id TEXT NULL,
+                  yandex_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  ozon_present BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_status TEXT NOT NULL DEFAULT 'Нет данных',
+                  preview_url TEXT NULL,
+                  exports_enabled_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, product_id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_catalog_product_page_rel_category
                   ON catalog_product_page_rel(category_id, title)
                 """
@@ -443,6 +774,30 @@ def _ensure_tables() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_catalog_product_page_rel_template
                   ON catalog_product_page_rel(template_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_marketplace_status_tenant_rel_org
+                  ON product_marketplace_status_tenant_rel(organization_id, product_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_page_tenant_rel_category
+                  ON catalog_product_page_tenant_rel(organization_id, category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_page_tenant_rel_group
+                  ON catalog_product_page_tenant_rel(organization_id, group_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_page_tenant_rel_template
+                  ON catalog_product_page_tenant_rel(organization_id, template_id)
                 """
             )
             cur.execute(
@@ -503,12 +858,42 @@ def _ensure_tables() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS connector_method_state_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  method TEXT NOT NULL,
+                  schedule TEXT NOT NULL,
+                  last_run_at TEXT NULL,
+                  last_success_at TEXT NULL,
+                  last_error_at TEXT NULL,
+                  last_error TEXT NOT NULL DEFAULT '',
+                  fail_count INTEGER NOT NULL DEFAULT 0,
+                  status TEXT NOT NULL DEFAULT 'ok',
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, provider, method)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS connector_provider_settings_rel (
                   provider TEXT NOT NULL,
                   setting_key TEXT NOT NULL,
                   setting_value TEXT NOT NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (provider, setting_key)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS connector_provider_settings_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  setting_key TEXT NOT NULL,
+                  setting_value TEXT NOT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, provider, setting_key)
                 )
                 """
             )
@@ -531,6 +916,29 @@ def _ensure_tables() -> None:
                   created_at TEXT NULL,
                   updated_at TEXT NULL,
                   PRIMARY KEY (provider, store_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS connector_import_stores_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  store_id TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  business_id TEXT NULL,
+                  client_id TEXT NULL,
+                  api_key TEXT NULL,
+                  token TEXT NULL,
+                  auth_mode TEXT NULL,
+                  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                  notes TEXT NULL,
+                  last_check_at TEXT NULL,
+                  last_check_status TEXT NULL,
+                  last_check_error TEXT NULL,
+                  created_at TEXT NULL,
+                  updated_at TEXT NULL,
+                  PRIMARY KEY (organization_id, provider, store_id)
                 )
                 """
             )
@@ -569,8 +977,39 @@ def _ensure_tables() -> None:
                   ON connector_import_stores_rel(provider, enabled)
                 """
             )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_connector_import_stores_tenant_rel_provider
+                  ON connector_import_stores_tenant_rel(organization_id, provider, enabled)
+                """
+            )
 
     _with_pg_retry(_run)
+
+
+def _schema_bootstrap_marker_exists() -> bool:
+    def _run() -> bool:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.connector_import_stores_tenant_rel')")
+            row = cur.fetchone()
+        return bool(row and row[0])
+
+    return bool(_with_pg_retry(_run))
+
+
+def _ensure_tables() -> None:
+    global _TABLES_READY
+    if _TABLES_READY:
+        return
+    with _TABLES_READY_LOCK:
+        if _TABLES_READY:
+            return
+        if _schema_bootstrap_marker_exists():
+            _TABLES_READY = True
+            return
+        _ensure_tables_impl()
+        _TABLES_READY = True
 
 
 def _table_count(table_name: str) -> int:
@@ -642,15 +1081,52 @@ def _replace_category_mappings_table(items: Dict[str, Dict[str, str]]) -> None:
     _with_pg_retry(_run)
 
 
+def _replace_category_mappings_tenant_table(items: Dict[str, Dict[str, str]], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    rows: List[tuple[str, str, str, str]] = []
+    for catalog_category_id, mapping in (items or {}).items():
+        cid = str(catalog_category_id or "").strip()
+        if not cid or not isinstance(mapping, dict):
+            continue
+        for provider, provider_category_id in mapping.items():
+            p = str(provider or "").strip()
+            pcid = str(provider_category_id or "").strip()
+            if cid and p and pcid:
+                rows.append((org_id, cid, p, pcid))
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM category_mappings_tenant_rel WHERE organization_id = %s", [org_id])
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO category_mappings_tenant_rel (
+                      organization_id, catalog_category_id, provider, provider_category_id, updated_at
+                    ) VALUES (%s, %s, %s, %s, NOW())
+                    """,
+                    rows,
+                )
+
+    _with_pg_retry(_run)
+
+
 def _bootstrap_catalog_nodes_from_legacy() -> None:
+    global _CATALOG_NODES_READY
+    if _CATALOG_NODES_READY:
+        return
     lock = with_lock("catalog_nodes_rel_bootstrap")
     lock.acquire()
     try:
+        if _CATALOG_NODES_READY:
+            return
         if _table_count("catalog_nodes_rel") > 0:
+            _CATALOG_NODES_READY = True
             return
         doc = read_doc(CATALOG_NODES_PATH, default=[])
         nodes = doc if isinstance(doc, list) else []
         _replace_catalog_nodes_table(nodes)
+        _CATALOG_NODES_READY = True
     finally:
         lock.release()
 
@@ -666,6 +1142,35 @@ def _bootstrap_category_mappings_from_legacy() -> None:
         if not isinstance(items, dict):
             items = {}
         _replace_category_mappings_table(items)
+    finally:
+        lock.release()
+
+
+def _bootstrap_category_mappings_tenant_from_legacy(organization_id: Optional[str]) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"category_mappings_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM category_mappings_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        _bootstrap_category_mappings_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            legacy_doc = read_doc(CATEGORY_MAPPINGS_PATH, default={"version": 1, "items": {}})
+            items = legacy_doc.get("items") if isinstance(legacy_doc, dict) else {}
+            if not isinstance(items, dict):
+                items = {}
+            _replace_category_mappings_tenant_table(items, org_id)
     finally:
         lock.release()
 
@@ -732,6 +1237,74 @@ def _replace_attribute_mappings_table(doc: Dict[str, Any]) -> None:
     _with_pg_retry(_run)
 
 
+def _collect_attribute_mapping_rows(doc: Dict[str, Any]) -> List[tuple[Any, ...]]:
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    if not isinstance(items, dict):
+        items = {}
+    rows: List[tuple[Any, ...]] = []
+    for catalog_category_id, payload in items.items():
+        cid = str(catalog_category_id or "").strip()
+        if not cid or not isinstance(payload, dict):
+            continue
+        for row in payload.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            provider_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+            yandex = provider_map.get("yandex_market") if isinstance(provider_map.get("yandex_market"), dict) else {}
+            ozon = provider_map.get("ozon") if isinstance(provider_map.get("ozon"), dict) else {}
+            rows.append(
+                (
+                    cid,
+                    str(row.get("id") or "").strip(),
+                    str(row.get("catalog_name") or "").strip(),
+                    str(row.get("group") or "").strip(),
+                    bool(row.get("confirmed") or False),
+                    str(yandex.get("id") or "").strip() or None,
+                    str(yandex.get("name") or "").strip() or None,
+                    str(yandex.get("kind") or "").strip() or None,
+                    [str(v).strip() for v in (yandex.get("values") or []) if str(v).strip()] or None,
+                    bool(yandex.get("required") or False),
+                    bool(yandex.get("export") or False),
+                    str(ozon.get("id") or "").strip() or None,
+                    str(ozon.get("name") or "").strip() or None,
+                    str(ozon.get("kind") or "").strip() or None,
+                    [str(v).strip() for v in (ozon.get("values") or []) if str(v).strip()] or None,
+                    bool(ozon.get("required") or False),
+                    bool(ozon.get("export") or False),
+                )
+            )
+    return rows
+
+
+def _replace_attribute_mappings_tenant_table(doc: Dict[str, Any], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    rows = _collect_attribute_mapping_rows(doc)
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM attribute_mappings_tenant_rel WHERE organization_id = %s", [org_id])
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO attribute_mappings_tenant_rel (
+                      organization_id, catalog_category_id, row_id, catalog_name, param_group, confirmed,
+                      yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
+                      ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                      updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s,
+                      NOW()
+                    )
+                    """,
+                    [(org_id, *row) for row in rows],
+                )
+
+    _with_pg_retry(_run)
+
+
 def _bootstrap_attribute_mappings_from_legacy() -> None:
     lock = with_lock("attribute_mappings_rel_bootstrap")
     lock.acquire()
@@ -742,6 +1315,34 @@ def _bootstrap_attribute_mappings_from_legacy() -> None:
         if not isinstance(doc, dict):
             doc = {"version": 1, "items": {}}
         _replace_attribute_mappings_table(doc)
+    finally:
+        lock.release()
+
+
+def _bootstrap_attribute_mappings_tenant_from_legacy(organization_id: Optional[str]) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"attribute_mappings_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM attribute_mappings_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        _bootstrap_attribute_mappings_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            doc = read_doc(ATTRIBUTE_MAPPINGS_PATH, default={"version": 1, "items": {}})
+            if not isinstance(doc, dict):
+                doc = {"version": 1, "items": {}}
+            _replace_attribute_mappings_tenant_table(doc, org_id)
     finally:
         lock.release()
 
@@ -817,6 +1418,153 @@ def _replace_attribute_value_refs_table(doc: Dict[str, Any]) -> None:
     _with_pg_retry(_run)
 
 
+def _collect_attribute_value_ref_rows(doc: Dict[str, Any]) -> List[tuple[Any, ...]]:
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    if not isinstance(items, dict):
+        items = {}
+    rows: List[tuple[Any, ...]] = []
+    for catalog_category_id, payload in items.items():
+        cid = str(catalog_category_id or "").strip()
+        if not cid or not isinstance(payload, dict):
+            continue
+        providers_payload = payload.get("providers") if isinstance(payload.get("providers"), dict) else {}
+        yandex_provider = providers_payload.get("yandex_market") if isinstance(providers_payload.get("yandex_market"), dict) else {}
+        ozon_provider = providers_payload.get("ozon") if isinstance(providers_payload.get("ozon"), dict) else {}
+        catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+        for key, raw in catalog_params.items():
+            if not isinstance(raw, dict):
+                continue
+            yandex_binding = (raw.get("bindings") or {}).get("yandex_market") if isinstance(raw.get("bindings"), dict) and isinstance((raw.get("bindings") or {}).get("yandex_market"), dict) else {}
+            ozon_binding = (raw.get("bindings") or {}).get("ozon") if isinstance(raw.get("bindings"), dict) and isinstance((raw.get("bindings") or {}).get("ozon"), dict) else {}
+            rows.append(
+                (
+                    cid,
+                    str(key or "").strip(),
+                    str(raw.get("catalog_name") or "").strip(),
+                    str(raw.get("group") or "").strip(),
+                    str(raw.get("attribute_id") or "").strip() or None,
+                    str(raw.get("dict_id") or "").strip() or None,
+                    str(raw.get("type") or "").strip() or None,
+                    bool(raw.get("confirmed") or False),
+                    str(yandex_provider.get("provider_category_id") or "").strip() or None,
+                    str(yandex_binding.get("id") or "").strip() or None,
+                    str(yandex_binding.get("name") or "").strip() or None,
+                    str(yandex_binding.get("kind") or "").strip() or None,
+                    [str(v).strip() for v in (yandex_binding.get("values") or []) if str(v).strip()] or None,
+                    bool(yandex_binding.get("required") or False),
+                    bool(yandex_binding.get("export") or False),
+                    str(ozon_provider.get("provider_category_id") or "").strip() or None,
+                    str(ozon_binding.get("id") or "").strip() or None,
+                    str(ozon_binding.get("name") or "").strip() or None,
+                    str(ozon_binding.get("kind") or "").strip() or None,
+                    [str(v).strip() for v in (ozon_binding.get("values") or []) if str(v).strip()] or None,
+                    bool(ozon_binding.get("required") or False),
+                    bool(ozon_binding.get("export") or False),
+                    int(payload.get("rows_count") or 0),
+                )
+            )
+    return rows
+
+
+def _attribute_value_ref_dedupe_key(row: tuple[Any, ...]) -> tuple[str, str]:
+    category_id = str(row[0] or "").strip()
+    catalog_name_key = str(row[1] or "").strip()
+    catalog_name = str(row[2] or "").strip()
+    normalized_name = " ".join((catalog_name or catalog_name_key).lower().split())
+    return category_id, normalized_name
+
+
+def _replace_attribute_value_refs_tenant_table(doc: Dict[str, Any], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    deduped_rows: dict[tuple[str, str], tuple[Any, ...]] = {}
+    for row in _collect_attribute_value_ref_rows(doc):
+        category_id, normalized_name = _attribute_value_ref_dedupe_key(row)
+        if not category_id or not normalized_name:
+            continue
+        deduped_rows[(category_id, normalized_name)] = row
+    rows = list(deduped_rows.values())
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM attribute_value_refs_tenant_rel WHERE organization_id = %s", [org_id])
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO attribute_value_refs_tenant_rel (
+                      organization_id, catalog_category_id, catalog_name_key, catalog_name, param_group, attribute_id, dict_id, value_type, confirmed,
+                      yandex_provider_category_id, yandex_param_id, yandex_param_name, yandex_kind, yandex_allowed_values, yandex_required, yandex_export,
+                      ozon_provider_category_id, ozon_param_id, ozon_param_name, ozon_kind, ozon_allowed_values, ozon_required, ozon_export,
+                      rows_count, updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s,
+                      %s, NOW()
+                    )
+                    """,
+                    [(org_id, *row) for row in rows],
+                )
+
+    _with_pg_retry(_run)
+
+
+def save_attribute_value_refs_category_doc(
+    catalog_category_id: str,
+    payload: Dict[str, Any],
+    organization_id: Optional[str] = None,
+) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    cid = str(catalog_category_id or "").strip()
+    if not cid:
+        return
+    doc = {
+        "version": 2,
+        "updated_at": None,
+        "items": {
+            cid: payload if isinstance(payload, dict) else {},
+        },
+    }
+    deduped_rows: dict[tuple[str, str], tuple[Any, ...]] = {}
+    for row in _collect_attribute_value_ref_rows(doc):
+        category_id, normalized_name = _attribute_value_ref_dedupe_key(row)
+        if not category_id or not normalized_name:
+            continue
+        deduped_rows[(category_id, normalized_name)] = row
+    rows = [row for row in deduped_rows.values() if str(row[0] or "").strip() == cid]
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM attribute_value_refs_tenant_rel
+                WHERE organization_id = %s AND catalog_category_id = %s
+                """,
+                [org_id, cid],
+            )
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO attribute_value_refs_tenant_rel (
+                      organization_id, catalog_category_id, catalog_name_key, catalog_name, param_group, attribute_id, dict_id, value_type, confirmed,
+                      yandex_provider_category_id, yandex_param_id, yandex_param_name, yandex_kind, yandex_allowed_values, yandex_required, yandex_export,
+                      ozon_provider_category_id, ozon_param_id, ozon_param_name, ozon_kind, ozon_allowed_values, ozon_required, ozon_export,
+                      rows_count, updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s,
+                      %s, NOW()
+                    )
+                    """,
+                    [(org_id, *row) for row in rows],
+                )
+
+    _with_pg_retry(_run)
+
+
 def _bootstrap_attribute_value_refs_from_legacy() -> None:
     lock = with_lock("attribute_value_refs_rel_bootstrap")
     lock.acquire()
@@ -827,6 +1575,252 @@ def _bootstrap_attribute_value_refs_from_legacy() -> None:
         if not isinstance(doc, dict):
             doc = {"version": 2, "updated_at": None, "items": {}}
         _replace_attribute_value_refs_table(doc)
+    finally:
+        lock.release()
+
+
+def _bootstrap_attribute_value_refs_tenant_from_legacy(organization_id: Optional[str]) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"attribute_value_refs_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM attribute_value_refs_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        _bootstrap_attribute_value_refs_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            doc = read_doc(ATTRIBUTE_VALUE_DICTIONARY_PATH, default={"version": 2, "updated_at": None, "items": {}})
+            if not isinstance(doc, dict):
+                doc = {"version": 2, "updated_at": None, "items": {}}
+            _replace_attribute_value_refs_tenant_table(doc, org_id)
+    finally:
+        lock.release()
+
+
+def _replace_product_marketplace_status_tenant_table(rows: List[Dict[str, Any]], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    payload: List[tuple[str, str, bool, str, bool, str]] = []
+    for row in rows or []:
+        pid = str(row.get("product_id") or "").strip()
+        if not pid:
+            continue
+        payload.append(
+            (
+                org_id,
+                pid,
+                bool(row.get("yandex_present") or False),
+                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
+                bool(row.get("ozon_present") or False),
+                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
+            )
+        )
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM product_marketplace_status_tenant_rel WHERE organization_id = %s", [org_id])
+            if payload:
+                cur.executemany(
+                    """
+                    INSERT INTO product_marketplace_status_tenant_rel (
+                      organization_id, product_id, yandex_present, yandex_status, ozon_present, ozon_status, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    """,
+                    payload,
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_product_marketplace_status_from_legacy() -> None:
+    _ensure_tables()
+    lock = with_lock("product_marketplace_status_rel_bootstrap")
+    lock.acquire()
+    try:
+        # Legacy source is the relational table itself. If it's empty there is nothing to bootstrap.
+        return
+    finally:
+        lock.release()
+
+
+def _bootstrap_product_marketplace_status_tenant_from_legacy(organization_id: Optional[str]) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"product_marketplace_status_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM product_marketplace_status_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        _bootstrap_product_marketplace_status_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            def _legacy_rows() -> List[Dict[str, Any]]:
+                conn, _, _ = _pg_connect()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT product_id, yandex_present, yandex_status, ozon_present, ozon_status
+                        FROM product_marketplace_status_rel
+                        ORDER BY product_id
+                        """
+                    )
+                    rows = cur.fetchall() or []
+                return [
+                    {
+                        "product_id": str(row[0] or "").strip(),
+                        "yandex_present": bool(row[1] or False),
+                        "yandex_status": str(row[2] or "Нет данных").strip() or "Нет данных",
+                        "ozon_present": bool(row[3] or False),
+                        "ozon_status": str(row[4] or "Нет данных").strip() or "Нет данных",
+                    }
+                    for row in rows
+                    if str(row[0] or "").strip()
+                ]
+
+            _replace_product_marketplace_status_tenant_table(_with_pg_retry(_legacy_rows), org_id)
+    finally:
+        lock.release()
+
+
+def _collect_catalog_product_page_payload(rows: List[Dict[str, Any]]) -> List[tuple[Any, ...]]:
+    payload: List[tuple[Any, ...]] = []
+    for row in rows or []:
+        product_id = str(row.get("product_id") or row.get("id") or "").strip()
+        if not product_id:
+            continue
+        payload.append(
+            (
+                product_id,
+                str(row.get("title") or row.get("name") or "").strip(),
+                str(row.get("category_id") or "").strip(),
+                str(row.get("category_path") or "").strip(),
+                str(row.get("sku_pim") or "").strip() or None,
+                str(row.get("sku_gt") or "").strip() or None,
+                str(row.get("group_id") or "").strip() or None,
+                str(row.get("group_name") or "").strip() or None,
+                str(row.get("template_id") or "").strip() or None,
+                str(row.get("template_name") or "").strip() or None,
+                str(row.get("template_source_category_id") or "").strip() or None,
+                bool(row.get("yandex_present") or False),
+                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
+                bool(row.get("ozon_present") or False),
+                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
+                str(row.get("preview_url") or "").strip() or None,
+                json.dumps(row.get("exports_enabled") if isinstance(row.get("exports_enabled"), dict) else {}),
+            )
+        )
+    return payload
+
+
+def _replace_catalog_product_page_tenant_table(rows: List[Dict[str, Any]], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    payload = _collect_catalog_product_page_payload(rows)
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM catalog_product_page_tenant_rel WHERE organization_id = %s", [org_id])
+            if payload:
+                cur.executemany(
+                    """
+                    INSERT INTO catalog_product_page_tenant_rel (
+                      organization_id, product_id, title, category_id, category_path, sku_pim, sku_gt, group_id, group_name,
+                      template_id, template_name, template_source_category_id,
+                      yandex_present, yandex_status, ozon_present, ozon_status,
+                      preview_url, exports_enabled_json, updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s,
+                      %s, %s, %s, %s,
+                      %s, %s::jsonb, NOW()
+                    )
+                    """,
+                    [(org_id, *row) for row in payload],
+                )
+
+    _with_pg_retry(_run)
+
+
+def _bootstrap_catalog_product_page_tenant_from_legacy(organization_id: Optional[str]) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"catalog_product_page_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM catalog_product_page_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            def _legacy_rows() -> List[Dict[str, Any]]:
+                conn, _, _ = _pg_connect()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                          product_id, title, category_id, category_path, sku_pim, sku_gt, group_id, group_name,
+                          template_id, template_name, template_source_category_id,
+                          yandex_present, yandex_status, ozon_present, ozon_status,
+                          preview_url, exports_enabled_json
+                        FROM catalog_product_page_rel
+                        ORDER BY title, product_id
+                        """
+                    )
+                    rows = cur.fetchall() or []
+                out: List[Dict[str, Any]] = []
+                for row in rows:
+                    exports_enabled = row[16] if isinstance(row[16], dict) else {}
+                    out.append(
+                        {
+                            "product_id": str(row[0] or "").strip(),
+                            "title": str(row[1] or "").strip(),
+                            "category_id": str(row[2] or "").strip(),
+                            "category_path": str(row[3] or "").strip(),
+                            "sku_pim": str(row[4] or "").strip(),
+                            "sku_gt": str(row[5] or "").strip(),
+                            "group_id": str(row[6] or "").strip(),
+                            "group_name": str(row[7] or "").strip(),
+                            "template_id": str(row[8] or "").strip(),
+                            "template_name": str(row[9] or "").strip(),
+                            "template_source_category_id": str(row[10] or "").strip(),
+                            "yandex_present": bool(row[11] or False),
+                            "yandex_status": str(row[12] or "Нет данных").strip() or "Нет данных",
+                            "ozon_present": bool(row[13] or False),
+                            "ozon_status": str(row[14] or "Нет данных").strip() or "Нет данных",
+                            "preview_url": str(row[15] or "").strip(),
+                            "exports_enabled": exports_enabled if isinstance(exports_enabled, dict) else {},
+                        }
+                    )
+                return [row for row in out if str(row.get("product_id") or "").strip()]
+
+            _replace_catalog_product_page_tenant_table(_with_pg_retry(_legacy_rows), org_id)
     finally:
         lock.release()
 
@@ -866,9 +1860,10 @@ def save_catalog_nodes(nodes: List[Dict[str, Any]]) -> None:
     _replace_catalog_nodes_table(nodes)
 
 
-def load_category_mappings() -> Dict[str, Dict[str, str]]:
+def load_category_mappings(organization_id: Optional[str] = None) -> Dict[str, Dict[str, str]]:
     _ensure_tables()
-    _bootstrap_category_mappings_from_legacy()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_category_mappings_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Dict[str, str]]:
         conn, _, _ = _pg_connect()
@@ -876,9 +1871,11 @@ def load_category_mappings() -> Dict[str, Dict[str, str]]:
             cur.execute(
                 """
                 SELECT catalog_category_id, provider, provider_category_id
-                FROM category_mappings_rel
+                FROM category_mappings_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY catalog_category_id, provider
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         out: Dict[str, Dict[str, str]] = {}
@@ -894,14 +1891,15 @@ def load_category_mappings() -> Dict[str, Dict[str, str]]:
     return _with_pg_retry(_run)
 
 
-def save_category_mappings(items: Dict[str, Dict[str, str]]) -> None:
+def save_category_mappings(items: Dict[str, Dict[str, str]], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
-    _replace_category_mappings_table(items)
+    _replace_category_mappings_tenant_table(items, organization_id)
 
 
-def load_attribute_mapping_doc() -> Dict[str, Any]:
+def load_attribute_mapping_doc(organization_id: Optional[str] = None) -> Dict[str, Any]:
     _ensure_tables()
-    _bootstrap_attribute_mappings_from_legacy()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_attribute_mappings_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
@@ -927,9 +1925,11 @@ def load_attribute_mapping_doc() -> Dict[str, Any]:
                   ozon_required,
                   ozon_export,
                   updated_at
-                FROM attribute_mappings_rel
+                FROM attribute_mappings_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY catalog_category_id, catalog_name, row_id
-                """
+                """,
+                [org_id],
             )
             db_rows = cur.fetchall() or []
 
@@ -973,16 +1973,17 @@ def load_attribute_mapping_doc() -> Dict[str, Any]:
     return _with_pg_retry(_run)
 
 
-def save_attribute_mapping_doc(doc: Dict[str, Any]) -> None:
+def save_attribute_mapping_doc(doc: Dict[str, Any], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
     if not isinstance(doc, dict):
         doc = {"version": 1, "items": {}}
-    _replace_attribute_mappings_table(doc)
+    _replace_attribute_mappings_tenant_table(doc, organization_id)
 
 
-def load_attribute_value_refs_doc() -> Dict[str, Any]:
+def load_attribute_value_refs_doc(organization_id: Optional[str] = None) -> Dict[str, Any]:
     _ensure_tables()
-    _bootstrap_attribute_value_refs_from_legacy()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_attribute_value_refs_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
@@ -1014,9 +2015,11 @@ def load_attribute_value_refs_doc() -> Dict[str, Any]:
                   ozon_export,
                   rows_count,
                   updated_at
-                FROM attribute_value_refs_rel
+                FROM attribute_value_refs_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY catalog_category_id, catalog_name
-                """
+                """,
+                [org_id],
             )
             db_rows = cur.fetchall() or []
 
@@ -1102,11 +2105,11 @@ def load_attribute_value_refs_doc() -> Dict[str, Any]:
     return _with_pg_retry(_run)
 
 
-def save_attribute_value_refs_doc(doc: Dict[str, Any]) -> None:
+def save_attribute_value_refs_doc(doc: Dict[str, Any], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
     if not isinstance(doc, dict):
         doc = {"version": 2, "updated_at": None, "items": {}}
-    _replace_attribute_value_refs_table(doc)
+    _replace_attribute_value_refs_tenant_table(doc, organization_id)
 
 
 def _slugify_code(value: str) -> str:
@@ -1193,7 +2196,7 @@ def _normalize_dictionary_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     items = doc.get("items")
     if not isinstance(items, list):
         items = []
-    out_items: List[Dict[str, Any]] = []
+    by_id: Dict[str, Dict[str, Any]] = {}
     for raw in items:
         if not isinstance(raw, dict):
             continue
@@ -1203,23 +2206,46 @@ def _normalize_dictionary_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         title = _normalize_text(raw.get("title")) or did
         code = _normalize_text(raw.get("code")) or (did[len("dict_"):] if did.startswith("dict_") else _slugify_code(title))
         meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
-        out_items.append(
-            {
-                "id": did,
-                "title": title,
-                "code": code,
-                "attr_id": _normalize_text(raw.get("attr_id")) or f"attr_{code}_{did[-6:] or 'global'}",
-                "type": _normalize_text(raw.get("type")) or "select",
-                "scope": _normalize_text(raw.get("scope")) or "both",
-                "dict_id": did,
-                "items": _migrate_dict_items(raw.get("items") if isinstance(raw.get("items"), list) else raw.get("values")),
-                "aliases": raw.get("aliases") if isinstance(raw.get("aliases"), dict) else {},
-                "meta": meta,
-                "created_at": raw.get("created_at") or "",
-                "updated_at": raw.get("updated_at") or "",
-            }
-        )
-    return {"version": 2, "items": out_items}
+        incoming = {
+            "id": did,
+            "title": title,
+            "code": code,
+            "attr_id": _normalize_text(raw.get("attr_id")) or f"attr_{code}_{did[-6:] or 'global'}",
+            "type": _normalize_text(raw.get("type")) or "select",
+            "scope": _normalize_text(raw.get("scope")) or "both",
+            "dict_id": did,
+            "items": _migrate_dict_items(raw.get("items") if isinstance(raw.get("items"), list) else raw.get("values")),
+            "aliases": raw.get("aliases") if isinstance(raw.get("aliases"), dict) else {},
+            "meta": meta,
+            "created_at": raw.get("created_at") or "",
+            "updated_at": raw.get("updated_at") or "",
+        }
+        existing = by_id.get(did)
+        if not existing:
+            by_id[did] = incoming
+            continue
+        merged = dict(existing)
+        merged["items"] = _merge_dict_items(existing.get("items", []), incoming.get("items", []))
+        merged["aliases"] = {
+            **(existing.get("aliases") if isinstance(existing.get("aliases"), dict) else {}),
+            **(incoming.get("aliases") if isinstance(incoming.get("aliases"), dict) else {}),
+        }
+        merged["meta"] = {
+            **(existing.get("meta") if isinstance(existing.get("meta"), dict) else {}),
+            **(incoming.get("meta") if isinstance(incoming.get("meta"), dict) else {}),
+        }
+        if not _normalize_text(merged.get("title")) and _normalize_text(incoming.get("title")):
+            merged["title"] = incoming["title"]
+        if not _normalize_text(merged.get("attr_id")) and _normalize_text(incoming.get("attr_id")):
+            merged["attr_id"] = incoming["attr_id"]
+        if not _normalize_text(merged.get("created_at")) and _normalize_text(incoming.get("created_at")):
+            merged["created_at"] = incoming["created_at"]
+        if _normalize_text(incoming.get("updated_at")) and _normalize_text(merged.get("updated_at")) < _normalize_text(
+            incoming.get("updated_at")
+        ):
+            merged["updated_at"] = incoming["updated_at"]
+        by_id[did] = merged
+    return {"version": 2, "items": list(by_id.values())}
 
 
 def _load_legacy_dictionaries_doc() -> Dict[str, Any]:
@@ -1465,6 +2491,202 @@ def _replace_dictionaries_tables(doc: Dict[str, Any]) -> None:
     _with_pg_retry(_run)
 
 
+def _replace_dictionaries_tenant_tables(doc: Dict[str, Any], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    normalized = _normalize_dictionary_doc(doc)
+    items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
+    dictionaries_rows: List[tuple[Any, ...]] = []
+    value_rows_map: Dict[tuple[str, str], Dict[str, Any]] = {}
+    source_rows_map: Dict[tuple[str, str, str], int] = {}
+    alias_rows_map: Dict[tuple[str, str], str] = {}
+    provider_rows_map: Dict[tuple[str, str], tuple[Any, ...]] = {}
+    export_rows_map: Dict[tuple[str, str, str], str] = {}
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        did = _normalize_text(item.get("id"))
+        if not did:
+            continue
+        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        dictionaries_rows.append(
+            (
+                org_id,
+                did,
+                _normalize_text(item.get("title")) or did,
+                _normalize_text(item.get("code")) or (did[len("dict_"):] if did.startswith("dict_") else _slugify_code(item.get("title"))),
+                _normalize_text(item.get("attr_id")) or f"attr_{did}",
+                _normalize_text(item.get("type")) or "select",
+                _normalize_text(item.get("scope")) or "both",
+                bool(meta.get("service") or False),
+                bool(meta.get("required") or False),
+                _normalize_text(meta.get("param_group")) or None,
+                _normalize_text(meta.get("template_layer")) or None,
+                str(item.get("created_at") or "") or None,
+                str(item.get("updated_at") or "") or None,
+            )
+        )
+
+        for position, raw_value in enumerate(_migrate_dict_items(item.get("items"))):
+            value_key = _normalize_value_key(raw_value.get("value"))
+            if not value_key:
+                continue
+            row_key = (did, value_key)
+            next_value = {
+                "value_text": _normalize_text(raw_value.get("value")),
+                "value_count": int(raw_value.get("count") or 0),
+                "last_seen": str(raw_value.get("last_seen") or "") or None,
+                "position": int(position),
+            }
+            existing_value = value_rows_map.get(row_key)
+            if not existing_value:
+                value_rows_map[row_key] = next_value
+            else:
+                existing_value["value_count"] = int(existing_value.get("value_count") or 0) + next_value["value_count"]
+                if next_value["last_seen"] and (existing_value.get("last_seen") or "") < next_value["last_seen"]:
+                    existing_value["last_seen"] = next_value["last_seen"]
+                if len(next_value["value_text"]) > len(str(existing_value.get("value_text") or "")):
+                    existing_value["value_text"] = next_value["value_text"]
+                existing_value["position"] = min(int(existing_value.get("position") or 0), next_value["position"])
+            sources = raw_value.get("sources") if isinstance(raw_value.get("sources"), dict) else {}
+            for source_name, source_count in sources.items():
+                sname = _normalize_text(source_name)
+                if not sname:
+                    continue
+                source_key = (did, value_key, sname)
+                source_rows_map[source_key] = int(source_rows_map.get(source_key) or 0) + int(source_count or 0)
+
+        aliases = item.get("aliases") if isinstance(item.get("aliases"), dict) else {}
+        for alias_key, canonical_value in aliases.items():
+            akey = _normalize_value_key(alias_key)
+            cval = _normalize_text(canonical_value)
+            if akey and cval:
+                alias_rows_map[(did, akey)] = cval
+
+        source_reference = meta.get("source_reference") if isinstance(meta.get("source_reference"), dict) else {}
+        for provider, payload in source_reference.items():
+            if not isinstance(payload, dict):
+                continue
+            pname = _normalize_text(provider)
+            if not pname:
+                continue
+            provider_rows_map[(did, pname)] = (
+                org_id,
+                did,
+                pname,
+                _normalize_text(payload.get("id")) or None,
+                _normalize_text(payload.get("name")) or None,
+                _normalize_text(payload.get("kind")) or None,
+                bool(payload.get("required") or False),
+                [str(v).strip() for v in (payload.get("allowed_values") or []) if str(v).strip()] or None,
+            )
+
+        export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+        for provider, mapping in export_map.items():
+            if not isinstance(mapping, dict):
+                continue
+            pname = _normalize_text(provider)
+            if not pname:
+                continue
+            for canonical_key, provider_value in mapping.items():
+                ckey = _normalize_value_key(canonical_key)
+                pvalue = _normalize_text(provider_value)
+                if ckey and pvalue:
+                    export_rows_map[(did, pname, ckey)] = pvalue
+
+    value_rows: List[tuple[Any, ...]] = [
+        (
+            org_id,
+            dict_id,
+            value_key,
+            str(payload.get("value_text") or ""),
+            int(payload.get("value_count") or 0),
+            payload.get("last_seen"),
+            int(payload.get("position") or 0),
+        )
+        for (dict_id, value_key), payload in value_rows_map.items()
+    ]
+    source_rows: List[tuple[Any, ...]] = [
+        (org_id, dict_id, value_key, source_name, int(source_count or 0))
+        for (dict_id, value_key, source_name), source_count in source_rows_map.items()
+    ]
+    alias_rows: List[tuple[Any, ...]] = [
+        (org_id, dict_id, alias_key, canonical_value)
+        for (dict_id, alias_key), canonical_value in alias_rows_map.items()
+    ]
+    export_rows: List[tuple[Any, ...]] = [
+        (org_id, dict_id, provider, canonical_key, provider_value)
+        for (dict_id, provider, canonical_key), provider_value in export_rows_map.items()
+    ]
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM dictionary_export_maps_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM dictionary_provider_refs_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM dictionary_aliases_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM dictionary_value_sources_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM dictionary_values_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM dictionaries_tenant_rel WHERE organization_id = %s", [org_id])
+            if dictionaries_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionaries_tenant_rel (
+                      organization_id, id, title, code, attr_id, attr_type, scope,
+                      is_service, is_required, param_group, template_layer, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    dictionaries_rows,
+                )
+            if value_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_values_tenant_rel (
+                      organization_id, dict_id, value_key, value_text, value_count, last_seen, position
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    value_rows,
+                )
+            if source_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_value_sources_tenant_rel (
+                      organization_id, dict_id, value_key, source_name, source_count
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    source_rows,
+                )
+            if alias_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_aliases_tenant_rel (
+                      organization_id, dict_id, alias_key, canonical_value
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    alias_rows,
+                )
+            if provider_rows_map:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_provider_refs_tenant_rel (
+                      organization_id, dict_id, provider, provider_param_id, provider_param_name, kind, is_required, allowed_values
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    list(provider_rows_map.values()),
+                )
+            if export_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO dictionary_export_maps_tenant_rel (
+                      organization_id, dict_id, provider, canonical_key, provider_value
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    export_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
 def _bootstrap_dictionaries_from_legacy() -> None:
     lock = with_lock("dictionaries_rel_bootstrap")
     lock.acquire()
@@ -1477,9 +2699,33 @@ def _bootstrap_dictionaries_from_legacy() -> None:
         lock.release()
 
 
-def load_dictionaries_db_doc() -> Dict[str, Any]:
+def _bootstrap_dictionaries_tenant_from_legacy(organization_id: Optional[str]) -> None:
     _ensure_tables()
-    _bootstrap_dictionaries_from_legacy()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"dictionaries_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM dictionaries_tenant_rel WHERE organization_id = %s", [org_id])
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        _bootstrap_dictionaries_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            doc = _load_legacy_dictionaries_doc()
+            save_dictionaries_db_doc(doc, org_id)
+    finally:
+        lock.release()
+
+
+def load_dictionaries_db_doc(organization_id: Optional[str] = None) -> Dict[str, Any]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_dictionaries_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
@@ -1489,49 +2735,61 @@ def load_dictionaries_db_doc() -> Dict[str, Any]:
                 SELECT
                   id, title, code, attr_id, attr_type, scope,
                   is_service, is_required, param_group, template_layer, created_at, updated_at
-                FROM dictionaries_rel
+                FROM dictionaries_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY LOWER(title), id
-                """
+                """,
+                [org_id],
             )
             dict_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT dict_id, value_key, value_text, value_count, last_seen, position
-                FROM dictionary_values_rel
+                FROM dictionary_values_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY dict_id, position, value_text
-                """
+                """,
+                [org_id],
             )
             value_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT dict_id, value_key, source_name, source_count
-                FROM dictionary_value_sources_rel
+                FROM dictionary_value_sources_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY dict_id, value_key, source_name
-                """
+                """,
+                [org_id],
             )
             source_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT dict_id, alias_key, canonical_value
-                FROM dictionary_aliases_rel
+                FROM dictionary_aliases_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY dict_id, alias_key
-                """
+                """,
+                [org_id],
             )
             alias_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT dict_id, provider, provider_param_id, provider_param_name, kind, is_required, allowed_values
-                FROM dictionary_provider_refs_rel
+                FROM dictionary_provider_refs_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY dict_id, provider
-                """
+                """,
+                [org_id],
             )
             provider_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT dict_id, provider, canonical_key, provider_value
-                FROM dictionary_export_maps_rel
+                FROM dictionary_export_maps_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY dict_id, provider, canonical_key
-                """
+                """,
+                [org_id],
             )
             export_rows = cur.fetchall() or []
 
@@ -1610,10 +2868,16 @@ def load_dictionaries_db_doc() -> Dict[str, Any]:
     return _with_pg_retry(_run)
 
 
-def save_dictionaries_db_doc(doc: Dict[str, Any]) -> None:
+def save_dictionaries_db_doc(doc: Dict[str, Any], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
     normalized = _normalize_dictionary_doc(doc)
-    _replace_dictionaries_tables(normalized)
+    lock = with_lock(f"dictionaries_tenant_rel_write:{org_id}")
+    lock.acquire()
+    try:
+        _replace_dictionaries_tenant_tables(normalized, org_id)
+    finally:
+        lock.release()
 
 
 def _dedupe_list_str(items: Any) -> List[str]:
@@ -1803,6 +3067,223 @@ def _replace_templates_tables(doc: Dict[str, Any]) -> None:
     _with_pg_retry(_run)
 
 
+def _replace_templates_tenant_tables(doc: Dict[str, Any], organization_id: Optional[str]) -> None:
+    org_id = _resolve_organization_id(organization_id)
+    normalized = _normalize_templates_doc(doc)
+    templates = normalized.get("templates") if isinstance(normalized.get("templates"), dict) else {}
+    attributes = normalized.get("attributes") if isinstance(normalized.get("attributes"), dict) else {}
+    category_to_templates = normalized.get("category_to_templates") if isinstance(normalized.get("category_to_templates"), dict) else {}
+
+    template_rows: List[tuple[Any, ...]] = []
+    attr_rows: List[tuple[Any, ...]] = []
+    link_rows: List[tuple[Any, ...]] = []
+
+    for tid, template in templates.items():
+        if not isinstance(template, dict):
+            continue
+        template_rows.append(
+            (
+                org_id,
+                str(tid).strip(),
+                str(template.get("name") or tid).strip() or str(tid).strip(),
+                str(template.get("category_id") or "").strip() or None,
+                str(template.get("created_at") or "") or None,
+                str(template.get("updated_at") or "") or None,
+            )
+        )
+
+    for tid, rows in attributes.items():
+        tid_s = str(tid).strip()
+        if not tid_s or not isinstance(rows, list):
+            continue
+        for idx, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            attr_rows.append(
+                (
+                    org_id,
+                    tid_s,
+                    str(row.get("id") or "").strip() or f"{tid_s}:{idx}",
+                    str(row.get("name") or row.get("code") or "").strip(),
+                    str(row.get("code") or "").strip(),
+                    str(row.get("type") or "text").strip() or "text",
+                    bool(row.get("required") or False),
+                    str(row.get("scope") or "common").strip() or "common",
+                    str(row.get("attribute_id") or "").strip() or None,
+                    int(row.get("position") or idx),
+                    bool(row.get("locked") or False),
+                    json.dumps(row.get("options") if isinstance(row.get("options"), dict) else {}, ensure_ascii=False),
+                )
+            )
+
+    for cid, tids in category_to_templates.items():
+        cid_s = str(cid).strip()
+        if not cid_s or not isinstance(tids, list):
+            continue
+        for position, tid in enumerate(tids):
+            tid_s = str(tid).strip()
+            if cid_s and tid_s:
+                link_rows.append((org_id, cid_s, tid_s, int(position)))
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM category_template_links_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM template_attributes_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM templates_tenant_rel WHERE organization_id = %s", [org_id])
+            if template_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO templates_tenant_rel (
+                      organization_id, id, name, category_id, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    template_rows,
+                )
+            if attr_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO template_attributes_tenant_rel (
+                      organization_id, template_id, attr_id, name, code, attr_type, is_required,
+                      scope, attribute_id, position, is_locked, options_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    attr_rows,
+                )
+            if link_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO category_template_links_tenant_rel (
+                      organization_id, category_id, template_id, position
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    link_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
+def save_template_category_doc(
+    catalog_category_id: str,
+    template: Dict[str, Any],
+    attributes: List[Dict[str, Any]],
+    category_template_ids: List[str],
+    organization_id: Optional[str] = None,
+) -> None:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    cid = str(catalog_category_id or "").strip()
+    if not cid:
+        return
+
+    template_id = str((template or {}).get("id") or "").strip()
+    template_rows: List[tuple[Any, ...]] = []
+    if template_id and isinstance(template, dict):
+        template_rows.append(
+            (
+                org_id,
+                template_id,
+                str(template.get("name") or template_id).strip() or template_id,
+                cid,
+                str(template.get("created_at") or "") or None,
+                str(template.get("updated_at") or "") or None,
+            )
+        )
+
+    attr_rows: List[tuple[Any, ...]] = []
+    for idx, row in enumerate(attributes or []):
+        if not isinstance(row, dict) or not template_id:
+            continue
+        attr_rows.append(
+            (
+                org_id,
+                template_id,
+                str(row.get("id") or "").strip() or f"{template_id}:{idx}",
+                str(row.get("name") or row.get("code") or "").strip(),
+                str(row.get("code") or "").strip(),
+                str(row.get("type") or "text").strip() or "text",
+                bool(row.get("required") or False),
+                str(row.get("scope") or "common").strip() or "common",
+                str(row.get("attribute_id") or "").strip() or None,
+                int(row.get("position") or idx),
+                bool(row.get("locked") or False),
+                json.dumps(row.get("options") if isinstance(row.get("options"), dict) else {}, ensure_ascii=False),
+            )
+        )
+
+    link_rows: List[tuple[Any, ...]] = []
+    next_template_ids = [str(tid or "").strip() for tid in (category_template_ids or []) if str(tid or "").strip()]
+    for position, tid in enumerate(next_template_ids):
+        link_rows.append((org_id, cid, tid, int(position)))
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM templates_tenant_rel
+                WHERE organization_id = %s AND category_id = %s
+                """,
+                [org_id, cid],
+            )
+            legacy_template_ids = [str((row or [None])[0] or "").strip() for row in cur.fetchall() or []]
+            legacy_template_ids = [tid for tid in legacy_template_ids if tid]
+
+            cur.execute(
+                """
+                DELETE FROM category_template_links_tenant_rel
+                WHERE organization_id = %s AND category_id = %s
+                """,
+                [org_id, cid],
+            )
+            if legacy_template_ids:
+                cur.execute(
+                    """
+                    DELETE FROM template_attributes_tenant_rel
+                    WHERE organization_id = %s AND template_id = ANY(%s)
+                    """,
+                    [org_id, legacy_template_ids],
+                )
+                cur.execute(
+                    """
+                    DELETE FROM templates_tenant_rel
+                    WHERE organization_id = %s AND id = ANY(%s)
+                    """,
+                    [org_id, legacy_template_ids],
+                )
+            if template_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO templates_tenant_rel (
+                      organization_id, id, name, category_id, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    template_rows,
+                )
+            if attr_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO template_attributes_tenant_rel (
+                      organization_id, template_id, attr_id, name, code, attr_type, is_required,
+                      scope, attribute_id, position, is_locked, options_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    attr_rows,
+                )
+            if link_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO category_template_links_tenant_rel (
+                      organization_id, category_id, template_id, position
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    link_rows,
+                )
+
+    _with_pg_retry(_run)
+
+
 def _bootstrap_templates_from_legacy() -> None:
     lock = with_lock("templates_rel_bootstrap")
     lock.acquire()
@@ -1815,9 +3296,46 @@ def _bootstrap_templates_from_legacy() -> None:
         lock.release()
 
 
-def load_templates_db_doc() -> Dict[str, Any]:
+def _bootstrap_templates_tenant_from_legacy(organization_id: Optional[str]) -> None:
     _ensure_tables()
-    _bootstrap_templates_from_legacy()
+    org_id = _resolve_organization_id(organization_id)
+    with _TEMPLATES_TENANT_READY_LOCK:
+        if org_id in _TEMPLATES_TENANT_READY:
+            return
+    lock = with_lock(f"templates_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        with _TEMPLATES_TENANT_READY_LOCK:
+            if org_id in _TEMPLATES_TENANT_READY:
+                return
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM templates_tenant_rel WHERE organization_id = %s", [org_id])
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            with _TEMPLATES_TENANT_READY_LOCK:
+                _TEMPLATES_TENANT_READY.add(org_id)
+            return
+        _bootstrap_templates_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            doc = read_doc(
+                TEMPLATES_PATH,
+                default={"version": 2, "templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}},
+            )
+            _replace_templates_tenant_tables(doc if isinstance(doc, dict) else {}, org_id)
+        with _TEMPLATES_TENANT_READY_LOCK:
+            _TEMPLATES_TENANT_READY.add(org_id)
+    finally:
+        lock.release()
+
+
+def load_templates_db_doc(organization_id: Optional[str] = None) -> Dict[str, Any]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_templates_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
@@ -1825,26 +3343,32 @@ def load_templates_db_doc() -> Dict[str, Any]:
             cur.execute(
                 """
                 SELECT id, name, category_id, created_at, updated_at
-                FROM templates_rel
+                FROM templates_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY id
-                """
+                """,
+                [org_id],
             )
             template_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT template_id, attr_id, name, code, attr_type, is_required,
                        scope, attribute_id, position, is_locked, options_json
-                FROM template_attributes_rel
+                FROM template_attributes_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY template_id, position, code
-                """
+                """,
+                [org_id],
             )
             attr_rows = cur.fetchall() or []
             cur.execute(
                 """
                 SELECT category_id, template_id, position
-                FROM category_template_links_rel
+                FROM category_template_links_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY category_id, position, template_id
-                """
+                """,
+                [org_id],
             )
             link_rows = cur.fetchall() or []
 
@@ -1907,6 +3431,108 @@ def load_templates_db_doc() -> Dict[str, Any]:
             "category_to_templates": category_to_templates,
         }
     return _normalize_templates_doc(_with_pg_retry(_run))
+
+
+def load_template_editor_payload(category_path_ids: List[str], organization_id: Optional[str] = None) -> Dict[str, Any]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_templates_tenant_from_legacy(org_id)
+    path_ids = [str(item or "").strip() for item in category_path_ids if str(item or "").strip()]
+    if not path_ids:
+        return {"template": None, "attributes": [], "owner_category_id": None}
+
+    placeholders = ", ".join(["%s"] * len(path_ids))
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT l.category_id, l.template_id, l.position, t.name, t.category_id, t.created_at, t.updated_at
+                FROM category_template_links_tenant_rel l
+                JOIN templates_tenant_rel t
+                  ON t.organization_id = l.organization_id
+                 AND t.id = l.template_id
+                WHERE l.organization_id = %s
+                  AND l.category_id IN ({placeholders})
+                ORDER BY l.category_id, l.position, l.template_id
+                """,
+                [org_id, *path_ids],
+            )
+            link_rows = cur.fetchall() or []
+
+        by_category: Dict[str, List[Dict[str, Any]]] = {}
+        for row in link_rows:
+            category_id = str(row[0] or "").strip()
+            template_id = str(row[1] or "").strip()
+            if not category_id or not template_id:
+                continue
+            by_category.setdefault(category_id, []).append(
+                {
+                    "id": template_id,
+                    "name": str(row[3] or template_id).strip() or template_id,
+                    "category_id": str(row[4] or category_id).strip() or category_id,
+                    "created_at": str(row[5] or "") or "",
+                    "updated_at": str(row[6] or "") or "",
+                }
+            )
+
+        owner_category_id = None
+        template: Optional[Dict[str, Any]] = None
+        for category_id in reversed(path_ids):
+            items = by_category.get(category_id) or []
+            if items:
+                owner_category_id = category_id
+                template = items[0]
+                break
+
+        if not template:
+            return {"template": None, "attributes": [], "owner_category_id": None}
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT attr_id, name, code, attr_type, is_required,
+                       scope, attribute_id, position, is_locked, options_json
+                FROM template_attributes_tenant_rel
+                WHERE organization_id = %s
+                  AND template_id = %s
+                ORDER BY position, code
+                """,
+                [org_id, template["id"]],
+            )
+            attr_rows = cur.fetchall() or []
+
+        attributes: List[Dict[str, Any]] = []
+        for row in attr_rows:
+            options = row[9] if isinstance(row[9], dict) else {}
+            if not isinstance(options, dict):
+                try:
+                    options = json.loads(str(row[9] or "{}"))
+                except Exception:
+                    options = {}
+            attributes.append(
+                {
+                    "id": str(row[0] or "").strip(),
+                    "name": str(row[1] or "").strip(),
+                    "code": str(row[2] or "").strip(),
+                    "type": str(row[3] or "text").strip() or "text",
+                    "required": bool(row[4] or False),
+                    "scope": str(row[5] or "common").strip() or "common",
+                    "attribute_id": str(row[6] or "").strip() or None,
+                    "position": int(row[7] or 0),
+                    "locked": bool(row[8] or False),
+                    "options": options if isinstance(options, dict) else {},
+                }
+            )
+
+        return {
+            "template": template,
+            "attributes": attributes,
+            "owner_category_id": owner_category_id,
+        }
+
+    return _with_pg_retry(_run)
 
 
 def _normalize_products_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -2202,10 +3828,10 @@ def _bootstrap_variants_from_legacy() -> None:
         lock.release()
 
 
-def save_templates_db_doc(doc: Dict[str, Any]) -> None:
+def save_templates_db_doc(doc: Dict[str, Any], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
     normalized = _normalize_templates_doc(doc)
-    _replace_templates_tables(normalized)
+    _replace_templates_tenant_tables(normalized, organization_id)
 
 
 def load_products_doc() -> Dict[str, Any]:
@@ -2281,6 +3907,13 @@ def load_products_by_category(category_id: str) -> List[Dict[str, Any]]:
     if not cid:
         return []
     return query_products_full(category_ids=[cid])
+
+
+def load_products_by_group(group_id: str) -> List[Dict[str, Any]]:
+    gid = str(group_id or "").strip()
+    if not gid:
+        return []
+    return query_products_full(group_ids=[gid])
 
 
 def find_product_by_sku_gt(sku_gt: str) -> Dict[str, Any]:
@@ -2802,7 +4435,9 @@ def delete_product_items(ids: List[str]) -> int:
             affected_categories = [str(row[0] or "").strip() for row in category_rows if str(row[0] or "").strip()]
             cur.execute("DELETE FROM catalog_product_registry_rel WHERE id = ANY(%s)", [safe_ids])
             cur.execute("DELETE FROM catalog_product_page_rel WHERE product_id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM catalog_product_page_tenant_rel WHERE product_id = ANY(%s)", [safe_ids])
             cur.execute("DELETE FROM product_marketplace_status_rel WHERE product_id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM product_marketplace_status_tenant_rel WHERE product_id = ANY(%s)", [safe_ids])
             cur.execute("DELETE FROM products_rel WHERE id = ANY(%s)", [safe_ids])
             deleted = int(cur.rowcount or 0)
         _refresh_category_counts_for(affected_categories)
@@ -2913,11 +4548,13 @@ def query_products_full(
     *,
     ids: List[str] | None = None,
     category_ids: List[str] | None = None,
+    group_ids: List[str] | None = None,
 ) -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
     safe_ids = [str(x or "").strip() for x in (ids or []) if str(x or "").strip()]
     safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
+    safe_group_ids = [str(x or "").strip() for x in (group_ids or []) if str(x or "").strip()]
 
     def _run() -> List[Dict[str, Any]]:
         conn, _, _ = _pg_connect()
@@ -2936,6 +4573,9 @@ def query_products_full(
         if safe_category_ids:
             clauses.append("category_id = ANY(%s)")
             params.append(safe_category_ids)
+        if safe_group_ids:
+            clauses.append("group_id = ANY(%s)")
+            params.append(safe_group_ids)
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY created_at NULLS LAST, id"
@@ -3006,32 +4646,38 @@ def load_products_count() -> int:
     return _table_count("products_rel")
 
 
-def save_category_template_resolution(rows: List[Dict[str, Any]]) -> None:
+def save_category_template_resolution(rows: List[Dict[str, Any]], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
-    payload = []
+    org_id = _resolve_organization_id(organization_id)
+    deduped: Dict[str, tuple[str, str, Optional[str], Optional[str], Optional[str]]] = {}
     for row in rows or []:
         cid = str(row.get("category_id") or "").strip()
         if not cid:
             continue
-        payload.append(
-            (
-                cid,
-                str(row.get("template_id") or "").strip() or None,
-                str(row.get("template_name") or "").strip() or None,
-                str(row.get("source_category_id") or "").strip() or None,
-            )
+        deduped[cid] = (
+            org_id,
+            cid,
+            str(row.get("template_id") or "").strip() or None,
+            str(row.get("template_name") or "").strip() or None,
+            str(row.get("source_category_id") or "").strip() or None,
         )
+    payload = list(deduped.values())
 
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM category_template_resolution_rel")
+            cur.execute("DELETE FROM category_template_resolution_tenant_rel WHERE organization_id = %s", [org_id])
             if payload:
                 cur.executemany(
                     """
-                    INSERT INTO category_template_resolution_rel (
-                      category_id, template_id, template_name, source_category_id, updated_at
-                    ) VALUES (%s, %s, %s, %s, NOW())
+                    INSERT INTO category_template_resolution_tenant_rel (
+                      organization_id, category_id, template_id, template_name, source_category_id, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (organization_id, category_id) DO UPDATE SET
+                      template_id = EXCLUDED.template_id,
+                      template_name = EXCLUDED.template_name,
+                      source_category_id = EXCLUDED.source_category_id,
+                      updated_at = NOW()
                     """,
                     payload,
                 )
@@ -3039,8 +4685,71 @@ def save_category_template_resolution(rows: List[Dict[str, Any]]) -> None:
     _with_pg_retry(_run)
 
 
-def load_category_template_resolution_map() -> Dict[str, Dict[str, str]]:
+def _bootstrap_category_template_resolution_tenant_from_legacy(organization_id: Optional[str]) -> None:
     _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    lock = with_lock(f"category_template_resolution_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM category_template_resolution_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            def _legacy_rows() -> List[tuple[str, str, Optional[str], Optional[str], Optional[str]]]:
+                conn, _, _ = _pg_connect()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT category_id, template_id, template_name, source_category_id
+                        FROM category_template_resolution_rel
+                        ORDER BY category_id
+                        """
+                    )
+                    rows = cur.fetchall() or []
+                return [
+                    (
+                        org_id,
+                        str(row[0] or "").strip(),
+                        str(row[1] or "").strip() or None,
+                        str(row[2] or "").strip() or None,
+                        str(row[3] or "").strip() or None,
+                    )
+                    for row in rows
+                    if str(row[0] or "").strip()
+                ]
+
+            payload = _with_pg_retry(_legacy_rows)
+            if payload:
+                def _insert() -> None:
+                    conn, _, _ = _pg_connect()
+                    with conn.cursor() as cur:
+                        cur.executemany(
+                            """
+                            INSERT INTO category_template_resolution_tenant_rel (
+                              organization_id, category_id, template_id, template_name, source_category_id, updated_at
+                            ) VALUES (%s, %s, %s, %s, %s, NOW())
+                            """,
+                            payload,
+                        )
+
+                _with_pg_retry(_insert)
+    finally:
+        lock.release()
+
+
+def load_category_template_resolution_map(organization_id: Optional[str] = None) -> Dict[str, Dict[str, str]]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_category_template_resolution_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Dict[str, str]]:
         conn, _, _ = _pg_connect()
@@ -3048,9 +4757,11 @@ def load_category_template_resolution_map() -> Dict[str, Dict[str, str]]:
             cur.execute(
                 """
                 SELECT category_id, template_id, template_name, source_category_id
-                FROM category_template_resolution_rel
+                FROM category_template_resolution_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY category_id
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         return {
@@ -3066,42 +4777,15 @@ def load_category_template_resolution_map() -> Dict[str, Dict[str, str]]:
     return _with_pg_retry(_run)
 
 
-def save_product_marketplace_status(rows: List[Dict[str, Any]]) -> None:
+def save_product_marketplace_status(rows: List[Dict[str, Any]], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
-    payload = []
-    for row in rows or []:
-        pid = str(row.get("product_id") or "").strip()
-        if not pid:
-            continue
-        payload.append(
-            (
-                pid,
-                bool(row.get("yandex_present") or False),
-                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
-                bool(row.get("ozon_present") or False),
-                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
-            )
-        )
-
-    def _run() -> None:
-        conn, _, _ = _pg_connect()
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM product_marketplace_status_rel")
-            if payload:
-                cur.executemany(
-                    """
-                    INSERT INTO product_marketplace_status_rel (
-                      product_id, yandex_present, yandex_status, ozon_present, ozon_status, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, NOW())
-                    """,
-                    payload,
-                )
-
-    _with_pg_retry(_run)
+    _replace_product_marketplace_status_tenant_table(rows, organization_id)
 
 
-def load_product_marketplace_status_map() -> Dict[str, Dict[str, Dict[str, Any]]]:
+def load_product_marketplace_status_map(organization_id: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
     _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_product_marketplace_status_tenant_from_legacy(org_id)
 
     def _run() -> Dict[str, Dict[str, Dict[str, Any]]]:
         conn, _, _ = _pg_connect()
@@ -3109,9 +4793,11 @@ def load_product_marketplace_status_map() -> Dict[str, Dict[str, Dict[str, Any]]
             cur.execute(
                 """
                 SELECT product_id, yandex_present, yandex_status, ozon_present, ozon_status
-                FROM product_marketplace_status_rel
+                FROM product_marketplace_status_tenant_rel
+                WHERE organization_id = %s
                 ORDER BY product_id
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         out: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -3134,58 +4820,9 @@ def load_product_marketplace_status_map() -> Dict[str, Dict[str, Dict[str, Any]]
     return _with_pg_retry(_run)
 
 
-def save_catalog_product_page_rows(rows: List[Dict[str, Any]]) -> None:
+def save_catalog_product_page_rows(rows: List[Dict[str, Any]], organization_id: Optional[str] = None) -> None:
     _ensure_tables()
-    payload: List[tuple[Any, ...]] = []
-    for row in rows or []:
-        product_id = str(row.get("product_id") or row.get("id") or "").strip()
-        if not product_id:
-            continue
-        payload.append(
-            (
-                product_id,
-                str(row.get("title") or row.get("name") or "").strip(),
-                str(row.get("category_id") or "").strip(),
-                str(row.get("category_path") or "").strip(),
-                str(row.get("sku_pim") or "").strip() or None,
-                str(row.get("sku_gt") or "").strip() or None,
-                str(row.get("group_id") or "").strip() or None,
-                str(row.get("group_name") or "").strip() or None,
-                str(row.get("template_id") or "").strip() or None,
-                str(row.get("template_name") or "").strip() or None,
-                str(row.get("template_source_category_id") or "").strip() or None,
-                bool(row.get("yandex_present") or False),
-                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
-                bool(row.get("ozon_present") or False),
-                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
-                str(row.get("preview_url") or "").strip() or None,
-                json.dumps(row.get("exports_enabled") if isinstance(row.get("exports_enabled"), dict) else {}),
-            )
-        )
-
-    def _run() -> None:
-        conn, _, _ = _pg_connect()
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM catalog_product_page_rel")
-            if payload:
-                cur.executemany(
-                    """
-                    INSERT INTO catalog_product_page_rel (
-                      product_id, title, category_id, category_path, sku_pim, sku_gt, group_id, group_name,
-                      template_id, template_name, template_source_category_id,
-                      yandex_present, yandex_status, ozon_present, ozon_status,
-                      preview_url, exports_enabled_json, updated_at
-                    ) VALUES (
-                      %s, %s, %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s,
-                      %s, %s, %s, %s,
-                      %s, %s::jsonb, NOW()
-                    )
-                    """,
-                    payload,
-                )
-
-    _with_pg_retry(_run)
+    _replace_catalog_product_page_tenant_table(rows, organization_id)
 
 
 def query_catalog_product_page_rows(
@@ -3200,8 +4837,11 @@ def query_catalog_product_page_rows(
     q: str = "",
     page: int = 1,
     page_size: int = 50,
+    organization_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_catalog_product_page_tenant_from_legacy(org_id)
     safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
     exact_category_id = str(exact_category_id or "").strip()
     group_filter = str(group_filter or "").strip()
@@ -3216,10 +4856,10 @@ def query_catalog_product_page_rows(
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
         sql = """
-            FROM catalog_product_page_rel
+            FROM catalog_product_page_tenant_rel
         """
-        clauses: List[str] = []
-        params: List[Any] = []
+        clauses: List[str] = ["organization_id = %s"]
+        params: List[Any] = [org_id]
         if exact_category_id:
             clauses.append("category_id = %s")
             params.append(exact_category_id)
@@ -3257,6 +4897,10 @@ def query_catalog_product_page_rows(
             clauses.append("yandex_present = FALSE")
         elif view_filter == "no_oz":
             clauses.append("ozon_present = FALSE")
+        elif view_filter == "no_photo":
+            clauses.append("COALESCE(preview_url, '') = ''")
+        elif view_filter == "no_group":
+            clauses.append("COALESCE(group_id, '') = ''")
 
         if q:
             clauses.append(
@@ -3636,7 +5280,7 @@ def _default_connectors_state() -> Dict[str, Any]:
     return {"version": 1, "updated_at": None, "providers": {}}
 
 
-def _replace_connectors_state_tables(doc: Dict[str, Any]) -> None:
+def _collect_connectors_state_rows(doc: Dict[str, Any]) -> tuple[List[tuple[Any, ...]], List[tuple[Any, ...]], List[tuple[Any, ...]]]:
     providers = doc.get("providers") if isinstance(doc, dict) else {}
     method_rows: List[tuple[Any, ...]] = []
     settings_rows: List[tuple[Any, ...]] = []
@@ -3700,6 +5344,12 @@ def _replace_connectors_state_tables(doc: Dict[str, Any]) -> None:
                 )
             )
 
+    return method_rows, settings_rows, store_rows
+
+
+def _replace_connectors_state_tables(doc: Dict[str, Any]) -> None:
+    method_rows, settings_rows, store_rows = _collect_connectors_state_rows(doc)
+
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
@@ -3739,6 +5389,49 @@ def _replace_connectors_state_tables(doc: Dict[str, Any]) -> None:
     _with_pg_retry(_run)
 
 
+def _replace_connectors_state_tenant_tables(doc: Dict[str, Any], organization_id: Optional[str]) -> None:
+    org_id = _normalize_organization_id(organization_id)
+    method_rows, settings_rows, store_rows = _collect_connectors_state_rows(doc)
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM connector_method_state_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM connector_provider_settings_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM connector_import_stores_tenant_rel WHERE organization_id = %s", [org_id])
+            if method_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO connector_method_state_tenant_rel (
+                      organization_id, provider, method, schedule, last_run_at, last_success_at, last_error_at,
+                      last_error, fail_count, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    [(org_id, *row) for row in method_rows],
+                )
+            if settings_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO connector_provider_settings_tenant_rel (
+                      organization_id, provider, setting_key, setting_value
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    [(org_id, *row) for row in settings_rows],
+                )
+            if store_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO connector_import_stores_tenant_rel (
+                      organization_id, provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
+                      enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    [(org_id, *row) for row in store_rows],
+                )
+
+    _with_pg_retry(_run)
+
+
 def _bootstrap_connectors_state_from_legacy() -> None:
     _ensure_tables()
     lock = with_lock("connectors_state_rel_bootstrap")
@@ -3754,7 +5447,33 @@ def _bootstrap_connectors_state_from_legacy() -> None:
         lock.release()
 
 
-def load_connectors_state_doc() -> Dict[str, Any]:
+def _bootstrap_tenant_connectors_state_from_legacy(organization_id: Optional[str]) -> None:
+    _ensure_tables()
+    org_id = _normalize_organization_id(organization_id)
+    lock = with_lock(f"connectors_state_tenant_rel_bootstrap:{org_id}")
+    lock.acquire()
+    try:
+        def _count() -> int:
+            conn, _, _ = _pg_connect()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM connector_method_state_tenant_rel WHERE organization_id = %s",
+                    [org_id],
+                )
+                row = cur.fetchone()
+                return int((row or [0])[0] or 0)
+
+        if _with_pg_retry(_count) > 0:
+            return
+        _bootstrap_connectors_state_from_legacy()
+        if org_id == DEFAULT_ORGANIZATION_ID:
+            legacy_doc = load_connectors_state_doc_legacy()
+            _replace_connectors_state_tenant_tables(legacy_doc, org_id)
+    finally:
+        lock.release()
+
+
+def load_connectors_state_doc_legacy() -> Dict[str, Any]:
     _ensure_tables()
     _bootstrap_connectors_state_from_legacy()
 
@@ -3841,6 +5560,103 @@ def load_connectors_state_doc() -> Dict[str, Any]:
     return _with_pg_retry(_run)
 
 
-def save_connectors_state_doc(doc: Dict[str, Any]) -> None:
+def load_connectors_state_doc(organization_id: Optional[str] = None) -> Dict[str, Any]:
     _ensure_tables()
-    _replace_connectors_state_tables(doc if isinstance(doc, dict) else _default_connectors_state())
+    org_id = _normalize_organization_id(organization_id)
+    _bootstrap_tenant_connectors_state_from_legacy(org_id)
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT provider, method, schedule, last_run_at, last_success_at, last_error_at, last_error, fail_count, status
+                FROM connector_method_state_tenant_rel
+                WHERE organization_id = %s
+                ORDER BY provider, method
+                """,
+                [org_id],
+            )
+            method_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT provider, setting_key, setting_value
+                FROM connector_provider_settings_tenant_rel
+                WHERE organization_id = %s
+                ORDER BY provider, setting_key
+                """,
+                [org_id],
+            )
+            setting_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
+                       enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                FROM connector_import_stores_tenant_rel
+                WHERE organization_id = %s
+                ORDER BY provider, title, store_id
+                """,
+                [org_id],
+            )
+            store_rows = cur.fetchall() or []
+
+        providers: Dict[str, Any] = {}
+        for row in method_rows:
+            provider = str(row[0] or "").strip()
+            method = str(row[1] or "").strip()
+            if not provider or not method:
+                continue
+            prow = providers.setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+            prow["methods"][method] = {
+                "schedule": str(row[2] or "").strip() or "1h",
+                "last_run_at": str(row[3] or "").strip() or None,
+                "last_success_at": str(row[4] or "").strip() or None,
+                "last_error_at": str(row[5] or "").strip() or None,
+                "last_error": str(row[6] or "").strip(),
+                "fail_count": int(row[7] or 0),
+                "status": str(row[8] or "").strip() or "ok",
+            }
+
+        for row in setting_rows:
+            provider = str(row[0] or "").strip()
+            key = str(row[1] or "").strip()
+            if not provider or not key:
+                continue
+            prow = providers.setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+            prow["settings"][key] = str(row[2] or "").strip()
+
+        for row in store_rows:
+            provider = str(row[0] or "").strip()
+            if not provider:
+                continue
+            prow = providers.setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+            prow["import_stores"].append(
+                {
+                    "id": str(row[1] or "").strip(),
+                    "title": str(row[2] or "").strip(),
+                    "business_id": str(row[3] or "").strip(),
+                    "client_id": str(row[4] or "").strip(),
+                    "api_key": str(row[5] or "").strip(),
+                    "token": str(row[6] or "").strip(),
+                    "auth_mode": str(row[7] or "").strip(),
+                    "enabled": bool(row[8]),
+                    "notes": str(row[9] or "").strip(),
+                    "last_check_at": str(row[10] or "").strip() or None,
+                    "last_check_status": str(row[11] or "").strip(),
+                    "last_check_error": str(row[12] or "").strip(),
+                    "created_at": str(row[13] or "").strip() or None,
+                    "updated_at": str(row[14] or "").strip() or None,
+                }
+            )
+
+        return {"version": 1, "updated_at": None, "providers": providers}
+
+    return _with_pg_retry(_run)
+
+
+def save_connectors_state_doc(doc: Dict[str, Any], organization_id: Optional[str] = None) -> None:
+    _ensure_tables()
+    _replace_connectors_state_tenant_tables(
+        doc if isinstance(doc, dict) else _default_connectors_state(),
+        organization_id,
+    )

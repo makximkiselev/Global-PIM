@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -14,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc, with_lock
+from app.core.tenant_context import current_tenant_organization_id
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
@@ -30,9 +32,11 @@ from app.storage.relational_pim_store import (
     load_attribute_value_refs_doc,
     load_catalog_nodes,
     load_category_mappings,
+    save_attribute_value_refs_category_doc,
     save_attribute_mapping_doc,
     save_attribute_value_refs_doc,
     save_category_mappings,
+    save_template_category_doc,
 )
 from app.core.master_templates import (
     PARAM_GROUPS,
@@ -60,9 +64,6 @@ CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
 YANDEX_CATEGORY_PARAMS_PATH = MARKETPLACES_DIR / "yandex_market" / "category_parameters.json"
 OZON_CATEGORY_ATTRS_PATH = MARKETPLACES_DIR / "ozon" / "category_attributes.json"
 ATTR_FEEDBACK_PATH = MARKETPLACES_DIR / "attribute_match_feedback.json"
-IMPORT_CATEGORIES_CACHE_PATH = CACHE_DIR / "import_categories_snapshot.json"
-ATTR_BOOTSTRAP_CACHE_PATH = CACHE_DIR / "attr_bootstrap_snapshot.json"
-ATTR_CATEGORIES_CACHE_PATH = CACHE_DIR / "attr_categories_snapshot.json"
 ATTR_DETAILS_CACHE_DIR = CACHE_DIR / "attr_details"
 
 PROVIDER_TITLES: Dict[str, str] = {
@@ -78,22 +79,58 @@ _ATTR_DETAILS_CACHE_TTL_SECONDS = 86400.0
 _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 86400.0
 _IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 86400.0
 _VALUE_DETAILS_CACHE_TTL_SECONDS = 86400.0
-_import_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_attr_categories_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_attr_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
-_attr_bootstrap_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_value_details_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_AI_MATCH_OLLAMA_TIMEOUT_SECONDS = float(os.getenv("AI_MATCH_OLLAMA_TIMEOUT_SECONDS", "3.0") or "3.0")
+
+
+def _ai_match_timeout_seconds() -> float:
+    return max(_AI_MATCH_OLLAMA_TIMEOUT_SECONDS, 0.1)
+
+
+_import_categories_cache: Dict[str, Dict[str, Any]] = {}
+_attr_categories_cache: Dict[str, Dict[str, Any]] = {}
+_attr_details_cache: Dict[str, Dict[str, tuple[float, Dict[str, Any]]]] = {}
+_attr_bootstrap_cache: Dict[str, Dict[str, Any]] = {}
+_value_details_cache: Dict[str, Dict[str, tuple[float, Dict[str, Any]]]] = {}
+
+
+def _current_org_cache_key() -> str:
+    return re.sub(r"[^a-zA-Z0-9_-]+", "_", current_tenant_organization_id()) or "default"
+
+
+def _cache_entry(cache: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    return cache.setdefault(_current_org_cache_key(), {"ts": 0.0, "payload": None})
+
+
+def _details_cache_bucket() -> Dict[str, tuple[float, Dict[str, Any]]]:
+    return _attr_details_cache.setdefault(_current_org_cache_key(), {})
+
+
+def _value_details_cache_bucket() -> Dict[str, tuple[float, Dict[str, Any]]]:
+    return _value_details_cache.setdefault(_current_org_cache_key(), {})
+
+
+def _import_categories_cache_path() -> Path:
+    return CACHE_DIR / f"import_categories_snapshot_{_current_org_cache_key()}.json"
+
+
+def _attr_bootstrap_cache_path() -> Path:
+    return CACHE_DIR / f"attr_bootstrap_snapshot_{_current_org_cache_key()}.json"
+
+
+def _attr_categories_cache_path() -> Path:
+    return CACHE_DIR / f"attr_categories_snapshot_{_current_org_cache_key()}.json"
 
 
 def _invalidate_import_categories_cache() -> None:
-    _import_categories_cache["ts"] = 0.0
-    _import_categories_cache["payload"] = None
-    write_doc(IMPORT_CATEGORIES_CACHE_PATH, {"ts": 0.0, "payload": None})
+    entry = _cache_entry(_import_categories_cache)
+    entry["ts"] = 0.0
+    entry["payload"] = None
+    _persistent_cache_clear(_import_categories_cache_path())
 
 
 def _attr_details_cache_path(catalog_category_id: str) -> Path:
     safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(catalog_category_id or "").strip()) or "unknown"
-    return ATTR_DETAILS_CACHE_DIR / f"{safe}.json"
+    return ATTR_DETAILS_CACHE_DIR / f"{_current_org_cache_key()}_{safe}.json"
 
 
 def _persistent_cache_read(path: Path, ttl_seconds: float) -> Optional[Dict[str, Any]]:
@@ -121,7 +158,8 @@ def _persistent_cache_clear(path: Path) -> None:
 
 def _persistent_attr_details_cache_clear_all() -> None:
     try:
-        for child in ATTR_DETAILS_CACHE_DIR.glob("*.json"):
+        prefix = f"{_current_org_cache_key()}_"
+        for child in ATTR_DETAILS_CACHE_DIR.glob(f"{prefix}*.json"):
             _persistent_cache_clear(child)
     except Exception:
         return
@@ -476,19 +514,14 @@ def _upsert_attr_values_dictionary_for_category(
             "bindings": r.get("provider_map") if isinstance(r.get("provider_map"), dict) else {},
         }
 
-    doc = _load_attr_values_dict_doc()
-    items = doc.get("items") if isinstance(doc.get("items"), dict) else {}
-    if not isinstance(items, dict):
-        items = {}
-    items[cid] = {
+    payload = {
         "catalog_category_id": cid,
         "providers": providers_payload,
         "catalog_params": by_catalog_name,
         "rows_count": len(norm_rows),
         "updated_at": _now_iso(),
     }
-    doc["items"] = items
-    _save_attr_values_dict_doc(doc)
+    save_attribute_value_refs_category_doc(cid, payload)
 
 
 def _catalog_param_group_locks() -> Dict[str, str]:
@@ -1277,7 +1310,12 @@ def _upsert_template_from_attr_mapping(
     db.setdefault("category_to_template", {})
     if isinstance(db.get("category_to_template"), dict):
         db["category_to_template"][cid] = template_id
-    save_templates_db(db)
+    save_template_category_doc(
+        cid,
+        template_record,
+        attrs,
+        cat_to_tpls.get(cid) if isinstance(cat_to_tpls.get(cid), list) else [template_id],
+    )
 
 
 def _backfill_templates_from_attr_mapping() -> None:
@@ -1443,14 +1481,15 @@ def _service_param_defs_payload() -> List[Dict[str, Any]]:
 @router.get("/import/categories")
 def mapping_import_categories() -> Dict[str, Any]:
     now = time.monotonic()
-    cached = _import_categories_cache.get("payload")
-    cached_ts = float(_import_categories_cache.get("ts") or 0.0)
+    cache_entry = _cache_entry(_import_categories_cache)
+    cached = cache_entry.get("payload")
+    cached_ts = float(cache_entry.get("ts") or 0.0)
     if cached and now - cached_ts < _IMPORT_CATEGORIES_CACHE_TTL_SECONDS:
         return cached
-    persisted = _persistent_cache_read(IMPORT_CATEGORIES_CACHE_PATH, _IMPORT_CATEGORIES_CACHE_TTL_SECONDS)
+    persisted = _persistent_cache_read(_import_categories_cache_path(), _IMPORT_CATEGORIES_CACHE_TTL_SECONDS)
     if persisted:
-        _import_categories_cache["ts"] = now
-        _import_categories_cache["payload"] = persisted
+        cache_entry["ts"] = now
+        cache_entry["payload"] = persisted
         return persisted
 
     catalog_nodes = _load_catalog_nodes()
@@ -1475,6 +1514,7 @@ def mapping_import_categories() -> Dict[str, Any]:
         )
 
     binding_states = _build_binding_states(catalog_nodes, catalog_items, mappings)
+    competitor_states = _build_competitor_states(catalog_nodes, catalog_items)
 
     payload = {
         "ok": True,
@@ -1484,24 +1524,26 @@ def mapping_import_categories() -> Dict[str, Any]:
         "provider_categories": provider_categories,
         "mappings": mappings,
         "binding_states": binding_states,
+        "competitor_states": competitor_states,
     }
-    _import_categories_cache["ts"] = now
-    _import_categories_cache["payload"] = payload
-    _persistent_cache_write(IMPORT_CATEGORIES_CACHE_PATH, payload)
+    cache_entry["ts"] = now
+    cache_entry["payload"] = payload
+    _persistent_cache_write(_import_categories_cache_path(), payload)
     return payload
 
 
 @router.get("/import/attributes/bootstrap")
 def mapping_attribute_bootstrap() -> Dict[str, Any]:
     now = time.monotonic()
-    cached = _attr_bootstrap_cache.get("payload")
-    cached_ts = float(_attr_bootstrap_cache.get("ts") or 0.0)
+    cache_entry = _cache_entry(_attr_bootstrap_cache)
+    cached = cache_entry.get("payload")
+    cached_ts = float(cache_entry.get("ts") or 0.0)
     if cached and now - cached_ts < _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS:
         return cached
-    persisted = _persistent_cache_read(ATTR_BOOTSTRAP_CACHE_PATH, _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS)
+    persisted = _persistent_cache_read(_attr_bootstrap_cache_path(), _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS)
     if persisted:
-        _attr_bootstrap_cache["ts"] = now
-        _attr_bootstrap_cache["payload"] = persisted
+        cache_entry["ts"] = now
+        cache_entry["payload"] = persisted
         return persisted
 
     categories_payload = mapping_attribute_categories()
@@ -1512,9 +1554,9 @@ def mapping_attribute_bootstrap() -> Dict[str, Any]:
         "catalog_attr_options": [],
         "service_param_defs": _service_param_defs_payload(),
     }
-    _attr_bootstrap_cache["ts"] = now
-    _attr_bootstrap_cache["payload"] = payload
-    _persistent_cache_write(ATTR_BOOTSTRAP_CACHE_PATH, payload)
+    cache_entry["ts"] = now
+    cache_entry["payload"] = payload
+    _persistent_cache_write(_attr_bootstrap_cache_path(), payload)
     return payload
 
 
@@ -2044,7 +2086,11 @@ async def _ollama_suggest_rows(
         "prompt": f"{sys_prompt}\n\nДанные:\n{json.dumps(user_payload, ensure_ascii=False)}",
     }
 
-    timeout = httpx.Timeout(120.0, connect=5.0)
+    timeout_budget = _ai_match_timeout_seconds()
+    timeout = httpx.Timeout(
+        timeout_budget,
+        connect=min(max(timeout_budget / 2.0, 0.1), 3.0),
+    )
     async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(f"{base_url}/api/generate", json=body)
         if r.status_code >= 400:
@@ -2244,6 +2290,133 @@ def _build_binding_states(
     return out
 
 
+def _competitor_is_configured_row(row: Dict[str, Any]) -> bool:
+    links = row.get("links") if isinstance(row.get("links"), dict) else {}
+    has_restore = bool(str((links or {}).get("restore") or "").strip())
+    has_store = bool(str((links or {}).get("store77") or "").strip())
+    maps = row.get("mapping_by_site") if isinstance(row.get("mapping_by_site"), dict) else {}
+    m_restore = maps.get("restore") if isinstance(maps, dict) else {}
+    m_store = maps.get("store77") if isinstance(maps, dict) else {}
+    has_map_restore = isinstance(m_restore, dict) and len(m_restore) > 0
+    has_map_store = isinstance(m_store, dict) and len(m_store) > 0
+    return bool(has_restore and has_store and has_map_restore and has_map_store)
+
+
+def _competitor_templates_by_category() -> Dict[str, List[str]]:
+    db = load_templates_db()
+    templates = db.get("templates") if isinstance(db.get("templates"), dict) else {}
+    out: Dict[str, List[str]] = {}
+    if isinstance(templates, dict):
+        for tid, tpl in templates.items():
+            if not isinstance(tpl, dict):
+                continue
+            cid = str(tpl.get("category_id") or "").strip()
+            if not cid:
+                continue
+            out.setdefault(cid, []).append(str(tpl.get("id") or tid))
+    legacy_map = db.get("category_to_templates") if isinstance(db.get("category_to_templates"), dict) else {}
+    for cid, tids in (legacy_map or {}).items():
+        if not isinstance(tids, list):
+            continue
+        for tid in tids:
+            tid_s = str(tid or "").strip()
+            if tid_s:
+                out.setdefault(str(cid), []).append(tid_s)
+    single_map = db.get("category_to_template") if isinstance(db.get("category_to_template"), dict) else {}
+    for cid, tid in (single_map or {}).items():
+        tid_s = str(tid or "").strip()
+        if tid_s:
+            out.setdefault(str(cid), []).append(tid_s)
+    for cid, tids in out.items():
+        uniq: List[str] = []
+        seen: set[str] = set()
+        for tid in tids:
+            if tid in seen:
+                continue
+            seen.add(tid)
+            uniq.append(tid)
+        out[cid] = uniq
+    return out
+
+
+def _resolve_competitor_template_for_category(
+    category_id: str,
+    templates_by_category: Dict[str, List[str]],
+    parent_by_id: Dict[str, str],
+) -> Tuple[Optional[str], Optional[str]]:
+    cid = str(category_id or "").strip()
+    if not cid:
+        return None, None
+    cur = cid
+    seen: set[str] = set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        tids = templates_by_category.get(cur) or []
+        if tids:
+            return str(tids[0]), cur
+        cur = parent_by_id.get(cur, "")
+    return None, None
+
+
+def _build_competitor_states(catalog_nodes: List[Dict[str, Any]], catalog_items: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    from app.storage.json_store import load_competitor_mapping_db
+
+    db = load_competitor_mapping_db()
+    category_rows = db.get("categories") if isinstance(db.get("categories"), dict) else {}
+    template_rows = db.get("templates") if isinstance(db.get("templates"), dict) else {}
+    templates_by_category = _competitor_templates_by_category()
+    parent_by_id = _catalog_parent_map(catalog_nodes)
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for item in catalog_items:
+        cid = str(item.get("id") or "").strip()
+        if not cid:
+            continue
+
+        row = category_rows.get(cid)
+        links = {"restore": "", "store77": ""}
+        mapping_by_site = {"restore": {}, "store77": {}}
+        if isinstance(row, dict):
+            raw_links = row.get("links") if isinstance(row.get("links"), dict) else {}
+            links = {
+                "restore": str((raw_links or {}).get("restore") or "").strip(),
+                "store77": str((raw_links or {}).get("store77") or "").strip(),
+            }
+            raw_maps = row.get("mapping_by_site") if isinstance(row.get("mapping_by_site"), dict) else {}
+            mapping_by_site = {
+                "restore": dict(raw_maps.get("restore") or {}) if isinstance(raw_maps.get("restore"), dict) else {},
+                "store77": dict(raw_maps.get("store77") or {}) if isinstance(raw_maps.get("store77"), dict) else {},
+            }
+
+        has_custom = bool(links["restore"] or links["store77"] or mapping_by_site["restore"] or mapping_by_site["store77"])
+        effective_row = {"links": links, "mapping_by_site": mapping_by_site}
+        template_id: Optional[str] = None
+        source_category_id: Optional[str] = None
+        if not has_custom:
+            template_id, source_category_id = _resolve_competitor_template_for_category(cid, templates_by_category, parent_by_id)
+            if template_id and isinstance(template_rows.get(template_id), dict):
+                tpl = template_rows.get(template_id)
+                raw_links = tpl.get("links") if isinstance(tpl.get("links"), dict) else {}
+                raw_maps = tpl.get("mapping_by_site") if isinstance(tpl.get("mapping_by_site"), dict) else {}
+                effective_row = {
+                    "links": {
+                        "restore": str((raw_links or {}).get("restore") or "").strip(),
+                        "store77": str((raw_links or {}).get("store77") or "").strip(),
+                    },
+                    "mapping_by_site": {
+                        "restore": dict(raw_maps.get("restore") or {}) if isinstance(raw_maps.get("restore"), dict) else {},
+                        "store77": dict(raw_maps.get("store77") or {}) if isinstance(raw_maps.get("store77"), dict) else {},
+                    },
+                }
+
+        out[cid] = {
+            "configured": _competitor_is_configured_row(effective_row),
+            "template_id": template_id or None,
+            "source_category_id": source_category_id or None,
+        }
+    return out
+
+
 @router.post("/import/categories/link")
 def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
     catalog_id = str(req.catalog_category_id or "").strip()
@@ -2319,13 +2492,13 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
 
         _save_mappings(items)
         _invalidate_import_categories_cache()
-        _attr_categories_cache["ts"] = 0.0
-        _attr_categories_cache["payload"] = None
-        _attr_bootstrap_cache["ts"] = 0.0
-        _attr_bootstrap_cache["payload"] = None
-        _attr_details_cache.clear()
-        _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
-        _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+        _cache_entry(_attr_categories_cache)["ts"] = 0.0
+        _cache_entry(_attr_categories_cache)["payload"] = None
+        _cache_entry(_attr_bootstrap_cache)["ts"] = 0.0
+        _cache_entry(_attr_bootstrap_cache)["payload"] = None
+        _details_cache_bucket().clear()
+        _persistent_cache_clear(_attr_categories_cache_path())
+        _persistent_cache_clear(_attr_bootstrap_cache_path())
         _persistent_attr_details_cache_clear_all()
     finally:
         lock.release()
@@ -2394,13 +2567,13 @@ def mapping_clear_descendant_bindings(req: ClearDescendantBindingsReq) -> Dict[s
                 cleared_catalog_ids.append(cid)
         _save_mappings(items)
         _invalidate_import_categories_cache()
-        _attr_categories_cache["ts"] = 0.0
-        _attr_categories_cache["payload"] = None
-        _attr_bootstrap_cache["ts"] = 0.0
-        _attr_bootstrap_cache["payload"] = None
-        _attr_details_cache.clear()
-        _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
-        _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+        _cache_entry(_attr_categories_cache)["ts"] = 0.0
+        _cache_entry(_attr_categories_cache)["payload"] = None
+        _cache_entry(_attr_bootstrap_cache)["ts"] = 0.0
+        _cache_entry(_attr_bootstrap_cache)["payload"] = None
+        _details_cache_bucket().clear()
+        _persistent_cache_clear(_attr_categories_cache_path())
+        _persistent_cache_clear(_attr_bootstrap_cache_path())
         _persistent_attr_details_cache_clear_all()
     finally:
         lock.release()
@@ -2418,14 +2591,15 @@ def mapping_clear_descendant_bindings(req: ClearDescendantBindingsReq) -> Dict[s
 @router.get("/import/attributes/categories")
 def mapping_attribute_categories() -> Dict[str, Any]:
     now = time.monotonic()
-    cached_payload = _attr_categories_cache.get("payload")
-    cached_ts = float(_attr_categories_cache.get("ts") or 0.0)
+    cache_entry = _cache_entry(_attr_categories_cache)
+    cached_payload = cache_entry.get("payload")
+    cached_ts = float(cache_entry.get("ts") or 0.0)
     if cached_payload and now - cached_ts < _ATTR_CATEGORIES_CACHE_TTL_SECONDS:
         return cached_payload
-    persisted = _persistent_cache_read(ATTR_CATEGORIES_CACHE_PATH, _ATTR_CATEGORIES_CACHE_TTL_SECONDS)
+    persisted = _persistent_cache_read(_attr_categories_cache_path(), _ATTR_CATEGORIES_CACHE_TTL_SECONDS)
     if persisted:
-        _attr_categories_cache["ts"] = now
-        _attr_categories_cache["payload"] = persisted
+        cache_entry["ts"] = now
+        cache_entry["payload"] = persisted
         return persisted
 
     _migrate_mapping_documents_to_canonical_names()
@@ -2510,9 +2684,9 @@ def mapping_attribute_categories() -> Dict[str, Any]:
         )
     out.sort(key=lambda x: str(x.get("path") or "").lower())
     payload = {"ok": True, "items": out, "count": len(out)}
-    _attr_categories_cache["ts"] = now
-    _attr_categories_cache["payload"] = payload
-    _persistent_cache_write(ATTR_CATEGORIES_CACHE_PATH, payload)
+    cache_entry["ts"] = now
+    cache_entry["payload"] = payload
+    _persistent_cache_write(_attr_categories_cache_path(), payload)
     return payload
 
 
@@ -2523,12 +2697,13 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
 
-    cached = _attr_details_cache.get(cid)
+    details_cache = _details_cache_bucket()
+    cached = details_cache.get(cid)
     if cached and time.monotonic() - cached[0] < _ATTR_DETAILS_CACHE_TTL_SECONDS:
         return cached[1]
     persisted = _persistent_cache_read(_attr_details_cache_path(cid), _ATTR_DETAILS_CACHE_TTL_SECONDS)
     if persisted:
-        _attr_details_cache[cid] = (time.monotonic(), persisted)
+        details_cache[cid] = (time.monotonic(), persisted)
         return persisted
 
     catalog_nodes = _load_catalog_nodes()
@@ -2599,7 +2774,7 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         "sources": template_meta.get("sources") if isinstance(template_meta.get("sources"), dict) else {},
         "catalog_attr_options": catalog_attr_options,
     }
-    _attr_details_cache[cid] = (time.monotonic(), payload)
+    details_cache[cid] = (time.monotonic(), payload)
     _persistent_cache_write(_attr_details_cache_path(cid), payload)
     return payload
 
@@ -2610,7 +2785,8 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
 
-    cached = _value_details_cache.get(cid)
+    value_cache = _value_details_cache_bucket()
+    cached = value_cache.get(cid)
     if cached and time.monotonic() - cached[0] < _VALUE_DETAILS_CACHE_TTL_SECONDS:
         return cached[1]
 
@@ -2705,7 +2881,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         "items": out,
         "count": len(out),
     }
-    _value_details_cache[cid] = (time.monotonic(), result)
+    value_cache[cid] = (time.monotonic(), result)
     return result
 
 
@@ -2715,14 +2891,14 @@ def mapping_attribute_save(catalog_category_id: str, req: SaveAttrMappingReq) ->
     cid = str(catalog_category_id or "").strip()
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
-    _attr_categories_cache["ts"] = 0.0
-    _attr_categories_cache["payload"] = None
-    _attr_bootstrap_cache["ts"] = 0.0
-    _attr_bootstrap_cache["payload"] = None
-    _attr_details_cache.pop(cid, None)
-    _value_details_cache.pop(cid, None)
-    _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
-    _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+    _cache_entry(_attr_categories_cache)["ts"] = 0.0
+    _cache_entry(_attr_categories_cache)["payload"] = None
+    _cache_entry(_attr_bootstrap_cache)["ts"] = 0.0
+    _cache_entry(_attr_bootstrap_cache)["payload"] = None
+    _details_cache_bucket().pop(cid, None)
+    _value_details_cache_bucket().pop(cid, None)
+    _persistent_cache_clear(_attr_categories_cache_path())
+    _persistent_cache_clear(_attr_bootstrap_cache_path())
     _persistent_cache_clear(_attr_details_cache_path(cid))
 
     catalog_rows = _catalog_rows(_load_catalog_nodes())
@@ -2835,12 +3011,13 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
     rows_ai: Optional[List[Dict[str, Any]]] = None
     engine = "fallback"
     try:
-        rows_ai = await _ollama_suggest_rows(
-            category_name=str(cat.get("path") or cat.get("name") or cid),
-            yandex_params=yandex_params,
-            existing_rows=seed_rows,
-            feedback_doc=feedback_doc,
-        )
+        async with asyncio.timeout(_ai_match_timeout_seconds()):
+            rows_ai = await _ollama_suggest_rows(
+                category_name=str(cat.get("path") or cat.get("name") or cid),
+                yandex_params=yandex_params,
+                existing_rows=seed_rows,
+                feedback_doc=feedback_doc,
+            )
         if rows_ai:
             rows_ai = _merge_ai_rows_into_target_rows(seed_rows, rows_ai)
             engine = "ollama"
@@ -2855,14 +3032,14 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
     rows_final = _apply_group_locks(rows_final)
 
     if req.apply:
-        _attr_categories_cache["ts"] = 0.0
-        _attr_categories_cache["payload"] = None
-        _attr_bootstrap_cache["ts"] = 0.0
-        _attr_bootstrap_cache["payload"] = None
-        _attr_details_cache.pop(cid, None)
-        _value_details_cache.pop(cid, None)
-        _persistent_cache_clear(ATTR_CATEGORIES_CACHE_PATH)
-        _persistent_cache_clear(ATTR_BOOTSTRAP_CACHE_PATH)
+        _cache_entry(_attr_categories_cache)["ts"] = 0.0
+        _cache_entry(_attr_categories_cache)["payload"] = None
+        _cache_entry(_attr_bootstrap_cache)["ts"] = 0.0
+        _cache_entry(_attr_bootstrap_cache)["payload"] = None
+        _details_cache_bucket().pop(cid, None)
+        _value_details_cache_bucket().pop(cid, None)
+        _persistent_cache_clear(_attr_categories_cache_path())
+        _persistent_cache_clear(_attr_bootstrap_cache_path())
         _persistent_cache_clear(_attr_details_cache_path(cid))
         lock = with_lock("marketplace_attribute_mapping")
         lock.acquire()
