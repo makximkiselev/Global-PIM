@@ -819,6 +819,10 @@ def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
 
     own_template = owner_tpl if owner_path_item and str(owner_path_item.get("id") or "") == str(category_id) else None
     inherited_from = None if own_template else owner_path_item
+    tpl_meta = owner_tpl.get("meta") if isinstance(owner_tpl, dict) and isinstance(owner_tpl.get("meta"), dict) else {}
+    info_model = tpl_meta.get("info_model") if isinstance(tpl_meta.get("info_model"), dict) else {}
+    raw_candidates = info_model.get("candidates") if isinstance(info_model.get("candidates"), list) else []
+    info_model_status = str(info_model.get("status") or ("approved" if owner_tpl else "none")).strip()
 
     return {
         "ok": True,
@@ -832,6 +836,11 @@ def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
         "inherited_from": inherited_from,
         "attributes": owner_attrs,
         "master": master,
+        "info_model": {
+            **info_model,
+            "status": info_model_status,
+            "candidates_count": len(raw_candidates),
+        },
     }
 
 

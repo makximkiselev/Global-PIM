@@ -225,6 +225,7 @@ class ApiReadSmokeTests(unittest.TestCase):
                     "id": "tpl-1",
                     "category_id": "cat-1",
                     "name": "Template 1",
+                    "meta": {"info_model": {"status": "approved", "candidates": []}},
                 }
             },
             "attributes": {"tpl-1": []},
@@ -252,6 +253,8 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(body["ok"], True)
         self.assertEqual(body["category"]["id"], "cat-1")
         self.assertIn("master", body)
+        self.assertIn("info_model", body)
+        self.assertEqual(body["info_model"]["status"], "approved")
 
     def test_catalog_products_page_data_endpoint(self) -> None:
         with (
