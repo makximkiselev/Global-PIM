@@ -235,6 +235,126 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["batches"][1]["items"][0]["missing"], ["description"])
         self.assertIn("export_abcdef1234", saved_runs["runs"])
 
+    def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
+        products = [
+            {
+                "id": "product_quest_128",
+                "category_id": "cat-vr",
+                "title": "Meta Quest 3 128GB",
+                "content": {
+                    "features": [
+                        {"name": "Бренд", "value": "Meta"},
+                        {"name": "Встроенная память", "value": "128 GB"},
+                    ]
+                },
+            },
+            {
+                "id": "product_quest_256",
+                "category_id": "cat-vr",
+                "title": "Meta Quest 3 256GB",
+                "content": {
+                    "features": [
+                        {"name": "Бренд", "value": "Meta"},
+                        {"name": "Встроенная память", "value": "256 GB"},
+                    ]
+                },
+            },
+        ]
+        saved: dict[str, object] = {}
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "query_products_full", return_value=deepcopy(products)),
+            patch.object(draft_service, "new_id", side_effect=["tpl-draft-vr", "cand-brand", "cand-memory"]),
+            patch.object(draft_service, "now_iso", return_value="2026-04-27T00:00:00+00:00"),
+        ):
+            response = draft_service.create_draft_from_sources("cat-vr", {"sources": ["products"]})
+
+        self.assertEqual(response["template"]["id"], "tpl-draft-vr")
+        self.assertEqual(response["info_model"]["status"], "draft")
+        names = {candidate["name"] for candidate in response["candidates"]}
+        self.assertIn("Бренд", names)
+        self.assertIn("Встроенная память", names)
+        memory = next(candidate for candidate in response["candidates"] if candidate["name"] == "Встроенная память")
+        self.assertEqual(memory["examples"], ["128 GB", "256 GB"])
+        self.assertEqual(memory["sources"][0]["kind"], "product")
+        self.assertEqual(saved["templates"]["tpl-draft-vr"]["meta"]["info_model"]["status"], "draft")
+
+    def test_info_model_approve_draft_writes_accepted_candidates_to_attributes(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {
+            "templates": {
+                "tpl-draft-vr": {
+                    "id": "tpl-draft-vr",
+                    "category_id": "cat-vr",
+                    "name": "Draft: VR",
+                    "meta": {
+                        "info_model": {
+                            "status": "draft",
+                            "candidates": [
+                                {
+                                    "id": "cand-memory",
+                                    "name": "Встроенная память",
+                                    "code": "vstroennaya_pamyat",
+                                    "type": "select",
+                                    "group": "Характеристики",
+                                    "required": True,
+                                    "confidence": 0.9,
+                                    "status": "accepted",
+                                    "examples": ["128 GB", "256 GB"],
+                                    "sources": [],
+                                },
+                                {
+                                    "id": "cand-weight",
+                                    "name": "Вес",
+                                    "code": "ves",
+                                    "type": "number",
+                                    "group": "Габариты",
+                                    "required": False,
+                                    "confidence": 0.4,
+                                    "status": "rejected",
+                                    "examples": ["515 г"],
+                                    "sources": [],
+                                },
+                            ],
+                        }
+                    },
+                }
+            },
+            "attributes": {"tpl-draft-vr": []},
+            "category_to_template": {"cat-vr": "tpl-draft-vr"},
+            "category_to_templates": {"cat-vr": ["tpl-draft-vr"]},
+        }
+        saved: dict[str, object] = {}
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "new_id", return_value="attr-memory"),
+            patch.object(draft_service, "now_iso", return_value="2026-04-27T01:00:00+00:00"),
+        ):
+            response = draft_service.approve_draft("tpl-draft-vr")
+
+        self.assertEqual(response["info_model"]["status"], "approved")
+        attrs = saved["attributes"]["tpl-draft-vr"]
+        self.assertEqual(len(attrs), 1)
+        self.assertEqual(attrs[0]["name"], "Встроенная память")
+        self.assertEqual(attrs[0]["options"]["source_candidates"], ["cand-memory"])
+        self.assertEqual(saved["templates"]["tpl-draft-vr"]["meta"]["info_model"]["approved_at"], "2026-04-27T01:00:00+00:00")
+
 
 if __name__ == "__main__":
     unittest.main()
