@@ -153,6 +153,7 @@ class RelationalPimStoreTests(unittest.TestCase):
                     "_ensure_tables_impl",
                     side_effect=AssertionError("full bootstrap should be skipped"),
                 ),
+                patch.object(relational_pim_store, "_ensure_lightweight_schema_migrations", return_value=None),
             ):
                 relational_pim_store._ensure_tables()
             self.assertTrue(relational_pim_store._TABLES_READY)

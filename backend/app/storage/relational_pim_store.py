@@ -1002,6 +1002,16 @@ def _schema_bootstrap_marker_exists() -> bool:
     return bool(_with_pg_retry(_run))
 
 
+def _ensure_lightweight_schema_migrations() -> None:
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("ALTER TABLE templates_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+            cur.execute("ALTER TABLE templates_tenant_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+
+    _with_pg_retry(_run)
+
+
 def _ensure_tables() -> None:
     global _TABLES_READY
     if _TABLES_READY:
@@ -1010,6 +1020,7 @@ def _ensure_tables() -> None:
         if _TABLES_READY:
             return
         if _schema_bootstrap_marker_exists():
+            _ensure_lightweight_schema_migrations()
             _TABLES_READY = True
             return
         _ensure_tables_impl()
