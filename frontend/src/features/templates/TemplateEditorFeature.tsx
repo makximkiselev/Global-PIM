@@ -465,37 +465,6 @@ export default function TemplateEditor() {
     return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
   }, [draftCandidates]);
 
-  const workflowSteps = useMemo(
-    () => [
-      {
-        label: "Источники",
-        value: infoModel.status === "approved" ? "модель есть" : sourceCoverage.length ? `${sourceCoverage.length} подключено` : "нужен сбор",
-        state: infoModel.status === "approved" || sourceCoverage.length ? "done" : "active",
-      },
-      {
-        label: "Объединение полей",
-        value: infoModel.status === "approved" ? `${attrs.length} полей` : draftCandidates.length ? `${draftCandidates.length} полей` : "нет кандидатов",
-        state: infoModel.status === "approved" || draftCandidates.length ? "done" : "active",
-      },
-      {
-        label: "Проверка",
-        value: infoModel.status === "approved" ? "пройдена" : reviewCandidates ? `${reviewCandidates} спорных` : acceptedCandidates ? "готово" : "ожидает",
-        state: infoModel.status === "approved" || acceptedCandidates ? "done" : reviewCandidates ? "active" : "idle",
-      },
-      {
-        label: "Утверждение",
-        value: infoModel.status === "approved" ? "модель готова" : `${acceptedCandidates} в модели`,
-        state: infoModel.status === "approved" ? "done" : acceptedCandidates ? "active" : "idle",
-      },
-      {
-        label: "Товары",
-        value: infoModel.status === "approved" ? "можно заполнять" : "после модели",
-        state: infoModel.status === "approved" ? "active" : "idle",
-      },
-    ],
-    [acceptedCandidates, attrs.length, draftCandidates.length, infoModel.status, reviewCandidates, sourceCoverage.length]
-  );
-
   const yandexSource = useMemo<TemplateSourceInfo | null>(() => {
     const row = master?.sources?.yandex_market;
     return row && typeof row === "object" ? (row as TemplateSourceInfo) : null;
@@ -1087,45 +1056,35 @@ export default function TemplateEditor() {
                     </div>
                   </div>
 
-                  <div className="tplModelInlineSummary">
-                    <div className="tplModelInlineItem">
+                  <div className="tplModelStatusBar">
+                    <div className="tplModelStatusItem">
                       <span>Категория</span>
                       <strong>{category?.name || "—"}</strong>
-                      <small>{category?.path?.map((item) => item.name).join(" / ") || "Путь категории появится после загрузки."}</small>
                     </div>
-                    <div className="tplModelInlineItem">
-                      <span>Готовность</span>
+                    <div className="tplModelStatusItem">
+                      <span>Поля</span>
+                      <strong>{infoModel.status === "approved" ? attrs.length : draftCandidates.length || attrs.length}</strong>
+                    </div>
+                    <div className="tplModelStatusItem">
+                      <span>Проверить</span>
+                      <strong>{reviewCandidates}</strong>
+                    </div>
+                    <div className="tplModelStatusItem">
+                      <span>В модели</span>
+                      <strong>{acceptedCandidates}</strong>
+                    </div>
+                    <div className="tplModelStatusItem is-wide">
+                      <span>Источники</span>
                       <strong>
-                        {infoModel.status === "approved"
-                          ? `${attrs.length} полей`
-                          : master?.stats
-                            ? `${Number(master.stats.confirmed_count || 0)} / ${Number(master.stats.row_count || 0)}`
-                            : `${acceptedCandidates} в модели`}
+                        {sourceCoverage.length
+                          ? sourceCoverage.map((source) => `${sourceLabel(source.provider)} ${source.fields}`).join(" · ")
+                          : "не собраны"}
                       </strong>
-                      <small>
-                        {infoModel.status === "approved"
-                          ? "Можно использовать в товарах и маппинге."
-                          : "Сколько предложенных полей уже добавлено перед утверждением."}
-                      </small>
                     </div>
-                    <div className="tplModelInlineItem">
-                      <span>Текущий фокус</span>
-                      <strong>{focusedAttr?.name || "Сборка модели"}</strong>
-                      <small>
-                        {focusedAttr
-                          ? `${TYPE_LABEL[focusedAttr.type] || focusedAttr.type} · ${SCOPE_LABEL[focusedAttr.scope] || focusedAttr.scope}`
-                          : "Выберите поле ниже, чтобы видеть его в фокусе."}
-                      </small>
+                    <div className="tplModelStatusItem is-wide">
+                      <span>Фокус</span>
+                      <strong>{focusedAttr?.name || "сборка модели"}</strong>
                     </div>
-                  </div>
-
-                  <div className="tplModelFlow">
-                    {workflowSteps.map((step) => (
-                      <div className={`tplModelStep is-${step.state}`} key={step.label}>
-                        <span>{step.label}</span>
-                        <strong>{step.value}</strong>
-                      </div>
-                    ))}
                   </div>
 
                   <div className="tplModelQuickActions">
@@ -1140,34 +1099,6 @@ export default function TemplateEditor() {
                     </Button>
                   </div>
 
-                  <div className="tplSourceBoard">
-                    {sourceCoverage.length ? (
-                      sourceCoverage.map((source) => (
-                        <div className="tplSourceTile" key={source.provider}>
-                          <span>{sourceLabel(source.provider)}</span>
-                          <strong>{source.fields}</strong>
-                          <small>
-                            {source.required ? `${source.required} обязательных` : "опциональные поля"}
-                            {source.examples ? ` · ${source.examples} примеров` : ""}
-                          </small>
-                        </div>
-                      ))
-                    ) : infoModel.status === "approved" ? (
-                      <div className="tplSourceTile is-empty">
-                        <span>Модель утверждена</span>
-                        <strong>{attrs.length}</strong>
-                        <small>
-                          Рабочие поля уже сохранены в PIM. Повторный сбор нужен только если параметры площадок или товаров изменились.
-                        </small>
-                      </div>
-                    ) : (
-                      <div className="tplSourceTile is-empty">
-                        <span>Источники</span>
-                        <strong>Не собраны</strong>
-                        <small>Нажмите «Собрать из источников», чтобы получить параметры Я.Маркета, Ozon и товаров PIM.</small>
-                      </div>
-                    )}
-                  </div>
                 </Card>
 
                 <Card className="tplCanvasCard tplEditorHeaderCard">

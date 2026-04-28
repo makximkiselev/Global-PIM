@@ -6412,3 +6412,31 @@ Follow-up browser verification:
    - `Готовность`;
    - `Текущий фокус`;
 5. confirmed no browser console errors/warnings on the checked screen.
+
+Second follow-up decision after user review:
+
+1. even after removing the right column, too much status data sits above the actual category/model work;
+2. top of the editor must not behave like a dashboard;
+3. the command card should only orient the user and expose the next actions.
+
+Second follow-up implementation status:
+
+1. replaced large inline summary cards + workflow cards + source tiles with one compact status bar;
+2. status bar contains only:
+   - category;
+   - total found/model fields;
+   - fields requiring review;
+   - fields already added;
+   - source counts;
+   - current focused field;
+3. removed unused workflow step computation and unused CSS for the previous card-based flow/source tiles;
+4. build verification passed locally, `npm --prefix frontend run build`;
+5. production deploy completed, health `{"ok":true}`.
+
+Second follow-up browser verification:
+
+1. open `/templates/b2f026d9-a3e2-4821-9034-d17ac1b65065`;
+2. confirmed the category/model work area starts much higher;
+3. confirmed the top block is a compact command/status area, not a dashboard;
+4. confirmed `Поля карточки товара` is visible on the first screen;
+5. confirmed no browser console errors/warnings on the checked screen.

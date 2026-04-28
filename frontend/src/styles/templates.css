@@ -593,7 +593,7 @@
 
 .tplModelCommandCard {
   display: grid;
-  gap: 18px;
+  gap: 12px;
   overflow: hidden;
   background:
     radial-gradient(circle at top right, rgba(var(--brand-rgb), 0.12), transparent 34%),
@@ -620,7 +620,7 @@
 }
 
 .tplModelCommandTop p {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   max-width: 84ch;
   color: var(--text-soft);
   font-size: 14px;
@@ -645,131 +645,40 @@
   gap: 10px;
 }
 
-.tplModelInlineSummary {
+.tplModelStatusBar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.tplModelInlineItem {
-  min-height: 86px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(var(--surface-rgb), 0.72), rgba(var(--card-rgb), 0.58));
-  display: grid;
-  align-content: start;
-  gap: 5px;
-}
-
-.tplModelInlineItem span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 950;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.tplModelInlineItem strong {
-  color: var(--text);
-  font-size: 17px;
-  line-height: 1.16;
-  font-weight: 950;
-}
-
-.tplModelInlineItem small {
-  color: var(--text-soft);
-  font-size: 12px;
-  line-height: 1.35;
-  font-weight: 720;
-}
-
-.tplModelFlow {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.templatesEditorFrameFocused .tplModelFlow {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.tplModelStep {
-  min-height: 78px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  background: rgba(var(--surface-rgb), 0.6);
-  display: grid;
-  align-content: space-between;
-  gap: 12px;
-  position: relative;
-}
-
-.tplModelStep::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  border-radius: 999px;
-  background: rgba(var(--text-rgb), 0.18);
-}
-
-.tplModelStep.is-done::before {
-  background: rgba(16, 185, 129, 0.85);
-}
-
-.tplModelStep.is-active::before {
-  background: rgba(var(--brand-rgb), 0.92);
-}
-
-.tplModelStep span,
-.tplSourceTile span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 950;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.tplModelStep strong {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1.2;
-}
-
-.tplSourceBoard {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
-}
-
-.tplSourceTile {
-  min-height: 94px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(var(--surface-rgb), 0.62);
-  display: grid;
+  grid-template-columns: 1.2fr .7fr .7fr .7fr 1.35fr 1.1fr;
   gap: 8px;
 }
 
-.tplSourceTile strong {
-  font-size: 28px;
-  line-height: 1;
+.tplModelStatusItem {
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(var(--surface-rgb), 0.72), rgba(var(--card-rgb), 0.58));
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tplModelStatusItem span {
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.tplSourceTile small {
-  color: var(--text-soft);
-  font-size: 12px;
-  line-height: 1.35;
-  font-weight: 720;
-}
-
-.tplSourceTile.is-empty {
-  grid-column: 1 / -1;
+.tplModelStatusItem strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.16;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tplAttrBoard {
@@ -1169,7 +1078,7 @@
     grid-template-columns: 1fr;
   }
 
-  .tplModelInlineSummary {
+  .tplModelStatusBar {
     grid-template-columns: 1fr;
   }
 
@@ -1197,10 +1106,6 @@
   .tplModelCommandActions,
   .tplDraftSummary {
     justify-content: flex-start;
-  }
-
-  .tplModelFlow {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tplUsageStatsRow {
