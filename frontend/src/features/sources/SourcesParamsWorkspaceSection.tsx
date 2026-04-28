@@ -38,6 +38,39 @@ type AttrDetailsResp = {
   master_template?: { row_count?: number; confirmed_count?: number } | null;
 };
 
+type AttrAiMatchResp = {
+  ok: boolean;
+  engine: string;
+  applied: boolean;
+  rows: AttrRow[];
+  rows_count: number;
+};
+
+type CompetitorSourceSuggestion = {
+  id: string;
+  type: "observed" | "search" | string;
+  label: string;
+  url: string;
+  confidence?: number;
+};
+
+type CompetitorCategorySource = {
+  id: "restore" | "store77" | string;
+  name: string;
+  domain: string;
+  products_count: number;
+  confirmed_count: number;
+  candidates_count: number;
+  needs_review_count: number;
+  suggestions: CompetitorSourceSuggestion[];
+};
+
+type CompetitorCategoryResp = {
+  ok: boolean;
+  category: { id: string; name: string; products_count: number };
+  sources: CompetitorCategorySource[];
+};
+
 type Props = {
   selectedCategoryId?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
@@ -51,6 +84,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   restore: "re:Store",
   store77: "Store77",
 };
+const MARKETPLACE_CODES = ["yandex_market", "ozon"];
 
 const SERVICE_EXPORTS = [
   { key: "sku_gt", title: "SKU GT", target: "offerId / SKU площадки", note: "Главный идентификатор товара для выгрузки." },
@@ -102,6 +136,12 @@ function providerCodes(details: AttrDetailsResp | null) {
   return codes.length ? codes : ["yandex_market", "ozon"];
 }
 
+function confidenceLabel(value?: number) {
+  const raw = Number(value || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return "нет score";
+  return `${Math.round(raw * 100)}%`;
+}
+
 function rowProviderCoverage(row: AttrRow, codes: string[]) {
   return codes.filter((code) => !!String(row.provider_map?.[code]?.id || row.provider_map?.[code]?.name || "").trim()).length;
 }
@@ -122,8 +162,33 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const [details, setDetails] = useState<AttrDetailsResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [aiMatching, setAiMatching] = useState(false);
+  const [competitors, setCompetitors] = useState<CompetitorCategoryResp | null>(null);
+  const [competitorsLoading, setCompetitorsLoading] = useState(false);
+  const [competitorsError, setCompetitorsError] = useState("");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("attention");
   const [fieldQuery, setFieldQuery] = useState("");
+
+  async function loadDetails(categoryId: string) {
+    const resp = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
+    setDetails(resp);
+    onSelectedCategoryChange?.(resp.category.id, resp.category.name);
+  }
+
+  async function loadCompetitors(categoryId: string) {
+    setCompetitorsLoading(true);
+    setCompetitorsError("");
+    try {
+      const resp = await api<CompetitorCategoryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(categoryId)}`);
+      setCompetitors(resp);
+    } catch (err) {
+      setCompetitors(null);
+      setCompetitorsError(err instanceof Error ? err.message : "Не удалось загрузить конкурентные источники");
+    } finally {
+      setCompetitorsLoading(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -144,11 +209,9 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     let cancelled = false;
     setLoading(true);
     setError("");
-    void api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}`)
-      .then((resp) => {
+    void loadDetails(selectedCategoryId)
+      .then(() => {
         if (cancelled) return;
-        setDetails(resp);
-        onSelectedCategoryChange?.(resp.category.id, resp.category.name);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -157,6 +220,32 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId]);
+
+  useEffect(() => {
+    if (!selectedCategoryId) {
+      setCompetitors(null);
+      setCompetitorsError("");
+      return;
+    }
+    let cancelled = false;
+    setCompetitorsLoading(true);
+    setCompetitorsError("");
+    void api<CompetitorCategoryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(selectedCategoryId)}`)
+      .then((resp) => {
+        if (!cancelled) setCompetitors(resp);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCompetitors(null);
+        setCompetitorsError(err instanceof Error ? err.message : "Не удалось загрузить конкурентные источники");
+      })
+      .finally(() => {
+        if (!cancelled) setCompetitorsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -208,6 +297,25 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       return;
     }
     setExpanded(Object.fromEntries(ids.map((id) => [id, true])));
+  }
+
+  async function runAiMatch() {
+    if (!selectedCategoryId) return;
+    setAiMatching(true);
+    setError("");
+    setNotice("");
+    try {
+      const resp = await api<AttrAiMatchResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}/ai-match`, {
+        method: "POST",
+        body: JSON.stringify({ apply: true }),
+      });
+      await loadDetails(selectedCategoryId);
+      setNotice(`AI-сопоставление применено (${resp.engine === "ollama" ? "Ollama" : "fallback"}), строк: ${resp.rows_count}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка AI-сопоставления");
+    } finally {
+      setAiMatching(false);
+    }
   }
 
   function renderTree(node: CatalogNode, depth = 0): JSX.Element | null {
@@ -266,11 +374,21 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           </div>
           <div className="paramsCommandActions">
             <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>К значениям</Link>
+            <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
+              {aiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
+            </button>
             <Link className="btn btn-primary" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
           </div>
         </div>
 
-        {error ? <div className="paramsAlert">Для этой категории сначала нужна прямая связка с категориями площадок.</div> : null}
+        {error ? (
+          <div className="paramsAlert">
+            {error.includes("CATEGORY_NOT_DIRECTLY_MAPPED")
+              ? "Для этой категории сначала нужна прямая связка с категориями площадок."
+              : error}
+          </div>
+        ) : null}
+        {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
         {loading ? <div className="paramsAlert">Загружаю параметры категории...</div> : null}
 
         <div className="paramsSteps">
@@ -279,6 +397,39 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           <div className={`paramsStep ${stats.attention ? "isWarn" : "isDone"}`}><span>3</span><strong>Параметры</strong><em>{stats.ready}/{stats.total} готово</em></div>
           <div className="paramsStep"><span>4</span><strong>Значения</strong><em>{stats.values} полей</em></div>
           <div className="paramsStep"><span>5</span><strong>Выгрузка</strong><em>финальная проверка</em></div>
+        </div>
+
+        <div className="paramsSourceBlock">
+          <div className="paramsSectionHead">
+            <div>
+              <h3>Источники параметров</h3>
+              <p>Здесь видно, какие источники реально дают поля для модели. Если Ozon связан, но параметров нет, это блок загрузки, а не готовое состояние.</p>
+            </div>
+          </div>
+          <div className="paramsSourceGrid">
+            {MARKETPLACE_CODES.map((code) => {
+              const provider = details?.providers?.[code];
+              const count = Number(provider?.count || provider?.params?.length || 0);
+              const categoryId = String(provider?.category_id || details?.mapping?.[code] || "").trim();
+              const state = count > 0 ? "ready" : categoryId ? "empty" : "missing";
+              return (
+                <div className={`paramsSourceCard is-${state}`} key={code}>
+                  <div>
+                    <strong>{PROVIDER_LABEL[code] || code}</strong>
+                    <span>{provider?.category_name || categoryId || "категория не связана"}</span>
+                  </div>
+                  <b>{count > 0 ? `${count} полей загружено` : categoryId ? "параметры не загружены" : "нет связки"}</b>
+                  <p>
+                    {count > 0
+                      ? "Можно сопоставлять с полями PIM."
+                      : categoryId
+                        ? "Нужно обновить импорт характеристик в коннекторах."
+                        : "Сначала свяжите категорию во вкладке «Категории и источники»."}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="paramsServiceBlock">
@@ -307,6 +458,48 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="paramsCompetitorBlock">
+          <div className="paramsSectionHead">
+            <div>
+              <h3>Конкурентные источники</h3>
+              <p>re-store и Store77 дают evidence для насыщения товаров. Они не заменяют Я.Маркет/Ozon, но должны быть видны в этом же рабочем процессе.</p>
+            </div>
+            <Link className="btn" to={`/sources-mapping?tab=competitors&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть очередь</Link>
+          </div>
+          {competitorsLoading ? <div className="paramsAlert">Загружаю конкурентные источники...</div> : null}
+          {competitorsError ? <div className="paramsAlert">{competitorsError}</div> : null}
+          <div className="paramsCompetitorGrid">
+            {(competitors?.sources || []).map((source) => (
+              <div className="paramsCompetitorCard" key={source.id}>
+                <div className="paramsCompetitorHead">
+                  <div>
+                    <strong>{source.name}</strong>
+                    <span>{source.domain}</span>
+                  </div>
+                  <b>{source.products_count || 0} SKU</b>
+                </div>
+                <div className="paramsCompetitorStats">
+                  <span>{source.confirmed_count || 0} подтверждено</span>
+                  <span>{source.candidates_count || 0} кандидатов</span>
+                  <span>{source.needs_review_count || 0} на модерации</span>
+                </div>
+                <div className="paramsCompetitorSuggestions">
+                  {(source.suggestions || []).slice(0, 3).map((suggestion) => (
+                    <a href={suggestion.url} target="_blank" rel="noreferrer" key={suggestion.id}>
+                      <span>{suggestion.label}</span>
+                      <em>{suggestion.type === "search" ? "поиск" : "найдено"} · {confidenceLabel(suggestion.confidence)}</em>
+                    </a>
+                  ))}
+                  {!source.suggestions?.length ? <p>Нет предложений по разделу. Данные появятся после discovery/enrichment.</p> : null}
+                </div>
+              </div>
+            ))}
+            {!competitorsLoading && !competitors?.sources?.length ? (
+              <div className="paramsAlert">Для этой категории пока нет competitor context.</div>
+            ) : null}
           </div>
         </div>
 

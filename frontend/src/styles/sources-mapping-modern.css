@@ -1020,6 +1020,8 @@
 
 .paramsCommand,
 .paramsServiceBlock,
+.paramsSourceBlock,
+.paramsCompetitorBlock,
 .paramsQueueBlock {
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   border-radius: 24px;
@@ -1134,6 +1136,8 @@
 }
 
 .paramsServiceBlock,
+.paramsSourceBlock,
+.paramsCompetitorBlock,
 .paramsQueueBlock {
   padding: 18px;
 }
@@ -1166,6 +1170,77 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.paramsSourceGrid,
+.paramsCompetitorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.paramsSourceCard,
+.paramsCompetitorCard {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 76%, var(--panel));
+}
+
+.paramsSourceCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  align-items: start;
+}
+
+.paramsSourceCard strong,
+.paramsCompetitorCard strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.paramsSourceCard span,
+.paramsCompetitorCard span,
+.paramsSourceCard p,
+.paramsCompetitorCard p {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.paramsSourceCard b {
+  justify-self: end;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.paramsSourceCard p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.paramsSourceCard.is-ready b {
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success-strong);
+}
+
+.paramsSourceCard.is-empty b,
+.paramsSourceCard.is-missing b {
+  border-color: color-mix(in srgb, var(--brand) 34%, transparent);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand-strong);
 }
 
 .paramsServiceCard {
@@ -1239,6 +1314,70 @@
   color: var(--text-soft);
   font-size: 11px;
   font-weight: 750;
+}
+
+.paramsCompetitorHead,
+.paramsCompetitorStats {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.paramsCompetitorHead b {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success-strong);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.paramsCompetitorStats {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.paramsCompetitorStats span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.paramsCompetitorSuggestions {
+  display: grid;
+  gap: 7px;
+}
+
+.paramsCompetitorSuggestions a {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.paramsCompetitorSuggestions a span {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsCompetitorSuggestions a em {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .paramsStats,
@@ -1385,16 +1524,26 @@
   font-weight: 750;
 }
 
+.paramsAlert.isSuccess {
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, var(--panel));
+  color: var(--success-strong);
+}
+
 @media (max-width: 1480px) {
   .paramsSteps,
-  .paramsServiceGrid {
+  .paramsServiceGrid,
+  .paramsSourceGrid,
+  .paramsCompetitorGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 1180px) {
   .paramsWorkspace,
-  .paramsParamCard {
+  .paramsParamCard,
+  .paramsSourceGrid,
+  .paramsCompetitorGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -6231,6 +6231,23 @@ Implementation status:
    - `передается напрямую` visible on all service cards;
    - `Очередь параметров` visible;
    - old `Сопоставить с AI` table-first action is not present on this primary screen.
+8. correction pass after user review:
+   - `Сопоставить с AI` returned as a primary category action;
+   - action uses existing `POST /marketplaces/mapping/import/attributes/{category_id}/ai-match` with `apply: true`;
+   - marketplace source readiness block added above service fields:
+     - `Я.Маркет`;
+     - `Ozon`;
+     - explicit status for loaded fields / linked-but-not-loaded / missing binding;
+   - competitor source block added to params workflow:
+     - `re-store`;
+     - `store77`;
+     - products, confirmed links, candidates, moderation count, top suggestions;
+   - production browser-check confirms:
+     - `Сопоставить с AI` visible;
+     - `Источники параметров` visible;
+     - `Ozon` readiness visible;
+     - `Конкурентные источники`, `re-store`, `store77` visible;
+     - no console errors/warnings.
 
 Remaining work:
 
