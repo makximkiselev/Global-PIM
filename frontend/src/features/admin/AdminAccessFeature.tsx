@@ -364,8 +364,8 @@ export default function AdminAccessFeature() {
     <div className="page-shell accessPage">
       <div className="page-header">
         <div className="page-header-main">
-          <div className="page-title">Доступ и роли</div>
-          <div className="page-subtitle">Пользователи, роли, права страниц и действий.</div>
+          <div className="page-title">Роли и права</div>
+          <div className="page-subtitle">Пользователи, роли, страницы и действия. Здесь настраивается доступ, а не состав команды организации.</div>
         </div>
       </div>
       <div className="page-tabs">

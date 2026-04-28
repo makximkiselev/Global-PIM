@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import ShellIcon, { type ShellIconName } from "./ShellIcon";
 
-export type ShellNavItem = { href: string; label: string; page?: string; badge?: string };
+export type ShellNavItem = { href: string; label: string; page?: string; badge?: string; developerOnly?: boolean };
 export type ShellNavSection = { title: string; items: ShellNavItem[] };
 export type ShellNavGroup = {
   title: string;

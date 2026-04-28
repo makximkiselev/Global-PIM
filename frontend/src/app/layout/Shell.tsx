@@ -88,21 +88,21 @@ const groups: ShellNavGroup[] = [
   {
     title: "Администрирование",
     icon: "admin",
-    summary: "Организации, пользователи, приглашения и platform access.",
+    summary: "Организации, команда, роли и права доступа.",
     sections: [
       {
         title: "Организация",
         items: [
           { href: "/admin/organizations", label: "Организации", page: "admin_access" },
-          { href: "/admin/members", label: "Сотрудники", page: "admin_access" },
-          { href: "/admin/invites", label: "Приглашения", page: "admin_access" },
+          { href: "/admin/members", label: "Команда", page: "admin_access" },
+          { href: "/admin/invites", label: "Инвайты", page: "admin_access" },
         ],
       },
       {
-        title: "Платформа",
+        title: "Права",
         items: [
-          { href: "/admin/platform", label: "Орг-контур", page: "admin_access" },
-          { href: "/admin/access", label: "Доступ и роли", page: "admin_access" },
+          { href: "/admin/access", label: "Роли и права", page: "admin_access" },
+          { href: "/admin/platform", label: "Platform", page: "admin_access", developerOnly: true },
         ],
       },
     ],
@@ -115,14 +115,17 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function filterGroups(canPage: (code: string) => boolean): ShellNavGroup[] {
+function filterGroups(canPage: (code: string) => boolean, isDeveloper: boolean): ShellNavGroup[] {
   return groups
     .map((group) => ({
       ...group,
       sections: group.sections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => !item.page || canPage(item.page)),
+          items: section.items.filter((item) => {
+            if (item.developerOnly && !isDeveloper) return false;
+            return !item.page || canPage(item.page);
+          }),
         }))
         .filter((section) => section.items.length > 0),
     }))
@@ -160,7 +163,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [savingPassword, setSavingPassword] = useState(false);
   const [switchingOrganization, setSwitchingOrganization] = useState(false);
 
-  const visibleGroups = useMemo(() => filterGroups(canPage), [canPage]);
+  const visibleGroups = useMemo(() => filterGroups(canPage, isDeveloper), [canPage, isDeveloper]);
   const currentLabel = useMemo(() => findCurrentLabel(pathname, visibleGroups), [pathname, visibleGroups]);
   const [activeGroupTitle, setActiveGroupTitle] = useState("");
   const showWorkspaceBar = false;

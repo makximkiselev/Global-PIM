@@ -10,11 +10,12 @@
   --page-content-width: 1180px;
 }
 .accessPage{
-  --page-content-width: 1320px;
+  --page-content-width:min(1560px, calc(100vw - 124px));
 }
 .accessPage .page-header{
   min-height:72px;
-  margin:0 0 8px;
+  margin:0 auto 8px;
+  max-width:var(--page-content-width);
   padding:12px 14px;
   border:1px solid var(--line);
   border-radius:20px;
@@ -36,7 +37,8 @@
 }
 .accessPage .page-tabs{
   gap:6px;
-  margin-bottom:8px;
+  margin:0 auto 8px;
+  max-width:var(--page-content-width);
 }
 .accessPage .page-tab{
   min-height:34px;
@@ -53,9 +55,12 @@
 }
 .accessWorkspace{
   display:grid;
-  grid-template-columns:300px minmax(0, 1fr);
-  gap:12px;
+  grid-template-columns:minmax(230px, 280px) minmax(0, 1fr);
+  gap:14px;
   align-items:start;
+  width:100%;
+  max-width:var(--page-content-width);
+  margin:0 auto;
 }
 
 .accessWorkspace .accessSidebar{
@@ -69,8 +74,8 @@
   min-width:0;
 }
 .accessSidebar{padding:12px 12px 10px}
-.accessContent{display:flex;flex-direction:column;gap:16px}
-.accessHero,.accessPanel{padding:16px}
+.accessContent{display:flex;flex-direction:column;gap:14px;min-width:0}
+.accessHero,.accessPanel{padding:14px}
 .accessListHeader{
   display:flex;
   justify-content:space-between;
@@ -225,10 +230,10 @@
 .accessPanels{
   display:grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap:16px;
+  gap:12px;
 }
 .accessPanelsUsers{
-  grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(260px, .92fr);
 }
 .accessPanelsRoles{
   grid-template-columns: minmax(360px, .82fr) minmax(0, 1.18fr);
@@ -440,10 +445,10 @@
   gap:6px;
 }
 .accessCapabilityGridPages{
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 }
 .accessCapabilityGridActions{
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 }
 .accessAccordionCard{
   gap:0;
@@ -587,6 +592,27 @@
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:14px;
+}
+
+@media(max-width:1400px){
+  .accessPanelsUsers{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:760px){
+  .accessWorkspace,
+  .accessPanelsUsers,
+  .accessPanels,
+  .accessCreateUserGrid{
+    grid-template-columns:1fr;
+  }
+
+  .accessWorkspace .accessSidebar{
+    position:relative;
+    top:auto;
+    max-height:none;
+  }
 }
 
 

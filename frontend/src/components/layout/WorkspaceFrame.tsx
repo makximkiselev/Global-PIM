@@ -13,7 +13,7 @@ export default function WorkspaceFrame({
   inspector,
   className = "",
 }: WorkspaceFrameProps) {
-  const mode = sidebar && inspector ? "workspaceFrameThree" : inspector ? "workspaceFrameTwo" : "workspaceFrameSingle";
+  const mode = sidebar && inspector ? "workspaceFrameThree" : sidebar || inspector ? "workspaceFrameTwo" : "workspaceFrameSingle";
 
   return (
     <div className={`workspaceFrame ${mode}${className ? ` ${className}` : ""}`}>

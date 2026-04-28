@@ -320,7 +320,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       <div className="orgAdminCommand">
         <div>
           <div className="orgAdminCommandTitle">
-            {activeTab === "organizations" ? "Организации" : activeTab === "members" ? "Сотрудники" : activeTab === "invites" ? "Приглашения" : "Platform"}
+            {activeTab === "organizations" ? "Организации" : activeTab === "members" ? "Команда" : activeTab === "invites" ? "Приглашения" : "Platform"}
           </div>
           <div className="orgAdminCommandMeta">
             {selectedOrganization ? `${selectedOrganization.name} · ${selectedOrganization.slug}` : "Контекст организации не выбран"}
@@ -349,7 +349,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
           />
           <DataTable
             className="orgAdminTable"
-            gridTemplate="minmax(240px,1fr) 120px 130px 130px"
+            gridTemplate="minmax(120px,1fr) 70px 44px 44px"
             rows={filteredOrganizations}
             rowKey={(organization) => organization.id}
             empty="Организации не найдены."
@@ -375,7 +375,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       {!loading && selectedOrganization && activeTab === "members" ? (
         <DataTable
           className="orgAdminTable"
-          gridTemplate="minmax(260px,1.3fr) 180px 130px 180px"
+          gridTemplate="minmax(150px,1fr) 96px 72px 92px"
           rows={filteredMembers}
           rowKey={(member) => member.id}
           empty="Сотрудники не найдены."
@@ -424,7 +424,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
 
           <DataTable
             className="orgAdminTable"
-            gridTemplate="minmax(260px,1.2fr) 170px 130px 180px"
+            gridTemplate="minmax(150px,1fr) 96px 72px 92px"
             rows={filteredInvites}
             rowKey={(invite) => invite.id}
             empty="Инвайты не найдены."
@@ -463,8 +463,8 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
   return (
     <div className="page-shell orgAdminPage">
       <PageHeader
-        title="Организации и доступ"
-        subtitle="Организации, сотрудники, приглашения и platform-контекст в одном рабочем admin-контуре."
+        title="Администрирование"
+        subtitle="Организации, команда, приглашения и platform-контекст без лишних панелей."
         actions={<Button onClick={() => void load()}>Обновить</Button>}
       />
 
@@ -473,8 +473,8 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         className="orgAdminTabs"
         items={[
           { key: "organizations", label: "Организации" },
-          { key: "members", label: "Сотрудники" },
-          { key: "invites", label: "Приглашения" },
+          { key: "members", label: "Команда" },
+          { key: "invites", label: "Инвайты" },
           ...(isDeveloper ? [{ key: "platform", label: "Platform" }] : []),
         ]}
         onChange={(key) => {
@@ -488,8 +488,12 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       <WorkspaceFrame
         className="orgAdminWorkspace"
         sidebar={sidebar}
-        main={main}
-        inspector={inspector}
+        main={(
+          <div className="orgAdminWorkSurface">
+            <div className="orgAdminWorkMain">{main}</div>
+            <aside className="orgAdminInlineInspector">{inspector}</aside>
+          </div>
+        )}
       />
     </div>
   );

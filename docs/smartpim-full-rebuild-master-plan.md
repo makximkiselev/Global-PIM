@@ -5307,7 +5307,7 @@ Implementation checklist:
 
 Дата: 2026-04-26.
 
-Статус: first rework pass completed, browser-verified.
+Статус: second layout pass completed, production-deployed, browser-verified.
 
 Что сделано:
 
@@ -5325,8 +5325,34 @@ Implementation checklist:
 
 Ограничение:
 
-1. `AdminAccessFeature` все еще использует локальную сетку `accessWorkspace`;
-2. при следующем backend/admin-pass его нужно перевести на shared `WorkspaceFrame`, чтобы полностью убрать local layout.
+1. `AdminAccessFeature` все еще использует специализированную `accessWorkspace`, но она приведена к compact two-column admin contract;
+2. следующий pass по админке должен быть функциональным, а не cosmetic: роли, инвайты, provisioning и audit нужно разделить по понятным рабочим сценариям.
+
+Second pass, 2026-04-28:
+
+1. shell navigation упрощена до реальной информационной архитектуры:
+   - `Организации`;
+   - `Команда`;
+   - `Инвайты`;
+   - `Роли и права`;
+   - `Platform` скрыт для non-developer пользователей;
+2. `/admin/organizations`, `/admin/members`, `/admin/invites` больше не используют внешний трехколоночный layout с зажатым центром:
+   - top-level `WorkspaceFrame` теперь `sidebar + main`;
+   - context/inspector живет внутри рабочей поверхности как inline inspector;
+   - при нехватке ширины inspector уходит ниже, а не ломает таблицу;
+3. `WorkspaceFrame` исправлен: режим `sidebar + main` больше не определяется как `workspaceFrameSingle`;
+4. admin tables приведены к universal behavior:
+   - компактные grid templates для desktop;
+   - `min-width: 0` на ячейках;
+   - на узких состояниях таблица превращается в читаемый one-column row list, а не обрезает колонки;
+5. `/admin/access` переименован в `Роли и права`, чтобы пользователь не путал его с составом команды;
+6. `/admin/invites` добавлен в shell-nav, чтобы прямой route не подсвечивал `Рабочее пространство`;
+7. verification:
+   - `npm --prefix frontend run build` OK;
+   - production deploy OK, `/api/health` returns `{"ok":true}`;
+   - `@browser-use` checked `/admin/organizations`, `/admin/members`, `/admin/invites`, `/admin/access`;
+   - console errors absent on checked admin routes;
+   - admin shell is active on all checked admin routes.
 
 ### 27.5 Parameter Values Workspace
 
