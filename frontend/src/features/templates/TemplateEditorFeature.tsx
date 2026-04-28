@@ -634,7 +634,7 @@ export default function TemplateEditor() {
     try {
       const response = await api<{ template: TemplateT; info_model: InfoModelSummary; candidates: InfoModelCandidate[] }>("/info-models/draft-from-sources", {
         method: "POST",
-        body: JSON.stringify({ category_id: categoryId, sources: ["products"] }),
+        body: JSON.stringify({ category_id: categoryId, sources: ["products", "marketplaces"] }),
       });
       setOwnerTpl(response.template);
       setTpl(response.template);

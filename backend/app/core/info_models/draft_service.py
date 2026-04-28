@@ -5,7 +5,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Tuple
 
 from app.core.products.service import query_products_full
+from app.core.json_store import DATA_DIR, read_doc
 from app.storage.json_store import load_templates_db, new_id, save_templates_db
+from app.storage.relational_pim_store import load_category_mappings
+
+
+MARKETPLACES_DIR = DATA_DIR / "marketplaces"
+YANDEX_CATEGORY_PARAMS_PATH = MARKETPLACES_DIR / "yandex_market" / "category_parameters.json"
+OZON_CATEGORY_ATTRS_PATH = MARKETPLACES_DIR / "ozon" / "category_attributes.json"
 
 
 def now_iso() -> str:
@@ -83,6 +90,45 @@ def _infer_type(values: Iterable[str]) -> str:
     return "text"
 
 
+def _infer_type_from_kind(kind_raw: str, values: Iterable[str]) -> str:
+    kind = _text(kind_raw).lower()
+    if any(token in kind for token in ("bool", "boolean", "да/нет")):
+        return "bool"
+    if any(token in kind for token in ("int", "integer", "numeric", "number", "decimal", "float", "число")):
+        return "number"
+    if any(token in kind for token in ("enum", "select", "список", "выбор")):
+        return "select"
+    return _infer_type(values)
+
+
+def _extract_text_list(values: Any) -> List[str]:
+    out: List[str] = []
+    if isinstance(values, list):
+        for value in values:
+            if isinstance(value, str):
+                text = _text(value)
+                if text:
+                    out.append(text)
+            elif isinstance(value, (int, float)):
+                out.append(str(value))
+            elif isinstance(value, dict):
+                for key in ("value", "name", "title", "label"):
+                    text = _text(value.get(key))
+                    if text:
+                        out.append(text)
+                        break
+    return out
+
+
+def _normalize_provider_category_lookup_id(provider: str, provider_category_id: str) -> str:
+    pid = _text(provider_category_id)
+    if provider == "ozon" and pid.startswith("type:"):
+        parts = pid.split(":")
+        if len(parts) >= 3:
+            return _text(parts[1])
+    return pid
+
+
 def _feature_items(product: Dict[str, Any]) -> Iterable[Tuple[str, str]]:
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
     features = content.get("features") if isinstance(content.get("features"), list) else []
@@ -145,6 +191,149 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _load_yandex_params(provider_category_id: str) -> List[Dict[str, Any]]:
+    if not provider_category_id:
+        return []
+    doc = read_doc(YANDEX_CATEGORY_PARAMS_PATH, default={"items": {}})
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    row = items.get(str(provider_category_id)) if isinstance(items, dict) else None
+    if not isinstance(row, dict):
+        return []
+    raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+    result = raw.get("result") if isinstance(raw, dict) else {}
+    params = result.get("parameters") if isinstance(result, dict) else []
+    out: List[Dict[str, Any]] = []
+    if not isinstance(params, list):
+        return out
+    for param in params:
+        if not isinstance(param, dict):
+            continue
+        pid = _text(param.get("id"))
+        name = _text(param.get("name"))
+        if not pid and not name:
+            continue
+        values: List[str] = []
+        for key in ("values", "options", "enumValues", "suggestedValues"):
+            values = _extract_text_list(param.get(key))
+            if values:
+                break
+        kind = _text(param.get("type"))
+        if bool(param.get("multivalue") or False):
+            kind = f"{kind} multivalue".strip()
+        out.append(
+            {
+                "id": pid or name,
+                "name": name or pid,
+                "required": bool(param.get("required") or False),
+                "kind": kind,
+                "values": values[:120],
+                "provider": "yandex_market",
+                "source_name": "Я.Маркет",
+            }
+        )
+    return out
+
+
+def _load_ozon_params(provider_category_id: str) -> List[Dict[str, Any]]:
+    lookup_id = _normalize_provider_category_lookup_id("ozon", provider_category_id)
+    if not lookup_id:
+        return []
+    doc = read_doc(OZON_CATEGORY_ATTRS_PATH, default={"items": {}})
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    row = items.get(str(lookup_id)) if isinstance(items, dict) else None
+    if not isinstance(row, dict):
+        return []
+    attrs = row.get("attributes") if isinstance(row.get("attributes"), list) else []
+    out: List[Dict[str, Any]] = []
+    for param in attrs:
+        if not isinstance(param, dict):
+            continue
+        pid = _text(param.get("id"))
+        name = _text(param.get("name") or param.get("attribute_name"))
+        if not pid and not name:
+            continue
+        values: List[str] = []
+        for key in ("values", "dictionary", "options", "available_values"):
+            values = _extract_text_list(param.get(key))
+            if values:
+                break
+        out.append(
+            {
+                "id": pid or name,
+                "name": name or pid,
+                "required": bool(param.get("is_required") or param.get("required") or False),
+                "kind": _text(param.get("type") or param.get("value_type")),
+                "values": values[:120],
+                "provider": "ozon",
+                "source_name": "Ozon",
+            }
+        )
+    return out
+
+
+def _merge_candidate(base: Dict[str, Any], next_item: Dict[str, Any]) -> Dict[str, Any]:
+    base["required"] = bool(base.get("required") or next_item.get("required"))
+    base["confidence"] = max(float(base.get("confidence") or 0), float(next_item.get("confidence") or 0))
+    if _text(next_item.get("type")) == "select" and _text(base.get("type")) not in {"select", "json"}:
+        base["type"] = "select"
+    for value in next_item.get("examples") if isinstance(next_item.get("examples"), list) else []:
+        if value and value not in base.setdefault("examples", []):
+            base["examples"].append(value)
+    for source in next_item.get("sources") if isinstance(next_item.get("sources"), list) else []:
+        if isinstance(source, dict):
+            base.setdefault("sources", []).append(source)
+    if base.get("required"):
+        base["status"] = "accepted"
+    return base
+
+
+def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
+    mappings = load_category_mappings()
+    mapping = mappings.get(category_id) if isinstance(mappings, dict) else None
+    if not isinstance(mapping, dict):
+        return []
+    provider_params: List[Dict[str, Any]] = []
+    yandex_category_id = _text(mapping.get("yandex_market"))
+    if yandex_category_id:
+        provider_params.extend(_load_yandex_params(yandex_category_id))
+    ozon_category_id = _text(mapping.get("ozon"))
+    if ozon_category_id:
+        provider_params.extend(_load_ozon_params(ozon_category_id))
+
+    by_code: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+    for param in provider_params:
+        name = _text(param.get("name"))
+        if not name:
+            continue
+        code = _slugify(name)
+        values = param.get("values") if isinstance(param.get("values"), list) else []
+        provider = _text(param.get("provider"))
+        candidate = {
+            "id": new_id(),
+            "name": name,
+            "code": code,
+            "group": "Требования площадок",
+            "required": bool(param.get("required") or False),
+            "examples": values[:8],
+            "type": _infer_type_from_kind(_text(param.get("kind")), values),
+            "confidence": 0.9 if bool(param.get("required") or False) else 0.72,
+            "status": "accepted" if bool(param.get("required") or False) else "needs_review",
+            "sources": [
+                {
+                    "kind": "marketplace",
+                    "provider": provider,
+                    "source_name": _text(param.get("source_name")) or provider,
+                    "field_name": _text(param.get("id")) or code,
+                    "examples": values[:8],
+                    "count": 1,
+                }
+            ],
+        }
+        existing = by_code.get(code)
+        by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
+    return list(by_code.values())
+
+
 def _template_for_category(db: Dict[str, Any], category_id: str) -> Tuple[str, Dict[str, Any] | None]:
     templates = db.get("templates") if isinstance(db.get("templates"), dict) else {}
     category_to_templates = db.get("category_to_templates") if isinstance(db.get("category_to_templates"), dict) else {}
@@ -195,6 +384,13 @@ def create_draft_from_sources(category_id: str, payload: Dict[str, Any] | None =
     candidates: List[Dict[str, Any]] = []
     if "products" in selected_sources:
         candidates.extend(_product_candidates(cid))
+    if "marketplaces" in selected_sources:
+        existing_by_code = OrderedDict((str(item.get("code") or ""), item) for item in candidates if isinstance(item, dict))
+        for candidate in _marketplace_candidates(cid):
+            code = str(candidate.get("code") or "").strip()
+            existing = existing_by_code.get(code)
+            existing_by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
+        candidates = list(existing_by_code.values())
     info_model.update(
         {
             "status": "draft",
