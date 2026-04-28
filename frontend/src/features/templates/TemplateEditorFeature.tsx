@@ -4,7 +4,6 @@ import "../../styles/catalog.css";
 import "../../styles/templates.css";
 import { api } from "../../lib/api";
 import DataToolbar from "../../components/data/DataToolbar";
-import MetricGrid from "../../components/data/MetricGrid";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -132,7 +131,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
   accepted: "Добавлено",
-  needs_review: "Проверь",
+  needs_review: "На проверке",
   rejected: "Отклонено",
 };
 
@@ -962,19 +961,11 @@ export default function TemplateEditor() {
         subtitle="Настройка полей товара: обязательность, типы данных, порядок и связь с категорией."
         actions={
           <>
-            <Button onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
-              Импорт / экспорт
-            </Button>
-            <Button
-              onClick={createTemplateIfMissing}
-              disabled={!categoryId || !!ownerTpl?.id || saving}
-              title={ownerTpl?.id ? "На категории уже есть собственная модель" : "Создать модель для этой категории"}
-            >
-              Создать модель
-            </Button>
-            <Button variant="danger" onClick={deleteTemplate} disabled={!ownerTpl?.id || saving}>
-              Удалить
-            </Button>
+            {!ownerTpl?.id ? (
+              <Button onClick={createTemplateIfMissing} disabled={!categoryId || saving} title="Создать модель для этой категории">
+                Создать модель
+              </Button>
+            ) : null}
             <Button variant="primary" onClick={saveAll} disabled={!ownerTpl?.id || saving}>
               {saving ? "Сохраняю…" : "Сохранить"}
             </Button>
@@ -1056,12 +1047,8 @@ export default function TemplateEditor() {
 
                   <div className="tplModelStatusBar">
                     <div className="tplModelStatusItem">
-                      <span>Поля</span>
+                      <span>Найдено полей</span>
                       <strong>{infoModel.status === "approved" ? attrs.length : draftCandidates.length || attrs.length}</strong>
-                    </div>
-                    <div className="tplModelStatusItem">
-                      <span>Проверить</span>
-                      <strong>{reviewCandidates}</strong>
                     </div>
                     <div className="tplModelStatusItem">
                       <span>В модели</span>
@@ -1088,6 +1075,14 @@ export default function TemplateEditor() {
                     <button type="button" onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                       Открыть категорию
                     </button>
+                    <button type="button" onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
+                      Импорт / экспорт
+                    </button>
+                    {ownerTpl?.id ? (
+                      <button type="button" className="tplDangerLink" onClick={deleteTemplate} disabled={saving}>
+                        Удалить модель
+                      </button>
+                    ) : null}
                   </div>
 
                 </Card>
@@ -1105,29 +1100,23 @@ export default function TemplateEditor() {
                           : "Открыта наследуемая модель. Ее можно смотреть, но редактирование доступно только после создания собственной модели."}
                       </p>
                     </div>
-                    <MetricGrid
-                      className="tplEditorHeaderMetrics"
-                      items={[
-                        { label: "Всего", value: master?.stats?.total_count ?? attrs.length },
-                        { label: "Обяз.", value: master?.stats?.required_count ?? attrs.filter((item) => item.required).length },
-                        { label: "Категория", value: master?.stats?.category_count ?? 0 },
-                      ]}
-                    />
                   </div>
-                  <Field label="Название модели" className="templateEditorField tplEditorNameField">
-                    <TextInput
-                      value={tplName}
-                      onChange={(event) => setTplName(event.target.value)}
-                      disabled={!ownerTpl?.id}
-                      title={!ownerTpl?.id ? "Наследованную модель нельзя переименовать. Сначала создай свою." : ""}
-                    />
-                  </Field>
-                  <div className="tplEditorFieldTabs">
-                    <PageTabs
-                      items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
-                      activeKey={attrTab}
-                      onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
-                    />
+                  <div className="tplEditorControlsRow">
+                    <Field label="Название модели" className="templateEditorField tplEditorNameField">
+                      <TextInput
+                        value={tplName}
+                        onChange={(event) => setTplName(event.target.value)}
+                        disabled={!ownerTpl?.id}
+                        title={!ownerTpl?.id ? "Наследованную модель нельзя переименовать. Сначала создай свою." : ""}
+                      />
+                    </Field>
+                    <div className="tplEditorFieldTabs">
+                      <PageTabs
+                        items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
+                        activeKey={attrTab}
+                        onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
+                      />
+                    </div>
                   </div>
                 </Card>
 
@@ -1143,15 +1132,12 @@ export default function TemplateEditor() {
                         <div className="tplDraftHelp">
                           <strong>Совпадение</strong> показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
                         </div>
+                        <div className="tplDraftCountersLine">
+                          <span>{acceptedCandidates} добавлено в модель</span>
+                          <span>{reviewCandidates} на проверке</span>
+                          <span>{rejectedCandidates} не используется</span>
+                        </div>
                       </div>
-                      <div className="tplDraftSummary">
-                        <Badge tone="active">{acceptedCandidates} в модели</Badge>
-                        <Badge tone={reviewCandidates ? "pending" : "neutral"}>{reviewCandidates} проверить</Badge>
-                        <Badge tone={rejectedCandidates ? "danger" : "neutral"}>{rejectedCandidates} отклонено</Badge>
-                      </div>
-                      <Button variant="primary" onClick={approveDraftModel} disabled={draftBusy || acceptedCandidates === 0}>
-                        {draftBusy ? "Утверждаю…" : "Утвердить модель"}
-                      </Button>
                     </div>
                     <div className="tplDraftList">
                       {(infoModel.candidates || []).length ? (

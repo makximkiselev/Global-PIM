@@ -528,61 +528,49 @@
 
 .tplEditorHeaderCard {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+  padding-block: 16px;
 }
 
 .tplEditorHeaderMain {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
 
 .tplEditorHeaderMain h2 {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   max-width: 760px;
-  font-size: clamp(26px, 2.2vw, 36px);
+  font-size: clamp(22px, 1.8vw, 30px);
   line-height: 1;
   letter-spacing: -0.045em;
   font-weight: 950;
 }
 
 .tplEditorHeaderMain p {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   max-width: 78ch;
   color: var(--text-soft);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.45;
   font-weight: 720;
 }
 
-.tplEditorHeaderMetrics.metricGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.tplEditorControlsRow {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1fr);
+  gap: 12px;
+  align-items: end;
 }
 
-.tplEditorHeaderMetrics .metricCard {
-  min-height: 82px;
-  padding: 12px;
-  border-radius: 16px;
-  background: rgba(var(--surface-rgb), 0.58);
-}
-
-.tplEditorHeaderMetrics .metricCardLabel {
-  font-size: 10px;
-}
-
-.tplEditorHeaderMetrics .metricCardValue {
-  font-size: 28px;
-  line-height: 1;
-}
-
-.tplEditorNameField {
-  max-width: 640px;
-}
-
+.tplEditorNameField,
 .tplEditorFieldTabs {
-  max-width: 760px;
+  min-width: 0;
+}
+
+.tplEditorControlsRow .fieldControl {
+  margin-top: 6px;
 }
 
 .tplEmptyActions {
@@ -641,7 +629,7 @@
 
 .tplModelStatusBar {
   display: grid;
-  grid-template-columns: .72fr .72fr .72fr minmax(220px, 1fr);
+  grid-template-columns: .72fr .72fr minmax(260px, 1fr);
   gap: 8px;
 }
 
@@ -697,6 +685,10 @@
   font: inherit;
   font-weight: 900;
   cursor: pointer;
+}
+
+.tplModelNextActions .tplDangerLink {
+  color: var(--danger);
 }
 
 .tplModelNextActions button:disabled {
@@ -934,7 +926,7 @@
 
 .tplDraftHeader {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: flex-start;
 }
@@ -967,11 +959,20 @@
   color: var(--text);
 }
 
-.tplDraftSummary {
+.tplDraftCountersLine {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: 8px 16px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 880;
+}
+
+.tplDraftCountersLine span:not(:last-child)::after {
+  content: "·";
+  margin-left: 16px;
+  color: rgba(var(--text-rgb), 0.28);
 }
 
 .tplDraftList {
@@ -1126,14 +1127,13 @@
   }
 
   .tplEditorHeaderMain,
-  .tplEditorHeaderMetrics.metricGrid,
+  .tplEditorControlsRow,
   .tplModelCommandTop,
   .tplDraftHeader {
     grid-template-columns: 1fr;
   }
 
-  .tplModelCommandActions,
-  .tplDraftSummary {
+  .tplModelCommandActions {
     justify-content: flex-start;
   }
 

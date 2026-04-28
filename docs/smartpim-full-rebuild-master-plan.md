@@ -232,28 +232,32 @@ Current accepted structure:
 2. no separate right `Сводка модели` panel;
 3. main workspace uses full width;
 4. top assembly block is compact;
-5. visible terms are user-facing:
+5. page header contains only global page actions:
+   - `Создать модель` only when the category has no own model;
+   - `Сохранить` when an own model exists;
+   - import/export and delete are secondary actions inside the model workspace;
+6. visible terms are user-facing:
    - `Сборка инфо-модели`;
    - `Поля карточки товара`;
    - `Поля из площадок и товаров`;
    - `совпадение`, not `уверенность`;
    - `Добавить в модель`, not `Принять`;
    - `Не использовать`, not `Отклонить`;
-6. status bar keeps only operational counters:
-   - fields;
-   - fields requiring review;
+7. top status bar must not look like tabs and must keep only high-level counters:
+   - found fields;
    - fields already in model;
    - source counts;
-7. related navigation is secondary under `Дальше:`.
+8. review count belongs to the proposal review block, not the top assembly status;
+9. proposal review block must not duplicate the top approve action;
+10. related navigation is secondary under `Дальше:`.
 
 Open tasks:
 
 1. continue visual QA on `/templates/:categoryId`;
-2. reduce any remaining duplicated labels/actions;
-3. make field proposal review easier to scan;
-4. make accepted/rejected/review states visually clearer;
-5. ensure model creation from marketplace fields is understandable without explanation;
-6. verify category with no info-model and category with approved model.
+2. make field proposal review easier to scan;
+3. make accepted/rejected/review states visually clearer;
+4. ensure model creation from marketplace fields is understandable without explanation;
+5. verify category with no info-model and category with approved model.
 
 ### 6.5 Parameter Mapping
 
