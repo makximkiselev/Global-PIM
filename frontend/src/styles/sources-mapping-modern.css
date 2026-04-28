@@ -507,11 +507,18 @@
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
 }
 
-.sourcesMappingPage .mm-detailContent {
+.sourcesMappingPage .mm-detailContent,
+.sourcesMappingPage .mm-detailContent.hasExtra {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   gap: 16px;
   align-items: start;
+}
+
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-detailMain,
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-providerStack {
+  display: flex !important;
+  flex-direction: column;
 }
 
 .sourcesMappingPage .mm-detailMain,
@@ -528,11 +535,26 @@
   gap: 12px;
 }
 
+.sourcesMappingPage .mm-detailSide {
+  position: sticky;
+  top: 14px;
+}
+
 .sourcesMappingPage .mm-providerDetailCard,
 .sourcesMappingPage .mm-categoryExtra,
 .sourcesMappingPage .mm-paramPoolSidebar,
 .sourcesMappingPage .mm-featureMappingPanel {
   padding: 14px;
+}
+
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-providerDetailCard,
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-categoryExtraSide {
+  height: auto !important;
+}
+
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-categoryExtraSide {
+  display: block !important;
+  padding: 0;
 }
 
 .sourcesMappingPage .mm-providerDetailCard {
@@ -544,7 +566,12 @@
 .sourcesCategoryCompetitors {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 96%, var(--surface));
+  box-shadow: var(--shadow-soft);
+  padding: 12px;
 }
 
 .sourcesCategoryCompetitorsHead,
@@ -566,7 +593,7 @@
 
 .sourcesCategoryCompetitorsTitle {
   margin-top: 2px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 900;
   letter-spacing: -0.02em;
 }
@@ -588,17 +615,17 @@
 .sourcesCategoryCompetitorsList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sourcesCategoryCompetitorCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--panel) 90%, var(--surface));
-  padding: 12px;
+  padding: 10px;
 }
 
 .sourcesCategoryCompetitorCardHead strong {
@@ -633,7 +660,7 @@
 .sourcesCategoryCompetitorSuggestions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .sourcesCategoryCompetitorSuggestion {
@@ -644,7 +671,7 @@
   border-radius: 13px;
   background: rgba(var(--card-rgb), 0.72);
   color: var(--text);
-  padding: 9px 10px;
+  padding: 8px 9px;
   text-decoration: none;
   transition: border-color 0.16s ease, transform 0.16s ease;
 }
@@ -931,14 +958,14 @@
     position: static;
   }
 
-  .sourcesMappingPage .mm-detailContent {
-    grid-template-columns: minmax(0, 1fr);
+  .sourcesMappingPage .mm-detailContent.hasExtra {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   }
 
   .sourcesMappingPage .mm-detailSide,
   .sourcesMappingPage .mm-categoryExtraSide {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex !important;
+    flex-direction: column;
     gap: 12px;
   }
 }

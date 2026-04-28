@@ -129,7 +129,7 @@ function CategoryCompetitorSourcesPanel({ categoryId, categoryName }: { category
         </Badge>
       </div>
       <p className="sourcesCategoryCompetitorsText">
-        Здесь должны жить не параметры и не карточки товара, а привязка ветки PIM к конкурентным разделам/поиску. Дальше эти источники питают discovery и enrichment.
+        Разделы и поиск конкурентов для enrichment выбранной ветки.
       </p>
 
       {error ? <div className="sourcesCategoryCompetitorsError">{error}</div> : null}

@@ -5893,6 +5893,10 @@ Implementation status:
 4. frontend build verified;
 5. backend py-compile verified;
 6. targeted backend test added for category competitor source summary.
+7. compact layout fix added after browser/screenshot review:
+   - competitor context is a right inspector, not a full-width block below marketplace cards;
+   - legacy `height: 100%` and `display: contents` provider-card rules are overridden inside `sourcesMappingPage`;
+   - marketplace cards stay compact and competitor cards do not stretch the page.
 
 Next page-pass requirements:
 
