@@ -4,7 +4,6 @@ import "../../styles/catalog.css";
 import "../../styles/templates.css";
 import { api } from "../../lib/api";
 import DataToolbar from "../../components/data/DataToolbar";
-import InspectorPanel from "../../components/data/InspectorPanel";
 import MetricGrid from "../../components/data/MetricGrid";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
@@ -446,11 +445,6 @@ export default function TemplateEditor() {
     return withIndex;
   }, [attrTab, attrs]);
 
-  const selectedAttr = useMemo(() => {
-    if (selectedAttrIdx == null) return null;
-    return attrs[selectedAttrIdx] || null;
-  }, [attrs, selectedAttrIdx]);
-
   const draftCandidates = infoModel.candidates || [];
   const acceptedCandidates = draftCandidates.filter((candidate) => candidate.status === "accepted").length;
   const reviewCandidates = draftCandidates.filter((candidate) => candidate.status === "needs_review").length;
@@ -506,14 +500,7 @@ export default function TemplateEditor() {
     const row = master?.sources?.yandex_market;
     return row && typeof row === "object" ? (row as TemplateSourceInfo) : null;
   }, [master]);
-  const templateStatus = useMemo(() => {
-    if (!master) return "";
-    const confirmed = Number(master.stats?.confirmed_count || 0);
-    const rows = Number(master.stats?.row_count || 0);
-    if (rows > 0 && confirmed >= rows) return "ready";
-    if (confirmed > 0) return "in_progress";
-    return "draft";
-  }, [master]);
+  const focusedAttr = selectedAttrIdx == null ? null : attrs[selectedAttrIdx] || null;
 
   async function updateDraftCandidate(candidateId: string, patch: Partial<InfoModelCandidate>) {
     const templateId = ownerTpl?.id || tpl?.id;
@@ -1100,6 +1087,38 @@ export default function TemplateEditor() {
                     </div>
                   </div>
 
+                  <div className="tplModelInlineSummary">
+                    <div className="tplModelInlineItem">
+                      <span>Категория</span>
+                      <strong>{category?.name || "—"}</strong>
+                      <small>{category?.path?.map((item) => item.name).join(" / ") || "Путь категории появится после загрузки."}</small>
+                    </div>
+                    <div className="tplModelInlineItem">
+                      <span>Готовность</span>
+                      <strong>
+                        {infoModel.status === "approved"
+                          ? `${attrs.length} полей`
+                          : master?.stats
+                            ? `${Number(master.stats.confirmed_count || 0)} / ${Number(master.stats.row_count || 0)}`
+                            : `${acceptedCandidates} в модели`}
+                      </strong>
+                      <small>
+                        {infoModel.status === "approved"
+                          ? "Можно использовать в товарах и маппинге."
+                          : "Сколько предложенных полей уже добавлено перед утверждением."}
+                      </small>
+                    </div>
+                    <div className="tplModelInlineItem">
+                      <span>Текущий фокус</span>
+                      <strong>{focusedAttr?.name || "Сборка модели"}</strong>
+                      <small>
+                        {focusedAttr
+                          ? `${TYPE_LABEL[focusedAttr.type] || focusedAttr.type} · ${SCOPE_LABEL[focusedAttr.scope] || focusedAttr.scope}`
+                          : "Выберите поле ниже, чтобы видеть его в фокусе."}
+                      </small>
+                    </div>
+                  </div>
+
                   <div className="tplModelFlow">
                     {workflowSteps.map((step) => (
                       <div className={`tplModelStep is-${step.state}`} key={step.label}>
@@ -1478,70 +1497,6 @@ export default function TemplateEditor() {
               </>
             )}
           </div>
-        }
-        inspector={
-          <InspectorPanel
-            className="tplInspector"
-            title="Сводка модели"
-            subtitle="Что уже готово и куда идти дальше."
-            actions={
-              hasAnyTpl ? (
-                <Badge tone={infoModel.status === "approved" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>
-                  {infoModel.status === "approved" ? "Утверждена" : templateStatus === "in_progress" ? "В работе" : "Черновик"}
-                </Badge>
-              ) : undefined
-            }
-          >
-            <div className="tplInspectorStack">
-              <div className="tplInspectorMetric">
-                <span className="tplInspectorLabel">Категория</span>
-                <strong>{category?.name || "—"}</strong>
-                <span>{category?.path?.map((item) => item.name).join(" / ") || "Путь категории появится после загрузки."}</span>
-              </div>
-              <div className="tplInspectorMetric">
-                <span className="tplInspectorLabel">Готовность</span>
-                <strong>
-                  {infoModel.status === "approved"
-                    ? `${attrs.length} полей`
-                    : master?.stats
-                    ? `${Number(master.stats.confirmed_count || 0)} / ${Number(master.stats.row_count || 0)}`
-                    : "—"}
-                </strong>
-                <span>
-                  {infoModel.status === "approved"
-                    ? "Модель утверждена и может использоваться в товарах и маппинге."
-                    : "Сколько предложенных полей уже добавлено в модель перед утверждением."}
-                </span>
-              </div>
-              {selectedAttr ? (
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Выбранное поле</span>
-                  <strong>{selectedAttr.name || "Без названия"}</strong>
-                  <span>
-                    {(selectedAttr.attribute_id ? "Глобальный атрибут" : "Локальная строка") +
-                      ` · ${TYPE_LABEL[selectedAttr.type] || selectedAttr.type}` +
-                      ` · ${SCOPE_LABEL[selectedAttr.scope] || selectedAttr.scope}`}
-                  </span>
-                </div>
-              ) : null}
-              {yandexSource?.enabled ? (
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Источник структуры</span>
-                  <strong>{yandexSource.category_name || "Я.Маркет"}</strong>
-                  <span>{Number(yandexSource.mapped_rows || 0)} сопоставлено из {Number(yandexSource.params_count || 0)} параметров.</span>
-                </div>
-              ) : null}
-              <div className="tplInspectorActions">
-                <Button onClick={() => nav("/templates")}>К моделям</Button>
-                <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                  Открыть категорию
-                </Button>
-                <Button onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                  К маппингу
-                </Button>
-              </div>
-            </div>
-          </InspectorPanel>
         }
       />
 

@@ -6385,3 +6385,30 @@ Browser verification:
 3. confirmed visible copy does not contain `уверенность`, `Контекст модели`, `Нормализация`, or `draft`;
 4. confirmed the main flow still shows source collection, proposal review, model fields, and mapping/product continuation;
 5. confirmed no browser console errors/warnings on the checked screen.
+
+Follow-up decision after user review:
+
+1. the right `Сводка модели` column is still not justified on this screen;
+2. its useful data belongs inside the main command card;
+3. the editor should spend maximum width on the model-building work area.
+
+Follow-up implementation status:
+
+1. removed the right inspector from `TemplateEditorFeature`;
+2. `WorkspaceFrame` now renders the editor as a single-column workspace;
+3. category, readiness, and selected-field focus are integrated into the top command card;
+4. main model workspace gets the full available page width;
+5. unused editor-side inspector import/status code removed;
+6. build verification passed locally, `npm --prefix frontend run build`;
+7. production deploy completed, health `{"ok":true}`.
+
+Follow-up browser verification:
+
+1. open `/templates/b2f026d9-a3e2-4821-9034-d17ac1b65065`;
+2. confirmed there is no separate right summary column;
+3. confirmed the main model workspace is wider;
+4. confirmed inline summary is visible in the main command card:
+   - `Категория`;
+   - `Готовность`;
+   - `Текущий фокус`;
+5. confirmed no browser console errors/warnings on the checked screen.
