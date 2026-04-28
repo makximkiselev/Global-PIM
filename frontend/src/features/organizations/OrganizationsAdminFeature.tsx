@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../app/auth/AuthContext";
+import DataList from "../../components/data/DataList";
 import DataTable from "../../components/data/DataTable";
 import InspectorPanel from "../../components/data/InspectorPanel";
 import MetricGrid from "../../components/data/MetricGrid";
@@ -275,18 +276,6 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         )}
       </InspectorPanel>
 
-      {activeTab === "members" && selectedMember ? (
-        <InspectorPanel title="Сотрудник" subtitle={selectedMember.email}>
-          <div className="orgAdminInspectorRows">
-            <div><span>Имя</span><strong>{selectedMember.name || "—"}</strong></div>
-            <div><span>Роль</span><strong>{roleLabel(selectedMember.org_role_code)}</strong></div>
-            <div><span>Статус</span><Badge tone={badgeToneFromStatus(selectedMember.status)}>{selectedMember.status}</Badge></div>
-            <div><span>Пользователь</span><Badge tone={badgeToneFromStatus(selectedMember.user_status)}>{selectedMember.user_status}</Badge></div>
-            <div><span>Последний вход</span><strong>{formatDate(selectedMember.last_login_at)}</strong></div>
-          </div>
-        </InspectorPanel>
-      ) : null}
-
       {activeTab === "invites" ? (
         <InspectorPanel title="Инвайт" subtitle={selectedInvite?.email || "Нет активного выбора"}>
           {selectedInvite ? (
@@ -373,27 +362,31 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       ) : null}
 
       {!loading && selectedOrganization && activeTab === "members" ? (
-        <DataTable
-          className="orgAdminTable"
-          gridTemplate="minmax(150px,1fr) 96px 72px 92px"
-          rows={filteredMembers}
-          rowKey={(member) => member.id}
+        <DataList
+          className="orgAdminPeopleList"
+          items={filteredMembers}
           empty="Сотрудники не найдены."
-          columns={[
-            {
-              key: "member",
-              label: "Сотрудник",
-              render: (member) => (
-                <button className="orgAdminEntityButton" type="button" onClick={() => setSelectedMemberId(member.id)}>
-                  <span>{member.name || member.email}</span>
+          renderItem={(member) => (
+            <button
+              key={member.id}
+              type="button"
+              className={`orgAdminPersonRow${member.id === selectedMember?.id ? " active" : ""}`}
+              onClick={() => setSelectedMemberId(member.id)}
+            >
+              <span className="orgAdminPersonIdentity">
+                <span className="orgAdminPersonAvatar">{(member.name || member.email || "?").slice(0, 2).toUpperCase()}</span>
+                <span>
+                  <strong>{member.name || member.email}</strong>
                   <small>{member.email}</small>
-                </button>
-              ),
-            },
-            { key: "role", label: "Роль", render: (member) => roleLabel(member.org_role_code) },
-            { key: "status", label: "Статус", render: (member) => <Badge tone={badgeToneFromStatus(member.status)}>{member.status}</Badge> },
-            { key: "last_login", label: "Последний вход", render: (member) => formatDate(member.last_login_at) },
-          ]}
+                </span>
+              </span>
+              <span className="orgAdminPersonMeta">
+                <span>{roleLabel(member.org_role_code)}</span>
+                <Badge tone={badgeToneFromStatus(member.status)}>{member.status}</Badge>
+                <small>{formatDate(member.last_login_at)}</small>
+              </span>
+            </button>
+          )}
         />
       ) : null}
 
@@ -460,6 +453,8 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     </div>
   );
 
+  const showInlineInspector = activeTab !== "members";
+
   return (
     <div className="page-shell orgAdminPage">
       <PageHeader
@@ -489,9 +484,9 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         className="orgAdminWorkspace"
         sidebar={sidebar}
         main={(
-          <div className="orgAdminWorkSurface">
+          <div className={`orgAdminWorkSurface${showInlineInspector ? "" : " noInspector"}`}>
             <div className="orgAdminWorkMain">{main}</div>
-            <aside className="orgAdminInlineInspector">{inspector}</aside>
+            {showInlineInspector ? <aside className="orgAdminInlineInspector">{inspector}</aside> : null}
           </div>
         )}
       />

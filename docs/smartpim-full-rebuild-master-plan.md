@@ -5354,6 +5354,35 @@ Second pass, 2026-04-28:
    - console errors absent on checked admin routes;
    - admin shell is active on all checked admin routes.
 
+Third pass, 2026-04-28:
+
+1. `/admin/members` simplified from table + duplicate inspector into one clear team list:
+   - left sidebar remains organization picker;
+   - center shows compact employee rows through shared `DataList`;
+   - right inspector is hidden for the team mode because it duplicated selected-row information;
+   - row content is identity, role, status, last login only;
+2. `Default organization` renamed at source level to `Global Trade`:
+   - `DEFAULT_ORGANIZATION_NAME` changed in backend control-plane seed;
+   - production `org_default` updated to `Global Trade`;
+3. production account cleanup completed after explicit user confirmation:
+   - kept only `owner` / `owner@local.invalid`;
+   - removed test `platform_users` and their memberships through cascade;
+   - removed pending organization invites;
+   - cleaned legacy auth users to one user;
+   - control-plane backup tables created with tag `20260428_102824`;
+   - auth JSON backups created under `backend/data/auth/*.cleanup_backup_20260428_102824.json` in `json_documents`;
+4. verification:
+   - `npm --prefix frontend run build` OK;
+   - `PYTHONPATH=backend python3 -m py_compile backend/app/core/control_plane.py` OK;
+   - production deploy OK, `/api/health` returns `{"ok":true}`;
+   - database check shows:
+     - `org_default` = `Global Trade`;
+     - `platform_users` = 1;
+     - `organization_members` = 1;
+     - `organization_invites` = 0;
+     - auth users = 1;
+   - browser session was expectedly redirected to `/login?expired=1` because the current QA test user was deleted.
+
 ### 27.5 Parameter Values Workspace
 
 Статус: first rework pass completed, browser-verified.

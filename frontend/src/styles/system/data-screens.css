@@ -719,6 +719,10 @@
   min-width:0;
 }
 
+.orgAdminWorkSurface.noInspector{
+  grid-template-columns:minmax(0, 1fr);
+}
+
 .orgAdminWorkMain,
 .orgAdminInlineInspector{
   min-width:0;
@@ -891,6 +895,102 @@
   font-weight:700;
 }
 
+.orgAdminPeopleList{
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:rgba(var(--card-rgb),.78);
+  overflow:hidden;
+}
+
+.orgAdminPeopleList .dataListStack{
+  gap:0;
+}
+
+.orgAdminPersonRow{
+  appearance:none;
+  width:100%;
+  border:0;
+  border-bottom:1px solid var(--line);
+  background:transparent;
+  color:var(--text);
+  padding:14px 16px;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:16px;
+  align-items:center;
+  text-align:left;
+  cursor:pointer;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.orgAdminPersonRow:last-child{
+  border-bottom:0;
+}
+
+.orgAdminPersonRow:hover,
+.orgAdminPersonRow.active{
+  background:rgba(var(--brand-rgb),.07);
+}
+
+.orgAdminPersonIdentity,
+.orgAdminPersonMeta{
+  min-width:0;
+  display:flex;
+  align-items:center;
+}
+
+.orgAdminPersonIdentity{
+  gap:12px;
+}
+
+.orgAdminPersonIdentity strong{
+  display:block;
+  font-size:14px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.orgAdminPersonIdentity small,
+.orgAdminPersonMeta small{
+  display:block;
+  color:var(--text-soft);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:700;
+}
+
+.orgAdminPersonIdentity small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.orgAdminPersonAvatar{
+  width:34px;
+  height:34px;
+  flex:0 0 auto;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  color:white;
+  font-size:12px;
+  font-weight:950;
+  background:linear-gradient(135deg, rgb(var(--brand-rgb)), rgba(var(--brand-rgb),.72));
+  box-shadow:0 10px 22px rgba(var(--brand-rgb),.18);
+}
+
+.orgAdminPersonMeta{
+  justify-content:flex-end;
+  gap:12px;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.2;
+  font-weight:850;
+  white-space:nowrap;
+}
+
 .orgAdminInvites{
   display:grid;
   grid-template-columns:minmax(260px, 340px) minmax(0, 1fr);
@@ -974,6 +1074,19 @@
   .orgAdminTable .dataTableRow > *{
     justify-content:flex-start;
     text-align:left;
+  }
+}
+
+@media (max-width: 880px){
+  .orgAdminPersonRow{
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .orgAdminPersonMeta{
+    justify-content:flex-start;
+    flex-wrap:wrap;
+    white-space:normal;
   }
 }
 
