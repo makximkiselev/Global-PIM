@@ -6326,3 +6326,62 @@ Implementation status:
    - selected scope shows `Смартфоны`;
    - category checkbox is selected;
    - export target panel stays available.
+
+### 35. Info Model Editor: Remove Internal Terms From The Working Screen
+
+User problem:
+
+1. the opened info-model block still did not explain what the user should do;
+2. the left model navigation duplicated the right inspector and consumed working width;
+3. internal terms made the screen harder to understand:
+   - `уверенность`;
+   - `Контекст модели`;
+   - generic `Добавить поле`;
+   - `Нормализация`;
+   - visible `draft` wording.
+
+Decision:
+
+1. keep the fast model-collection workflow, but make every visible block action-oriented;
+2. remove the permanent left navigation from the editor screen;
+3. keep one right-side summary as the only contextual inspector;
+4. rename system terms into content-manager language:
+   - `Рабочий процесс инфо-модели` -> `Сборка инфо-модели`;
+   - `Нормализация` -> `Предложения полей`;
+   - `Модель для товаров` -> `Поля карточки товара`;
+   - `Контекст модели` -> `Сводка модели`;
+   - `уверенность` -> `совпадение`, with explicit explanation;
+   - `Принять` -> `Добавить в модель`;
+   - `Отклонить` -> `Не использовать`;
+   - `Добавить поле` -> `Добавить поле вручную`;
+5. the screen must answer three questions without explanation:
+   - what fields were found from marketplaces/products;
+   - what should be added to the PIM model;
+   - where to continue after model approval.
+
+Implementation status:
+
+1. `TemplateEditorFeature` now uses a two-column focused frame: main workspace + right summary;
+2. duplicated left `Навигация модели` panel removed from the editor page;
+3. field tabs moved into the main `Поля карточки товара` card;
+4. quick workflow actions added in the main command card:
+   - `Категория`;
+   - `Товары категории`;
+   - `Маппинг полей`;
+5. candidate cards now show `высокое/среднее/низкое совпадение N%` instead of unexplained confidence;
+6. draft empty-state copy no longer exposes the internal `draft` term;
+7. `TemplatesCatalogFeature` inspector uses `Сводка модели` and Russian `Готовность`;
+8. focused editor layout fixed for desktop widths:
+   - main workspace + right summary stay in two stable columns;
+   - command actions wrap below the title instead of overlapping the inspector;
+   - workflow steps wrap to three columns so stage labels remain readable;
+9. build verification passed locally, `npm --prefix frontend run build`;
+10. production deploy completed, health `{"ok":true}`.
+
+Browser verification:
+
+1. open `/templates/b2f026d9-a3e2-4821-9034-d17ac1b65065`;
+2. confirmed the editor has no left duplicated model navigation;
+3. confirmed visible copy does not contain `уверенность`, `Контекст модели`, `Нормализация`, or `draft`;
+4. confirmed the main flow still shows source collection, proposal review, model fields, and mapping/product continuation;
+5. confirmed no browser console errors/warnings on the checked screen.

@@ -19,6 +19,10 @@
   gap: 16px;
 }
 
+.templatesEditorFrameFocused.workspaceFrameTwo {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+}
+
 .tplCanvasStack,
 .tplEditorSidebarStack,
 .tplInspectorStack,
@@ -573,6 +577,10 @@
   max-width: 640px;
 }
 
+.tplEditorFieldTabs {
+  max-width: 760px;
+}
+
 .tplEmptyActions {
   display: flex;
   flex-wrap: wrap;
@@ -593,6 +601,10 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
   align-items: start;
+}
+
+.templatesEditorFrameFocused .tplModelCommandTop {
+  grid-template-columns: 1fr;
 }
 
 .tplModelCommandTop h2 {
@@ -619,10 +631,24 @@
   gap: 10px;
 }
 
+.templatesEditorFrameFocused .tplModelCommandActions {
+  justify-content: flex-start;
+}
+
+.tplModelQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .tplModelFlow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+}
+
+.templatesEditorFrameFocused .tplModelFlow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .tplModelStep {
@@ -943,6 +969,23 @@
   color: var(--muted);
 }
 
+.tplDraftHelp {
+  margin-top: 12px;
+  max-width: 760px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--brand-rgb), 0.22);
+  background: linear-gradient(135deg, rgba(var(--brand-rgb), 0.08), rgba(var(--surface-rgb), 0.62));
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 750;
+}
+
+.tplDraftHelp strong {
+  color: var(--text);
+}
+
 .tplDraftSummary {
   display: flex;
   flex-wrap: wrap;
@@ -1034,12 +1077,20 @@
     grid-template-columns: 280px minmax(0, 1fr);
   }
 
+  .templatesEditorFrameFocused.workspaceFrameTwo {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  }
+
   .templatesCatalogFrame .workspaceFrameInspector {
     grid-column: 2;
   }
 
   .templatesEditorFrame .workspaceFrameInspector {
     grid-column: 2;
+  }
+
+  .templatesEditorFrameFocused .workspaceFrameInspector {
+    grid-column: auto;
   }
 
   .tplSummaryHeader {
@@ -1064,6 +1115,10 @@
 @media (max-width: 1180px) {
   .templatesEditorFrame.workspaceFrame,
   .templatesCatalogFrame.workspaceFrame {
+    grid-template-columns: 1fr;
+  }
+
+  .templatesEditorFrameFocused.workspaceFrameTwo {
     grid-template-columns: 1fr;
   }
 

@@ -132,8 +132,8 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
-  accepted: "В модели",
-  needs_review: "На проверке",
+  accepted: "Добавлено",
+  needs_review: "Проверь",
   rejected: "Отклонено",
 };
 
@@ -221,6 +221,14 @@ function sourceLabel(value: string) {
 
 function typeLabel(value: string) {
   return TYPE_LABEL[value as AttrType] || value || "Текст";
+}
+
+function matchQualityLabel(confidence?: number) {
+  const percent = Math.round(Math.max(0, Math.min(1, Number(confidence || 0))) * 100);
+  if (percent >= 86) return `высокое совпадение ${percent}%`;
+  if (percent >= 70) return `среднее совпадение ${percent}%`;
+  if (percent > 0) return `низкое совпадение ${percent}%`;
+  return "совпадение не рассчитано";
 }
 
 function candidateSources(candidate: InfoModelCandidate) {
@@ -471,7 +479,7 @@ export default function TemplateEditor() {
         state: infoModel.status === "approved" || sourceCoverage.length ? "done" : "active",
       },
       {
-        label: "Нормализация",
+        label: "Объединение полей",
         value: infoModel.status === "approved" ? `${attrs.length} полей` : draftCandidates.length ? `${draftCandidates.length} полей` : "нет кандидатов",
         state: infoModel.status === "approved" || draftCandidates.length ? "done" : "active",
       },
@@ -1027,60 +1035,7 @@ export default function TemplateEditor() {
       ) : null}
 
       <WorkspaceFrame
-        className="templatesEditorFrame"
-        sidebar={
-          <div className="tplEditorSidebarStack">
-            <Card className="tplEditorSidebarCard">
-              <DataToolbar
-                title="Навигация модели"
-                subtitle={category?.name || "Категория еще не выбрана"}
-                actions={
-                  hasAnyTpl ? (
-                    <Badge tone={infoModel.status === "approved" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>
-                      {infoModel.status === "approved" ? "Утверждена" : templateStatus === "in_progress" ? "В работе" : "Черновик"}
-                    </Badge>
-                  ) : (
-                    <Badge tone="neutral">Без модели</Badge>
-                  )
-                }
-              />
-              <div className="tplEditorSidebarMeta">
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Категория</span>
-                  <strong>{category?.name || "—"}</strong>
-                  <span>{category?.path?.map((item) => item.name).join(" / ") || "Путь появится после загрузки."}</span>
-                </div>
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Режим</span>
-                  <strong>{ownerTpl?.id ? "Своя модель" : tpl?.id ? "Наследуется" : "Не создана"}</strong>
-                  <span>
-                    {ownerTpl?.id
-                      ? "Можно редактировать поля категории."
-                      : inheritedFrom?.name
-                        ? `Источник: ${inheritedFrom.name}.`
-                        : "Создайте модель или импортируйте Excel."}
-                  </span>
-                </div>
-              </div>
-              <PageTabs
-                items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
-                activeKey={attrTab}
-                onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
-              />
-              <div className="tplEditorSidebarActions">
-                <Button onClick={addAttr} disabled={!canEdit || attrTab === "base"}>
-                  Добавить поле
-                </Button>
-                <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                  Открыть категорию
-                </Button>
-                <Button onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                  Открыть товары
-                </Button>
-              </div>
-            </Card>
-          </div>
-        }
+        className="templatesEditorFrame templatesEditorFrameFocused"
         main={
           <div className="tplCanvasStack">
             {bootstrapLoading ? (
@@ -1095,11 +1050,11 @@ export default function TemplateEditor() {
               <Card className="tplCanvasCard">
                 <EmptyState
                   title="Инфо-модель еще не собрана"
-                  body="Сначала соберите draft из реальных источников: товаров категории, импортов и подключенных каналов. После модерации модель можно утвердить и использовать в товарах."
+                  body="Сначала соберите предложения полей из реальных источников: товаров категории, импортов и подключенных каналов. После проверки модель можно утвердить и использовать в товарах."
                   action={
                     <div className="tplEmptyActions">
                       <Button variant="primary" onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
-                        {draftBusy ? "Собираю…" : "Собрать draft-модель"}
+                        {draftBusy ? "Собираю…" : "Собрать предложения"}
                       </Button>
                       <Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>
                         Создать вручную
@@ -1116,10 +1071,10 @@ export default function TemplateEditor() {
                 <Card className="tplCanvasCard tplModelCommandCard">
                   <div className="tplModelCommandTop">
                     <div>
-                      <div className="tplSectionEyebrow">Рабочий процесс инфо-модели</div>
+                      <div className="tplSectionEyebrow">Сборка инфо-модели</div>
                       <h2>{category?.name || tplName || tpl.name}</h2>
                       <p>
-                        Сначала собираем поля из площадок и товаров, затем нормализуем одинаковые параметры, утверждаем модель и только после этого используем ее в карточках SKU.
+                        Соберите поля из площадок и товаров, объедините одинаковые параметры, утвердите модель и используйте ее в карточках SKU.
                       </p>
                     </div>
                     <div className="tplModelCommandActions">
@@ -1152,6 +1107,18 @@ export default function TemplateEditor() {
                         <strong>{step.value}</strong>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="tplModelQuickActions">
+                    <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                      Категория
+                    </Button>
+                    <Button onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                      Товары категории
+                    </Button>
+                    <Button onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                      Маппинг полей
+                    </Button>
                   </div>
 
                   <div className="tplSourceBoard">
@@ -1188,10 +1155,10 @@ export default function TemplateEditor() {
                   <div className="tplEditorHeaderMain">
                     <div>
                       <div className="tplSectionEyebrow">Рабочие поля</div>
-                      <h2>Модель для товаров</h2>
+                      <h2>Поля карточки товара</h2>
                       <p>
                         {infoModel.status === "draft"
-                          ? "Ниже лежит список полей, которые попадут в карточку товара после утверждения. Спорные предложения лучше решить в блоке нормализации."
+                          ? "Это поля, которые попадут в карточку товара после утверждения. Спорные предложения решаются в блоке ниже."
                           : canEdit
                           ? "Это компактный список полей, которые будут использоваться в товарах категории, мэппинге площадок и проверке перед экспортом."
                           : "Открыта наследуемая модель. Ее можно смотреть, но редактирование доступно только после создания собственной модели."}
@@ -1214,17 +1181,27 @@ export default function TemplateEditor() {
                       title={!ownerTpl?.id ? "Наследованную модель нельзя переименовать. Сначала создай свою." : ""}
                     />
                   </Field>
+                  <div className="tplEditorFieldTabs">
+                    <PageTabs
+                      items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
+                      activeKey={attrTab}
+                      onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
+                    />
+                  </div>
                 </Card>
 
                 {infoModel.status === "draft" ? (
                   <Card className="tplCanvasCard tplDraftCard">
                     <div className="tplDraftHeader">
                       <div>
-                        <div className="tplSectionEyebrow">Нормализация</div>
-                        <h3>Параметры, найденные в источниках</h3>
+                        <div className="tplSectionEyebrow">Предложения полей</div>
+                        <h3>Поля из площадок и товаров</h3>
                         <p>
-                          Одинаковые поля из разных площадок должны сходиться в один параметр PIM. Сейчас можно быстро принять полезные предложения и убрать мусор до утверждения модели.
+                          Система нашла похожие параметры в источниках. Добавьте полезные поля в модель, а дубли и мусор не используйте.
                         </p>
+                        <div className="tplDraftHelp">
+                          <strong>Совпадение</strong> показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
+                        </div>
                       </div>
                       <div className="tplDraftSummary">
                         <Badge tone="active">{acceptedCandidates} в модели</Badge>
@@ -1242,7 +1219,7 @@ export default function TemplateEditor() {
                             <div className="tplDraftMain">
                               <strong>{candidate.name}</strong>
                               <span>
-                                {candidate.group} · {typeLabel(candidate.type)} · уверенность {Math.round(candidate.confidence * 100)}%
+                                {candidate.group} · {typeLabel(candidate.type)} · {matchQualityLabel(candidate.confidence)}
                               </span>
                               <div className="tplDraftSources">
                                 {candidateSources(candidate).slice(0, 3).map((source) => (
@@ -1255,12 +1232,12 @@ export default function TemplateEditor() {
                               <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
                               {candidate.status !== "accepted" ? (
                                 <Button onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
-                                  Принять
+                                  Добавить в модель
                                 </Button>
                               ) : null}
                               {candidate.status !== "rejected" ? (
                                 <Button onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
-                                  Отклонить
+                                  Не использовать
                                 </Button>
                               ) : null}
                             </div>
@@ -1269,7 +1246,7 @@ export default function TemplateEditor() {
                       ) : (
                         <EmptyState
                           title="Источники не дали параметров"
-                          body="В этой категории пока нет товарных характеристик для draft. Можно создать модель вручную или импортировать Excel."
+                          body="В этой категории пока нет товарных характеристик для автоматической сборки. Можно создать модель вручную или импортировать Excel."
                           action={<Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>Создать вручную</Button>}
                         />
                       )}
@@ -1287,7 +1264,7 @@ export default function TemplateEditor() {
                           {modelStatusLabel(infoModel.status)}
                         </Badge>
                         <Button onClick={addAttr} disabled={!canEdit || attrTab === "base"}>
-                          Добавить поле
+                          Добавить поле вручную
                         </Button>
                       </>
                     }
@@ -1323,7 +1300,7 @@ export default function TemplateEditor() {
                     <EmptyState
                       title="Полей пока нет"
                       body="Добавь первое поле модели или загрузи Excel-шаблон. После этого страница превратится в рабочий конструктор структуры."
-                      action={canEdit ? <Button onClick={addAttr}>Добавить поле</Button> : undefined}
+                      action={canEdit ? <Button onClick={addAttr}>Добавить поле вручную</Button> : undefined}
                     />
                   ) : (
                     <div className="tplAttrBoard">
@@ -1505,8 +1482,8 @@ export default function TemplateEditor() {
         inspector={
           <InspectorPanel
             className="tplInspector"
-            title="Контекст модели"
-            subtitle="Использование, канал и выбранное поле."
+            title="Сводка модели"
+            subtitle="Что уже готово и куда идти дальше."
             actions={
               hasAnyTpl ? (
                 <Badge tone={infoModel.status === "approved" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>
@@ -1533,7 +1510,7 @@ export default function TemplateEditor() {
                 <span>
                   {infoModel.status === "approved"
                     ? "Модель утверждена и может использоваться в товарах и маппинге."
-                    : "Подтвержденные поля и текущая готовность перед маппингом каналов."}
+                    : "Сколько предложенных полей уже добавлено в модель перед утверждением."}
                 </span>
               </div>
               {selectedAttr ? (
@@ -1559,7 +1536,7 @@ export default function TemplateEditor() {
                 <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                   Открыть категорию
                 </Button>
-                <Button onClick={() => nav(`/sources?category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                <Button onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                   К маппингу
                 </Button>
               </div>

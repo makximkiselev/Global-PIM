@@ -772,7 +772,7 @@ export default function TemplatesCatalogFeature() {
         inspector={
           <InspectorPanel
             className="tplInspector"
-            title="Контекст модели"
+            title="Сводка модели"
             subtitle={selectedNode ? "Текущий узел и ближайшие действия." : "Выбери категорию слева."}
             actions={selectedNode ? <Badge tone={selectedNode.template_id ? "active" : selectedNode.effective_template_id ? "pending" : "neutral"}>{selectedNode.template_id ? "Своя" : selectedNode.effective_template_id ? "Наследование" : "Пусто"}</Badge> : undefined}
           >
@@ -793,7 +793,7 @@ export default function TemplatesCatalogFeature() {
                   <span>{selectedNode.lock_reason || "Ограничений по ветке сейчас нет."}</span>
                 </div>
                 <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Readiness</span>
+                  <span className="tplInspectorLabel">Готовность</span>
                   <strong>
                     {previewMaster?.stats
                       ? `${Number(previewMaster.stats.confirmed_count || 0)} / ${Number(previewMaster.stats.row_count || 0)}`
