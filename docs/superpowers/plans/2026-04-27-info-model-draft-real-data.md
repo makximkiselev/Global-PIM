@@ -1168,7 +1168,7 @@ Verify:
 5. Approving the draft writes accepted candidates to model attributes.
 6. `https://pim.id-smart.ru/sources?category=b2f026d9-a3e2-4821-9034-d17ac1b65065&tab=params` no longer tries to explain model creation; it either shows mapping or a clear guardrail.
 
-- [ ] **Step 6: Update master-plan status**
+- [x] **Step 6: Update master-plan status**
 
 Append under section `21.14 Product correction: Draft-first Info Model Workflow`:
 
@@ -1181,6 +1181,14 @@ Implementation status:
 4. `/sources` guarded so mapping does not pretend to create models;
 5. browser-use verification completed on production.
 ```
+
+Production verification notes:
+
+1. `Oura Ring 4` was used as the real-data no-model category.
+2. Draft state persists after reload through `template.meta.info_model`.
+3. False `approved` fallback was caused by missing relational `meta_json` persistence and is fixed.
+4. `Oura Ring 4` produced `0` candidates because current implementation reads only product `content.features`, and the category products do not contain feature rows.
+5. Marketplace parameters are still a required follow-up source for draft candidates.
 
 - [ ] **Step 7: Commit verification status**
 

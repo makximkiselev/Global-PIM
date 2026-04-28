@@ -3350,6 +3350,29 @@ Verification:
 6. в `/sources` показать понятный empty state, если у категории нет модели;
 7. после browser-use проверки обновить этот master-plan.
 
+Implementation status:
+
+1. backend adapter `/api/info-models/draft-from-sources` added;
+2. draft metadata is stored under `template.meta.info_model`;
+3. relational storage now persists `template.meta` through `templates*_rel.meta_json`;
+4. lightweight DB migration runs even when schema bootstrap marker already exists;
+5. `/templates/:categoryId` can collect draft from real product data and keep `draft` state after reload;
+6. `/sources` is guarded so mapping does not pretend to create models;
+7. browser-use production check completed on `Oura Ring 4`;
+8. verified production behavior: `Draft на модерации` is shown, false `Утверждена` fallback is fixed.
+
+Known gap from production check:
+
+1. current draft source implementation reads only existing product `content.features`;
+2. `Oura Ring 4` has 72 products, but no product features available for candidate extraction;
+3. marketplace parameters are not yet fed into draft generation;
+4. next implementation step must add marketplace source collectors:
+   - category binding requirements from Я.Маркет;
+   - category binding requirements from Ozon;
+   - existing attribute mapping rows;
+   - value options from marketplaces;
+   - provenance per marketplace parameter.
+
 Документированный spec:
 
 - [`docs/superpowers/specs/2026-04-27-info-model-draft-workflow-design.md`](/Users/maksimkiselev/Desktop/Global%20PIM/docs/superpowers/specs/2026-04-27-info-model-draft-workflow-design.md)
