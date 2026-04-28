@@ -50,6 +50,27 @@ type Props = {
 
 type ScopeFilter = "all" | "group" | "product" | "shared";
 
+const SERVICE_VALUE_GROUPS = new Set(["артикулы"]);
+const SERVICE_VALUE_FIELDS = ["sku", "артикул", "штрихкод", "партномер", "barcode", "offerid", "offer id"];
+
+function isDictionaryLike(item: ValueItem) {
+  const type = String(item.type || "").toLowerCase();
+  return ["select", "multiselect", "enum", "dictionary", "list"].some((part) => type.includes(part));
+}
+
+function isServiceValueField(item: ValueItem) {
+  const title = `${item.title || ""} ${item.catalog_name || ""}`.toLowerCase();
+  const group = String(item.group || "").trim().toLowerCase();
+  return SERVICE_VALUE_GROUPS.has(group) || SERVICE_VALUE_FIELDS.some((part) => title.includes(part));
+}
+
+function needsValueMapping(item: ValueItem) {
+  const hasProviderValues = item.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
+  const hasCanonicalValues = Number(item.value_count || 0) > 0;
+  if (isServiceValueField(item)) return false;
+  return hasProviderValues || (isDictionaryLike(item) && hasCanonicalValues);
+}
+
 function buildChildren(nodes: CatalogNode[]) {
   const map = new Map<string, CatalogNode[]>();
   for (const node of nodes) {
@@ -174,13 +195,27 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const filteredItems = useMemo(() => {
     const q = String(fieldQuery || "").trim().toLowerCase();
     const list = Array.isArray(data?.items) ? data!.items : [];
-    return list.filter((item) => {
-      if (scopeFilter !== "all" && item.scope !== scopeFilter) return false;
-      if (!q) return true;
-      const hay = `${item.catalog_name} ${item.group} ${item.providers.map((p) => p.title).join(" ")}`.toLowerCase();
-      return hay.includes(q);
-    });
+    return list
+      .filter((item) => needsValueMapping(item))
+      .filter((item) => {
+        if (scopeFilter !== "all" && item.scope !== scopeFilter) return false;
+        if (!q) return true;
+        const hay = `${item.catalog_name} ${item.group} ${item.providers.map((p) => p.title).join(" ")}`.toLowerCase();
+        return hay.includes(q);
+      })
+      .sort((a, b) => {
+        const aReady = a.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
+        const bReady = b.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
+        if (aReady !== bReady) return aReady ? -1 : 1;
+        return String(a.catalog_name || a.title || "").localeCompare(String(b.catalog_name || b.title || ""), "ru");
+      });
   }, [data, fieldQuery, scopeFilter]);
+
+  const rawItemsCount = Array.isArray(data?.items) ? data!.items.length : 0;
+  const mappingItemsCount = useMemo(() => {
+    const list = Array.isArray(data?.items) ? data!.items : [];
+    return list.filter((item) => needsValueMapping(item)).length;
+  }, [data]);
 
   useEffect(() => {
     if (!filteredItems.length) {
@@ -253,7 +288,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
       <div className="sm-valuesLayout">
         <CategorySidebar
           title="Каталог"
-          hint="Категория для value-mapping"
+          hint="Выберите ветку, где нужно проверить значения для выгрузки"
           searchValue={treeQuery}
           onSearchChange={setTreeQuery}
           searchPlaceholder="Быстрый поиск"
@@ -273,13 +308,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
             <div>
               <div className="sm-shellTitle">Сопоставление значений</div>
               <div className="sm-shellSub">
-                Выбираешь категорию, затем поле со справочником, затем дружишь значения площадок с нашими каноническими значениями.
+                Нормализованные значения PIM остаются внутри системы. Здесь выбирается, как эти значения будут называться на Я.Маркете, Ozon и других площадках.
               </div>
             </div>
             {data?.category ? (
               <div className="sm-valuesMeta">
                 <span>{data.category.path}</span>
-                <span>{filteredItems.length} полей</span>
+                <span>{mappingItemsCount} из {rawItemsCount} полей требуют сопоставления</span>
               </div>
             ) : null}
           </div>
@@ -290,7 +325,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                 <input
                   value={fieldQuery}
                   onChange={(e) => setFieldQuery(e.target.value)}
-                  placeholder="Поиск по полям и словарям…"
+                  placeholder="Память, цвет, тип SIM…"
                 />
                 <div className="sm-valuesScopeTabs">
                   {[
@@ -317,7 +352,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                 ) : loadingValues ? (
                   <div className="sm-valuesEmpty">Загружаю поля со значениями…</div>
                 ) : filteredItems.length === 0 ? (
-                  <div className="sm-valuesEmpty">Для этой категории пока нет полей со справочниками значений.</div>
+                  <div className="sm-valuesEmpty">Для этой категории пока нет полей, где нужно сопоставлять значения площадок.</div>
                 ) : (
                   filteredItems.map((item) => (
                     <button
@@ -333,7 +368,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                       <div className="sm-valuesFieldMeta">
                         <span>{item.group}</span>
                         <span>{item.value_count} знач.</span>
-                        <span>{item.mapped_total} сопоставлено</span>
+                        <span>{item.mapped_total ? `${item.mapped_total} сопоставлено` : "сопоставление не настроено"}</span>
                       </div>
                       <div className="sm-valuesProviderRow">
                         {item.providers.map((provider) => (

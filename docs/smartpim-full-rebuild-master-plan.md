@@ -6090,3 +6090,58 @@ Next page-pass requirements:
 3. if candidates are empty, debug mapping/data availability, not the UI;
 4. after approval, open a smartphone product and verify that model fields become usable in the product card;
 5. next heavy area after this: value mapping for select fields, because marketplace display values may differ from normalized PIM values.
+
+### 32. Value Mapping Workspace: Output Values Per Channel
+
+Problem confirmed on `/sources-mapping?tab=values`:
+
+1. value mapping opened with service fields like `SKU GT`, which are not user-facing dictionary values;
+2. the user could not quickly understand the core job:
+   - PIM keeps one normalized value;
+   - each marketplace may require a different spelling/value;
+   - export must use marketplace-specific output values;
+3. English/technical copy such as `Value dictionary` appeared inside the editor;
+4. all fields were mixed together, so real select/dictionary fields were buried under service fields;
+5. the screen did not separate canonical PIM values from allowed values of `Я.Маркет` / `Ozon`.
+
+Decision:
+
+1. the value-mapping workspace must show only fields that actually need value mapping:
+   - fields with marketplace `allowed values`;
+   - dictionary/select-like PIM fields with canonical values;
+2. service fields are not value-mapping tasks and should be hidden from the primary list:
+   - SKU;
+   - barcode;
+   - part number;
+   - other article/system fields;
+3. left list title stays operational: `Поля со справочниками`, not generic technical field inventory;
+4. editor copy must explain:
+   - left side is canonical PIM value;
+   - right side is marketplace output value;
+   - accepting a suggestion saves provider-specific export mapping;
+5. automatic suggestions are allowed only when safe:
+   - exact normalized string match;
+   - numeric equivalence, e.g. `256 ГБ` -> `256`;
+6. if multiple valid marketplace values exist, user chooses one manually; if none fits, user enters a value manually.
+
+Implementation status:
+
+1. `DictionaryEditorFeature` embedded header/copy changed to Russian value-mapping language. Status: done locally.
+2. provider panel now shows selected channel, allowed values, and mapped count. Status: done locally.
+3. per-value rows now show `Сопоставлено` / `Есть предложение` / `Нужно выбрать`. Status: done locally.
+4. safe suggestion helper added for exact and numeric matches. Status: done locally.
+5. service fields are filtered out of `SourcesValueMappingSection`. Status: done locally.
+6. fields are sorted so rows with provider allowed values appear first. Status: done locally.
+7. build verification. Status: done locally, `npm --prefix frontend run build`.
+8. production browser-check showed first real field `Аутентификация`, not `SKU GT`. Status: done.
+9. remaining English copy `allowed values/mapping` removed from visible page text. Status: done.
+10. embedded editor layout fixed so metadata fields no longer overflow the right panel. Status: done.
+11. production deploy and browser verification completed on 2026-04-28. Status: done.
+
+Next verification:
+
+1. verify accepting a suggested marketplace value persists after reload;
+2. continue page-by-page cleanup with the next highest-friction workspace:
+   - source/category mapping;
+   - parameter mapping;
+   - connector/admin screens if they block the workflow.

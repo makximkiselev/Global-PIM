@@ -72,7 +72,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 const PROVIDER_LABEL: Record<string, string> = {
   yandex_market: "Я.Маркет",
-  ozon: "OZON",
+  ozon: "Ozon",
 };
 const PARAM_GROUPS = ["Артикулы", "О товаре", "Логистика", "Гарантия", "Прочее"] as const;
 type ParamGroup = (typeof PARAM_GROUPS)[number];
@@ -116,6 +116,17 @@ function parseNumericValue(text: string): number | null {
   if (unit === "tb" || unit === "тб") return num * 1024;
   if (unit === "mb" || unit === "мб") return num / 1024;
   return num;
+}
+
+function providerValueSuggestion(canonicalValue: string, allowedValues: string[]): string {
+  const key = normValueKey(canonicalValue);
+  if (!key) return "";
+  const exact = allowedValues.find((value) => normValueKey(value) === key);
+  if (exact) return exact;
+
+  const canonicalNumber = parseNumericValue(canonicalValue);
+  if (canonicalNumber == null) return "";
+  return allowedValues.find((value) => parseNumericValue(value) === canonicalNumber) || "";
 }
 
 function parseImportText(text: string): string[] {
@@ -368,6 +379,12 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
     return Array.isArray(activeProviderRef?.allowed_values) ? activeProviderRef.allowed_values : [];
   }, [activeProviderRef]);
 
+  const activeProviderMappedCount = useMemo(() => {
+    if (!activeProvider) return 0;
+    const providerMap = exportMapDraft?.[activeProvider] || item?.meta?.export_map?.[activeProvider] || {};
+    return values.filter((value) => !!providerMap[normValueKey(asText(value))]).length;
+  }, [activeProvider, exportMapDraft, item?.meta?.export_map, values]);
+
   async function addValue() {
     if (!effectiveDictId) return;
     const v = (newValue || "").trim();
@@ -535,9 +552,9 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       {embedded ? (
         <div className="dictionaryValueHeader">
           <div className="dictionaryValueHeaderMain">
-            <div className="dictionaryValueEyebrow">Value dictionary</div>
+            <div className="dictionaryValueEyebrow">Сопоставление значений</div>
             <div className="dictionaryValueTitle">{item?.title || "Параметр"}</div>
-            <div className="dictionaryValueSub">Канонические значения, источники и export-написания по площадкам.</div>
+            <div className="dictionaryValueSub">Слева значение PIM, справа — как оно должно уйти на выбранную площадку.</div>
           </div>
           <Button onClick={() => void load()} disabled={loading}>
             {loading ? "Обновляю…" : "Обновить"}
@@ -689,8 +706,8 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       {providerCodes.length ? (
         <Card style={{ marginBottom: 14 }}>
           <DataToolbar
-            title="Значения площадки"
-            subtitle="Справочник площадки хранится отдельно. Здесь настраивается соответствие нашего значения и значения источника."
+            title="Площадка для выгрузки"
+            subtitle="Здесь не меняем PIM-значение. Здесь задаем, какое написание примет маркетплейс при экспорте."
             actions={
               <>
                 {providerCodes.map((provider) => (
@@ -716,14 +733,15 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                   {activeProviderRef.name || "Поле не указано"}
                 </div>
                 <div className="muted" style={{ marginTop: 8, fontSize: 13, display: "grid", gap: 6 }}>
-                  <div>Тип: <b style={{ color: "var(--text)" }}>{activeProviderRef.kind || "—"}</b></div>
+                  <div>Тип площадки: <b style={{ color: "var(--text)" }}>{activeProviderRef.kind || "—"}</b></div>
                   <div>Обязательный: <b style={{ color: "var(--text)" }}>{activeProviderRef.required ? "да" : "нет"}</b></div>
                   <div>Допустимых значений: <b style={{ color: "var(--text)" }}>{activeProviderAllowedValues.length}</b></div>
+                  <div>Сопоставлено: <b style={{ color: "var(--text)" }}>{activeProviderMappedCount}/{values.length}</b></div>
                 </div>
               </Card>
 
               <Card className="dictionaryEditorProviderCard">
-                <div style={{ fontWeight: 800, marginBottom: 10 }}>Допустимые значения</div>
+                <div style={{ fontWeight: 800, marginBottom: 10 }}>Допустимые значения площадки</div>
                 {activeProviderAllowedValues.length ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 172, overflow: "auto" }}>
                     {activeProviderAllowedValues.map((value) => (
@@ -785,13 +803,13 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                 + Добавить значение
               </Button>
               <Button onClick={() => downloadTemplate(item?.title || "dictionary", values)} disabled={!item}>
-                ⬇️ Шаблон импорта
+                Шаблон импорта
               </Button>
               <Button onClick={() => setImportOpen((x) => !x)} disabled={!item || loading}>
-                ⬆️ Импорт значений
+                Импорт значений
               </Button>
               <Button onClick={() => void runDedupePreview()} disabled={!item || loading || dedupeLoading}>
-                {dedupeLoading ? "Проверяю дубли…" : "🧹 Чистка дублей"}
+                {dedupeLoading ? "Проверяю дубли…" : "Чистка дублей"}
               </Button>
             </>
           }
@@ -940,10 +958,16 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
               {filtered.map((v, i) => {
                 const text = asText(v);
                 const isEditing = editKey === text;
+                const mappedValue = activeProvider ? exportMappedValue(activeProvider, text) : "";
+                const suggestedValue =
+                  activeProvider && !mappedValue
+                    ? providerValueSuggestion(text, activeProviderAllowedValues)
+                    : "";
 
                 return (
                   <Card
                     key={`${text}-${i}`}
+                    className="dictionaryValueRow"
                     style={{
                       padding: 10,
                       display: "grid",
@@ -984,19 +1008,37 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                     </div>
 
                     {activeProvider ? (
-                      <div style={{ minWidth: 0 }}>
-                        <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
-                          {PROVIDER_LABEL[activeProvider] || activeProvider}
+                      <div className="dictionaryValueProviderCell" style={{ minWidth: 0 }}>
+                        <div className="dictionaryValueProviderHead">
+                          <span>{PROVIDER_LABEL[activeProvider] || activeProvider}</span>
+                          {mappedValue ? (
+                            <b>Сопоставлено</b>
+                          ) : suggestedValue ? (
+                            <b>Есть предложение</b>
+                          ) : (
+                            <b>Нужно выбрать</b>
+                          )}
                         </div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           <TextInput
                             list={`provider-values-${activeProvider}`}
-                            value={exportMappedValue(activeProvider, text)}
+                            value={mappedValue}
                             onChange={(e) => updateExportMapDraft(activeProvider, text, e.target.value)}
-                            placeholder="Значение площадки…"
+                            placeholder={suggestedValue || "Значение площадки…"}
                             disabled={isEditing}
                             style={{ flex: 1, minWidth: 0 }}
                           />
+                          {suggestedValue ? (
+                            <Button
+                              disabled={isEditing}
+                              onClick={() => {
+                                updateExportMapDraft(activeProvider, text, suggestedValue);
+                                void saveExportMapping(activeProvider, text, suggestedValue);
+                              }}
+                            >
+                              Принять
+                            </Button>
+                          ) : null}
                           <Button
                             variant="primary"
                             disabled={isEditing}
@@ -1028,7 +1070,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                               setEditValue(text);
                             }}
                           >
-                            ✏️
+                            Изм.
                           </IconButton>
                           <IconButton
                             tone="danger"
@@ -1039,7 +1081,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                               void deleteValue(text);
                             }}
                           >
-                            🗑
+                            Уд.
                           </IconButton>
                         </>
                       ) : (
