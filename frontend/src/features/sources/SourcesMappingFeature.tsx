@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
+import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
 import CompetitorDiscoveryPanel from "./CompetitorDiscoveryPanel";
 import PageTabs from "../../components/ui/PageTabs";
@@ -350,18 +351,11 @@ export default function SourcesMappingFeature() {
         )}
 
         {tab === "params" && !categoryResolving && (
-          <SourcesMarketplaceSection
-            key="params-workspace"
-            embedded
-            forcedMainTab="import"
-            forcedImportTab="features"
-            hideMainTabs
-            hideImportTabs
+          <SourcesParamsWorkspaceSection
             selectedCategoryId={selectedCategoryId}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}
-            useCatalogTreeForFeatures
           />
         )}
 

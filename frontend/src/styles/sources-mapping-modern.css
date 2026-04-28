@@ -997,3 +997,408 @@
     position: static;
   }
 }
+
+/* ============ New Category Parameter Workspace ============ */
+.paramsWorkspace {
+  display: grid;
+  grid-template-columns: 292px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.paramsWorkspaceSidebar {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+}
+
+.paramsWorkspaceMain {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.paramsCommand,
+.paramsServiceBlock,
+.paramsQueueBlock {
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 24px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, white), color-mix(in srgb, var(--panel) 88%, var(--surface)));
+  box-shadow: var(--shadow-soft);
+}
+
+.paramsCommand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+}
+
+.paramsEyebrow {
+  margin-bottom: 8px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.paramsCommand h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(30px, 3vw, 48px);
+  line-height: .96;
+  letter-spacing: -.055em;
+}
+
+.paramsCommand p {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+.paramsCommandActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.paramsSteps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.paramsStep {
+  min-width: 0;
+  min-height: 84px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--panel) 86%, var(--surface));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.paramsStep span {
+  width: 30px;
+  height: 30px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.paramsStep strong,
+.paramsStep em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsStep strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.paramsStep em {
+  grid-column: 2;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.paramsStep.isDone span {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success-strong);
+}
+
+.paramsStep.isWarn span {
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--brand-strong);
+}
+
+.paramsServiceBlock,
+.paramsQueueBlock {
+  padding: 18px;
+}
+
+.paramsSectionHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.paramsSectionHead h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  letter-spacing: -.035em;
+}
+
+.paramsSectionHead p {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+.paramsServiceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.paramsServiceCard {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 72%, var(--panel));
+}
+
+.paramsServiceTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.paramsServiceTop strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.paramsServiceTop span,
+.paramsParamMeta span,
+.paramsStats span,
+.paramsChip span {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.paramsServiceTop span {
+  padding: 4px 8px;
+}
+
+.paramsServiceTop span.isOk {
+  border-color: color-mix(in srgb, var(--success) 28%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success-strong);
+}
+
+.paramsServiceTop span.isWarn {
+  border-color: color-mix(in srgb, var(--brand) 28%, transparent);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand-strong);
+}
+
+.paramsServiceCard b {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.paramsServiceCard p {
+  margin: 6px 0 10px;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.paramsProviderMini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.paramsStats,
+.paramsQueueToolbar,
+.paramsParamMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.paramsStats span,
+.paramsParamMeta span {
+  padding: 5px 9px;
+}
+
+.paramsQueueToolbar {
+  margin-bottom: 14px;
+}
+
+.paramsQueueToolbar input {
+  flex: 1 1 320px;
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 86%, var(--panel));
+  color: var(--text);
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.paramsChip {
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.paramsChip span {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.paramsChip.isActive {
+  border-color: color-mix(in srgb, var(--brand) 34%, transparent);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--text);
+}
+
+.paramsQueueList {
+  display: grid;
+  gap: 10px;
+}
+
+.paramsParamCard {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 76%, var(--panel));
+}
+
+.paramsParamCard.isAttention {
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--line));
+}
+
+.paramsParamHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.paramsParamHead strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.paramsParamHead span {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.paramsParamProviders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paramsProviderCell {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+}
+
+.paramsProviderCell span,
+.paramsProviderCell em {
+  display: block;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.paramsProviderCell strong {
+  display: block;
+  margin: 4px 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsAlert {
+  padding: 16px;
+  border: 1px dashed color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+@media (max-width: 1480px) {
+  .paramsSteps,
+  .paramsServiceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .paramsWorkspace,
+  .paramsParamCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paramsWorkspaceSidebar {
+    position: static;
+  }
+}

@@ -6145,3 +6145,100 @@ Next verification:
    - source/category mapping;
    - parameter mapping;
    - connector/admin screens if they block the workflow.
+
+### 33. Parameter Mapping Workspace: Category Work Screen
+
+Problem confirmed on `/sources-mapping?tab=params`:
+
+1. current screen is closer than before, but still starts from a large mapping table;
+2. user sees implementation details before understanding:
+   - what is already ready;
+   - what blocks export;
+   - what needs action next;
+3. service export fields such as `SKU GT` are technically present but not visually explicit enough;
+4. `SKU GT` must never be treated as removed:
+   - it is the internal SKU;
+   - it is passed to marketplaces as `offerId` / platform SKU;
+   - it belongs to parameter/export mapping, not value mapping;
+5. category work should feel like a workflow, not a spreadsheet.
+
+Target structure:
+
+1. top command center for selected category:
+   - category name;
+   - category bindings;
+   - model/readiness stats;
+   - next action;
+2. workflow steps:
+   - `Категории`;
+   - `Служебные поля`;
+   - `Параметры`;
+   - `Значения`;
+   - `Проверка выгрузки`;
+3. service export block always visible in params workspace:
+   - `SKU GT -> offerId`;
+   - `Название -> name`;
+   - `Бренд -> vendor`;
+   - `Описание -> description`;
+   - `Фото -> pictures`;
+   - `Штрихкод -> barcode`;
+4. main parameter work should default to cards/queue:
+   - `Не сопоставлено`;
+   - `Требует проверки`;
+   - `Готово`;
+   - source coverage per provider;
+5. table remains available as advanced mode:
+   - bulk QA;
+   - mass edits;
+   - horizontal scroll;
+   - exact provider cells;
+6. value mapping page must explicitly explain that service fields are sent directly and do not require value mapping.
+
+Implementation order:
+
+1. add persistent UI state for params workspace view: `Рабочий вид` / `Таблица`;
+2. derive service rows, category rows, attention rows, unmapped rows, ready rows from existing `attrRows`;
+3. add service export cards above parameter queue;
+4. add parameter queue cards with provider coverage and actions;
+5. keep existing table component under advanced view without deleting its behavior;
+6. add copy on value mapping page explaining why `SKU GT` is not in values;
+7. browser-check `/sources-mapping?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`;
+8. browser-check `/sources-mapping?tab=values&category=bb40de87-254b-4170-84d7-8e5d3925b251`;
+9. build, deploy, commit.
+
+Implementation status:
+
+1. first-pass implemented in `SourcesParamsWorkspaceSection`;
+2. `tab=params` now opens a dedicated category work screen instead of the old table-first workspace;
+3. service export fields are explicit and always visible:
+   - `SKU GT -> offerId / SKU площадки`;
+   - `Название -> name`;
+   - `Бренд -> vendor / brand`;
+   - `Описание -> description`;
+   - `Фото -> pictures / images`;
+   - `Штрихкод -> barcode`;
+4. service fields are marked as `передается напрямую`, not as missing mappings;
+5. parameter work starts from a queue with filters:
+   - `Внимание`;
+   - `Без связки`;
+   - `Готово`;
+   - `Все`;
+6. category tree now reads `/catalog/nodes` correctly when the API returns `{ nodes: [...] }`;
+7. production browser-check passed on `/sources-mapping?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`:
+   - `SKU GT` visible;
+   - `offerId` visible;
+   - `Служебные поля выгрузки` visible;
+   - `передается напрямую` visible on all service cards;
+   - `Очередь параметров` visible;
+   - old `Сопоставить с AI` table-first action is not present on this primary screen.
+
+Remaining work:
+
+1. add editable drawer for one parameter card:
+   - source candidates;
+   - marketplace fields;
+   - competitor fields;
+   - save to existing attribute mapping endpoint;
+2. add advanced table mode only as secondary QA/bulk mode;
+3. connect queue status to actual save lifecycle and validation errors;
+4. continue the same rebuild approach for source/category mapping and connector/admin pages.
