@@ -460,7 +460,8 @@ def _ensure_tables_impl() -> None:
                   name TEXT NOT NULL,
                   category_id TEXT NULL,
                   created_at TEXT NULL,
-                  updated_at TEXT NULL
+                  updated_at TEXT NULL,
+                  meta_json JSONB NOT NULL DEFAULT '{}'::jsonb
                 )
                 """
             )
@@ -473,10 +474,13 @@ def _ensure_tables_impl() -> None:
                   category_id TEXT NULL,
                   created_at TEXT NULL,
                   updated_at TEXT NULL,
+                  meta_json JSONB NOT NULL DEFAULT '{}'::jsonb,
                   PRIMARY KEY (organization_id, id)
                 )
                 """
             )
+            cur.execute("ALTER TABLE templates_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+            cur.execute("ALTER TABLE templates_tenant_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
             cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_templates_rel_category
@@ -2994,6 +2998,7 @@ def _replace_templates_tables(doc: Dict[str, Any]) -> None:
                 str(template.get("category_id") or "").strip() or None,
                 str(template.get("created_at") or "") or None,
                 str(template.get("updated_at") or "") or None,
+                json.dumps(template.get("meta") if isinstance(template.get("meta"), dict) else {}, ensure_ascii=False),
             )
         )
 
@@ -3039,8 +3044,8 @@ def _replace_templates_tables(doc: Dict[str, Any]) -> None:
                 cur.executemany(
                     """
                     INSERT INTO templates_rel (
-                      id, name, category_id, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s)
+                      id, name, category_id, created_at, updated_at, meta_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     template_rows,
                 )
@@ -3089,6 +3094,7 @@ def _replace_templates_tenant_tables(doc: Dict[str, Any], organization_id: Optio
                 str(template.get("category_id") or "").strip() or None,
                 str(template.get("created_at") or "") or None,
                 str(template.get("updated_at") or "") or None,
+                json.dumps(template.get("meta") if isinstance(template.get("meta"), dict) else {}, ensure_ascii=False),
             )
         )
 
@@ -3135,8 +3141,8 @@ def _replace_templates_tenant_tables(doc: Dict[str, Any], organization_id: Optio
                 cur.executemany(
                     """
                     INSERT INTO templates_tenant_rel (
-                      organization_id, id, name, category_id, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                      organization_id, id, name, category_id, created_at, updated_at, meta_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     template_rows,
                 )
@@ -3187,6 +3193,7 @@ def save_template_category_doc(
                 cid,
                 str(template.get("created_at") or "") or None,
                 str(template.get("updated_at") or "") or None,
+                json.dumps(template.get("meta") if isinstance(template.get("meta"), dict) else {}, ensure_ascii=False),
             )
         )
 
@@ -3256,8 +3263,8 @@ def save_template_category_doc(
                 cur.executemany(
                     """
                     INSERT INTO templates_tenant_rel (
-                      organization_id, id, name, category_id, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                      organization_id, id, name, category_id, created_at, updated_at, meta_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     template_rows,
                 )
@@ -3342,7 +3349,7 @@ def load_templates_db_doc(organization_id: Optional[str] = None) -> Dict[str, An
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, category_id, created_at, updated_at
+                SELECT id, name, category_id, created_at, updated_at, meta_json
                 FROM templates_tenant_rel
                 WHERE organization_id = %s
                 ORDER BY id
@@ -3377,12 +3384,19 @@ def load_templates_db_doc(organization_id: Optional[str] = None) -> Dict[str, An
             tid = str(row[0] or "").strip()
             if not tid:
                 continue
+            meta = row[5] if isinstance(row[5], dict) else {}
+            if not isinstance(meta, dict):
+                try:
+                    meta = json.loads(str(row[5] or "{}"))
+                except Exception:
+                    meta = {}
             templates[tid] = {
                 "id": tid,
                 "name": str(row[1] or tid).strip() or tid,
                 "category_id": str(row[2] or "").strip() or None,
                 "created_at": str(row[3] or "") or "",
                 "updated_at": str(row[4] or "") or "",
+                "meta": meta,
             }
 
         attributes: Dict[str, List[Dict[str, Any]]] = {}
@@ -3448,7 +3462,7 @@ def load_template_editor_payload(category_path_ids: List[str], organization_id: 
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT l.category_id, l.template_id, l.position, t.name, t.category_id, t.created_at, t.updated_at
+                SELECT l.category_id, l.template_id, l.position, t.name, t.category_id, t.created_at, t.updated_at, t.meta_json
                 FROM category_template_links_tenant_rel l
                 JOIN templates_tenant_rel t
                   ON t.organization_id = l.organization_id
@@ -3467,6 +3481,12 @@ def load_template_editor_payload(category_path_ids: List[str], organization_id: 
             template_id = str(row[1] or "").strip()
             if not category_id or not template_id:
                 continue
+            meta = row[7] if isinstance(row[7], dict) else {}
+            if not isinstance(meta, dict):
+                try:
+                    meta = json.loads(str(row[7] or "{}"))
+                except Exception:
+                    meta = {}
             by_category.setdefault(category_id, []).append(
                 {
                     "id": template_id,
@@ -3474,6 +3494,7 @@ def load_template_editor_payload(category_path_ids: List[str], organization_id: 
                     "category_id": str(row[4] or category_id).strip() or category_id,
                     "created_at": str(row[5] or "") or "",
                     "updated_at": str(row[6] or "") or "",
+                    "meta": meta,
                 }
             )
 

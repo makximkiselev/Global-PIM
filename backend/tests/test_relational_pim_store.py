@@ -1,4 +1,5 @@
 import os
+import json
 import sys
 import threading
 import time
@@ -13,6 +14,54 @@ from app.storage import json_store
 
 
 class RelationalPimStoreTests(unittest.TestCase):
+    def test_replace_templates_tenant_tables_persists_template_meta(self) -> None:
+        inserted_templates: list[tuple[object, ...]] = []
+
+        class _Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            def execute(self, query, params=None) -> None:
+                return None
+
+            def executemany(self, query, rows) -> None:
+                if "INSERT INTO templates_tenant_rel" in str(query):
+                    inserted_templates.extend(list(rows))
+
+        class _Conn:
+            def cursor(self) -> _Cursor:
+                return _Cursor()
+
+        doc = {
+            "version": 2,
+            "templates": {
+                "tpl-draft": {
+                    "id": "tpl-draft",
+                    "name": "Draft",
+                    "category_id": "cat-vr",
+                    "created_at": "2026-04-27T00:00:00+00:00",
+                    "updated_at": "2026-04-27T00:01:00+00:00",
+                    "meta": {"info_model": {"status": "draft", "candidates": [{"id": "cand-memory"}]}},
+                }
+            },
+            "attributes": {"tpl-draft": []},
+            "category_to_templates": {"cat-vr": ["tpl-draft"]},
+        }
+
+        with (
+            patch.object(relational_pim_store, "_with_pg_retry", side_effect=lambda fn: fn()),
+            patch.object(relational_pim_store, "_pg_connect", return_value=(_Conn(), None, None)),
+            patch.object(relational_pim_store, "_resolve_organization_id", return_value="org_default"),
+        ):
+            relational_pim_store._replace_templates_tenant_tables(doc, organization_id="org_default")
+
+        self.assertEqual(len(inserted_templates), 1)
+        self.assertEqual(inserted_templates[0][1], "tpl-draft")
+        self.assertEqual(json.loads(inserted_templates[0][6])["info_model"]["status"], "draft")
+
     def test_load_competitor_mapping_does_not_overwrite_non_empty_tenant_doc_with_legacy(self) -> None:
         tenant_doc = {
             "version": 2,
