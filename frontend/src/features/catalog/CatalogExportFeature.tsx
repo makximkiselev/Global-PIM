@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import CatalogExchangePicker, { type ExchangeNode } from "../../components/CatalogExchangePicker";
 import DataToolbar from "../../components/data/DataToolbar";
 import InspectorPanel from "../../components/data/InspectorPanel";
@@ -41,6 +42,7 @@ function SummaryMetricRow({ items }: { items: MetricItem[] }) {
 }
 
 export default function CatalogExportFeature() {
+  const [searchParams] = useSearchParams();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
   const [providers, setProviders] = useState<ProviderRow[]>([]);
@@ -52,6 +54,7 @@ export default function CatalogExportFeature() {
   const [loading, setLoading] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
+  const initialCategoryId = String(searchParams.get("category") || "").trim();
 
   useEffect(() => {
     const load = async () => {
@@ -67,6 +70,13 @@ export default function CatalogExportFeature() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (!initialCategoryId || !nodes.some((node) => node.id === initialCategoryId)) return;
+    setSelectedNodeIds((prev) => (prev.length === 1 && prev[0] === initialCategoryId ? prev : [initialCategoryId]));
+  }, [initialCategoryId, nodes]);
+
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+
   const activeTargets = useMemo(() => {
     return Object.entries(selectedProviders)
       .filter(([, on]) => !!on)
@@ -76,9 +86,10 @@ export default function CatalogExportFeature() {
   const selectedScope = useMemo(() => {
     if (!selectedNodeIds.length && !selectedProductIds.length) return "Весь каталог";
     if (selectedProductIds.length && !selectedNodeIds.length) return `Товары: ${selectedProductIds.length}`;
+    if (selectedNodeIds.length === 1 && !selectedProductIds.length) return nodeById.get(selectedNodeIds[0])?.name || "Выбранная категория";
     if (selectedNodeIds.length && !selectedProductIds.length) return `Разделы: ${selectedNodeIds.length}`;
     return `Разделы: ${selectedNodeIds.length} · Товары: ${selectedProductIds.length}`;
-  }, [selectedNodeIds, selectedProductIds]);
+  }, [nodeById, selectedNodeIds, selectedProductIds]);
 
   const selectedTargetsCount = useMemo(
     () => activeTargets.reduce((sum, item) => sum + Math.max(item.store_ids.length, 1), 0),

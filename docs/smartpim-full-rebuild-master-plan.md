@@ -6296,3 +6296,33 @@ Remaining work:
    - richer competitor field evidence per selected PIM field;
    - connect queue status to validation/export errors;
    - continue the same rebuild approach for source/category mapping and connector/admin pages.
+
+### 34. Export Readiness: Preserve Category Context
+
+Problem confirmed after opening export from the parameter/value workflow:
+
+1. `/catalog/export?category=...` opened the export page;
+2. however the picker still defaulted to `Весь каталог`;
+3. this broke the user path because `Проверить выгрузку` from `Смартфоны` must validate/export the same category, not the entire catalog.
+
+Decision:
+
+1. export page reads the `category` query parameter;
+2. once catalog nodes are loaded, that category becomes the selected export scope;
+3. selected scope label uses the category name when a single category is selected;
+4. this preserves the workflow:
+   - params for `Смартфоны`;
+   - values for `Смартфоны`;
+   - export readiness for `Смартфоны`.
+
+Implementation status:
+
+1. `CatalogExportFeature` now uses `useSearchParams`;
+2. `category` query param initializes `selectedNodeIds`;
+3. selected scope label shows `Смартфоны` for the smartphone category;
+4. build verification passed locally, `npm --prefix frontend run build`;
+5. production deploy completed, health `{"ok":true}`;
+6. in-app browser verification completed on `/catalog/export?category=bb40de87-254b-4170-84d7-8e5d3925b251`:
+   - selected scope shows `Смартфоны`;
+   - category checkbox is selected;
+   - export target panel stays available.
