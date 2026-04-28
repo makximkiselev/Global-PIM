@@ -333,6 +333,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
             patch.object(draft_service, "save_templates_db", side_effect=save),
             patch.object(draft_service, "query_products_full", return_value=[]),
+            patch.object(draft_service, "load_catalog_nodes", return_value=[{"id": "cat-rings", "parent_id": None, "name": "Умные кольца"}]),
             patch.object(draft_service, "load_category_mappings", return_value={"cat-rings": {"yandex_market": "ym-smart-ring", "ozon": "ozon-smart-ring"}}),
             patch.object(draft_service, "read_doc", side_effect=read_doc),
             patch.object(draft_service, "new_id", side_effect=["tpl-draft-rings", "cand-brand", "cand-size-ym", "cand-battery", "cand-size-ozon"]),
@@ -348,6 +349,58 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(ring_size["status"], "accepted")
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})
         self.assertEqual(saved["templates"]["tpl-draft-rings"]["meta"]["info_model"]["draft_sources"], ["marketplaces"])
+
+    def test_info_model_draft_uses_nearest_ancestor_marketplace_mapping(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
+        saved: dict[str, object] = {}
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        def read_doc(path, default=None):
+            if str(path).endswith("category_parameters.json"):
+                return {
+                    "items": {
+                        "ym-smart-rings": {
+                            "raw": {
+                                "result": {
+                                    "parameters": [
+                                        {"id": "ring_size", "name": "Размер кольца", "required": True, "type": "ENUM", "values": [{"name": "10"}]},
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            if str(path).endswith("category_attributes.json"):
+                return {"items": {}}
+            return deepcopy(default)
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "query_products_full", return_value=[]),
+            patch.object(
+                draft_service,
+                "load_catalog_nodes",
+                return_value=[
+                    {"id": "cat-rings", "parent_id": None, "name": "Умные кольца"},
+                    {"id": "cat-oura", "parent_id": "cat-rings", "name": "Oura Ring 4"},
+                ],
+            ),
+            patch.object(draft_service, "load_category_mappings", return_value={"cat-rings": {"yandex_market": "ym-smart-rings"}}),
+            patch.object(draft_service, "read_doc", side_effect=read_doc),
+            patch.object(draft_service, "new_id", side_effect=["tpl-draft-oura", "cand-size"]),
+            patch.object(draft_service, "now_iso", return_value="2026-04-27T00:00:00+00:00"),
+        ):
+            response = draft_service.create_draft_from_sources("cat-oura", {"sources": ["marketplaces"]})
+
+        self.assertEqual(response["template"]["id"], "tpl-draft-oura")
+        self.assertEqual([candidate["name"] for candidate in response["candidates"]], ["Размер кольца"])
+        self.assertEqual(saved["templates"]["tpl-draft-oura"]["meta"]["info_model"]["status"], "draft")
 
     def test_info_model_approve_draft_writes_accepted_candidates_to_attributes(self) -> None:
         from app.core.info_models import draft_service

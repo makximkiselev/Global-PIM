@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 from app.core.products.service import query_products_full
 from app.core.json_store import DATA_DIR, read_doc
 from app.storage.json_store import load_templates_db, new_id, save_templates_db
-from app.storage.relational_pim_store import load_category_mappings
+from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings
 
 
 MARKETPLACES_DIR = DATA_DIR / "marketplaces"
@@ -287,9 +287,33 @@ def _merge_candidate(base: Dict[str, Any], next_item: Dict[str, Any]) -> Dict[st
     return base
 
 
+def _ancestor_ids(category_id: str) -> List[str]:
+    nodes = load_catalog_nodes()
+    by_id = {str(node.get("id") or "").strip(): node for node in nodes if isinstance(node, dict) and str(node.get("id") or "").strip()}
+    out = [_text(category_id)]
+    current = by_id.get(_text(category_id))
+    guard = set(out)
+    while current:
+        parent_id = _text(current.get("parent_id"))
+        if not parent_id or parent_id in guard:
+            break
+        out.append(parent_id)
+        guard.add(parent_id)
+        current = by_id.get(parent_id)
+    return out
+
+
+def _mapping_for_category_or_ancestor(category_id: str, mappings: Dict[str, Dict[str, str]]) -> Dict[str, str] | None:
+    for cid in _ancestor_ids(category_id):
+        mapping = mappings.get(cid) if isinstance(mappings, dict) else None
+        if isinstance(mapping, dict) and any(_text(value) for value in mapping.values()):
+            return mapping
+    return None
+
+
 def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
     mappings = load_category_mappings()
-    mapping = mappings.get(category_id) if isinstance(mappings, dict) else None
+    mapping = _mapping_for_category_or_ancestor(category_id, mappings) if isinstance(mappings, dict) else None
     if not isinstance(mapping, dict):
         return []
     provider_params: List[Dict[str, Any]] = []
