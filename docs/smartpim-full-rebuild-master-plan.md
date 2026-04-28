@@ -6440,3 +6440,30 @@ Second follow-up browser verification:
 3. confirmed the top block is a compact command/status area, not a dashboard;
 4. confirmed `Поля карточки товара` is visible on the first screen;
 5. confirmed no browser console errors/warnings on the checked screen.
+
+Third follow-up decision after user review:
+
+1. the compact block still duplicated the category/title and selected focus;
+2. there were too many visible buttons in the assembly area;
+3. navigation to related screens should not compete visually with the main model actions.
+
+Third follow-up implementation status:
+
+1. removed `Категория` and `Фокус` from the compact status bar;
+2. status bar now keeps only operational counters:
+   - fields;
+   - fields requiring review;
+   - fields already added to the model;
+   - source counts;
+3. removed `К моделям` from the page header actions because the left app navigation and route context already provide navigation;
+4. changed category/products/mapping navigation buttons into one low-emphasis `Дальше:` link row;
+5. build verification passed locally, `npm --prefix frontend run build`;
+6. production deploy completed, health `{"ok":true}`.
+
+Third follow-up browser verification:
+
+1. open `/templates/b2f026d9-a3e2-4821-9034-d17ac1b65065`;
+2. confirmed the top assembly block has fewer buttons;
+3. confirmed category name is not duplicated in the status bar;
+4. confirmed related-screen navigation is secondary, not primary;
+5. confirmed no browser console errors/warnings on the checked screen.

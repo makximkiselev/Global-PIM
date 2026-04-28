@@ -469,7 +469,6 @@ export default function TemplateEditor() {
     const row = master?.sources?.yandex_market;
     return row && typeof row === "object" ? (row as TemplateSourceInfo) : null;
   }, [master]);
-  const focusedAttr = selectedAttrIdx == null ? null : attrs[selectedAttrIdx] || null;
 
   async function updateDraftCandidate(candidateId: string, patch: Partial<InfoModelCandidate>) {
     const templateId = ownerTpl?.id || tpl?.id;
@@ -963,7 +962,6 @@ export default function TemplateEditor() {
         subtitle="Настройка полей товара: обязательность, типы данных, порядок и связь с категорией."
         actions={
           <>
-            <Button onClick={() => nav("/templates")}>К моделям</Button>
             <Button onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
               Импорт / экспорт
             </Button>
@@ -1058,10 +1056,6 @@ export default function TemplateEditor() {
 
                   <div className="tplModelStatusBar">
                     <div className="tplModelStatusItem">
-                      <span>Категория</span>
-                      <strong>{category?.name || "—"}</strong>
-                    </div>
-                    <div className="tplModelStatusItem">
                       <span>Поля</span>
                       <strong>{infoModel.status === "approved" ? attrs.length : draftCandidates.length || attrs.length}</strong>
                     </div>
@@ -1081,22 +1075,19 @@ export default function TemplateEditor() {
                           : "не собраны"}
                       </strong>
                     </div>
-                    <div className="tplModelStatusItem is-wide">
-                      <span>Фокус</span>
-                      <strong>{focusedAttr?.name || "сборка модели"}</strong>
-                    </div>
                   </div>
 
-                  <div className="tplModelQuickActions">
-                    <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                      Категория
-                    </Button>
-                    <Button onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                  <div className="tplModelNextActions">
+                    <span>Дальше:</span>
+                    <button type="button" onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                       Товары категории
-                    </Button>
-                    <Button onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                    </button>
+                    <button type="button" onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                       Маппинг полей
-                    </Button>
+                    </button>
+                    <button type="button" onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                      Открыть категорию
+                    </button>
                   </div>
 
                 </Card>

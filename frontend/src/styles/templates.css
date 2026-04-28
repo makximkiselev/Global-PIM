@@ -639,15 +639,9 @@
   justify-content: flex-start;
 }
 
-.tplModelQuickActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .tplModelStatusBar {
   display: grid;
-  grid-template-columns: 1.2fr .7fr .7fr .7fr 1.35fr 1.1fr;
+  grid-template-columns: .72fr .72fr .72fr minmax(220px, 1fr);
   gap: 8px;
 }
 
@@ -679,6 +673,41 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tplModelNextActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.tplModelNextActions span {
+  color: var(--text-soft);
+}
+
+.tplModelNextActions button {
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  padding: 0;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.tplModelNextActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.tplModelNextActions button:not(:last-child)::after {
+  content: "·";
+  margin-left: 8px;
+  color: var(--muted);
 }
 
 .tplAttrBoard {
