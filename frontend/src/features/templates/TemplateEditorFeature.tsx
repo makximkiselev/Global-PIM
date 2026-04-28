@@ -135,6 +135,8 @@ const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
   rejected: "Отклонено",
 };
 
+type DraftFilter = "all" | InfoModelCandidate["status"];
+
 function normTitle(s: string) {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -256,6 +258,7 @@ export default function TemplateEditor() {
   const [master, setMaster] = useState<TemplateMaster | null>(null);
   const [infoModel, setInfoModel] = useState<InfoModelSummary>({ status: "none" });
   const [attrTab, setAttrTabState] = useState<"all" | "base" | "category">(normalizeAttrTab(searchParams.get("tab")));
+  const [draftFilter, setDraftFilter] = useState<DraftFilter>("needs_review");
   const [saving, setSaving] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
 
@@ -448,6 +451,10 @@ export default function TemplateEditor() {
   const acceptedCandidates = draftCandidates.filter((candidate) => candidate.status === "accepted").length;
   const reviewCandidates = draftCandidates.filter((candidate) => candidate.status === "needs_review").length;
   const rejectedCandidates = draftCandidates.filter((candidate) => candidate.status === "rejected").length;
+  const visibleDraftCandidates = useMemo(() => {
+    if (draftFilter === "all") return draftCandidates;
+    return draftCandidates.filter((candidate) => candidate.status === draftFilter);
+  }, [draftCandidates, draftFilter]);
 
   const sourceCoverage = useMemo(() => {
     const byProvider = new Map<string, { provider: string; fields: number; required: number; examples: number }>();
@@ -944,6 +951,13 @@ export default function TemplateEditor() {
     },
   ] as const;
 
+  const draftFilterItems = [
+    { key: "needs_review", label: `На проверке (${reviewCandidates})` },
+    { key: "accepted", label: `В модели (${acceptedCandidates})` },
+    { key: "rejected", label: `Не используется (${rejectedCandidates})` },
+    { key: "all", label: `Все (${draftCandidates.length})` },
+  ] as const;
+
   const dictFiltered = (() => {
     const query = dictQuery.trim().toLowerCase();
     return (dictItems || []).filter((item) => {
@@ -1064,60 +1078,39 @@ export default function TemplateEditor() {
                     </div>
                   </div>
 
-                  <div className="tplModelNextActions">
-                    <span>Дальше:</span>
-                    <button type="button" onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                      Товары категории
-                    </button>
-                    <button type="button" onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                      Маппинг полей
-                    </button>
-                    <button type="button" onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                      Открыть категорию
-                    </button>
-                    <button type="button" onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
-                      Импорт / экспорт
-                    </button>
-                    {ownerTpl?.id ? (
-                      <button type="button" className="tplDangerLink" onClick={deleteTemplate} disabled={saving}>
-                        Удалить модель
-                      </button>
-                    ) : null}
-                  </div>
-
-                </Card>
-
-                <Card className="tplCanvasCard tplEditorHeaderCard">
-                  <div className="tplEditorHeaderMain">
-                    <div>
-                      <div className="tplSectionEyebrow">Рабочие поля</div>
-                      <h2>Поля карточки товара</h2>
-                      <p>
-                        {infoModel.status === "draft"
-                          ? "Это поля, которые попадут в карточку товара после утверждения. Спорные предложения решаются в блоке ниже."
-                          : canEdit
-                          ? "Это компактный список полей, которые будут использоваться в товарах категории, мэппинге площадок и проверке перед экспортом."
-                          : "Открыта наследуемая модель. Ее можно смотреть, но редактирование доступно только после создания собственной модели."}
-                      </p>
+                  <details className="tplModelMore">
+                    <summary>Настройки и переходы</summary>
+                    <div className="tplModelMorePanel">
+                      <Field label="Название модели" className="templateEditorField tplEditorNameField">
+                        <TextInput
+                          value={tplName}
+                          onChange={(event) => setTplName(event.target.value)}
+                          disabled={!ownerTpl?.id}
+                          title={!ownerTpl?.id ? "Наследованную модель нельзя переименовать. Сначала создай свою." : ""}
+                        />
+                      </Field>
+                      <div className="tplModelNextActions">
+                        <span>Дальше:</span>
+                        <button type="button" onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                          Товары категории
+                        </button>
+                        <button type="button" onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                          Маппинг полей
+                        </button>
+                        <button type="button" onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                          Открыть категорию
+                        </button>
+                        <button type="button" onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
+                          Импорт / экспорт
+                        </button>
+                        {ownerTpl?.id ? (
+                          <button type="button" className="tplDangerLink" onClick={deleteTemplate} disabled={saving}>
+                            Удалить модель
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                  <div className="tplEditorControlsRow">
-                    <Field label="Название модели" className="templateEditorField tplEditorNameField">
-                      <TextInput
-                        value={tplName}
-                        onChange={(event) => setTplName(event.target.value)}
-                        disabled={!ownerTpl?.id}
-                        title={!ownerTpl?.id ? "Наследованную модель нельзя переименовать. Сначала создай свою." : ""}
-                      />
-                    </Field>
-                    <div className="tplEditorFieldTabs">
-                      <PageTabs
-                        items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
-                        activeKey={attrTab}
-                        onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
-                      />
-                    </div>
-                  </div>
+                  </details>
                 </Card>
 
                 {infoModel.status === "draft" ? (
@@ -1129,19 +1122,27 @@ export default function TemplateEditor() {
                         <p>
                           Система нашла похожие параметры в источниках. Добавьте полезные поля в модель, а дубли и мусор не используйте.
                         </p>
-                        <div className="tplDraftHelp">
-                          <strong>Совпадение</strong> показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
-                        </div>
                         <div className="tplDraftCountersLine">
                           <span>{acceptedCandidates} добавлено в модель</span>
                           <span>{reviewCandidates} на проверке</span>
                           <span>{rejectedCandidates} не используется</span>
                         </div>
                       </div>
+                      <details className="tplDraftHelp">
+                        <summary>Что значит совпадение?</summary>
+                        <p>
+                          Совпадение показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
+                        </p>
+                      </details>
                     </div>
+                    <PageTabs
+                      items={draftFilterItems.map((item) => ({ key: item.key, label: item.label }))}
+                      activeKey={draftFilter}
+                      onChange={(key) => setDraftFilter(key as DraftFilter)}
+                    />
                     <div className="tplDraftList">
-                      {(infoModel.candidates || []).length ? (
-                        (infoModel.candidates || []).map((candidate) => (
+                      {visibleDraftCandidates.length ? (
+                        visibleDraftCandidates.map((candidate) => (
                           <div className={`tplDraftRow is-${candidate.status}`} key={candidate.id}>
                             <div className="tplDraftMain">
                               <strong>{candidate.name}</strong>
@@ -1172,9 +1173,19 @@ export default function TemplateEditor() {
                         ))
                       ) : (
                         <EmptyState
-                          title="Источники не дали параметров"
-                          body="В этой категории пока нет товарных характеристик для автоматической сборки. Можно создать модель вручную или импортировать Excel."
-                          action={<Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>Создать вручную</Button>}
+                          title={draftCandidates.length ? "В этом фильтре пусто" : "Источники не дали параметров"}
+                          body={
+                            draftCandidates.length
+                              ? "Переключите фильтр выше, чтобы посмотреть остальные предложения."
+                              : "В этой категории пока нет товарных характеристик для автоматической сборки. Можно создать модель вручную или импортировать Excel."
+                          }
+                          action={
+                            draftCandidates.length ? (
+                              <Button onClick={() => setDraftFilter("all")}>Показать все</Button>
+                            ) : (
+                              <Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>Создать вручную</Button>
+                            )
+                          }
                         />
                       )}
                     </div>
@@ -1183,10 +1194,15 @@ export default function TemplateEditor() {
 
                 <Card className="tplCanvasCard tplEditorMainCard">
                   <DataToolbar
-                    title="Поля"
+                    title="Поля карточки товара"
                     subtitle={`${REQUIRED_HELP_TEXT}${!canEdit ? " Сейчас открыт наследуемый контур — редактирование отключено." : ""}`}
                     actions={
                       <>
+                        <PageTabs
+                          items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
+                          activeKey={attrTab}
+                          onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
+                        />
                         <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : canEdit ? "active" : "pending"}>
                           {modelStatusLabel(infoModel.status)}
                         </Badge>

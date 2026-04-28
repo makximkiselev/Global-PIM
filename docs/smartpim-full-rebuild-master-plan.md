@@ -249,7 +249,14 @@ Current accepted structure:
    - source counts;
 8. review count belongs to the proposal review block, not the top assembly status;
 9. proposal review block must not duplicate the top approve action;
-10. related navigation is secondary under `Дальше:`.
+10. proposal review block appears immediately after the assembly block;
+11. model name, import/export, delete, and navigation links are hidden under `Настройки и переходы`;
+12. proposal review uses status filters:
+   - `На проверке`;
+   - `В модели`;
+   - `Не используется`;
+   - `Все`;
+13. related navigation is secondary and must not compete with the main review workflow.
 
 Open tasks:
 
