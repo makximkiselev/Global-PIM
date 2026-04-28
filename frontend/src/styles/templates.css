@@ -579,6 +579,130 @@
   gap: 10px;
 }
 
+.tplModelCommandCard {
+  display: grid;
+  gap: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(var(--brand-rgb), 0.12), transparent 34%),
+    rgba(var(--card-rgb), 0.94);
+}
+
+.tplModelCommandTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.tplModelCommandTop h2 {
+  margin: 6px 0 0;
+  font-size: clamp(24px, 2vw, 34px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-weight: 950;
+}
+
+.tplModelCommandTop p {
+  margin: 10px 0 0;
+  max-width: 84ch;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 720;
+}
+
+.tplModelCommandActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tplModelFlow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tplModelStep {
+  min-height: 78px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(var(--surface-rgb), 0.6);
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  position: relative;
+}
+
+.tplModelStep::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 999px;
+  background: rgba(var(--text-rgb), 0.18);
+}
+
+.tplModelStep.is-done::before {
+  background: rgba(16, 185, 129, 0.85);
+}
+
+.tplModelStep.is-active::before {
+  background: rgba(var(--brand-rgb), 0.92);
+}
+
+.tplModelStep span,
+.tplSourceTile span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tplModelStep strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.tplSourceBoard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.tplSourceTile {
+  min-height: 94px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(var(--surface-rgb), 0.62);
+  display: grid;
+  gap: 8px;
+}
+
+.tplSourceTile strong {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.tplSourceTile small {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 720;
+}
+
+.tplSourceTile.is-empty {
+  grid-column: 1 / -1;
+}
+
 .tplAttrBoard {
   display: grid;
   gap: 10px;
@@ -802,8 +926,8 @@
 }
 
 .tplDraftHeader {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 20px;
   align-items: flex-start;
 }
@@ -819,6 +943,13 @@
   color: var(--muted);
 }
 
+.tplDraftSummary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .tplDraftList {
   display: grid;
   gap: 8px;
@@ -826,13 +957,22 @@
 
 .tplDraftRow {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, .8fr) minmax(210px, auto);
   gap: 14px;
-  align-items: center;
+  align-items: start;
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface-soft);
+}
+
+.tplDraftRow.is-accepted {
+  border-color: rgba(16, 185, 129, 0.26);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.08), rgba(var(--surface-rgb), 0.52));
+}
+
+.tplDraftRow.is-rejected {
+  opacity: 0.72;
 }
 
 .tplDraftRow strong,
@@ -844,6 +984,39 @@
 .tplDraftExamples {
   color: var(--muted);
   font-size: 13px;
+}
+
+.tplDraftMain {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.tplDraftSources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tplDraftSources small {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(var(--card-rgb), 0.78);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tplDraftActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .templates-page .workspaceFrameSidebar,
@@ -909,12 +1082,31 @@
   }
 
   .tplEditorHeaderMain,
-  .tplEditorHeaderMetrics.metricGrid {
+  .tplEditorHeaderMetrics.metricGrid,
+  .tplModelCommandTop,
+  .tplDraftHeader {
     grid-template-columns: 1fr;
+  }
+
+  .tplModelCommandActions,
+  .tplDraftSummary {
+    justify-content: flex-start;
+  }
+
+  .tplModelFlow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tplUsageStatsRow {
     grid-template-columns: 1fr;
+  }
+
+  .tplDraftRow {
+    grid-template-columns: 1fr;
+  }
+
+  .tplDraftActions {
+    justify-content: flex-start;
   }
 
   .attr-head {

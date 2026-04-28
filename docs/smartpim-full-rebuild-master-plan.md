@@ -6034,3 +6034,59 @@ Next page-pass requirements:
 5. add run action scoped to selected category subtree:
    - start discovery for products in this category;
    - after run, update right-side context.
+
+### 31. Info Model Workspace: Fast Model From Sources
+
+Problem confirmed on model pages, especially the smartphone flow:
+
+1. user needs one clear path: collect source fields, normalize duplicates, approve model, then use it in products;
+2. old editor presented a long field table first, so the user had to understand implementation details before knowing the next action;
+3. marketplace parameters are already downloaded, but the UI did not explain how they become PIM fields;
+4. candidate review existed in backend but was weak in the interface;
+5. English/technical labels such as `Draft` and `confidence` must not be visible.
+
+Decision:
+
+1. model editor becomes a process workspace, not just a field table;
+2. top block shows five steps:
+   - `Источники`;
+   - `Нормализация`;
+   - `Проверка`;
+   - `Утверждение`;
+   - `Товары`;
+3. sources are summarized as cards:
+   - `Товары PIM`;
+   - `Я.Маркет`;
+   - `Ozon`;
+4. normalization block shows candidate fields with:
+   - normalized field name;
+   - type in Russian;
+   - confidence as `уверенность`;
+   - concrete source lines;
+   - examples;
+   - actions `Принять` / `Отклонить`;
+5. approval uses existing backend endpoint and only accepted candidates become model attributes;
+6. product usage remains after approval: approved model drives product feature fields, marketplace mapping, value mapping, and validation/export readiness.
+
+Implementation status:
+
+1. `TemplateEditorFeature` now has the process command center and source coverage board. Status: done locally.
+2. draft candidates can be accepted/rejected through existing `PATCH /info-models/{template_id}/draft-candidates/{candidate_id}`. Status: done locally.
+3. `Draft` label replaced with Russian copy. Status: done locally.
+4. `templates.css` updated for compact source tiles, workflow steps, and candidate review rows. Status: done locally.
+5. frontend build verification. Status: done locally, `npm --prefix frontend run build`.
+6. production deploy. Status: done, health `{"ok":true}`.
+7. browser verification for `https://pim.id-smart.ru/templates/bb40de87-254b-4170-84d7-8e5d3925b251`. Status: done through authenticated browser fallback because current `browser-use` bridge opened only `about:blank` and did not expose navigation.
+8. approved-model copy fixed after verification:
+   - no `Не собраны` for already approved model;
+   - no `0 / 63` readiness;
+   - no visible `Draft` / `confidence`;
+   - command center shows `84 полей`, `проверка пройдена`, `модель готова`.
+
+Next page-pass requirements:
+
+1. verify smartphone category model at `/templates/bb40de87-254b-4170-84d7-8e5d3925b251`;
+2. check that downloaded marketplace parameters produce candidates when `Собрать из источников` is used;
+3. if candidates are empty, debug mapping/data availability, not the UI;
+4. after approval, open a smartphone product and verify that model fields become usable in the product card;
+5. next heavy area after this: value mapping for select fields, because marketplace display values may differ from normalized PIM values.

@@ -121,6 +121,21 @@ const TYPE_HELP_TEXT = [
 ].join("\n");
 
 const REQUIRED_HELP_TEXT = "Если параметр отмечен как обязательный — товар без него сохранить нельзя.";
+const SOURCE_LABEL: Record<string, string> = {
+  products: "Товары PIM",
+  existing_products: "Товары PIM",
+  marketplaces: "Площадки",
+  yandex_market: "Я.Маркет",
+  ozon: "Ozon",
+  product: "Товарные данные",
+  marketplace: "Площадка",
+};
+
+const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
+  accepted: "В модели",
+  needs_review: "На проверке",
+  rejected: "Отклонено",
+};
 
 function normTitle(s: string) {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -198,6 +213,25 @@ function buildPathFromTree(nodes: TreeNodeT[], targetId: string): CategoryCrumb[
 
 function normalizeAttrTab(value: string | null): "all" | "base" | "category" {
   return value === "base" || value === "category" ? value : "all";
+}
+
+function sourceLabel(value: string) {
+  return SOURCE_LABEL[value] || value.replace(/_/g, " ");
+}
+
+function typeLabel(value: string) {
+  return TYPE_LABEL[value as AttrType] || value || "Текст";
+}
+
+function candidateSources(candidate: InfoModelCandidate) {
+  return (candidate.sources || [])
+    .map((source) => {
+      const provider = sourceLabel(source.provider || source.kind || "");
+      const field = source.field_name ? ` · ${source.field_name}` : "";
+      const count = source.count ? ` · ${source.count} совп.` : "";
+      return `${provider}${field}${count}`;
+    })
+    .filter(Boolean);
 }
 
 export default function TemplateEditor() {
@@ -409,6 +443,57 @@ export default function TemplateEditor() {
     return attrs[selectedAttrIdx] || null;
   }, [attrs, selectedAttrIdx]);
 
+  const draftCandidates = infoModel.candidates || [];
+  const acceptedCandidates = draftCandidates.filter((candidate) => candidate.status === "accepted").length;
+  const reviewCandidates = draftCandidates.filter((candidate) => candidate.status === "needs_review").length;
+  const rejectedCandidates = draftCandidates.filter((candidate) => candidate.status === "rejected").length;
+
+  const sourceCoverage = useMemo(() => {
+    const byProvider = new Map<string, { provider: string; fields: number; required: number; examples: number }>();
+    for (const candidate of draftCandidates) {
+      for (const source of candidate.sources || []) {
+        const key = source.provider || source.kind || "source";
+        const current = byProvider.get(key) || { provider: key, fields: 0, required: 0, examples: 0 };
+        current.fields += 1;
+        current.required += candidate.required ? 1 : 0;
+        current.examples += source.examples?.length || 0;
+        byProvider.set(key, current);
+      }
+    }
+    return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
+  }, [draftCandidates]);
+
+  const workflowSteps = useMemo(
+    () => [
+      {
+        label: "Источники",
+        value: infoModel.status === "approved" ? "модель есть" : sourceCoverage.length ? `${sourceCoverage.length} подключено` : "нужен сбор",
+        state: infoModel.status === "approved" || sourceCoverage.length ? "done" : "active",
+      },
+      {
+        label: "Нормализация",
+        value: infoModel.status === "approved" ? `${attrs.length} полей` : draftCandidates.length ? `${draftCandidates.length} полей` : "нет кандидатов",
+        state: infoModel.status === "approved" || draftCandidates.length ? "done" : "active",
+      },
+      {
+        label: "Проверка",
+        value: infoModel.status === "approved" ? "пройдена" : reviewCandidates ? `${reviewCandidates} спорных` : acceptedCandidates ? "готово" : "ожидает",
+        state: infoModel.status === "approved" || acceptedCandidates ? "done" : reviewCandidates ? "active" : "idle",
+      },
+      {
+        label: "Утверждение",
+        value: infoModel.status === "approved" ? "модель готова" : `${acceptedCandidates} в модели`,
+        state: infoModel.status === "approved" ? "done" : acceptedCandidates ? "active" : "idle",
+      },
+      {
+        label: "Товары",
+        value: infoModel.status === "approved" ? "можно заполнять" : "после модели",
+        state: infoModel.status === "approved" ? "active" : "idle",
+      },
+    ],
+    [acceptedCandidates, attrs.length, draftCandidates.length, infoModel.status, reviewCandidates, sourceCoverage.length]
+  );
+
   const yandexSource = useMemo<TemplateSourceInfo | null>(() => {
     const row = master?.sources?.yandex_market;
     return row && typeof row === "object" ? (row as TemplateSourceInfo) : null;
@@ -421,6 +506,25 @@ export default function TemplateEditor() {
     if (confirmed > 0) return "in_progress";
     return "draft";
   }, [master]);
+
+  async function updateDraftCandidate(candidateId: string, patch: Partial<InfoModelCandidate>) {
+    const templateId = ownerTpl?.id || tpl?.id;
+    if (!templateId || draftBusy) return;
+    setDraftBusy(true);
+    try {
+      const response = await api<{ info_model: InfoModelSummary; candidate: InfoModelCandidate }>(
+        `/info-models/${encodeURIComponent(templateId)}/draft-candidates/${encodeURIComponent(candidateId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        }
+      );
+      setInfoModel(response.info_model || infoModel);
+      showToast("Предложение обновлено");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
 
   async function openDictPicker(idx: number) {
     if (!canEdit) return;
@@ -932,8 +1036,8 @@ export default function TemplateEditor() {
                 subtitle={category?.name || "Категория еще не выбрана"}
                 actions={
                   hasAnyTpl ? (
-                    <Badge tone={templateStatus === "ready" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>
-                      {templateStatus === "ready" ? "Готова" : templateStatus === "in_progress" ? "В работе" : "Черновик"}
+                    <Badge tone={infoModel.status === "approved" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>
+                      {infoModel.status === "approved" ? "Утверждена" : templateStatus === "in_progress" ? "В работе" : "Черновик"}
                     </Badge>
                   ) : (
                     <Badge tone="neutral">Без модели</Badge>
@@ -1009,16 +1113,87 @@ export default function TemplateEditor() {
               </Card>
             ) : (
               <>
+                <Card className="tplCanvasCard tplModelCommandCard">
+                  <div className="tplModelCommandTop">
+                    <div>
+                      <div className="tplSectionEyebrow">Рабочий процесс инфо-модели</div>
+                      <h2>{category?.name || tplName || tpl.name}</h2>
+                      <p>
+                        Сначала собираем поля из площадок и товаров, затем нормализуем одинаковые параметры, утверждаем модель и только после этого используем ее в карточках SKU.
+                      </p>
+                    </div>
+                    <div className="tplModelCommandActions">
+                      <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : "neutral"}>
+                        {modelStatusLabel(infoModel.status)}
+                      </Badge>
+                      <Button onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
+                        {draftBusy ? "Собираю…" : "Собрать из источников"}
+                      </Button>
+                      {infoModel.status === "approved" ? (
+                        <Button variant="primary" onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                          Перейти к товарам
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          onClick={approveDraftModel}
+                          disabled={draftBusy || infoModel.status !== "draft" || acceptedCandidates === 0}
+                        >
+                          Утвердить модель
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="tplModelFlow">
+                    {workflowSteps.map((step) => (
+                      <div className={`tplModelStep is-${step.state}`} key={step.label}>
+                        <span>{step.label}</span>
+                        <strong>{step.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="tplSourceBoard">
+                    {sourceCoverage.length ? (
+                      sourceCoverage.map((source) => (
+                        <div className="tplSourceTile" key={source.provider}>
+                          <span>{sourceLabel(source.provider)}</span>
+                          <strong>{source.fields}</strong>
+                          <small>
+                            {source.required ? `${source.required} обязательных` : "опциональные поля"}
+                            {source.examples ? ` · ${source.examples} примеров` : ""}
+                          </small>
+                        </div>
+                      ))
+                    ) : infoModel.status === "approved" ? (
+                      <div className="tplSourceTile is-empty">
+                        <span>Модель утверждена</span>
+                        <strong>{attrs.length}</strong>
+                        <small>
+                          Рабочие поля уже сохранены в PIM. Повторный сбор нужен только если параметры площадок или товаров изменились.
+                        </small>
+                      </div>
+                    ) : (
+                      <div className="tplSourceTile is-empty">
+                        <span>Источники</span>
+                        <strong>Не собраны</strong>
+                        <small>Нажмите «Собрать из источников», чтобы получить параметры Я.Маркета, Ozon и товаров PIM.</small>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
                 <Card className="tplCanvasCard tplEditorHeaderCard">
                   <div className="tplEditorHeaderMain">
                     <div>
-                      <div className="tplSectionEyebrow">Поля товара</div>
-                      <h2>{tplName || tpl.name}</h2>
+                      <div className="tplSectionEyebrow">Рабочие поля</div>
+                      <h2>Модель для товаров</h2>
                       <p>
                         {infoModel.status === "draft"
-                          ? "Это draft из источников. Проверьте предложенные параметры ниже и утвердите модель перед маппингом каналов."
+                          ? "Ниже лежит список полей, которые попадут в карточку товара после утверждения. Спорные предложения лучше решить в блоке нормализации."
                           : canEdit
-                          ? "Рабочий список полей для товаров этой категории. Системные поля заблокированы, категорийные поля можно добавлять и упорядочивать."
+                          ? "Это компактный список полей, которые будут использоваться в товарах категории, мэппинге площадок и проверке перед экспортом."
                           : "Открыта наследуемая модель. Ее можно смотреть, но редактирование доступно только после создания собственной модели."}
                       </p>
                     </div>
@@ -1045,30 +1220,50 @@ export default function TemplateEditor() {
                   <Card className="tplCanvasCard tplDraftCard">
                     <div className="tplDraftHeader">
                       <div>
-                        <div className="tplSectionEyebrow">Draft из источников</div>
-                        <h3>Проверьте предложенные параметры</h3>
+                        <div className="tplSectionEyebrow">Нормализация</div>
+                        <h3>Параметры, найденные в источниках</h3>
                         <p>
-                          Система собрала параметры из реальных данных. Примите полезные поля, отклоните мусор и затем утвердите модель.
+                          Одинаковые поля из разных площадок должны сходиться в один параметр PIM. Сейчас можно быстро принять полезные предложения и убрать мусор до утверждения модели.
                         </p>
                       </div>
-                      <Button variant="primary" onClick={approveDraftModel} disabled={draftBusy || !(infoModel.candidates || []).length}>
+                      <div className="tplDraftSummary">
+                        <Badge tone="active">{acceptedCandidates} в модели</Badge>
+                        <Badge tone={reviewCandidates ? "pending" : "neutral"}>{reviewCandidates} проверить</Badge>
+                        <Badge tone={rejectedCandidates ? "danger" : "neutral"}>{rejectedCandidates} отклонено</Badge>
+                      </div>
+                      <Button variant="primary" onClick={approveDraftModel} disabled={draftBusy || acceptedCandidates === 0}>
                         {draftBusy ? "Утверждаю…" : "Утвердить модель"}
                       </Button>
                     </div>
                     <div className="tplDraftList">
                       {(infoModel.candidates || []).length ? (
                         (infoModel.candidates || []).map((candidate) => (
-                          <div className="tplDraftRow" key={candidate.id}>
-                            <div>
+                          <div className={`tplDraftRow is-${candidate.status}`} key={candidate.id}>
+                            <div className="tplDraftMain">
                               <strong>{candidate.name}</strong>
                               <span>
-                                {candidate.group} · {candidate.type} · confidence {Math.round(candidate.confidence * 100)}%
+                                {candidate.group} · {typeLabel(candidate.type)} · уверенность {Math.round(candidate.confidence * 100)}%
                               </span>
+                              <div className="tplDraftSources">
+                                {candidateSources(candidate).slice(0, 3).map((source) => (
+                                  <small key={source}>{source}</small>
+                                ))}
+                              </div>
                             </div>
                             <div className="tplDraftExamples">{candidate.examples?.slice(0, 3).join(", ") || "Без примеров"}</div>
-                            <Badge tone={candidateTone(candidate)}>
-                              {candidate.status === "accepted" ? "Принять" : candidate.status === "rejected" ? "Отклонено" : "Проверить"}
-                            </Badge>
+                            <div className="tplDraftActions">
+                              <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
+                              {candidate.status !== "accepted" ? (
+                                <Button onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
+                                  Принять
+                                </Button>
+                              ) : null}
+                              {candidate.status !== "rejected" ? (
+                                <Button onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
+                                  Отклонить
+                                </Button>
+                              ) : null}
+                            </div>
                           </div>
                         ))
                       ) : (
@@ -1312,7 +1507,13 @@ export default function TemplateEditor() {
             className="tplInspector"
             title="Контекст модели"
             subtitle="Использование, канал и выбранное поле."
-            actions={hasAnyTpl ? <Badge tone={templateStatus === "ready" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>{templateStatus === "ready" ? "Готова" : templateStatus === "in_progress" ? "В работе" : "Черновик"}</Badge> : undefined}
+            actions={
+              hasAnyTpl ? (
+                <Badge tone={infoModel.status === "approved" ? "active" : templateStatus === "in_progress" ? "pending" : "neutral"}>
+                  {infoModel.status === "approved" ? "Утверждена" : templateStatus === "in_progress" ? "В работе" : "Черновик"}
+                </Badge>
+              ) : undefined
+            }
           >
             <div className="tplInspectorStack">
               <div className="tplInspectorMetric">
@@ -1323,11 +1524,17 @@ export default function TemplateEditor() {
               <div className="tplInspectorMetric">
                 <span className="tplInspectorLabel">Готовность</span>
                 <strong>
-                  {master?.stats
+                  {infoModel.status === "approved"
+                    ? `${attrs.length} полей`
+                    : master?.stats
                     ? `${Number(master.stats.confirmed_count || 0)} / ${Number(master.stats.row_count || 0)}`
                     : "—"}
                 </strong>
-                <span>Подтвержденные поля и текущий readiness перед маппингом каналов.</span>
+                <span>
+                  {infoModel.status === "approved"
+                    ? "Модель утверждена и может использоваться в товарах и маппинге."
+                    : "Подтвержденные поля и текущая готовность перед маппингом каналов."}
+                </span>
               </div>
               {selectedAttr ? (
                 <div className="tplInspectorMetric">

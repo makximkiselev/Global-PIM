@@ -34,7 +34,7 @@ export type InfoModelSummary = {
 export function modelStatusLabel(status: InfoModelStatus): string {
   if (status === "none") return "Нет модели";
   if (status === "collecting") return "Сбор источников";
-  if (status === "draft") return "Draft на модерации";
+  if (status === "draft") return "Черновик на проверке";
   if (status === "review") return "Готова к утверждению";
   if (status === "approved") return "Утверждена";
   return "Требует обновления";
