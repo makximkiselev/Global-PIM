@@ -3360,18 +3360,22 @@ Implementation status:
 6. `/sources` is guarded so mapping does not pretend to create models;
 7. browser-use production check completed on `Oura Ring 4`;
 8. verified production behavior: `Draft на модерации` is shown, false `Утверждена` fallback is fixed.
+9. marketplace source collectors added for Я.Маркет and Ozon category requirements;
+10. draft generation resolves nearest ancestor category mapping when the current leaf category has no direct mapping.
 
-Known gap from production check:
+Production check on `Oura Ring 4`:
 
-1. current draft source implementation reads only existing product `content.features`;
-2. `Oura Ring 4` has 72 products, but no product features available for candidate extraction;
-3. marketplace parameters are not yet fed into draft generation;
-4. next implementation step must add marketplace source collectors:
-   - category binding requirements from Я.Маркет;
-   - category binding requirements from Ozon;
-   - existing attribute mapping rows;
-   - value options from marketplaces;
-   - provenance per marketplace parameter.
+1. direct category mapping is absent on `Oura Ring 4`;
+2. nearest ancestor mapping is resolved from `Умные кольца`;
+3. draft generation returns 60 marketplace candidates;
+4. UI shows marketplace parameters in `Draft из источников`;
+5. approval button is enabled once candidates exist.
+
+Remaining source gap:
+
+1. existing attribute mapping rows are not yet merged as first-class draft candidates;
+2. competitor-derived parameters are not yet merged as draft candidates;
+3. product feature extraction depends on `content.features`; imported products without normalized features still rely on marketplace sources.
 
 Документированный spec:
 

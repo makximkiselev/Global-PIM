@@ -1187,8 +1187,11 @@ Production verification notes:
 1. `Oura Ring 4` was used as the real-data no-model category.
 2. Draft state persists after reload through `template.meta.info_model`.
 3. False `approved` fallback was caused by missing relational `meta_json` persistence and is fixed.
-4. `Oura Ring 4` produced `0` candidates because current implementation reads only product `content.features`, and the category products do not contain feature rows.
-5. Marketplace parameters are still a required follow-up source for draft candidates.
+4. Initial `Oura Ring 4` check produced `0` candidates because direct category mapping was absent and products did not contain `content.features`.
+5. Marketplace source collectors were added for Я.Маркет and Ozon.
+6. Draft generation now resolves nearest ancestor category mapping.
+7. Rechecked production: `Oura Ring 4` inherits mapping from `Умные кольца` and produces 60 marketplace candidates.
+8. Browser-use confirmed the UI shows `Draft из источников`, marketplace parameter rows and enabled `Утвердить модель`.
 
 - [ ] **Step 7: Commit verification status**
 
