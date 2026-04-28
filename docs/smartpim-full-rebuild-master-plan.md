@@ -6141,9 +6141,21 @@ Implementation status:
 Next verification:
 
 1. verify accepting a suggested marketplace value persists after reload;
-2. continue page-by-page cleanup with the next highest-friction workspace:
+2. cleanup pass after parameter-workspace redesign:
+   - permanent left catalog removed from the primary values screen;
+   - category selection moved to `Сменить категорию` drawer;
+   - `/catalog/nodes` response now supports both raw array and `{ nodes: [...] }`;
+   - top actions added: `Сменить категорию`, `К параметрам`, `Проверить выгрузку`;
+   - value workspace now uses the same category-context pattern as parameter mapping;
+   - production deploy completed, health `{"ok":true}`;
+   - in-app browser verification completed on `/sources-mapping?tab=values&category=bb40de87-254b-4170-84d7-8e5d3925b251`:
+     - `Сменить категорию` visible;
+     - permanent catalog copy no longer visible;
+     - workflow actions visible.
+3. continue page-by-page cleanup with the next highest-friction workspace:
    - source/category mapping;
-   - parameter mapping;
+   - competitor queue;
+   - export readiness;
    - connector/admin screens if they block the workflow.
 
 ### 33. Parameter Mapping Workspace: Category Work Screen

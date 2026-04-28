@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import CategorySidebar from "../../components/CategorySidebar";
 import DictionaryEditorFeature from "../dictionary/DictionaryEditorFeature";
 import { api } from "../../lib/api";
@@ -10,6 +11,7 @@ type CatalogNode = {
   name: string;
   position: number;
 };
+type NodesResp = CatalogNode[] | { nodes?: CatalogNode[] };
 
 type ValueItemProvider = {
   code: string;
@@ -128,14 +130,15 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const [data, setData] = useState<ValuesResp | null>(null);
   const [loadingValues, setLoadingValues] = useState(false);
   const [activeDictId, setActiveDictId] = useState("");
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingTree(true);
-    void api<CatalogNode[]>("/catalog/nodes")
+    void api<NodesResp>("/catalog/nodes")
       .then((resp) => {
         if (cancelled) return;
-        setNodes(Array.isArray(resp) ? resp : []);
+        setNodes(Array.isArray(resp) ? resp : Array.isArray(resp?.nodes) ? resp.nodes : []);
       })
       .finally(() => {
         if (!cancelled) setLoadingTree(false);
@@ -254,7 +257,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
 
     return (
       <div key={id} className="csb-treeRow" style={{ ["--depth" as any]: depth }}>
-        <div className={`csb-treeNode ${selectedCategoryId === id ? "is-active" : ""}`} onClick={() => onSelectedCategoryChange?.(id, node.name)}>
+        <div
+          className={`csb-treeNode ${selectedCategoryId === id ? "is-active" : ""}`}
+          onClick={() => {
+            onSelectedCategoryChange?.(id, node.name);
+            setCategoryDrawerOpen(false);
+          }}
+        >
           {children.length ? (
             <button
               type="button"
@@ -277,6 +286,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   }
 
   const activeItem = filteredItems.find((item) => item.dict_id === activeDictId) || null;
+  const unresolvedCount = filteredItems.filter((item) => item.providers.some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0))).length;
 
   useEffect(() => {
     if (!data?.category?.id || !data.category.name) return;
@@ -286,37 +296,51 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   return (
     <div className="sm-valuesPage">
       <div className="sm-valuesLayout">
-        <CategorySidebar
-          title="Каталог"
-          hint="Выберите ветку, где нужно проверить значения для выгрузки"
-          searchValue={treeQuery}
-          onSearchChange={setTreeQuery}
-          searchPlaceholder="Быстрый поиск"
-          controls={(
-            <button className="btn sm" type="button" onClick={toggleAll}>
-              {Object.values(expanded).some(Boolean) ? "Свернуть" : "Развернуть"}
-            </button>
-          )}
-        >
-          <div className="csb-tree">
-            {loadingTree ? <div className="muted">Загружаю каталог…</div> : rootNodes.map((node) => renderTreeRow(node, 0))}
+        {categoryDrawerOpen ? (
+          <div className="sm-valuesCategoryDrawer" role="dialog" aria-modal="true">
+            <button className="sm-valuesDrawerBackdrop" type="button" aria-label="Закрыть выбор категории" onClick={() => setCategoryDrawerOpen(false)} />
+            <CategorySidebar
+              title="Выбор категории"
+              hint="Категория задает набор полей со справочниками. После выбора экран остается сфокусированным на значениях."
+              searchValue={treeQuery}
+              onSearchChange={setTreeQuery}
+              searchPlaceholder="Быстрый поиск"
+              controls={(
+                <div className="sm-valuesDrawerControls">
+                  <button className="btn sm" type="button" onClick={toggleAll}>
+                    {Object.values(expanded).some(Boolean) ? "Свернуть" : "Развернуть"}
+                  </button>
+                  <button className="btn sm" type="button" onClick={() => setCategoryDrawerOpen(false)}>Закрыть</button>
+                </div>
+              )}
+            >
+              <div className="csb-tree">
+                {loadingTree ? <div className="muted">Загружаю каталог…</div> : rootNodes.map((node) => renderTreeRow(node, 0))}
+              </div>
+            </CategorySidebar>
           </div>
-        </CategorySidebar>
+        ) : null}
 
         <div className="sm-valuesMain">
           <div className="sm-valuesHead">
             <div>
+              <div className="sm-valuesKicker">Значения для выгрузки</div>
               <div className="sm-shellTitle">Сопоставление значений</div>
               <div className="sm-shellSub">
-                Нормализованные значения PIM остаются внутри системы. Здесь выбирается, как эти значения будут называться на Я.Маркете, Ozon и других площадках.
+                Слева выбирается поле PIM, справа задается, как его значения должны называться на Я.Маркете, Ozon и других площадках.
               </div>
             </div>
-            {data?.category ? (
-              <div className="sm-valuesMeta">
-                <span>{data.category.path}</span>
-                <span>{mappingItemsCount} из {rawItemsCount} полей требуют сопоставления</span>
-              </div>
-            ) : null}
+            <div className="sm-valuesActions">
+              <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
+              <Link className="btn" to={`/sources-mapping?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+              <Link className="btn btn-primary" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+            </div>
+          </div>
+
+          <div className="sm-valuesSummary">
+            <span>{data?.category?.path || "Категория не выбрана"}</span>
+            <span>{mappingItemsCount} из {rawItemsCount} полей требуют сопоставления</span>
+            <span>{unresolvedCount} полей не готовы</span>
           </div>
 
           <div className="sm-valuesWorkbench">

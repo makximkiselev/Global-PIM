@@ -2560,7 +2560,7 @@
 }
 
 .sourcesMappingCanvas .sm-valuesLayout{
-  grid-template-columns:292px minmax(0,1fr);
+  grid-template-columns:minmax(0,1fr);
   min-height:calc(100vh - 190px);
   border:1px solid var(--values-line);
   border-radius:22px;
@@ -2571,18 +2571,47 @@
 }
 
 .sourcesMappingCanvas .sm-valuesLayout .categorySidebar{
-  border-right:1px solid var(--values-line);
+  width:min(430px, calc(100vw - 48px));
+  max-height:calc(100vh - 48px);
 }
 
 .sourcesMappingCanvas .sm-valuesHead{
   align-items:center;
-  min-height:74px;
+  min-height:68px;
   padding:14px 18px;
   border-bottom:1px solid var(--values-line);
   background:rgba(var(--card-rgb),.54);
 }
 
-.sourcesMappingCanvas .sm-valuesMeta span{
+.sm-valuesKicker{
+  margin-bottom:5px;
+  color:var(--brand);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+
+.sm-valuesActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.sm-valuesSummary{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  padding:12px 18px;
+  border-bottom:1px solid var(--values-line);
+  background:rgba(var(--bg-rgb),.08);
+}
+
+.sourcesMappingCanvas .sm-valuesMeta span,
+.sourcesMappingCanvas .sm-valuesSummary span{
   min-height:28px;
   display:inline-flex;
   align-items:center;
@@ -2591,11 +2620,41 @@
   border-radius:999px;
   background:rgba(var(--bg-rgb),.28);
   color:var(--text-soft);
+  font-size:12px;
+  font-weight:800;
 }
 
 .sourcesMappingCanvas .sm-valuesWorkbench{
-  grid-template-columns:300px minmax(0,1fr);
+  grid-template-columns:330px minmax(0,1fr);
   min-height:0;
+}
+
+.sm-valuesCategoryDrawer{
+  position:fixed;
+  inset:0;
+  z-index:70;
+  display:flex;
+  align-items:flex-start;
+  padding:24px;
+}
+
+.sm-valuesDrawerBackdrop{
+  position:absolute;
+  inset:0;
+  border:0;
+  background:color-mix(in srgb, var(--text) 24%, transparent);
+  backdrop-filter:blur(6px);
+}
+
+.sm-valuesCategoryDrawer .categorySidebar{
+  position:relative;
+  z-index:1;
+  box-shadow:0 28px 80px color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.sm-valuesDrawerControls{
+  display:flex;
+  gap:6px;
 }
 
 .sourcesMappingCanvas .sm-valuesFields{
@@ -2645,7 +2704,7 @@
 .sourcesMappingCanvas .sm-valuesFieldList{
   gap:8px;
   padding:12px;
-  max-height:calc(100vh - 318px);
+  max-height:calc(100vh - 316px);
 }
 
 .sourcesMappingCanvas .sm-valuesFieldItem{
@@ -2687,7 +2746,7 @@
 }
 
 .sourcesMappingCanvas .sm-valuesEditor{
-  max-height:calc(100vh - 264px);
+  max-height:calc(100vh - 316px);
   padding:14px 16px 18px;
   background:rgba(var(--bg-rgb),.08);
 }
