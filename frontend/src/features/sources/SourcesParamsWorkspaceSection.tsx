@@ -155,6 +155,12 @@ function rowHasValues(row: AttrRow, codes: string[]) {
   return codes.some((code) => Array.isArray(row.provider_map?.[code]?.values) && (row.provider_map?.[code]?.values || []).length > 0);
 }
 
+function rowStatusLabel(row: AttrRow, codes: string[]) {
+  if (rowProviderCoverage(row, codes) === 0) return "без связки";
+  if (!row.confirmed) return "нужна проверка";
+  return "подтвержден";
+}
+
 export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -169,6 +175,9 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const [competitorsError, setCompetitorsError] = useState("");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("attention");
   const [fieldQuery, setFieldQuery] = useState("");
+  const [selectedRowId, setSelectedRowId] = useState("");
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
+  const [savingRowId, setSavingRowId] = useState("");
 
   async function loadDetails(categoryId: string) {
     const resp = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
@@ -289,6 +298,33 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       });
   }, [paramRows, codes, queueFilter, fieldQuery]);
 
+  const selectedRow = useMemo(() => {
+    const fromSelected = paramRows.find((row) => String(row.id) === selectedRowId);
+    return fromSelected || queueRows[0] || paramRows[0] || null;
+  }, [paramRows, queueRows, selectedRowId]);
+
+  const categoryName = details?.category?.name || "Выберите категорию";
+  const categoryPath = details?.category?.path || "Категория не выбрана";
+  const readinessText = stats.total ? `${stats.ready}/${stats.total} готово` : "нет параметров";
+  const topSourceCandidates = useMemo(() => {
+    return (competitors?.sources || []).flatMap((source) =>
+      (source.suggestions || []).slice(0, 2).map((suggestion) => ({
+        source,
+        suggestion,
+      }))
+    );
+  }, [competitors]);
+
+  useEffect(() => {
+    if (!paramRows.length) {
+      setSelectedRowId("");
+      return;
+    }
+    if (selectedRowId && paramRows.some((row) => String(row.id) === selectedRowId)) return;
+    const next = queueRows[0] || paramRows.find((row) => rowNeedsAttention(row, codes)) || paramRows[0];
+    setSelectedRowId(String(next?.id || ""));
+  }, [paramRows, queueRows, codes, selectedRowId]);
+
   function toggleAll() {
     const ids = nodes.filter((node) => (childrenByParent.get(String(node.id || "")) || []).length > 0).map((node) => String(node.id || ""));
     const hasExpanded = ids.some((id) => expanded[id]);
@@ -318,6 +354,52 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     }
   }
 
+  async function saveRows(nextRows: AttrRow[], rowId = "") {
+    if (!selectedCategoryId) return;
+    setSavingRowId(rowId || "__all__");
+    setError("");
+    setNotice("");
+    try {
+      await api(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ rows: nextRows, apply_to_category_ids: [] }),
+      });
+      await loadDetails(selectedCategoryId);
+      setNotice("Изменения по параметру сохранены.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить привязку параметра");
+    } finally {
+      setSavingRowId("");
+    }
+  }
+
+  async function updateProviderParam(row: AttrRow, code: string, paramId: string) {
+    const providerParam = (details?.providers?.[code]?.params || []).find((param) => String(param.id) === String(paramId));
+    const nextRows = rows.map((candidate) => {
+      if (String(candidate.id) !== String(row.id)) return candidate;
+      const nextMap = { ...(candidate.provider_map || {}) };
+      if (!providerParam) {
+        delete nextMap[code];
+      } else {
+        nextMap[code] = {
+          id: String(providerParam.id || ""),
+          name: String(providerParam.name || ""),
+          kind: providerParam.kind,
+          values: providerParam.values || [],
+          required: !!providerParam.required,
+          export: providerParam.export !== false,
+        };
+      }
+      return { ...candidate, provider_map: nextMap, confirmed: false };
+    });
+    await saveRows(nextRows, String(row.id));
+  }
+
+  async function confirmRow(row: AttrRow) {
+    const nextRows = rows.map((candidate) => (String(candidate.id) === String(row.id) ? { ...candidate, confirmed: true } : candidate));
+    await saveRows(nextRows, String(row.id));
+  }
+
   function renderTree(node: CatalogNode, depth = 0): JSX.Element | null {
     const id = String(node.id || "");
     const children = childrenByParent.get(id) || [];
@@ -328,7 +410,13 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     const isExpanded = !!expanded[id];
     return (
       <div key={id} className="csb-treeRow" style={{ ["--depth" as any]: depth }}>
-        <div className={`csb-treeNode ${selectedCategoryId === id ? "is-active" : ""}`} onClick={() => onSelectedCategoryChange?.(id, node.name)}>
+          <div
+            className={`csb-treeNode ${selectedCategoryId === id ? "is-active" : ""}`}
+            onClick={() => {
+              onSelectedCategoryChange?.(id, node.name);
+              setCategoryDrawerOpen(false);
+            }}
+          >
           {children.length ? (
             <button
               type="button"
@@ -352,34 +440,47 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
   return (
     <div className="paramsWorkspace">
-      <CategorySidebar
-        className="paramsWorkspaceSidebar"
-        title="Каталог"
-        hint="Выберите категорию для настройки полей"
-        searchValue={query}
-        onSearchChange={setQuery}
-        controls={<button className="btn sm" type="button" onClick={toggleAll}>{Object.values(expanded).some(Boolean) ? "Свернуть" : "Развернуть"}</button>}
-      >
-        <div className="csb-tree">
-          {(childrenByParent.get("") || []).map((root) => renderTree(root, 0))}
-        </div>
-      </CategorySidebar>
-
       <section className="paramsWorkspaceMain">
         <div className="paramsCommand">
           <div>
-            <div className="paramsEyebrow">Рабочий экран категории</div>
-            <h2>{details?.category?.name || "Выберите категорию"}</h2>
-            <p>{details?.category?.path || "Здесь настраиваются служебные поля, параметры товара и значения для выгрузки."}</p>
+            <div className="paramsEyebrow">Категория · параметры · выгрузка</div>
+            <h2>{categoryName}</h2>
+            <p>{categoryPath}</p>
           </div>
           <div className="paramsCommandActions">
+            <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
             <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>К значениям</Link>
             <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
-              {aiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
+              {aiMatching ? "Собираю..." : "Собрать с AI"}
             </button>
             <Link className="btn btn-primary" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
           </div>
         </div>
+
+        {categoryDrawerOpen ? (
+          <div className="paramsCategoryDrawer" role="dialog" aria-modal="true">
+            <button className="paramsDrawerBackdrop" type="button" aria-label="Закрыть выбор категории" onClick={() => setCategoryDrawerOpen(false)} />
+            <CategorySidebar
+              className="paramsWorkspaceSidebar"
+              title="Выбор категории"
+              hint="Каталог нужен только для выбора контекста. Рабочий экран остается сфокусированным на одной категории."
+              searchValue={query}
+              onSearchChange={setQuery}
+              controls={
+                <div className="paramsDrawerControls">
+                  <button className="btn sm" type="button" onClick={toggleAll}>
+                    {Object.values(expanded).some(Boolean) ? "Свернуть" : "Развернуть"}
+                  </button>
+                  <button className="btn sm" type="button" onClick={() => setCategoryDrawerOpen(false)}>Закрыть</button>
+                </div>
+              }
+            >
+              <div className="csb-tree">
+                {(childrenByParent.get("") || []).map((root) => renderTree(root, 0))}
+              </div>
+            </CategorySidebar>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="paramsAlert">
@@ -393,183 +494,189 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
         <div className="paramsSteps">
           <div className="paramsStep isDone"><span>1</span><strong>Категории</strong><em>{Object.keys(details?.mapping || {}).length ? "связаны" : "нужна связка"}</em></div>
-          <div className="paramsStep isDone"><span>2</span><strong>Служебные поля</strong><em>SKU GT → offerId</em></div>
-          <div className={`paramsStep ${stats.attention ? "isWarn" : "isDone"}`}><span>3</span><strong>Параметры</strong><em>{stats.ready}/{stats.total} готово</em></div>
-          <div className="paramsStep"><span>4</span><strong>Значения</strong><em>{stats.values} полей</em></div>
-          <div className="paramsStep"><span>5</span><strong>Выгрузка</strong><em>финальная проверка</em></div>
+          <div className="paramsStep isDone"><span>2</span><strong>Источники</strong><em>{codes.length} площадки</em></div>
+          <div className={`paramsStep ${stats.attention ? "isWarn" : "isDone"}`}><span>3</span><strong>Параметры</strong><em>{readinessText}</em></div>
+          <Link className="paramsStep" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}><span>4</span><strong>Значения</strong><em>варианты написания</em></Link>
+          <Link className="paramsStep" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}><span>5</span><strong>Выгрузка</strong><em>проверить готовность</em></Link>
         </div>
 
-        <div className="paramsSourceBlock">
-          <div className="paramsSectionHead">
-            <div>
-              <h3>Источники параметров</h3>
-              <p>Здесь видно, какие источники реально дают поля для модели. Если Ozon связан, но параметров нет, это блок загрузки, а не готовое состояние.</p>
-            </div>
-          </div>
-          <div className="paramsSourceGrid">
-            {MARKETPLACE_CODES.map((code) => {
-              const provider = details?.providers?.[code];
-              const count = Number(provider?.count || provider?.params?.length || 0);
-              const categoryId = String(provider?.category_id || details?.mapping?.[code] || "").trim();
-              const state = count > 0 ? "ready" : categoryId ? "empty" : "missing";
-              return (
-                <div className={`paramsSourceCard is-${state}`} key={code}>
-                  <div>
-                    <strong>{PROVIDER_LABEL[code] || code}</strong>
-                    <span>{provider?.category_name || categoryId || "категория не связана"}</span>
-                  </div>
-                  <b>{count > 0 ? `${count} полей загружено` : categoryId ? "параметры не загружены" : "нет связки"}</b>
-                  <p>
-                    {count > 0
-                      ? "Можно сопоставлять с полями PIM."
-                      : categoryId
-                        ? "Нужно обновить импорт характеристик в коннекторах."
-                        : "Сначала свяжите категорию во вкладке «Категории и источники»."}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="paramsServiceBlock">
-          <div className="paramsSectionHead">
-            <div>
-              <h3>Служебные поля выгрузки</h3>
-              <p>Эти поля передаются напрямую в площадки. Они не попадают в сопоставление значений, потому что у них нет справочников вроде “256 ГБ → 256”.</p>
-            </div>
-          </div>
-          <div className="paramsServiceGrid">
-            {SERVICE_EXPORTS.map((item) => {
-              const row = serviceRows.find((candidate) => serviceKey(candidate) === item.key);
-              return (
-                <div className="paramsServiceCard" key={item.key}>
-                  <div className="paramsServiceTop">
-                    <strong>{item.title}</strong>
-                    <span className="isOk">передается напрямую</span>
-                  </div>
-                  <b>{item.target}</b>
-                  <p>{item.note}</p>
-                  <div className="paramsProviderMini">
-                    {codes.map((code) => (
-                      <span key={code}>{PROVIDER_LABEL[code] || code}: {row?.provider_map?.[code]?.name || "системно"}</span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="paramsCompetitorBlock">
-          <div className="paramsSectionHead">
-            <div>
-              <h3>Конкурентные источники</h3>
-              <p>re-store и Store77 дают evidence для насыщения товаров. Они не заменяют Я.Маркет/Ozon, но должны быть видны в этом же рабочем процессе.</p>
-            </div>
-            <Link className="btn" to={`/sources-mapping?tab=competitors&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть очередь</Link>
-          </div>
-          {competitorsLoading ? <div className="paramsAlert">Загружаю конкурентные источники...</div> : null}
-          {competitorsError ? <div className="paramsAlert">{competitorsError}</div> : null}
-          <div className="paramsCompetitorGrid">
-            {(competitors?.sources || []).map((source) => (
-              <div className="paramsCompetitorCard" key={source.id}>
-                <div className="paramsCompetitorHead">
-                  <div>
-                    <strong>{source.name}</strong>
-                    <span>{source.domain}</span>
-                  </div>
-                  <b>{source.products_count || 0} SKU</b>
-                </div>
-                <div className="paramsCompetitorStats">
-                  <span>{source.confirmed_count || 0} подтверждено</span>
-                  <span>{source.candidates_count || 0} кандидатов</span>
-                  <span>{source.needs_review_count || 0} на модерации</span>
-                </div>
-                <div className="paramsCompetitorSuggestions">
-                  {(source.suggestions || []).slice(0, 3).map((suggestion) => (
-                    <a href={suggestion.url} target="_blank" rel="noreferrer" key={suggestion.id}>
-                      <span>{suggestion.label}</span>
-                      <em>{suggestion.type === "search" ? "поиск" : "найдено"} · {confidenceLabel(suggestion.confidence)}</em>
-                    </a>
-                  ))}
-                  {!source.suggestions?.length ? <p>Нет предложений по разделу. Данные появятся после discovery/enrichment.</p> : null}
-                </div>
+        <div className="paramsFocusLayout">
+          <div className="paramsQueueBlock">
+            <div className="paramsSectionHead">
+              <div>
+                <h3>Параметры инфо-модели</h3>
+                <p>Рабочая очередь показывает только поля категории. Выберите поле, проверьте источники справа и подтвердите привязку.</p>
               </div>
-            ))}
-            {!competitorsLoading && !competitors?.sources?.length ? (
-              <div className="paramsAlert">Для этой категории пока нет competitor context.</div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="paramsQueueBlock">
-          <div className="paramsSectionHead">
-            <div>
-              <h3>Очередь параметров</h3>
-              <p>Сначала показываем то, что мешает готовности категории. Табличный режим больше не является основным рабочим экраном.</p>
             </div>
-            <div className="paramsStats">
-              <span>{stats.attention} требует внимания</span>
-              <span>{stats.unmapped} без связки</span>
-              <span>{stats.ready} готово</span>
+
+            <div className="paramsQueueToolbar">
+              <input value={fieldQuery} onChange={(event) => setFieldQuery(event.target.value)} placeholder="Поиск: память, цвет, SIM..." />
+              {[
+                ["attention", "Внимание", stats.attention],
+                ["unmapped", "Без связки", stats.unmapped],
+                ["ready", "Готово", stats.ready],
+                ["all", "Все", stats.total],
+              ].map(([key, label, count]) => (
+                <button
+                  key={String(key)}
+                  type="button"
+                  className={`paramsChip ${queueFilter === key ? "isActive" : ""}`}
+                  onClick={() => setQueueFilter(key as QueueFilter)}
+                >
+                  {label}<span>{count}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="paramsQueueList">
+              {queueRows.length ? queueRows.map((row) => {
+                const coverage = rowProviderCoverage(row, codes);
+                const needsAttention = rowNeedsAttention(row, codes);
+                const active = String(selectedRow?.id || "") === String(row.id || "");
+                return (
+                  <button
+                    className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${active ? "isSelected" : ""}`}
+                    key={row.id || row.catalog_name}
+                    type="button"
+                    onClick={() => setSelectedRowId(String(row.id || ""))}
+                  >
+                    <div className="paramsParamMain">
+                      <div className="paramsParamHead">
+                        <strong>{row.catalog_name || "Параметр"}</strong>
+                        <span>{row.group || "О товаре"}</span>
+                      </div>
+                      <div className="paramsParamMeta">
+                        <span>{coverage}/{codes.length} источников</span>
+                        <span>{rowStatusLabel(row, codes)}</span>
+                        {rowHasValues(row, codes) ? <span>есть значения</span> : null}
+                      </div>
+                    </div>
+                    <div className="paramsParamProviders">
+                      {codes.map((code) => {
+                        const value = row.provider_map?.[code];
+                        return (
+                          <div className="paramsProviderCell" key={`${row.id}-${code}`}>
+                            <span>{PROVIDER_LABEL[code] || code}</span>
+                            <strong>{value?.name || "не связано"}</strong>
+                            <em>{value?.values?.length ? `${value.values.length} значений` : value?.kind || "параметр"}</em>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </button>
+                );
+              }) : (
+                <div className="paramsAlert">По текущему фильтру параметров нет.</div>
+              )}
             </div>
           </div>
 
-          <div className="paramsQueueToolbar">
-            <input value={fieldQuery} onChange={(event) => setFieldQuery(event.target.value)} placeholder="Поиск: память, цвет, SIM..." />
-            {[
-              ["attention", "Внимание", stats.attention],
-              ["unmapped", "Без связки", stats.unmapped],
-              ["ready", "Готово", stats.ready],
-              ["all", "Все", stats.total],
-            ].map(([key, label, count]) => (
-              <button
-                key={String(key)}
-                type="button"
-                className={`paramsChip ${queueFilter === key ? "isActive" : ""}`}
-                onClick={() => setQueueFilter(key as QueueFilter)}
-              >
-                {label}<span>{count}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="paramsQueueList">
-            {queueRows.length ? queueRows.map((row) => {
-              const coverage = rowProviderCoverage(row, codes);
-              const needsAttention = rowNeedsAttention(row, codes);
-              return (
-                <article className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"}`} key={row.id || row.catalog_name}>
-                  <div className="paramsParamMain">
-                    <div className="paramsParamHead">
-                      <strong>{row.catalog_name || "Параметр"}</strong>
-                      <span>{row.group || "О товаре"}</span>
-                    </div>
-                    <div className="paramsParamMeta">
-                      <span>{coverage}/{codes.length} источников</span>
-                      <span>{row.confirmed ? "подтвержден" : "нужна проверка"}</span>
-                      {rowHasValues(row, codes) ? <span>есть значения</span> : null}
-                    </div>
+          <aside className="paramsInspector">
+            {selectedRow ? (
+              <>
+                <div className="paramsInspectorHead">
+                  <div>
+                    <span>Выбранный параметр</span>
+                    <h3>{selectedRow.catalog_name || "Параметр"}</h3>
+                    <p>{selectedRow.group || "О товаре"}</p>
                   </div>
-                  <div className="paramsParamProviders">
-                    {codes.map((code) => {
-                      const value = row.provider_map?.[code];
+                  <b className={rowNeedsAttention(selectedRow, codes) ? "isWarn" : "isOk"}>
+                    {rowStatusLabel(selectedRow, codes)}
+                  </b>
+                </div>
+
+                <div className="paramsInspectorSection">
+                  <h4>Привязка к площадкам</h4>
+                  <p>Здесь редактируется, какое поле площадки наполняет поле PIM.</p>
+                  {codes.map((code) => {
+                    const provider = details?.providers?.[code];
+                    const current = selectedRow.provider_map?.[code];
+                    return (
+                      <label className="paramsFieldSelect" key={code}>
+                        <span>{PROVIDER_LABEL[code] || code}</span>
+                        <select
+                          value={String(current?.id || "")}
+                          disabled={savingRowId === String(selectedRow.id)}
+                          onChange={(event) => void updateProviderParam(selectedRow, code, event.target.value)}
+                        >
+                          <option value="">Не связано</option>
+                          {(provider?.params || []).map((param) => (
+                            <option value={String(param.id)} key={String(param.id)}>
+                              {param.name}
+                            </option>
+                          ))}
+                        </select>
+                        <em>{current?.values?.length ? `${current.values.length} значений` : current?.kind || "тип не указан"}</em>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="paramsInspectorSection">
+                  <h4>Конкуренты для наполнения</h4>
+                  <p>Конкуренты помогают заполнить товары и проверить значения, но не заменяют поля Я.Маркет/Ozon.</p>
+                  {competitorsLoading ? <div className="paramsMiniAlert">Загружаю конкурентов...</div> : null}
+                  {competitorsError ? <div className="paramsMiniAlert">{competitorsError}</div> : null}
+                  <div className="paramsEvidenceGrid">
+                    {(competitors?.sources || []).map((source) => (
+                      <div className="paramsEvidenceCard" key={source.id}>
+                        <strong>{source.name}</strong>
+                        <span>{source.products_count || 0} SKU · {source.confirmed_count || 0} связей</span>
+                        <em>{source.needs_review_count || 0} на проверке</em>
+                      </div>
+                    ))}
+                    {!competitorsLoading && !competitors?.sources?.length ? <div className="paramsMiniAlert">Источники конкурентов еще не найдены.</div> : null}
+                  </div>
+                  {topSourceCandidates.length ? (
+                    <div className="paramsSuggestionList">
+                      {topSourceCandidates.slice(0, 4).map(({ source, suggestion }) => (
+                        <a href={suggestion.url} target="_blank" rel="noreferrer" key={`${source.id}-${suggestion.id}`}>
+                          <span>{source.name}</span>
+                          <strong>{suggestion.label}</strong>
+                          <em>{suggestion.type === "search" ? "поиск" : "найдено"} · {confidenceLabel(suggestion.confidence)}</em>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="paramsInspectorSection">
+                  <h4>Значения и выгрузка</h4>
+                  <p>Если поле имеет варианты значений, следующий шаг — настроить написание для каждой площадки.</p>
+                  <div className="paramsInspectorActions">
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      disabled={savingRowId === String(selectedRow.id)}
+                      onClick={() => void confirmRow(selectedRow)}
+                    >
+                      {savingRowId === String(selectedRow.id) ? "Сохраняю..." : "Подтвердить"}
+                    </button>
+                    <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть значения</Link>
+                    <Link className="btn" to={`/sources-mapping?tab=competitors&category=${encodeURIComponent(selectedCategoryId)}`}>Очередь конкурентов</Link>
+                  </div>
+                </div>
+
+                <details className="paramsServiceDetails">
+                  <summary>Служебные поля выгрузки</summary>
+                  <div className="paramsServiceCompact">
+                    {SERVICE_EXPORTS.map((item) => {
+                      const row = serviceRows.find((candidate) => serviceKey(candidate) === item.key);
                       return (
-                        <div className="paramsProviderCell" key={`${row.id}-${code}`}>
-                          <span>{PROVIDER_LABEL[code] || code}</span>
-                          <strong>{value?.name || "не связано"}</strong>
-                          <em>{value?.values?.length ? `${value.values.length} значений` : value?.kind || "параметр"}</em>
+                        <div key={item.key}>
+                          <strong>{item.title}</strong>
+                          <span>{item.target}</span>
+                          <em>{row ? "настроено" : "системно"}</em>
                         </div>
                       );
                     })}
                   </div>
-                </article>
-              );
-            }) : (
-              <div className="paramsAlert">По текущему фильтру параметров нет.</div>
+                </details>
+              </>
+            ) : (
+              <div className="paramsAlert">Выберите категорию и параметр для работы.</div>
             )}
-          </div>
+          </aside>
         </div>
       </section>
     </div>

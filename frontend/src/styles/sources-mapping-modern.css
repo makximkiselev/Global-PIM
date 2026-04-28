@@ -1000,16 +1000,13 @@
 
 /* ============ New Category Parameter Workspace ============ */
 .paramsWorkspace {
-  display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+  display: block;
+  min-width: 0;
 }
 
 .paramsWorkspaceSidebar {
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 32px);
+  width: min(420px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
 }
 
 .paramsWorkspaceMain {
@@ -1019,9 +1016,6 @@
 }
 
 .paramsCommand,
-.paramsServiceBlock,
-.paramsSourceBlock,
-.paramsCompetitorBlock,
 .paramsQueueBlock {
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   border-radius: 24px;
@@ -1034,7 +1028,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 22px;
+  padding: 18px;
 }
 
 .paramsEyebrow {
@@ -1049,9 +1043,9 @@
 .paramsCommand h2 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(30px, 3vw, 48px);
-  line-height: .96;
-  letter-spacing: -.055em;
+  font-size: clamp(28px, 2.2vw, 40px);
+  line-height: 1.02;
+  letter-spacing: -.045em;
 }
 
 .paramsCommand p {
@@ -1071,16 +1065,64 @@
   flex-wrap: wrap;
 }
 
+.paramsCommandBadges {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.paramsCommandBadges span {
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, var(--panel));
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.paramsCategoryDrawer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-start;
+  padding: 24px;
+}
+
+.paramsDrawerBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--text) 24%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.paramsCategoryDrawer .paramsWorkspaceSidebar {
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 28px 80px color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.paramsDrawerControls {
+  display: flex;
+  gap: 6px;
+}
+
 .paramsSteps {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(138px, 1fr));
   gap: 10px;
 }
 
 .paramsStep {
+  color: inherit;
+  text-decoration: none;
   min-width: 0;
-  min-height: 84px;
-  padding: 14px;
+  min-height: 72px;
+  padding: 12px;
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   border-radius: 20px;
   background: color-mix(in srgb, var(--panel) 86%, var(--surface));
@@ -1135,11 +1177,15 @@
   color: var(--brand-strong);
 }
 
-.paramsServiceBlock,
-.paramsSourceBlock,
-.paramsCompetitorBlock,
 .paramsQueueBlock {
   padding: 18px;
+}
+
+.paramsFocusLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 14px;
+  align-items: start;
 }
 
 .paramsSectionHead {
@@ -1166,108 +1212,7 @@
   font-weight: 650;
 }
 
-.paramsServiceGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.paramsSourceGrid,
-.paramsCompetitorGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.paramsSourceCard,
-.paramsCompetitorCard {
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface) 76%, var(--panel));
-}
-
-.paramsSourceCard {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px 16px;
-  align-items: start;
-}
-
-.paramsSourceCard strong,
-.paramsCompetitorCard strong {
-  display: block;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 950;
-}
-
-.paramsSourceCard span,
-.paramsCompetitorCard span,
-.paramsSourceCard p,
-.paramsCompetitorCard p {
-  color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-.paramsSourceCard b {
-  justify-self: end;
-  padding: 5px 9px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  background: color-mix(in srgb, var(--panel) 86%, transparent);
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.paramsSourceCard p {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
-.paramsSourceCard.is-ready b {
-  border-color: color-mix(in srgb, var(--success) 30%, transparent);
-  background: color-mix(in srgb, var(--success) 10%, transparent);
-  color: var(--success-strong);
-}
-
-.paramsSourceCard.is-empty b,
-.paramsSourceCard.is-missing b {
-  border-color: color-mix(in srgb, var(--brand) 34%, transparent);
-  background: color-mix(in srgb, var(--brand) 10%, transparent);
-  color: var(--brand-strong);
-}
-
-.paramsServiceCard {
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface) 72%, var(--panel));
-}
-
-.paramsServiceTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.paramsServiceTop strong {
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.paramsServiceTop span,
 .paramsParamMeta span,
-.paramsStats span,
 .paramsChip span {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
@@ -1277,110 +1222,6 @@
   font-weight: 850;
 }
 
-.paramsServiceTop span {
-  padding: 4px 8px;
-}
-
-.paramsServiceTop span.isOk {
-  border-color: color-mix(in srgb, var(--success) 28%, transparent);
-  background: color-mix(in srgb, var(--success) 10%, transparent);
-  color: var(--success-strong);
-}
-
-.paramsServiceTop span.isWarn {
-  border-color: color-mix(in srgb, var(--brand) 28%, transparent);
-  background: color-mix(in srgb, var(--brand) 10%, transparent);
-  color: var(--brand-strong);
-}
-
-.paramsServiceCard b {
-  display: block;
-  color: var(--text);
-  font-size: 13px;
-}
-
-.paramsServiceCard p {
-  margin: 6px 0 10px;
-  color: var(--text-soft);
-  font-size: 12px;
-  line-height: 1.4;
-  font-weight: 650;
-}
-
-.paramsProviderMini {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--text-soft);
-  font-size: 11px;
-  font-weight: 750;
-}
-
-.paramsCompetitorHead,
-.paramsCompetitorStats {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.paramsCompetitorHead b {
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--success) 10%, transparent);
-  color: var(--success-strong);
-  font-size: 11px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.paramsCompetitorStats {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  margin: 12px 0;
-}
-
-.paramsCompetitorStats span {
-  padding: 5px 9px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.paramsCompetitorSuggestions {
-  display: grid;
-  gap: 7px;
-}
-
-.paramsCompetitorSuggestions a {
-  display: grid;
-  gap: 3px;
-  padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.paramsCompetitorSuggestions a span {
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.paramsCompetitorSuggestions a em {
-  color: var(--text-soft);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 800;
-}
-
-.paramsStats,
 .paramsQueueToolbar,
 .paramsParamMeta {
   display: flex;
@@ -1389,7 +1230,6 @@
   flex-wrap: wrap;
 }
 
-.paramsStats span,
 .paramsParamMeta span {
   padding: 5px 9px;
 }
@@ -1446,6 +1286,8 @@
 }
 
 .paramsParamCard {
+  width: 100%;
+  text-align: left;
   display: grid;
   grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr);
   gap: 12px;
@@ -1453,10 +1295,18 @@
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   border-radius: 18px;
   background: color-mix(in srgb, var(--surface) 76%, var(--panel));
+  cursor: pointer;
+  transition: border-color .18s ease, transform .18s ease, background .18s ease;
 }
 
 .paramsParamCard.isAttention {
   border-color: color-mix(in srgb, var(--brand) 24%, var(--line));
+}
+
+.paramsParamCard.isSelected {
+  border-color: color-mix(in srgb, var(--brand) 58%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 10%, var(--panel)), color-mix(in srgb, var(--surface) 80%, var(--panel)));
+  transform: translateX(2px);
 }
 
 .paramsParamHead {
@@ -1514,6 +1364,222 @@
   white-space: nowrap;
 }
 
+.paramsInspector {
+  position: sticky;
+  top: 16px;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 24px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, white), color-mix(in srgb, var(--panel) 86%, var(--surface)));
+  box-shadow: var(--shadow-soft);
+}
+
+.paramsInspectorHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paramsInspectorHead span,
+.paramsInspectorSection h4 {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.paramsInspectorHead h3 {
+  margin: 5px 0 4px;
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1.05;
+  letter-spacing: -.04em;
+}
+
+.paramsInspectorHead p,
+.paramsInspectorSection p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.paramsInspectorHead b {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.paramsInspectorHead b.isOk {
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success-strong);
+}
+
+.paramsInspectorHead b.isWarn {
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand-strong);
+}
+
+.paramsInspectorSection {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 76%, var(--panel));
+}
+
+.paramsInspectorSection h4 {
+  margin: 0;
+}
+
+.paramsFieldSelect {
+  display: grid;
+  gap: 6px;
+}
+
+.paramsFieldSelect span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.paramsFieldSelect select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 86%, var(--surface));
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.paramsFieldSelect em,
+.paramsEvidenceCard em,
+.paramsSuggestionList a em,
+.paramsServiceCompact em {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.paramsEvidenceGrid,
+.paramsServiceCompact {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paramsEvidenceCard,
+.paramsServiceCompact div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+}
+
+.paramsEvidenceCard strong,
+.paramsServiceCompact strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.paramsEvidenceCard span,
+.paramsServiceCompact span {
+  display: block;
+  margin: 3px 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsSuggestionList {
+  display: grid;
+  gap: 7px;
+}
+
+.paramsSuggestionList a {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.paramsSuggestionList a span {
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.paramsSuggestionList a strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsInspectorActions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.paramsServiceDetails {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 70%, var(--panel));
+}
+
+.paramsServiceDetails summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.paramsServiceCompact {
+  margin-top: 10px;
+}
+
+.paramsMiniAlert {
+  padding: 10px;
+  border: 1px dashed color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 14px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .paramsAlert {
   padding: 16px;
   border: 1px dashed color-mix(in srgb, var(--line) 82%, transparent);
@@ -1531,10 +1597,7 @@
 }
 
 @media (max-width: 1480px) {
-  .paramsSteps,
-  .paramsServiceGrid,
-  .paramsSourceGrid,
-  .paramsCompetitorGrid {
+  .paramsFocusLayout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1542,12 +1605,11 @@
 @media (max-width: 1180px) {
   .paramsWorkspace,
   .paramsParamCard,
-  .paramsSourceGrid,
-  .paramsCompetitorGrid {
+  .paramsFocusLayout {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .paramsWorkspaceSidebar {
+  .paramsInspector {
     position: static;
   }
 }

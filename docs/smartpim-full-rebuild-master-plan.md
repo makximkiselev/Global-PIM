@@ -6251,11 +6251,36 @@ Implementation status:
 
 Remaining work:
 
-1. add editable drawer for one parameter card:
-   - source candidates;
-   - marketplace fields;
-   - competitor fields;
-   - save to existing attribute mapping endpoint;
-2. add advanced table mode only as secondary QA/bulk mode;
-3. connect queue status to actual save lifecycle and validation errors;
-4. continue the same rebuild approach for source/category mapping and connector/admin pages.
+1. category work screen was simplified after user review:
+   - permanent left catalog removed from the primary parameter screen;
+   - catalog is now opened only through `Сменить категорию`;
+   - primary screen focuses on one selected category;
+   - duplicate readiness counters removed from the queue header;
+   - queue tabs are the only primary counters: `Внимание`, `Без связки`, `Готово`, `Все`;
+   - selected parameter opens a right inspector instead of forcing the user into a table;
+   - marketplace field binding can be edited in the inspector using existing imported fields;
+   - `Подтвердить` saves the row through existing attribute mapping endpoint;
+   - competitor sources are shown as evidence in the inspector, not as a competing main block;
+   - service export fields are collapsed into a secondary details block.
+2. implementation status:
+   - `SourcesParamsWorkspaceSection` rebuilt into `command center + process steps + parameter queue + inspector`;
+   - category drawer uses the shared `CategorySidebar`;
+   - field binding updates use `PUT /marketplaces/mapping/import/attributes/{category_id}`;
+   - duplicate attention counter removed from the top command area;
+   - field status copy normalized to `без связки` / `нужна проверка` / `подтвержден`;
+   - workflow steps kept in one compact row on desktop-width screens so the queue is visible sooner;
+   - build verification passed locally, `npm --prefix frontend run build`;
+   - production deploy completed, health `{"ok":true}`;
+   - in-app browser verification completed on `/sources-mapping?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`.
+3. next required verification path:
+   - open `/sources-mapping?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`;
+   - screen starts from `Смартфоны`, not from a permanent catalog tree. Status: verified;
+   - `Сменить категорию` opens and closes the category drawer. Status: verified;
+   - parameter selection changes the inspector. Status: verified visually through selected field inspector;
+   - `Собрать с AI` remains visible. Status: verified, not clicked because it mutates real mapping data;
+   - `К значениям` and `Проверить выгрузку` continue the workflow. Status: verified.
+4. remaining work after this pass:
+   - advanced table mode only as secondary QA/bulk mode;
+   - richer competitor field evidence per selected PIM field;
+   - connect queue status to validation/export errors;
+   - continue the same rebuild approach for source/category mapping and connector/admin pages.
