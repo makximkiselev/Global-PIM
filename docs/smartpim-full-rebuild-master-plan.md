@@ -5711,7 +5711,7 @@ Frontend:
 
 Дата: 2026-04-27.
 
-Статус: in progress; first connector readiness pass deployed and browser-checked on production.
+Статус: in progress; first connector readiness pass deployed and browser-checked on production; 2026-04-28 начат second pass по упрощению `/connectors/status`.
 
 Проблема:
 
@@ -5851,6 +5851,36 @@ Provider section:
    - product creation with approved model. Status: backend acceptance test added.
    - existing catalog enrichment. Status: backend acceptance test added.
    - connector error normalization. Status: frontend helper extracted and covered by Vitest unit tests.
+
+### 29.4 Connector Status Second Pass
+
+Дата: 2026-04-28.
+
+Причина: production browser-check showed `/connectors/status` still looked like a technical log: readiness cards collapsed, page had too many competing blocks, raw connector details dominated the first screen.
+
+UX target:
+
+1. above-the-fold is a clean SaaS command center, not a diagnostics dump;
+2. user sees only four readiness groups first:
+   - `Доступы`;
+   - `Категории`;
+   - `Параметры`;
+   - `Товары`;
+3. right inspector shows next action/blockers;
+4. provider sections stay below and are compact;
+5. store credentials are cards inside the provider;
+6. method schedule/raw errors are hidden in expandable details;
+7. layout must not collapse in narrow in-app browser widths;
+8. animation is subtle: panel reveal, hover lift, status pulse.
+
+Implementation status:
+
+1. `ConnectorsStatusFeature` rebuilt as command-center layout. Status: done.
+2. `connectors-status.css` replaced with responsive provider/readiness styles. Status: done.
+3. Build verification. Status: done locally, `npm --prefix frontend run build`.
+4. Production deploy. Status: done, health `{"ok":true}`.
+5. Browser-use verification on `https://pim.id-smart.ru/connectors/status`. Status: done for DOM/content and console errors; screenshot capture in in-app browser timed out twice.
+6. Commit/push after verification. Status: pending.
 
 Verification:
 

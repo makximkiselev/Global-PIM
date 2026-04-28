@@ -1,8 +1,5 @@
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import DataToolbar from "../../components/data/DataToolbar";
-import InspectorPanel from "../../components/data/InspectorPanel";
-import MetricGrid from "../../components/data/MetricGrid";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -33,9 +30,7 @@ type MethodRow = {
   status: "ok" | "warn" | "critical";
   next_run_at?: string | null;
 };
-type ProviderRow = { code: string; title: string; methods: MethodRow[] };
 type ProviderSettings = { offer_id_source?: "sku_gt" };
-type ProviderSettingOption = { code: string; label: string };
 type ImportStore = {
   id: string;
   title: string;
@@ -52,12 +47,17 @@ type ImportStore = {
   created_at?: string | null;
   updated_at?: string | null;
 };
-type ProviderRowWithSettings = ProviderRow & { settings?: ProviderSettings; import_stores?: ImportStore[] };
+type ProviderRow = {
+  code: string;
+  title: string;
+  methods: MethodRow[];
+  settings?: ProviderSettings;
+  import_stores?: ImportStore[];
+};
 type StatusResp = {
   ok: boolean;
-  providers: ProviderRowWithSettings[];
+  providers: ProviderRow[];
   schedule_options: ScheduleOption[];
-  provider_setting_options?: Record<string, Record<string, ProviderSettingOption[]>>;
 };
 
 function fmtDate(s?: string | null) {
@@ -74,14 +74,33 @@ function maskToken(value?: string | null) {
   return `${raw.slice(0, 4)}••••${raw.slice(-4)}`;
 }
 
+function providerHealth(provider: ProviderRow) {
+  const methods = provider.methods || [];
+  if (methods.some((method) => method.status === "critical")) return "critical";
+  if (methods.some((method) => method.status === "warn")) return "warn";
+  return "ok";
+}
+
+function healthLabel(status: "ok" | "warn" | "critical") {
+  if (status === "ok") return "Готово";
+  if (status === "warn") return "Проверить";
+  return "Требует внимания";
+}
+
+function storeAccessLabel(store: ImportStore) {
+  if (!store.enabled) return "выключен";
+  if (store.last_check_status === "ok") return "доступ подтвержден";
+  if (store.last_check_status === "error") return "ошибка доступа";
+  return "ожидает проверки";
+}
+
 export default function ConnectorsStatus() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [runningProvider, setRunningProvider] = useState("");
   const [error, setError] = useState("");
-  const [providers, setProviders] = useState<ProviderRowWithSettings[]>([]);
+  const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [scheduleOptions, setScheduleOptions] = useState<ScheduleOption[]>([]);
-  const [providerSettingOptions, setProviderSettingOptions] = useState<Record<string, Record<string, ProviderSettingOption[]>>>({});
   const [copiedErrorKey, setCopiedErrorKey] = useState("");
   const [storeModalOpen, setStoreModalOpen] = useState(false);
   const [storeModalMode, setStoreModalMode] = useState<"create" | "edit">("create");
@@ -103,7 +122,6 @@ export default function ConnectorsStatus() {
       const r = await api<StatusResp>("/connectors/status");
       setProviders(r.providers || []);
       setScheduleOptions(r.schedule_options || []);
-      setProviderSettingOptions(r.provider_setting_options || {});
     } catch (e) {
       setError((e as Error).message || "Ошибка загрузки");
     } finally {
@@ -125,7 +143,6 @@ export default function ConnectorsStatus() {
       });
       setProviders(r.providers || []);
       setScheduleOptions(r.schedule_options || []);
-      setProviderSettingOptions(r.provider_setting_options || {});
     } catch (e) {
       setError((e as Error).message || "Ошибка сохранения расписания");
     } finally {
@@ -142,7 +159,6 @@ export default function ConnectorsStatus() {
       });
       setProviders(r.state.providers || []);
       setScheduleOptions(r.state.schedule_options || []);
-      setProviderSettingOptions(r.state.provider_setting_options || {});
     } catch (e) {
       setError((e as Error).message || "Ошибка запуска обновления");
       await load();
@@ -160,24 +176,6 @@ export default function ConnectorsStatus() {
       window.setTimeout(() => setCopiedErrorKey((cur) => (cur === key ? "" : cur)), 1200);
     } catch {
       setCopiedErrorKey("");
-    }
-  }
-
-  async function updateProviderSettings(provider: string, settings: ProviderSettings) {
-    setSaving(true);
-    setError("");
-    try {
-      const r = await api<StatusResp>("/connectors/status/provider-settings", {
-        method: "PUT",
-        body: JSON.stringify({ provider, settings }),
-      });
-      setProviders(r.providers || []);
-      setScheduleOptions(r.schedule_options || []);
-      setProviderSettingOptions(r.provider_setting_options || {});
-    } catch (e) {
-      setError((e as Error).message || "Ошибка сохранения настроек");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -246,7 +244,6 @@ export default function ConnectorsStatus() {
         : await api<StatusResp>(`/connectors/status/import-stores/${encodeURIComponent(storeProvider)}/${encodeURIComponent(editingStoreId)}`, { method: "PUT", body: JSON.stringify(payload) });
       setProviders(r.providers || []);
       setScheduleOptions(r.schedule_options || []);
-      setProviderSettingOptions(r.provider_setting_options || {});
       closeStoreModal();
     } catch (e) {
       setError((e as Error).message || "Ошибка сохранения магазина");
@@ -264,7 +261,6 @@ export default function ConnectorsStatus() {
       });
       setProviders(r.providers || []);
       setScheduleOptions(r.schedule_options || []);
-      setProviderSettingOptions(r.provider_setting_options || {});
     } catch (e) {
       setError((e as Error).message || "Ошибка удаления магазина");
     } finally {
@@ -281,7 +277,6 @@ export default function ConnectorsStatus() {
       });
       setProviders(r.state.providers || []);
       setScheduleOptions(r.state.schedule_options || []);
-      setProviderSettingOptions(r.state.provider_setting_options || {});
       if (!r.ok && r.error) setError(r.error);
     } catch (e) {
       setError((e as Error).message || "Ошибка проверки магазина");
@@ -292,10 +287,6 @@ export default function ConnectorsStatus() {
   }
 
   const allMethods = providers.flatMap((p) => p.methods || []);
-  const totalMethods = allMethods.length;
-  const okCount = allMethods.filter((m) => m.status === "ok").length;
-  const warnCount = allMethods.filter((m) => m.status === "warn").length;
-  const criticalCount = allMethods.filter((m) => m.status === "critical").length;
   const stores = providers.flatMap((p) => (p.import_stores || []).map((store) => ({ ...store, provider: p.title, providerCode: p.code })));
   const enabledStores = stores.filter((store) => store.enabled);
   const checkedStores = enabledStores.filter((store) => store.last_check_status === "ok");
@@ -312,30 +303,33 @@ export default function ConnectorsStatus() {
         error: humanConnectorError(method.last_error || ""),
       })),
   );
+  const criticalCount = allMethods.filter((m) => m.status === "critical").length;
+  const readyMethods = allMethods.filter((m) => m.status === "ok").length;
+  const systemState = criticalCount ? "Есть блокеры" : "Контур готов";
   const readinessCards = [
     {
-      title: "Подключения",
+      title: "Доступы",
       value: `${checkedStores.length}/${enabledStores.length || stores.length}`,
       state: checkedStores.length === enabledStores.length && enabledStores.length > 0 ? "isReady" : "isBlocked",
-      text: "Магазины и API-доступы для импорта и экспорта.",
+      text: "магазины и API",
     },
     {
       title: "Категории",
       value: `${categoryMethods.filter((m) => m.status === "ok").length}/${categoryMethods.length || 0}`,
       state: categoryMethods.every((m) => m.status === "ok") && categoryMethods.length ? "isReady" : "isBlocked",
-      text: "Деревья площадок для category mapping.",
+      text: "деревья площадок",
     },
     {
-      title: "Параметры и модели",
+      title: "Параметры",
       value: `${attrMethods.filter((m) => m.status === "ok").length}/${attrMethods.length || 0}`,
       state: attrMethods.every((m) => m.status === "ok") && attrMethods.length ? "isReady" : "isBlocked",
-      text: "Требования площадок для draft-моделей и attribute mapping.",
+      text: "инфо-модели и mapping",
     },
     {
-      title: "Товары и экспорт",
+      title: "Товары",
       value: `${productMethods.filter((m) => m.status === "ok").length}/${productMethods.length || 0}`,
       state: productMethods.every((m) => m.status === "ok") && productMethods.length ? "isReady" : "isBlocked",
-      text: "Насыщение карточек, статусы и подготовка выгрузки.",
+      text: "насыщение и экспорт",
     },
   ];
 
@@ -343,294 +337,276 @@ export default function ConnectorsStatus() {
     <div className="cs-page page-shell">
       <PageHeader
         title="Источники и подключения"
-        subtitle="Готовность маркетплейсов, магазинов и синхронизаций для моделей, товаров, насыщения и экспорта."
+        subtitle="Короткая панель готовности: какие источники работают, что блокирует модели, товары и экспорт."
+        actions={
+          <Button onClick={load} disabled={loading || !!runningProvider || saving}>
+            {loading ? "Обновляю..." : "Обновить все"}
+          </Button>
+        }
       />
 
       {error ? <Alert tone="error">{error}</Alert> : null}
 
-      <Card className="cs-controlCard">
-        <DataToolbar
-          title="Готовность PIM-контура"
-          subtitle="Показывает, какие части процесса можно запускать сейчас, а где есть блокеры."
-          actions={
-            <Button onClick={load} disabled={loading || !!runningProvider || saving}>
-              {loading ? "Обновляю..." : "Обновить все"}
-            </Button>
-          }
-        />
-        <div className="cs-readinessGrid">
-          {readinessCards.map((item) => (
-            <article key={item.title} className={`cs-readinessCard ${item.state}`}>
-              <div className="cs-readinessTop">
+      <section className="cs-commandGrid page-center">
+        <Card className="cs-healthPanel">
+          <div className="cs-healthHero">
+            <div>
+              <span className="cs-eyebrow">Command center</span>
+              <h2>{systemState}</h2>
+              <p>Сводка оставляет на первом экране только состояние контура. Подробные методы, магазины и расписания раскрываются ниже по источнику.</p>
+            </div>
+            <div className="cs-healthScore">
+              <strong>{readyMethods}/{allMethods.length || 0}</strong>
+              <span>методов готовы</span>
+            </div>
+          </div>
+          <div className="cs-readinessGrid">
+            {readinessCards.map((item) => (
+              <article key={item.title} className={`cs-readinessCard ${item.state}`}>
                 <span>{item.title}</span>
                 <strong>{item.value}</strong>
-              </div>
-              <p>{item.text}</p>
-            </article>
-          ))}
-        </div>
-      </Card>
-
-      <div className="cs-workflowGrid">
-        <Card className="cs-pathCard">
-          <div className="cs-pathKicker">Путь 01</div>
-          <strong>Новый контур с нуля</strong>
-          <p>Категория - draft-модель - товары - насыщение - export preview.</p>
-          <span className={attrMethods.every((m) => m.status === "ok") ? "cs-pathBadge isReady" : "cs-pathBadge isBlocked"}>
-            {attrMethods.every((m) => m.status === "ok") ? "можно запускать" : "нужны параметры площадок"}
-          </span>
-        </Card>
-        <Card className="cs-pathCard">
-          <div className="cs-pathKicker">Путь 02</div>
-          <strong>Товар по утвержденной модели</strong>
-          <p>Создание SKU/вариантов по готовому skeleton и проверка вывода по каналам.</p>
-          <span className={checkedStores.length ? "cs-pathBadge isReady" : "cs-pathBadge isBlocked"}>
-            {checkedStores.length ? "магазины подключены" : "нет проверенных магазинов"}
-          </span>
-        </Card>
-        <Card className="cs-pathCard">
-          <div className="cs-pathKicker">Путь 03</div>
-          <strong>Насыщение текущего каталога</strong>
-          <p>Импорт marketplace content, competitors, конфликты и повторная валидация.</p>
-          <span className={productMethods.some((m) => m.status === "ok") ? "cs-pathBadge isReady" : "cs-pathBadge isBlocked"}>
-            {productMethods.some((m) => m.status === "ok") ? "есть рабочий источник" : "источник товаров недоступен"}
-          </span>
-        </Card>
-      </div>
-
-      {issueRows.length ? (
-        <Card className="cs-issuesCard">
-          <DataToolbar title="Что мешает процессу" subtitle="Ошибки сгруппированы по влиянию на работу PIM, а не как технический лог." />
-          <div className="cs-issueList">
-            {issueRows.map((issue) => (
-              <article key={`${issue.provider}-${issue.method.code}`} className={`cs-issueRow ${connectorStatusClass(issue.method.status)}`}>
-                <div>
-                  <span className="cs-issueScope">{issue.intent.label}</span>
-                  <strong>{issue.provider}: {issue.method.title}</strong>
-                  <p>{issue.error}</p>
-                  <em>{issue.intent.impact}</em>
-                </div>
-                <button
-                  type="button"
-                  className="cs-copyBtn"
-                  onClick={() => copyError(issue.method.last_error || issue.error, `${issue.provider}:${issue.method.code}`)}
-                >
-                  {copiedErrorKey === `${issue.provider}:${issue.method.code}` ? "Скопировано" : "Raw error"}
-                </button>
+                <p>{item.text}</p>
               </article>
             ))}
           </div>
         </Card>
-      ) : null}
 
-      <Card className="cs-summaryStrip">
-        <MetricGrid
-          className="cs-kpis"
-          items={[
-            { label: "Методов", value: totalMethods },
-            { label: "OK", value: okCount },
-            { label: "Проблемы", value: warnCount },
-            { label: "Критичные", value: criticalCount },
-          ]}
-        />
-      </Card>
+        <aside className="cs-inspectorCard">
+          <div className="cs-inspectorHead">
+            <span className="cs-eyebrow">Следующее действие</span>
+            <strong>{issueRows.length ? "Разобрать блокеры" : "Можно запускать процессы"}</strong>
+          </div>
+          <div className="cs-actionStack">
+            {issueRows.length ? issueRows.slice(0, 3).map((issue) => (
+              <button
+                key={`${issue.provider}-${issue.method.code}`}
+                type="button"
+                className={`cs-actionItem ${connectorStatusClass(issue.method.status)}`}
+                onClick={() => copyError(issue.method.last_error || issue.error, `${issue.provider}:${issue.method.code}`)}
+              >
+                <span>{issue.intent.label}</span>
+                <strong>{issue.provider}</strong>
+                <em>{issue.error}</em>
+              </button>
+            )) : (
+              <>
+                <div className="cs-actionItem ok">
+                  <span>Каталог</span>
+                  <strong>Можно обновлять категории</strong>
+                  <em>Связки площадок доступны.</em>
+                </div>
+                <div className="cs-actionItem ok">
+                  <span>Товары</span>
+                  <strong>Можно запускать насыщение</strong>
+                  <em>Доступы магазинов проверены.</em>
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
+      </section>
 
-      <Card className="cs-card">
-        <div className="cs-providers">
-          {providers.map((p) => (
-            <InspectorPanel
-              key={p.code}
+      <section className="cs-providers page-center" aria-label="Подключения">
+        {providers.map((provider, providerIndex) => {
+          const health = providerHealth(provider);
+          const providerStores = provider.import_stores || [];
+          return (
+            <Card
+              key={provider.code}
               className="cs-providerCard"
-              title={p.title}
-              subtitle={`${p.methods.length} методов`}
-              actions={
+              style={{ "--stagger": providerIndex } as CSSProperties}
+            >
+              <div className="cs-providerHead">
+                <div className="cs-providerTitleBlock">
+                  <span className={`cs-statusPill ${health}`}>{healthLabel(health)}</span>
+                  <h3>{provider.title}</h3>
+                  <p>{provider.methods.length} методов, {providerStores.length} магазинов импорта</p>
+                </div>
                 <Button
                   variant="primary"
-                  onClick={() => runProvider(p.code)}
+                  onClick={() => runProvider(provider.code)}
                   disabled={!!runningProvider || loading || saving}
                 >
-                      {runningProvider === p.code ? "Запуск..." : "Обновить"}
+                  {runningProvider === provider.code ? "Запуск..." : "Обновить источник"}
                 </Button>
-              }
-            >
-                  {p.code === "yandex_market" || p.code === "ozon" ? (
-                    <div className="cs-providerControls">
-                      {p.code === "yandex_market" ? (
-                        <Field label="ID для offerId" className="cs-providerField">
-                          <TextInput value="SKU GT" disabled />
-                        </Field>
-                      ) : null}
-                      <div className="cs-storeHead">
-                        <div className="cs-storeTitle">Магазины импорта</div>
-                        <Button variant="primary" onClick={() => openCreateStore(p.code)} disabled={saving || !!runningProvider}>
-                          Добавить магазин
-                        </Button>
-                      </div>
-                      <div className="cs-storeList">
-                        {(p.import_stores || []).length ? (p.import_stores || []).map((store) => (
-                          <div key={store.id} className="cs-storeRow">
-                            <div className="cs-storeMeta">
-                              <div className="cs-storeName">{store.title}</div>
-                              {p.code === "yandex_market" ? (
-                                <>
-                                  <div className="cs-storeSub">Business ID: {store.business_id}</div>
-                                  <div className="cs-storeSub">Токен: {maskToken(store.token)}</div>
-                                  <div className="cs-storeSub">Авторизация: {store.auth_mode || "auto"}</div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="cs-storeSub">Client ID: {store.client_id}</div>
-                                  <div className="cs-storeSub">Api-Key: {maskToken(store.api_key)}</div>
-                                </>
-                              )}
-                              {store.last_check_at ? (
-                                <div className={`cs-storeCheck ${store.last_check_status === "ok" ? "isOk" : store.last_check_status === "error" ? "isError" : ""}`}>
-                                  {store.last_check_status === "ok" ? "Доступ подтвержден" : "Ошибка доступа"} · {fmtDate(store.last_check_at)}
-                                </div>
-                              ) : null}
-                              {store.last_check_error ? <div className="cs-storeSub cs-storeError">{store.last_check_error}</div> : null}
-                              {store.notes ? <div className="cs-storeSub">{store.notes}</div> : null}
-                            </div>
-                            <div className="cs-storeState">
-                              <span className={`cs-storeBadge ${store.enabled ? "isEnabled" : "isDisabled"}`}>
-                                {store.enabled ? "Включен" : "Выключен"}
-                              </span>
-                              <div className="cs-storeActions">
-                                <Button onClick={() => checkStore(p.code, store.id)} disabled={saving || !!runningProvider || checkingStoreId === store.id}>
-                                  {checkingStoreId === store.id ? "Проверяю" : "Проверить"}
-                                </Button>
-                                <Button onClick={() => openEditStore(p.code, store)} disabled={saving || !!runningProvider}>Изменить</Button>
-                                <Button onClick={() => deleteStore(p.code, store.id)} disabled={saving || !!runningProvider}>Удалить</Button>
-                              </div>
-                            </div>
-                          </div>
-                        )) : (
-                          <div className="cs-storeEmpty">Пока нет магазинов для импорта.</div>
-                        )}
-                      </div>
+              </div>
+
+              {(provider.code === "yandex_market" || provider.code === "ozon") ? (
+                <div className="cs-providerSection">
+                  <div className="cs-sectionHead">
+                    <div>
+                      <span className="cs-eyebrow">Доступы</span>
+                      <strong>Магазины импорта</strong>
+                    </div>
+                    <Button onClick={() => openCreateStore(provider.code)} disabled={saving || !!runningProvider}>
+                      Добавить магазин
+                    </Button>
+                  </div>
+                  {provider.code === "yandex_market" ? (
+                    <div className="cs-offerBox">
+                      <span>ID для offerId</span>
+                      <strong>SKU GT</strong>
                     </div>
                   ) : null}
-              <div className="cs-methodGrid">
-                {p.methods.map((m) => {
-                  const methodClass = connectorStatusClass(m.status);
-                  const intent = methodIntent(m);
-                  const errorText = (m.last_error || "").trim();
-                  const hasError = m.status !== "ok";
-                  const errorHintText = hasError ? humanConnectorError(errorText) : "";
-                  const errorKey = `${p.code}:${m.code}`;
-                  return (
-                    <article key={`${p.code}-${m.code}`} className="cs-methodCard">
-                      <div className="cs-methodTop">
-                        <span className={`cs-dot ${methodClass}`} title={hasError ? errorHintText : "Нет проблем"} />
-                        <span className="cs-methodName">{m.title}</span>
-                      </div>
-                      <div className="cs-methodIntent">
-                        <span>{intent.label}</span>
-                        <strong>{methodStatusLabel(m.status)}</strong>
-                      </div>
-                      <div className="cs-methodStatusLine">
-                        {hasError ? (
-                          <span className="cs-errorWrap">
-                            <span className="cs-errorHint" tabIndex={0}>ошибка</span>
-                            <span className="cs-errorTooltip" role="tooltip">
-                              <span className="cs-errorTooltipHead">
-                                <span>Детали ошибки</span>
-                                <button
-                                  type="button"
-                                  className="cs-copyBtn"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    copyError(errorHintText, errorKey);
-                                  }}
-                                >
-                                  {copiedErrorKey === errorKey ? "Скопировано" : "Копировать"}
-                                </button>
-                              </span>
-                              <span className="cs-errorTooltipBody">{errorHintText}</span>
-                            </span>
+                  <div className="cs-storeList">
+                    {providerStores.length ? providerStores.map((store) => (
+                      <article key={store.id} className="cs-storeCard">
+                        <div className="cs-storeTop">
+                          <strong>{store.title}</strong>
+                          <span className={`cs-storeBadge ${store.enabled ? "isEnabled" : "isDisabled"}`}>
+                            {store.enabled ? "Включен" : "Выключен"}
                           </span>
-                        ) : (
-                          <span className="cs-okHint">нет проблем</span>
-                        )}
-                      </div>
+                        </div>
+                        <dl className="cs-storeMeta">
+                          {provider.code === "yandex_market" ? (
+                            <>
+                              <div><dt>Business ID</dt><dd>{store.business_id}</dd></div>
+                              <div><dt>Token</dt><dd>{maskToken(store.token)}</dd></div>
+                            </>
+                          ) : (
+                            <>
+                              <div><dt>Client ID</dt><dd>{store.client_id}</dd></div>
+                              <div><dt>Api-Key</dt><dd>{maskToken(store.api_key)}</dd></div>
+                            </>
+                          )}
+                        </dl>
+                        <div className={`cs-storeAccess ${store.last_check_status === "ok" ? "isOk" : store.last_check_status === "error" ? "isError" : ""}`}>
+                          {storeAccessLabel(store)}
+                          {store.last_check_at ? <span>{fmtDate(store.last_check_at)}</span> : null}
+                        </div>
+                        {store.last_check_error ? <p className="cs-storeError">{store.last_check_error}</p> : null}
+                        {store.notes ? <p className="cs-storeNotes">{store.notes}</p> : null}
+                        <div className="cs-storeActions">
+                          <Button onClick={() => checkStore(provider.code, store.id)} disabled={saving || !!runningProvider || checkingStoreId === store.id}>
+                            {checkingStoreId === store.id ? "Проверяю" : "Проверить"}
+                          </Button>
+                          <Button onClick={() => openEditStore(provider.code, store)} disabled={saving || !!runningProvider}>Изменить</Button>
+                          <Button onClick={() => deleteStore(provider.code, store.id)} disabled={saving || !!runningProvider}>Удалить</Button>
+                        </div>
+                      </article>
+                    )) : (
+                      <div className="cs-emptyAccess">Магазинов импорта пока нет.</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
-                      <div className="cs-methodMeta">Последний запуск: {fmtDate(m.last_run_at)}</div>
-                      <div className="cs-methodMeta">Следующий запуск: {fmtDate(m.next_run_at)}</div>
-
-                      <Field label="Расписание" className="cs-methodField">
-                        <Select
-                          value={m.schedule}
-                          onChange={(e) => updateSchedule(p.code, m.code, e.target.value)}
-                          disabled={saving || !!runningProvider}
-                        >
-                          {scheduleOptions.map((o) => (
-                            <option key={o.code} value={o.code}>{o.label}</option>
-                          ))}
-                        </Select>
-                      </Field>
-                    </article>
-                  );
-                })}
+              <div className="cs-providerSection">
+                <div className="cs-sectionHead">
+                  <div>
+                    <span className="cs-eyebrow">Синхронизации</span>
+                    <strong>Методы источника</strong>
+                  </div>
+                </div>
+                <div className="cs-methodList">
+                  {provider.methods.map((method) => {
+                    const intent = methodIntent(method);
+                    const methodClass = connectorStatusClass(method.status);
+                    const errorText = humanConnectorError(method.last_error || "");
+                    const errorKey = `${provider.code}:${method.code}`;
+                    return (
+                      <article key={`${provider.code}-${method.code}`} className={`cs-methodRow ${methodClass}`}>
+                        <div className="cs-methodMain">
+                          <span className={`cs-dot ${methodClass}`} />
+                          <div>
+                            <strong>{method.title}</strong>
+                            <p>{intent.label} · {intent.impact}</p>
+                          </div>
+                        </div>
+                        <div className="cs-methodState">
+                          <span>{methodStatusLabel(method.status)}</span>
+                          <em>последний запуск: {fmtDate(method.last_run_at)}</em>
+                        </div>
+                        <details className="cs-methodDetails">
+                          <summary>Расписание и детали</summary>
+                          <div className="cs-methodDetailsGrid">
+                            <Field label="Расписание">
+                              <Select
+                                value={method.schedule}
+                                onChange={(e) => updateSchedule(provider.code, method.code, e.target.value)}
+                                disabled={saving || !!runningProvider}
+                              >
+                                {scheduleOptions.map((option) => (
+                                  <option key={option.code} value={option.code}>{option.label}</option>
+                                ))}
+                              </Select>
+                            </Field>
+                            <div className="cs-detailText">Следующий запуск: {fmtDate(method.next_run_at)}</div>
+                            {method.status !== "ok" ? (
+                              <button
+                                type="button"
+                                className="cs-copyBtn"
+                                onClick={() => copyError(method.last_error || errorText, errorKey)}
+                              >
+                                {copiedErrorKey === errorKey ? "Скопировано" : "Скопировать ошибку"}
+                              </button>
+                            ) : null}
+                          </div>
+                          {method.status !== "ok" ? <p className="cs-methodError">{errorText}</p> : null}
+                        </details>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
-            </InspectorPanel>
-          ))}
-        </div>
-      </Card>
+            </Card>
+          );
+        })}
+      </section>
 
       <Modal
         open={storeModalOpen}
         onClose={closeStoreModal}
         title={storeModalMode === "create" ? "Добавить магазин" : "Изменить магазин"}
       >
-            <Field label="Название магазина">
-              <TextInput value={storeTitle} onChange={(e) => setStoreTitle(e.target.value)} />
+        <Field label="Название магазина">
+          <TextInput value={storeTitle} onChange={(e) => setStoreTitle(e.target.value)} />
+        </Field>
+        {storeProvider === "yandex_market" ? (
+          <>
+            <Field label="Business ID">
+              <TextInput value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
             </Field>
-            {storeProvider === "yandex_market" ? (
-              <>
-                <Field label="Business ID">
-                  <TextInput value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
-                </Field>
-                <Field
-                  label="Токен"
-                  hint="`ACMA:...` используйте как `Api-Key`. `y0_...` относится к OAuth/Bearer."
-                >
-                  <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
-                </Field>
-                <Field label="Тип авторизации">
-                  <Select value={storeAuthMode} onChange={(e) => setStoreAuthMode(e.target.value as "auto" | "api-key" | "oauth" | "bearer")}>
-                    <option value="auto">Авто</option>
-                    <option value="api-key">Api-Key</option>
-                    <option value="oauth">OAuth</option>
-                    <option value="bearer">Bearer</option>
-                  </Select>
-                </Field>
-              </>
-            ) : (
-              <>
-                <Field label="Client ID">
-                  <TextInput value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
-                </Field>
-                <Field label="Api-Key">
-                  <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
-                </Field>
-              </>
-            )}
-            <Field label="Комментарий">
-              <Textarea className="cs-textArea" value={storeNotes} onChange={(e) => setStoreNotes(e.target.value)} />
+            <Field
+              label="Токен"
+              hint="`ACMA:...` используйте как `Api-Key`. `y0_...` относится к OAuth/Bearer."
+            >
+              <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
             </Field>
-            <label className="cs-checkRow">
-              <input type="checkbox" checked={storeEnabled} onChange={(e) => setStoreEnabled(e.target.checked)} />
-              <span>Использовать для импорта</span>
-            </label>
-            <div className="cs-modalActions">
-              <Button variant="primary" onClick={saveStore} disabled={saving}>
-                {storeModalMode === "create" ? "Создать" : "Сохранить"}
-              </Button>
-              <Button onClick={closeStoreModal} disabled={saving}>
-                Отмена
-              </Button>
-            </div>
+            <Field label="Тип авторизации">
+              <Select value={storeAuthMode} onChange={(e) => setStoreAuthMode(e.target.value as "auto" | "api-key" | "oauth" | "bearer")}>
+                <option value="auto">Авто</option>
+                <option value="api-key">Api-Key</option>
+                <option value="oauth">OAuth</option>
+                <option value="bearer">Bearer</option>
+              </Select>
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label="Client ID">
+              <TextInput value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
+            </Field>
+            <Field label="Api-Key">
+              <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
+            </Field>
+          </>
+        )}
+        <Field label="Комментарий">
+          <Textarea className="cs-textArea" value={storeNotes} onChange={(e) => setStoreNotes(e.target.value)} />
+        </Field>
+        <label className="cs-checkRow">
+          <input type="checkbox" checked={storeEnabled} onChange={(e) => setStoreEnabled(e.target.checked)} />
+          <span>Использовать для импорта</span>
+        </label>
+        <div className="cs-modalActions">
+          <Button variant="primary" onClick={saveStore} disabled={saving}>
+            {storeModalMode === "create" ? "Создать" : "Сохранить"}
+          </Button>
+          <Button onClick={closeStoreModal} disabled={saving}>
+            Отмена
+          </Button>
+        </div>
       </Modal>
     </div>
   );
