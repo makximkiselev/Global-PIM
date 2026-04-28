@@ -102,6 +102,32 @@ function roleLabel(code?: string | null) {
   return ROLE_LABELS[String(code || "")] || String(code || "—");
 }
 
+function statusLabel(status?: string | null) {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "active" || normalized === "ready") return "Активна";
+  if (normalized === "provisioning") return "Настраивается";
+  if (normalized === "pending") return "Ожидает";
+  if (normalized === "accepted") return "Принято";
+  if (normalized === "expired") return "Истекло";
+  if (["failed", "error", "suspended", "revoked"].includes(normalized)) return "Проблема";
+  return "Неизвестно";
+}
+
+function organizationCaption(organization?: Pick<OrganizationRow, "id" | "slug"> | null) {
+  if (!organization) return "Организация не выбрана";
+  if (organization.id === "org_default" || organization.slug === "default") return "Основная организация";
+  return "Рабочая организация";
+}
+
+function pluralRu(value: number, forms: [string, string, string]) {
+  const abs = Math.abs(value) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return forms[2];
+  if (last > 1 && last < 5) return forms[1];
+  if (last === 1) return forms[0];
+  return forms[2];
+}
+
 export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -160,12 +186,6 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     () => invites.find((invite) => invite.id === selectedInviteId) || pendingInvites[0] || invites[0] || null,
     [invites, pendingInvites, selectedInviteId],
   );
-
-  const filteredOrganizations = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q || activeTab !== "organizations") return organizationRows;
-    return organizationRows.filter((row) => `${row.name} ${row.slug} ${row.status}`.toLowerCase().includes(q));
-  }, [activeTab, organizationRows, query]);
 
   const filteredMembers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -252,13 +272,13 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
             <div className="orgAdminOrgTop">
               <div>
                 <div className="orgAdminOrgName">{organization.name}</div>
-                <div className="orgAdminOrgMeta">{organization.slug}</div>
+                <div className="orgAdminOrgMeta">{organizationCaption(organization)}</div>
               </div>
-              <Badge tone={badgeToneFromStatus(organization.status)}>{organization.status}</Badge>
+              <Badge tone={badgeToneFromStatus(organization.status)}>{statusLabel(organization.status)}</Badge>
             </div>
             <div className="orgAdminOrgStats">
-              <span>{organization.member_count} сотрудников</span>
-              <span>{organization.pending_invite_count} pending</span>
+              <span>{organization.member_count} {pluralRu(organization.member_count, ["сотрудник", "сотрудника", "сотрудников"])}</span>
+              <span>{organization.pending_invite_count} {pluralRu(organization.pending_invite_count, ["приглашение", "приглашения", "приглашений"])}</span>
             </div>
           </button>
         ))}
@@ -268,14 +288,14 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
 
   const inspector = (
     <div className="orgAdminInspectorStack">
-      <InspectorPanel title="Текущая организация" subtitle={selectedOrganization?.slug || "Контекст не выбран"}>
+      <InspectorPanel title="Текущая организация" subtitle={organizationCaption(selectedOrganization)}>
         {selectedOrganization ? (
           <div className="orgAdminInspectorRows">
-            <div><span>Статус</span><Badge tone={badgeToneFromStatus(selectedOrganization.status)}>{selectedOrganization.status}</Badge></div>
+            <div><span>Статус</span><Badge tone={badgeToneFromStatus(selectedOrganization.status)}>{statusLabel(selectedOrganization.status)}</Badge></div>
             <div><span>Роль</span><strong>{roleLabel(selectedOrganization.membership_role)}</strong></div>
-            <div><span>Tenant</span><strong>{selectedOrganization.tenant_status || "—"}</strong></div>
+            <div><span>Доступ</span><strong>{selectedOrganization.tenant_status ? statusLabel(selectedOrganization.tenant_status) : "Готов"}</strong></div>
             <div><span>Сотрудники</span><strong>{selectedOrganization.member_count}</strong></div>
-            <div><span>Pending</span><strong>{selectedOrganization.pending_invite_count}</strong></div>
+            <div><span>Приглашения</span><strong>{selectedOrganization.pending_invite_count}</strong></div>
           </div>
         ) : (
           <div className="dataListEmpty">Организация не выбрана.</div>
@@ -287,7 +307,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
           {selectedInvite ? (
             <div className="orgAdminInspectorRows">
               <div><span>Роль</span><strong>{roleLabel(selectedInvite.org_role_code)}</strong></div>
-              <div><span>Статус</span><Badge tone={badgeToneFromStatus(selectedInvite.status)}>{selectedInvite.status}</Badge></div>
+              <div><span>Статус</span><Badge tone={badgeToneFromStatus(selectedInvite.status)}>{statusLabel(selectedInvite.status)}</Badge></div>
               <div><span>Создан</span><strong>{formatDate(selectedInvite.created_at)}</strong></div>
               <div><span>Истекает</span><strong>{formatDate(selectedInvite.expires_at)}</strong></div>
               <div><span>Принят</span><strong>{formatDate(selectedInvite.accepted_at)}</strong></div>
@@ -299,11 +319,11 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       ) : null}
 
       {activeTab === "platform" && isDeveloper ? (
-        <InspectorPanel title="Platform" subtitle="Developer visibility">
+        <InspectorPanel title="Платформа" subtitle="Служебный режим">
           <div className="orgAdminInspectorRows">
-            <div><span>Current org</span><strong>{currentOrganization?.name || "—"}</strong></div>
-            <div><span>Provisioning</span><strong>{provisioningStatus?.organization?.status || selectedOrganization?.status || "—"}</strong></div>
-            <div><span>Latest job</span><strong>{provisioningStatus?.latest_job?.status || "—"}</strong></div>
+            <div><span>Организация</span><strong>{currentOrganization?.name || "—"}</strong></div>
+            <div><span>Состояние</span><strong>{statusLabel(provisioningStatus?.organization?.status || selectedOrganization?.status)}</strong></div>
+            <div><span>Последняя задача</span><strong>{statusLabel(provisioningStatus?.latest_job?.status)}</strong></div>
           </div>
         </InspectorPanel>
       ) : null}
@@ -315,10 +335,10 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       <div className="orgAdminCommand">
         <div>
           <div className="orgAdminCommandTitle">
-            {activeTab === "organizations" ? "Организации" : activeTab === "members" ? "Команда" : activeTab === "invites" ? "Приглашения" : "Platform"}
+            {activeTab === "organizations" ? "Организация" : activeTab === "members" ? "Команда" : activeTab === "invites" ? "Приглашения" : "Платформа"}
           </div>
           <div className="orgAdminCommandMeta">
-            {selectedOrganization ? `${selectedOrganization.name} · ${selectedOrganization.slug}` : "Контекст организации не выбран"}
+            {selectedOrganization ? `${selectedOrganization.name} · ${organizationCaption(selectedOrganization)}` : "Организация не выбрана"}
           </div>
         </div>
         <TextInput
@@ -333,38 +353,34 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       {!loading && !selectedOrganization ? <EmptyState title="Нет доступной организации" description="Организация нужна для управления сотрудниками и инвайтами." /> : null}
 
       {!loading && selectedOrganization && activeTab === "organizations" ? (
-        <>
+        <div className="orgAdminOrgOverview">
+          <div className="orgAdminOrgHero">
+            <div>
+              <div className="orgAdminSectionTitle">Организация</div>
+              <h2>{selectedOrganization.name}</h2>
+              <p>{organizationCaption(selectedOrganization)} для управления каталогом, товарами, импортом, экспортом и командой.</p>
+            </div>
+            <Badge tone={badgeToneFromStatus(selectedOrganization.status)}>{statusLabel(selectedOrganization.status)}</Badge>
+          </div>
           <MetricGrid
             className="orgAdminGrid"
             items={[
-              { label: "Сотрудники", value: selectedOrganization.member_count },
-              { label: "Pending invite", value: selectedOrganization.pending_invite_count },
-              { label: "Tenant status", value: selectedOrganization.tenant_status || "—" },
+              { label: "Сотрудники", value: selectedOrganization.member_count, meta: "имеют доступ к организации" },
+              { label: "Приглашения", value: selectedOrganization.pending_invite_count, meta: "ожидают принятия" },
+              { label: "Состояние", value: selectedOrganization.tenant_status ? statusLabel(selectedOrganization.tenant_status) : "Готова", meta: "рабочий контур доступен" },
             ]}
           />
-          <DataTable
-            className="orgAdminTable"
-            gridTemplate="minmax(120px,1fr) 70px 44px 44px"
-            rows={filteredOrganizations}
-            rowKey={(organization) => organization.id}
-            empty="Организации не найдены."
-            columns={[
-              {
-                key: "organization",
-                label: "Организация",
-                render: (organization) => (
-                  <button className="orgAdminEntityButton" type="button" onClick={() => void handleOrganizationSelect(organization.id)}>
-                    <span>{organization.name}</span>
-                    <small>{organization.slug}</small>
-                  </button>
-                ),
-              },
-              { key: "status", label: "Статус", render: (organization) => <Badge tone={badgeToneFromStatus(organization.status)}>{organization.status}</Badge> },
-              { key: "members", label: "Сотрудники", render: (organization) => organization.member_count },
-              { key: "invites", label: "Pending", render: (organization) => organization.pending_invite_count },
-            ]}
-          />
-        </>
+          <div className="orgAdminNextSteps">
+            <button type="button" onClick={() => navigate(`/admin/members?organization=${encodeURIComponent(selectedOrganization.id)}`)}>
+              <span>Команда</span>
+              <strong>Проверить сотрудников и роли</strong>
+            </button>
+            <button type="button" onClick={() => navigate(`/admin/invites?organization=${encodeURIComponent(selectedOrganization.id)}`)}>
+              <span>Приглашения</span>
+              <strong>Добавить нового сотрудника</strong>
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {!loading && selectedOrganization && activeTab === "members" ? (
@@ -388,7 +404,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
               </span>
               <span className="orgAdminPersonMeta">
                 <span>{roleLabel(member.org_role_code)}</span>
-                <Badge tone={badgeToneFromStatus(member.status)}>{member.status}</Badge>
+                <Badge tone={badgeToneFromStatus(member.status)}>{statusLabel(member.status)}</Badge>
                 <small>{formatDate(member.last_login_at)}</small>
               </span>
             </button>
@@ -434,12 +450,12 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
                 render: (invite) => (
                   <button className="orgAdminEntityButton" type="button" onClick={() => setSelectedInviteId(invite.id)}>
                     <span>{invite.email}</span>
-                    <small>{invite.created_by_email || invite.created_by_name || "system"}</small>
+                    <small>{invite.created_by_email || invite.created_by_name || "Создано системой"}</small>
                   </button>
                 ),
               },
               { key: "role", label: "Роль", render: (invite) => roleLabel(invite.org_role_code) },
-              { key: "status", label: "Статус", render: (invite) => <Badge tone={badgeToneFromStatus(invite.status)}>{invite.status}</Badge> },
+              { key: "status", label: "Статус", render: (invite) => <Badge tone={badgeToneFromStatus(invite.status)}>{statusLabel(invite.status)}</Badge> },
               { key: "expires", label: "Истекает", render: (invite) => formatDate(invite.expires_at) },
             ]}
           />
@@ -450,16 +466,16 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         <MetricGrid
           className="orgAdminPlatform"
           items={[
-            { label: "Current organization", value: currentOrganization?.name || "—" },
-            { label: "Provisioning status", value: provisioningStatus?.organization?.status || selectedOrganization.status },
-            { label: "Latest job", value: provisioningStatus?.latest_job?.status || "—" },
+            { label: "Организация", value: currentOrganization?.name || "—" },
+            { label: "Состояние", value: statusLabel(provisioningStatus?.organization?.status || selectedOrganization.status) },
+            { label: "Последняя задача", value: statusLabel(provisioningStatus?.latest_job?.status) },
           ]}
         />
       ) : null}
     </div>
   );
 
-  const showInlineInspector = activeTab !== "members";
+  const showInlineInspector = activeTab === "invites" || (activeTab === "platform" && isDeveloper);
 
   return (
     <div className="page-shell orgAdminPage">
@@ -476,7 +492,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
           { key: "organizations", label: "Организации" },
           { key: "members", label: "Команда" },
           { key: "invites", label: "Инвайты" },
-          ...(isDeveloper ? [{ key: "platform", label: "Platform" }] : []),
+          ...(isDeveloper ? [{ key: "platform", label: "Платформа" }] : []),
         ]}
         onChange={(key) => {
           const next = key as AdminMode;

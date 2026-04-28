@@ -31,6 +31,13 @@ export default function ShellWorkspaceBar({
   onLogout: () => void;
 }) {
   if (!currentOrganization) return null;
+  const normalizedStatus = organizationStatus.toLowerCase();
+  const statusLabel =
+    normalizedStatus === "active" || normalizedStatus === "ready" ? "Активна" :
+    normalizedStatus === "provisioning" ? "Настраивается" :
+    normalizedStatus === "pending" ? "Ожидает" :
+    ["failed", "error", "suspended", "revoked"].includes(normalizedStatus) ? "Проблема" :
+    "Неизвестно";
 
   return (
     <div className="shellWorkspaceBar">
@@ -55,8 +62,8 @@ export default function ShellWorkspaceBar({
           )}
         </div>
         <div className="shellWorkspaceBadges">
-          <span className={`shellStatusBadge is-${organizationStatus.toLowerCase()}`}>{organizationStatus}</span>
-          {isDeveloper ? <span className="shellRoleBadge">Developer</span> : null}
+          <span className={`shellStatusBadge is-${normalizedStatus}`}>{statusLabel}</span>
+          {isDeveloper ? <span className="shellRoleBadge">Разработчик</span> : null}
         </div>
       </div>
 

@@ -20,6 +20,13 @@ export default function ShellOrganizationPanel({
   isDeveloper: boolean;
 }) {
   if (!currentOrganization) return null;
+  const normalizedStatus = organizationStatus.toLowerCase();
+  const statusLabel =
+    normalizedStatus === "active" || normalizedStatus === "ready" ? "Активна" :
+    normalizedStatus === "provisioning" ? "Настраивается" :
+    normalizedStatus === "pending" ? "Ожидает" :
+    ["failed", "error", "suspended", "revoked"].includes(normalizedStatus) ? "Проблема" :
+    "Неизвестно";
 
   return (
     <div className="shellSidebarOrg">
@@ -41,8 +48,8 @@ export default function ShellOrganizationPanel({
         <div className="shellSidebarOrgName">{currentOrganization.name}</div>
       )}
       <div className="shellSidebarStatusRow">
-        <span className={`shellStatusBadge is-${organizationStatus.toLowerCase()}`}>{organizationStatus}</span>
-        {isDeveloper ? <span className="shellRoleBadge">Developer</span> : null}
+        <span className={`shellStatusBadge is-${normalizedStatus}`}>{statusLabel}</span>
+        {isDeveloper ? <span className="shellRoleBadge">Разработчик</span> : null}
       </div>
     </div>
   );

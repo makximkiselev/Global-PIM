@@ -877,6 +877,92 @@
   gap:10px;
 }
 
+.orgAdminOrgOverview{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.orgAdminOrgHero{
+  min-height:132px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:20px;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  background:
+    radial-gradient(420px 180px at 10% 0%, rgba(var(--brand-rgb),.1), transparent 68%),
+    linear-gradient(180deg, rgba(var(--card-rgb),.92), rgba(var(--card-rgb),.72));
+  box-shadow:var(--shadow-soft);
+}
+
+.orgAdminOrgHero h2{
+  margin:8px 0 8px;
+  color:var(--text);
+  font-size:34px;
+  line-height:.98;
+  letter-spacing:-.045em;
+  font-weight:1000;
+}
+
+.orgAdminOrgHero p{
+  max-width:620px;
+  margin:0;
+  color:var(--text-soft);
+  font-size:14px;
+  line-height:1.45;
+  font-weight:760;
+}
+
+.orgAdminNextSteps{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.orgAdminNextSteps button{
+  appearance:none;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:rgba(var(--card-rgb),.78);
+  color:var(--text);
+  padding:16px;
+  text-align:left;
+  cursor:pointer;
+  box-shadow:var(--shadow-soft);
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+}
+
+.orgAdminNextSteps button:hover{
+  transform:translateY(-1px);
+  border-color:rgba(var(--brand-rgb),.28);
+  background:rgba(var(--brand-rgb),.07);
+}
+
+.orgAdminNextSteps span{
+  display:block;
+  margin-bottom:6px;
+  color:rgba(var(--brand-rgb),.9);
+  font-size:11px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.orgAdminNextSteps strong{
+  display:block;
+  color:var(--text);
+  font-size:15px;
+  line-height:1.25;
+  font-weight:900;
+}
+
 .orgAdminTable.dataTable{
   overflow:auto;
   max-width:100%;

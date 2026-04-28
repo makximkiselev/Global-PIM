@@ -5401,6 +5401,25 @@ Fourth pass, 2026-04-28:
    - `/api/platform/workspace/bootstrap?organization_id=org_default` returns `Global Trade` with two members: `Owner` and `Codex QA`;
    - `@browser-use` connection was attempted, but the plugin reported no active Codex browser pane, so visual verification must be repeated when browser-pane is available.
 
+Fifth pass, 2026-04-28:
+
+1. `/admin/organizations` was simplified after in-app browser review:
+   - removed the duplicated organization table from the organization overview tab;
+   - replaced it with one organization hero, three readable metric cards and two next-action cards;
+   - hidden the inline inspector on the organization tab because it duplicated the same context and forced unnecessary vertical scroll;
+2. user-facing technical/English labels were removed from the admin/shell context:
+   - `ACTIVE` is rendered as `Активна`;
+   - `pending` is rendered as `приглашений` / `Ожидает` depending on context;
+   - `org_owner` is rendered as `Владелец`;
+   - `Default organization` is no longer shown;
+   - developer-only `Platform` labels are localized as `Платформа`;
+3. verification:
+   - `npm --prefix frontend run build` OK;
+   - production deploy OK, `/api/health` returns `{"ok":true}`;
+   - `@browser-use` checked `/admin/organizations?organization=org_default`;
+   - console errors absent;
+   - checked forbidden user-facing terms were absent: `ACTIVE`, `pending`, `Tenant`, `org_owner`, `Developer`, `Default organization`, `Platform`.
+
 ### 27.5 Parameter Values Workspace
 
 Статус: first rework pass completed, browser-verified.
