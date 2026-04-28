@@ -179,6 +179,12 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     return invites.filter((row) => `${row.email} ${row.org_role_code} ${row.status}`.toLowerCase().includes(q));
   }, [activeTab, invites, query]);
 
+  const searchPlaceholder =
+    activeTab === "organizations" ? "Поиск организации" :
+    activeTab === "members" ? "Поиск сотрудника" :
+    activeTab === "invites" ? "Поиск инвайта" :
+    "Поиск";
+
   async function handleOrganizationSelect(nextOrganizationId: string) {
     if (!nextOrganizationId) return;
     setError("");
@@ -319,7 +325,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
           className="orgAdminSearch"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск по текущему режиму..."
+          placeholder={searchPlaceholder}
         />
       </div>
 
@@ -459,7 +465,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     <div className="page-shell orgAdminPage">
       <PageHeader
         title="Администрирование"
-        subtitle="Организации, команда, приглашения и platform-контекст без лишних панелей."
+        subtitle="Организации, команда и права доступа без лишних панелей."
         actions={<Button onClick={() => void load()}>Обновить</Button>}
       />
 

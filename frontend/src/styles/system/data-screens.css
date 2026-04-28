@@ -663,7 +663,7 @@
 
 .orgAdminPage .page-header{
   min-height:72px;
-  margin:0 auto 8px;
+  margin:0 auto 16px;
   max-width:var(--page-content-width);
   padding:12px 14px;
   border:1px solid var(--line);
@@ -689,7 +689,7 @@
 
 .orgAdminTabs{
   max-width:var(--page-content-width);
-  margin:0 auto;
+  margin:0 auto 22px;
 }
 
 .orgAdminWorkspace.workspaceFrameTwo{
@@ -827,6 +827,7 @@
   border:1px solid var(--line);
   border-radius:18px;
   background:rgba(var(--card-rgb),.76);
+  align-items:center;
 }
 
 .orgAdminCommandTitle{
@@ -837,7 +838,36 @@
 }
 
 .orgAdminSearch{
-  max-width:320px;
+  width:min(360px, 42vw);
+  min-width:240px;
+  height:42px;
+  border:1px solid rgba(var(--line-rgb),.9);
+  border-radius:14px;
+  background:rgba(var(--card-rgb),.82);
+  color:var(--text);
+  padding:0 14px;
+  outline:0;
+  font-size:13px;
+  line-height:1;
+  font-weight:760;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.48);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+}
+
+.orgAdminSearch::placeholder{
+  color:var(--text-soft);
+  opacity:.78;
+}
+
+.orgAdminSearch:focus{
+  border-color:rgba(var(--brand-rgb),.44);
+  background:rgba(var(--card-rgb),.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.58),
+    0 0 0 4px rgba(var(--brand-rgb),.08);
 }
 
 .orgAdminGrid,
@@ -1052,7 +1082,7 @@
   }
 
   .orgAdminSearch{
-    max-width:none;
+    min-width:0;
     width:100%;
   }
 }

@@ -5383,6 +5383,24 @@ Third pass, 2026-04-28:
      - auth users = 1;
    - browser session was expectedly redirected to `/login?expired=1` because the current QA test user was deleted.
 
+Fourth pass, 2026-04-28:
+
+1. after explicit user confirmation one technical Codex QA user was created in `Global Trade`:
+   - no extra test users should be created without a new explicit request;
+   - current expected production users are `Owner` and `Codex QA`;
+   - `org_default` remains `Global Trade`;
+2. `/admin/members` spacing and search field were fixed:
+   - admin page header now has a larger rhythm gap before tabs;
+   - tabs have a stable lower margin before the workspace;
+   - member search uses the same SaaS input styling as the rest of the admin surface;
+   - placeholder is contextual: organization, employee, invite;
+3. verification:
+   - `npm --prefix frontend run build` OK;
+   - production deploy OK, `/api/health` returns `{"ok":true}`;
+   - direct API login as `Codex QA` OK;
+   - `/api/platform/workspace/bootstrap?organization_id=org_default` returns `Global Trade` with two members: `Owner` and `Codex QA`;
+   - `@browser-use` connection was attempted, but the plugin reported no active Codex browser pane, so visual verification must be repeated when browser-pane is available.
+
 ### 27.5 Parameter Values Workspace
 
 Статус: first rework pass completed, browser-verified.
