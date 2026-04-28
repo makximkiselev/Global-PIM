@@ -913,6 +913,91 @@ def _catalog_nodes() -> List[Dict[str, Any]]:
         return []
 
 
+def _catalog_node_by_id(category_id: str) -> Optional[Dict[str, Any]]:
+    cid = str(category_id or "").strip()
+    if not cid:
+        return None
+    for node in _catalog_nodes():
+        if str((node or {}).get("id") or "").strip() == cid:
+            return node
+    return None
+
+
+def _catalog_descendant_ids(category_id: str) -> List[str]:
+    cid = str(category_id or "").strip()
+    if not cid:
+        return []
+    nodes = _catalog_nodes()
+    children_by_parent: Dict[str, List[str]] = {}
+    for node in nodes:
+        nid = str((node or {}).get("id") or "").strip()
+        pid = str((node or {}).get("parent_id") or "").strip()
+        if not nid:
+            continue
+        children_by_parent.setdefault(pid, []).append(nid)
+    out: List[str] = []
+    stack = [cid]
+    seen: set[str] = set()
+    while stack:
+        cur = stack.pop()
+        if not cur or cur in seen:
+            continue
+        seen.add(cur)
+        out.append(cur)
+        stack.extend(children_by_parent.get(cur, []))
+    return out
+
+
+def _product_ids_for_category_scope(category_id: str, limit: int = 250) -> Tuple[List[Dict[str, Any]], set[str]]:
+    category_ids = set(_catalog_descendant_ids(category_id) or [str(category_id or "").strip()])
+    category_ids.discard("")
+    products = query_products_full(category_ids=sorted(category_ids)) if category_ids else []
+    items = [item for item in products if isinstance(item, dict)]
+    limited = items[: max(1, int(limit or 250))]
+    product_ids = {str(item.get("id") or "").strip() for item in limited if str(item.get("id") or "").strip()}
+    return limited, product_ids
+
+
+def _competitor_category_label(source_id: str, url: str) -> Tuple[str, str]:
+    parsed = urlparse(str(url or "").strip())
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if not path_parts:
+        return "Поиск по сайту", f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else url
+    if source_id == "store77":
+        if len(path_parts) == 1:
+            slug = path_parts[0].replace("_2", "").replace("-", " ")
+            return slug.strip().title() or "Раздел Store77", f"{parsed.scheme}://{parsed.netloc}/{path_parts[0]}/"
+        return " / ".join(path_parts[:-1]) or path_parts[0], f"{parsed.scheme}://{parsed.netloc}/{'/'.join(path_parts[:-1])}/"
+    if source_id == "restore":
+        # re-store product URLs can be deep. For category-level context we keep
+        # the stable path prefix and explicitly mark it as observed from products.
+        prefix_parts = path_parts[:-1] if len(path_parts) > 1 else path_parts
+        label = " / ".join(prefix_parts[-3:]) if prefix_parts else path_parts[0]
+        href = f"{parsed.scheme}://{parsed.netloc}/{'/'.join(prefix_parts)}/" if prefix_parts else f"{parsed.scheme}://{parsed.netloc}/"
+        return label or "Раздел re-store", href
+    return " / ".join(path_parts[:-1] or path_parts), f"{parsed.scheme}://{parsed.netloc}/{'/'.join(path_parts[:-1] or path_parts)}/"
+
+
+def _fallback_search_suggestion(source: Dict[str, Any], category_name: str) -> Dict[str, Any]:
+    source_id = str(source.get("id") or "").strip()
+    query = quote_plus(category_name or "")
+    if source_id == "restore":
+        url = f"https://re-store.ru/search/?q={query}" if query else "https://re-store.ru/search/"
+    elif source_id == "store77":
+        url = f"https://store77.net/search/?q={query}" if query else "https://store77.net/search/"
+    else:
+        url = str(source.get("base_url") or "")
+    return {
+        "id": f"{source_id}:search",
+        "type": "search",
+        "label": f"Поиск: {category_name or source.get('name') or source_id}",
+        "url": url,
+        "confidence": 0.25,
+        "products_count": 0,
+        "evidence": "fallback: в категории еще нет подтвержденных competitor links/candidates",
+    }
+
+
 def _templates_by_category() -> Dict[str, List[str]]:
     db = load_templates_db()
     templates = db.get("templates") or {}
@@ -1465,6 +1550,101 @@ def competitor_mapping_bootstrap() -> Dict[str, Any]:
 @router.get("/discovery/sources")
 def discovery_sources() -> Dict[str, Any]:
     return {"ok": True, "sources": [dict(item) for item in DISCOVERY_SOURCES]}
+
+
+@router.get("/discovery/categories/{category_id}")
+def discovery_category_context(category_id: str) -> Dict[str, Any]:
+    normalized_category_id = str(category_id or "").strip()
+    if not normalized_category_id:
+        raise HTTPException(status_code=400, detail="category_id is required")
+
+    node = _catalog_node_by_id(normalized_category_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="CATEGORY_NOT_FOUND")
+
+    products, product_ids = _product_ids_for_category_scope(normalized_category_id)
+    db = load_competitor_mapping_db()
+    discovery = _ensure_discovery_doc(db)
+    candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
+    links = discovery.get("links") if isinstance(discovery.get("links"), dict) else {}
+    category_name = str(node.get("name") or "").strip()
+
+    source_rows: List[Dict[str, Any]] = []
+    for source in DISCOVERY_SOURCES:
+        source_id = str(source.get("id") or "").strip()
+        source_candidates = [
+            dict(item)
+            for item in candidates.values()
+            if isinstance(item, dict)
+            and str(item.get("source_id") or "").strip() == source_id
+            and str(item.get("product_id") or "").strip() in product_ids
+        ]
+        source_links = [
+            dict(item)
+            for item in links.values()
+            if isinstance(item, dict)
+            and str(item.get("source_id") or "").strip() == source_id
+            and str(item.get("product_id") or "").strip() in product_ids
+        ]
+
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for item in [*source_candidates, *source_links]:
+            url = str(item.get("url") or "").strip()
+            if not url:
+                continue
+            label, category_url = _competitor_category_label(source_id, url)
+            key = f"{source_id}:{category_url}"
+            row = grouped.setdefault(
+                key,
+                {
+                    "id": key,
+                    "type": "observed",
+                    "label": label,
+                    "url": category_url,
+                    "confidence": 0.0,
+                    "products_count": 0,
+                    "evidence": "",
+                    "examples": [],
+                },
+            )
+            row["products_count"] = int(row.get("products_count") or 0) + 1
+            row["confidence"] = max(float(row.get("confidence") or 0.0), float(item.get("confidence_score") or 0.0))
+            title = str(item.get("title") or item.get("product_title") or "").strip()
+            if title and title not in row["examples"]:
+                row["examples"].append(title)
+            row["evidence"] = "observed: найдено по товарам этой ветки каталога"
+
+        suggestions = sorted(
+            grouped.values(),
+            key=lambda row: (-int(row.get("products_count") or 0), -float(row.get("confidence") or 0.0), str(row.get("label") or "")),
+        )[:5]
+        if not suggestions:
+            suggestions = [_fallback_search_suggestion(source, category_name)]
+
+        source_rows.append(
+            {
+                "id": source_id,
+                "name": source.get("name"),
+                "domain": source.get("domain"),
+                "status": source.get("status"),
+                "products_count": len(products),
+                "confirmed_count": len(source_links),
+                "candidates_count": len(source_candidates),
+                "needs_review_count": sum(1 for item in source_candidates if item.get("status") == "needs_review"),
+                "suggestions": suggestions,
+            }
+        )
+
+    return {
+        "ok": True,
+        "category": {
+            "id": normalized_category_id,
+            "name": category_name,
+            "products_count": len(products),
+            "scanned_product_ids": sorted(product_ids),
+        },
+        "sources": source_rows,
+    }
 
 
 @router.get("/discovery/candidates")

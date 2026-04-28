@@ -5858,3 +5858,53 @@ Verification:
 2. `PYTHONPATH=backend python3 -m unittest discover -s backend/tests -p 'test_*.py'` - 59 tests OK.
 3. `npm --prefix frontend run build` - OK after extracting connector readiness helpers.
 4. `npm --prefix frontend test` - 1 file / 4 tests OK for connector readiness helper.
+
+### 30. Sources Mapping: Competitor Category Context
+
+Problem found on `https://pim.id-smart.ru/sources-mapping?category=b6e03b97-a484-4f79-8d44-27e856fc2c41`:
+
+1. screen title says `Каналы и источники`, but category tab explains only marketplace category mapping;
+2. `re-store` and `store77` are hidden behind a separate competitors tab and are not visible in the category binding context;
+3. user cannot understand which competitor sections/searches feed enrichment for the selected PIM branch;
+4. current UI makes marketplace category binding, parameter mapping, value mapping, and competitor discovery feel like unrelated tools.
+
+Decision:
+
+1. keep `Категории и источники` as the category binding workspace;
+2. left side remains PIM category tree;
+3. center remains marketplace category binding for `Я.Маркет` and `Ozon`;
+4. right side must show competitor source context for the selected category:
+   - `re-store`;
+   - `store77`;
+   - products in selected category subtree;
+   - confirmed competitor links;
+   - candidates waiting for moderation;
+   - observed competitor section/search URL suggestions;
+5. no live external crawl on page open: category page must be fast and deterministic;
+6. live crawling stays in discovery runs; category context uses persisted candidates/links plus safe fallback search URLs.
+
+Implementation status:
+
+1. backend read endpoint added:
+   - `GET /api/competitor-mapping/discovery/categories/{category_id}`;
+   - returns selected category, SKU count, source summaries, observed suggestions, fallback search suggestions;
+2. frontend category mapping side panel added through existing `SourcesMarketplaceSection.renderCategoryDetailExtra`;
+3. no duplicate standalone local competitor UI introduced;
+4. frontend build verified;
+5. backend py-compile verified;
+6. targeted backend test added for category competitor source summary.
+
+Next page-pass requirements:
+
+1. browser-check full-width desktop layout for `/sources-mapping`;
+2. make page explicitly say:
+   - `Маркетплейсы` = куда выгружаем;
+   - `Конкуренты` = откуда берем enrichment evidence;
+3. move competitor discovery queue into its own operational tab, not into category binding center;
+4. ensure category context works for empty categories:
+   - shows `0 SKU`;
+   - shows fallback search;
+   - does not imply data has already been parsed;
+5. add run action scoped to selected category subtree:
+   - start discovery for products in this category;
+   - after run, update right-side context.

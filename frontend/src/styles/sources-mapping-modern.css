@@ -541,6 +541,135 @@
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
 }
 
+.sourcesCategoryCompetitors {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sourcesCategoryCompetitorsHead,
+.sourcesCategoryCompetitorCardHead,
+.sourcesCategoryCompetitorStats {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sourcesCategoryCompetitorsKicker {
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sourcesCategoryCompetitorsTitle {
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.sourcesCategoryCompetitorsText,
+.sourcesCategoryCompetitorsEmpty,
+.sourcesCategoryCompetitorsError {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.sourcesCategoryCompetitorsError {
+  color: #b42318;
+}
+
+.sourcesCategoryCompetitorsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sourcesCategoryCompetitorCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 90%, var(--surface));
+  padding: 12px;
+}
+
+.sourcesCategoryCompetitorCardHead strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.sourcesCategoryCompetitorCardHead span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.sourcesCategoryCompetitorStats {
+  justify-content: flex-start;
+}
+
+.sourcesCategoryCompetitorStats span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(var(--bg-rgb), 0.28);
+  color: var(--muted);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.sourcesCategoryCompetitorSuggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sourcesCategoryCompetitorSuggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(var(--card-rgb), 0.72);
+  color: var(--text);
+  padding: 9px 10px;
+  text-decoration: none;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.sourcesCategoryCompetitorSuggestion:hover {
+  border-color: color-mix(in srgb, var(--brand) 44%, var(--line));
+  transform: translateY(-1px);
+}
+
+.sourcesCategoryCompetitorSuggestion span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcesCategoryCompetitorSuggestion em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
 .sourcesMappingPage .mm-providerDetailHead,
 .sourcesMappingPage .mm-providerActionsBar,
 .sourcesMappingPage .mm-featureMappingHead,

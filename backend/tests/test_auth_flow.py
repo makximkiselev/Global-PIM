@@ -1908,6 +1908,77 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual({item["id"] for item in payload["items"]}, {"cand_restore", "cand_stale"})
         self.assertEqual(payload["confirmed_links"][0]["candidate_id"], "cand_restore")
 
+    def test_competitor_category_discovery_endpoint_summarizes_sources(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        store = {
+            "version": 2,
+            "categories": {},
+            "templates": {},
+            "discovery": {
+                "candidates": {
+                    "cand_restore": {
+                        "id": "cand_restore",
+                        "product_id": "product_1",
+                        "source_id": "restore",
+                        "url": "https://re-store.ru/catalog/apple/iphone/product-1/",
+                        "title": "iPhone competitor",
+                        "status": "needs_review",
+                        "confidence_score": 0.91,
+                    },
+                    "cand_other_category": {
+                        "id": "cand_other_category",
+                        "product_id": "product_2",
+                        "source_id": "restore",
+                        "url": "https://re-store.ru/catalog/other/product-2/",
+                        "status": "needs_review",
+                        "confidence_score": 0.51,
+                    },
+                },
+                "links": {
+                    "product_1:store77": {
+                        "id": "product_1:store77",
+                        "product_id": "product_1",
+                        "source_id": "store77",
+                        "url": "https://store77.net/apple-iphone-16-pro/",
+                        "status": "confirmed",
+                    }
+                },
+                "runs": {},
+            },
+        }
+
+        with (
+            patch.object(
+                competitor_mapping_routes,
+                "_catalog_nodes",
+                return_value=[
+                    {"id": "phones", "parent_id": None, "name": "Смартфоны"},
+                    {"id": "iphone", "parent_id": "phones", "name": "iPhone"},
+                ],
+            ),
+            patch.object(
+                competitor_mapping_routes,
+                "query_products_full",
+                return_value=[{"id": "product_1", "title": "iPhone 16 Pro", "category_id": "iphone"}],
+            ),
+            patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
+        ):
+            response = self.client.get("/api/competitor-mapping/discovery/categories/phones")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["category"]["id"], "phones")
+        self.assertEqual(payload["category"]["products_count"], 1)
+        by_source = {item["id"]: item for item in payload["sources"]}
+        self.assertEqual(by_source["restore"]["candidates_count"], 1)
+        self.assertEqual(by_source["restore"]["needs_review_count"], 1)
+        self.assertIn("catalog / apple / iphone", by_source["restore"]["suggestions"][0]["label"])
+        self.assertEqual(by_source["store77"]["confirmed_count"], 1)
+        self.assertEqual(by_source["store77"]["suggestions"][0]["type"], "observed")
+
     def test_restore_search_html_candidates_extract_product_links(self) -> None:
         html = r'''
           <script>
