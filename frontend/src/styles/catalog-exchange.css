@@ -755,7 +755,7 @@
 }
 
 .cx-pageModern .cx-workspaceFrame.workspaceFrameThree{
-  grid-template-columns:300px minmax(560px,1fr) 288px;
+  grid-template-columns:minmax(340px,430px) minmax(680px,1fr) 288px;
   gap:12px;
   margin-top:0;
   align-items:start;
@@ -790,6 +790,149 @@
 .cx-pageModern .cx-workspaceToolbar{
   padding:14px;
   border-radius:18px;
+}
+
+.cx-pageModern .cx-importCategoryPanel.csb-shell{
+  height:calc(100vh - 32px);
+  padding:12px;
+  border-radius:18px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  background:linear-gradient(180deg, rgba(var(--card-rgb),.98), rgba(var(--card-rgb),.92));
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-head{
+  margin-bottom:10px;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-title{
+  font-size:18px;
+  line-height:1;
+  letter-spacing:-.025em;
+  font-weight:950;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-hint{
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:800;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-toolbar{
+  gap:8px;
+  margin-bottom:10px;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-controls{
+  gap:6px;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-controls .btn{
+  min-height:30px;
+  padding:0 9px;
+  border-radius:10px;
+  font-size:12px;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-search{
+  min-height:38px;
+  padding:0 11px;
+  border-radius:12px;
+  background:rgba(var(--surface-rgb),.42);
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-search input{
+  font-size:13px;
+  font-weight:750;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-tree{
+  min-height:0;
+  height:100%;
+  overflow:auto;
+  padding:4px 3px 6px 0;
+  gap:2px;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeRow{
+  padding-left:calc(var(--depth) * 12px);
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeNode{
+  min-height:42px;
+  padding:7px 8px;
+  border:1px solid transparent;
+  border-left:1px solid transparent;
+  border-radius:12px;
+  grid-template-columns:18px 16px minmax(0,1fr) auto;
+  gap:7px;
+  background:transparent;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeNode:hover{
+  transform:none;
+  background:rgba(var(--surface-rgb),.46);
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeNode.is-active{
+  border-color:rgba(var(--brand-rgb),.30);
+  border-left-color:rgba(var(--brand-rgb),.30);
+  background:linear-gradient(90deg, rgba(var(--brand-rgb),.14), rgba(var(--brand-rgb),.045));
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeNode input{
+  margin:2px 0 0;
+  accent-color:var(--brand);
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-caretBtn,
+.cx-pageModern .cx-importCategoryPanel .csb-caretSpacer{
+  width:16px;
+  min-width:16px;
+  height:18px;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeName{
+  font-size:12.5px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.cx-pageModern .cx-importCategoryPanel .csb-treeCount{
+  min-width:24px;
+  justify-content:flex-end;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.cx-pageModern .cx-scopeChip{
+  min-height:28px;
+  padding:0 9px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(var(--card-rgb),.52);
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:850;
+}
+
+.cx-pageModern .cx-scopeChip input{
+  width:12px;
+  height:12px;
+  accent-color:var(--brand);
+}
+
+.cx-pageModern .cx-scopeChip.isActive{
+  color:rgba(var(--brand-rgb),.98);
+  border-color:rgba(var(--brand-rgb),.26);
+  background:rgba(var(--brand-rgb),.10);
 }
 
 .cx-pageModern .cx-sourceBoard{

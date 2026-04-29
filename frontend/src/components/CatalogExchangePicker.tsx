@@ -292,15 +292,15 @@ export default function CatalogExchangePicker(props: Props) {
   return (
     <div className={`cx-pickerGrid${embedded ? " isEmbedded" : ""}`}>
       <CategorySidebar
-        className="cx-pane cx-paneSidebar"
-        title="Каталог"
-        hint="Выбор веток и разделов каталога"
+        className="cx-pane cx-paneSidebar cx-importCategoryPanel"
+        title="Категории"
+        hint={`${nodes.length} узлов в каталоге`}
         searchValue={nodeQuery}
         onSearchChange={setNodeQuery}
-        searchPlaceholder="Поиск по дереву..."
+        searchPlaceholder="Поиск категории"
         controls={
           <>
-            <label className="cx-inlineCheck">
+            <label className={`cx-inlineCheck cx-scopeChip ${selectedNodeIds.length === 0 && selectedProductIds.length === 0 ? "isActive" : ""}`}>
               <input
                 type="checkbox"
                 checked={selectedNodeIds.length === 0 && selectedProductIds.length === 0}
@@ -313,12 +313,15 @@ export default function CatalogExchangePicker(props: Props) {
               />
               <span>Весь каталог</span>
             </label>
-            <label className="cx-inlineCheck cx-inlineCheckMuted">
+            <label className={`cx-inlineCheck cx-scopeChip ${includeDescendants ? "isActive" : ""}`}>
               <input type="checkbox" checked={includeDescendants} onChange={(e) => onIncludeDescendantsChange(e.target.checked)} />
-              <span>С дочерними</span>
+              <span>С подкатегориями</span>
             </label>
-            <button className="btn sm" type="button" onClick={hasExpandedNodes ? collapseAll : expandAll}>
-              {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+            <button className="btn sm" type="button" onClick={expandAll}>
+              Развернуть
+            </button>
+            <button className="btn sm" type="button" onClick={collapseAll} disabled={!hasExpandedNodes}>
+              Свернуть
             </button>
           </>
         }

@@ -253,23 +253,27 @@ Pages that must be edited and visually aligned:
    - product list in selected category;
    - product movement between categories;
    - no mapping/import/enrichment dashboards inside the main catalog screen;
-2. `/templates`
+2. `/catalog/import`
+   - category tree must use the same density, search wording, expand/collapse behavior, active state, and counters as `/catalog`;
+   - import-only controls are allowed, but they must be visually expressed as workspace filters, not a different catalog implementation;
+   - exact SKU selection can exist as a secondary import tool, but must not replace or visually redefine the catalog tree;
+3. `/templates`
    - same category-tree density, search, expansion behavior, and selected-state logic as catalog;
    - only info-model state and actions;
-3. `/templates/:categoryId`
+4. `/templates/:categoryId`
    - model assembly and proposal review for one category;
    - no duplicated category context or summary blocks;
-4. `/sources?tab=sources&category=:id`
+5. `/sources?tab=sources&category=:id`
    - category-to-marketplace binding;
    - same tree component behavior as catalog/templates;
    - no top `Сводка` dashboard above the work area;
-5. `/sources?tab=params&category=:id`
+6. `/sources?tab=params&category=:id`
    - parameter mapping for selected category;
    - category switch must not take over the whole page;
-6. `/sources?tab=values&category=:id`
+7. `/sources?tab=values&category=:id`
    - value mapping for selected category;
    - sticky headers and horizontal scroll for long tables;
-7. `/sources?tab=competitors&category=:id`
+8. `/sources?tab=competitors&category=:id`
    - competitor category/product evidence for enrichment;
    - must not mix category binding, product matching, and parameter mapping in one visual pile.
 
