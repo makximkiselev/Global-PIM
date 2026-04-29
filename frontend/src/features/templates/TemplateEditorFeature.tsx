@@ -971,20 +971,8 @@ export default function TemplateEditor() {
       {toast ? <div className="tpl-toast">{toast}</div> : null}
 
       <PageHeader
-        title={title}
-        subtitle="Настройка полей товара: обязательность, типы данных, порядок и связь с категорией."
-        actions={
-          <>
-            {!ownerTpl?.id ? (
-              <Button onClick={createTemplateIfMissing} disabled={!categoryId || saving} title="Создать модель для этой категории">
-                Создать модель
-              </Button>
-            ) : null}
-            <Button variant="primary" onClick={saveAll} disabled={!ownerTpl?.id || saving}>
-              {saving ? "Сохраняю…" : "Сохранить"}
-            </Button>
-          </>
-        }
+        title="Инфо-модель"
+        subtitle={category?.name ? `${category.name}: поля, источники и подготовка к маппингу.` : "Поля, источники и подготовка к маппингу."}
       />
 
       {hasAnyTpl && inheritedFrom && !ownerTpl?.id ? (
@@ -1040,6 +1028,9 @@ export default function TemplateEditor() {
                       <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : "neutral"}>
                         {modelStatusLabel(infoModel.status)}
                       </Badge>
+                      <Button onClick={saveAll} disabled={!ownerTpl?.id || saving}>
+                        {saving ? "Сохраняю…" : "Сохранить"}
+                      </Button>
                       <Button onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
                         {draftBusy ? "Собираю…" : "Собрать из источников"}
                       </Button>
@@ -1079,7 +1070,7 @@ export default function TemplateEditor() {
                   </div>
 
                   <details className="tplModelMore">
-                    <summary>Настройки и переходы</summary>
+                    <summary>Дополнительные действия</summary>
                     <div className="tplModelMorePanel">
                       <Field label="Название модели" className="templateEditorField tplEditorNameField">
                         <TextInput
@@ -1129,7 +1120,7 @@ export default function TemplateEditor() {
                         </div>
                       </div>
                       <details className="tplDraftHelp">
-                        <summary>Что значит совпадение?</summary>
+                        <summary>Как читать предложения</summary>
                         <p>
                           Совпадение показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
                         </p>
@@ -1194,7 +1185,7 @@ export default function TemplateEditor() {
 
                 <Card className="tplCanvasCard tplEditorMainCard">
                   <DataToolbar
-                    title="Поля карточки товара"
+                    title="Поля модели"
                     subtitle={`${REQUIRED_HELP_TEXT}${!canEdit ? " Сейчас открыт наследуемый контур — редактирование отключено." : ""}`}
                     actions={
                       <>

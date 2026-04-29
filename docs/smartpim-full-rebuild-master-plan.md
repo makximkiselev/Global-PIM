@@ -759,7 +759,7 @@ Work in this order and do not jump to the next page until the current route pass
 1. `/catalog/import`: replace technical category scope controls, reduce summary clutter, align tree with `/catalog`. First pass done: shared `CategoryScopeSelector` is used by import/export picker.
 2. `/catalog/export`: apply the same category scope and table/action patterns as import. First pass done: same shared scope selector and Russian inspector labels.
 3. `/templates`: replace local model tree with shared category tree shell; remove duplicate summary actions. First pass in progress: tree sidebar now uses shared `CategorySidebar`; remaining work is summary/action dedupe.
-4. `/templates/:categoryId`: keep the improved builder flow, remove duplicated titles/buttons/summaries.
+4. `/templates/:categoryId`: keep the improved builder flow, remove duplicated titles/buttons/summaries. First pass in progress: page header is now context-only, save/build/approve actions live in the model command card, technical summaries were renamed.
 5. `/sources?tab=sources`: make category mapping a focused page with category context and marketplace/competitor category links.
 6. `/sources?tab=params`: one focused parameter mapping workspace with AI action visible and competitor evidence included.
 7. `/sources?tab=values`: one focused value-normalization workspace with marketplace output previews.
