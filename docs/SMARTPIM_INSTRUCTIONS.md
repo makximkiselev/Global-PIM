@@ -268,7 +268,7 @@ Do not revert user changes unless the user explicitly asks.
 
 Active routes are in `frontend/src/app/App.tsx`.
 
-Route targets currently use `frontend/src/features/*`. Old `frontend/src/pages/*` implementations may still exist in code history or future cleanup, but new work must not copy from inactive page implementations.
+Protected route targets use `frontend/src/routes/*` wrappers and `frontend/src/features/*` implementations. `frontend/src/pages/*` is kept only for active standalone/auth pages that are still imported by `App.tsx`.
 
 Universal UI blocks must be shared or follow one shared contract:
 

@@ -1,3 +1,0 @@
-# Project-scoped Codex config.
-# Kept intentionally minimal for now: valid TOML, no invented keys.
-# Add project-specific overrides here only after confirming supported schema.

@@ -33,10 +33,16 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
    - `APP_SERVER_PASSWORD` is no longer interpolated into `expect` command strings;
    - added `scripts/server_ops.sh` for health/status/logs/restart;
    - deploy now retries backend/public health and skips `pip install` when requirements did not change.
+5. Repository structure cleanup
+   - removed obsolete root npm contour (`package.json`, `package-lock.json`, root `node_modules`);
+   - removed tracked placeholder `.codex/config.toml`;
+   - removed inactive legacy `frontend/src/pages/*` route implementations;
+   - cleaned ignored local artifacts: `.playwright-cli`, `.DS_Store`, pycache, generated `frontend/dist`;
+   - kept `deploy/` until DB/schema audit is complete.
 
 ## P0 - Documentation And Work Hygiene
 
-Status: active.
+Status: complete for current phase.
 
 Tasks:
 
@@ -53,6 +59,10 @@ Done when:
 1. `git ls-files '*.md'` shows only the two active docs, excluding ignored dependency files;
 2. build/test commands still work;
 3. changes are committed and pushed.
+
+Current note:
+
+1. this phase is done; keep the section as a standing rule.
 
 ## P0 - Category Workspace Unification
 
