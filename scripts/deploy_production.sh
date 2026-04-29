@@ -2,6 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_ENV_FILE="${APP_ENV_FILE:-$HOME/.config/global-pim/production.env}"
+if [[ -f "${APP_ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${APP_ENV_FILE}"
+  set +a
+fi
+
 APP_SERVER_HOST="${APP_SERVER_HOST:-5.129.199.228}"
 APP_SERVER_USER="${APP_SERVER_USER:-root}"
 APP_SERVER_PATH="${APP_SERVER_PATH:-/opt/projects/global-pim}"
@@ -19,6 +27,32 @@ LOCAL_ARCHIVE="/tmp/global-pim-${RELEASE_ID}.tgz"
 REMOTE_SCRIPT_LOCAL="/tmp/global-pim-${RELEASE_ID}.remote.sh"
 APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
 APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
+SKIP_BUILD=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-build)
+      SKIP_BUILD=1
+      shift
+      ;;
+    --help|-h)
+      cat <<USAGE
+Usage: scripts/deploy_production.sh [--skip-build]
+
+Environment is loaded automatically from:
+  ${APP_ENV_FILE}
+
+Options:
+  --skip-build  deploy existing frontend/dist without running npm build
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
 cleanup() {
   rm -rf "${LOCAL_TMP_DIR}" "${LOCAL_ARCHIVE}" "${REMOTE_SCRIPT_LOCAL}"
@@ -41,6 +75,12 @@ require_cmd() {
   }
 }
 
+shell_quote() {
+  printf "'"
+  printf "%s" "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
+}
+
 require_cmd npm
 require_cmd tar
 require_cmd scp
@@ -58,20 +98,35 @@ require_file "${ROOT_DIR}/frontend/package.json"
 require_file "${ROOT_DIR}/frontend/index.html"
 require_file "${DB_CA_CERT_PATH}"
 
-echo "==> Building frontend"
-( cd "${ROOT_DIR}/frontend" && npm run build )
+if [[ "${SKIP_BUILD}" == "1" ]]; then
+  require_file "${ROOT_DIR}/frontend/dist/index.html"
+  echo "==> Skipping frontend build; using existing frontend/dist"
+else
+  echo "==> Building frontend"
+  ( cd "${ROOT_DIR}/frontend" && npm run build )
+fi
 
 ssh_run() {
   local remote_cmd="$1"
+  local remote_shell_cmd
+  remote_shell_cmd="bash -lc $(shell_quote "${remote_cmd}")"
   if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
-    expect -c "
+    APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD}" \
+    APP_SERVER_PORT="${APP_SERVER_PORT}" \
+    SSH_TARGET="${SSH_TARGET}" \
+    REMOTE_CMD="${remote_shell_cmd}" \
+    expect <<'EXPECT'
       set timeout -1
-      spawn ssh -p ${APP_SERVER_PORT} -o StrictHostKeyChecking=no ${SSH_TARGET} $remote_cmd
-      expect \"password:\" { send \"${APP_SERVER_PASSWORD}\r\" }
-      expect eof
-    "
+      spawn {*}[list ssh -p $env(APP_SERVER_PORT) -o StrictHostKeyChecking=no $env(SSH_TARGET) $env(REMOTE_CMD)]
+      expect {
+        -re "(?i)password:" { send -- "$env(APP_SERVER_PASSWORD)\r"; exp_continue }
+        eof
+      }
+      catch wait result
+      exit [lindex $result 3]
+EXPECT
   else
-    ssh -p "${APP_SERVER_PORT}" "${SSH_TARGET}" "${remote_cmd}"
+    ssh -p "${APP_SERVER_PORT}" "${SSH_TARGET}" "${remote_shell_cmd}"
   fi
 }
 
@@ -79,15 +134,39 @@ scp_run() {
   local source_path="$1"
   local target_path="$2"
   if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
-    expect -c "
+    APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD}" \
+    APP_SERVER_PORT="${APP_SERVER_PORT}" \
+    SSH_TARGET="${SSH_TARGET}" \
+    SOURCE_PATH="${source_path}" \
+    TARGET_PATH="${target_path}" \
+    expect <<'EXPECT'
       set timeout -1
-      spawn scp -P ${APP_SERVER_PORT} ${source_path} ${SSH_TARGET}:${target_path}
-      expect \"password:\" { send \"${APP_SERVER_PASSWORD}\r\" }
-      expect eof
-    "
+      spawn {*}[list scp -P $env(APP_SERVER_PORT) $env(SOURCE_PATH) "$env(SSH_TARGET):$env(TARGET_PATH)"]
+      expect {
+        -re "(?i)password:" { send -- "$env(APP_SERVER_PASSWORD)\r"; exp_continue }
+        eof
+      }
+      catch wait result
+      exit [lindex $result 3]
+EXPECT
   else
     scp -P "${APP_SERVER_PORT}" "${source_path}" "${SSH_TARGET}:${target_path}"
   fi
+}
+
+curl_retry() {
+  local url="$1"
+  local attempts="${2:-30}"
+  local delay="${3:-1}"
+
+  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+    if curl -fsS "${url}" >/dev/null; then
+      return 0
+    fi
+    sleep "${delay}"
+  done
+
+  curl -fsS "${url}" >/dev/null
 }
 
 echo "==> Preparing release bundle"
@@ -144,10 +223,23 @@ cp "\${REMOTE_TMP_EXTRACT}/certs/ca.crt" "\${APP_SERVER_PATH}/certs/ca.crt"
 if [[ ! -d "\${APP_SERVER_PATH}/.venv" ]]; then
   python3 -m venv "\${APP_SERVER_PATH}/.venv"
 fi
-"\${APP_SERVER_PATH}/.venv/bin/pip" install -r "\${APP_SERVER_PATH}/backend/app/requirements.txt"
+
+REQ_HASH="\$(sha256sum "\${APP_SERVER_PATH}/backend/app/requirements.txt" | awk '{print \$1}')"
+REQ_HASH_FILE="\${APP_SERVER_PATH}/.requirements.sha256"
+if [[ ! -f "\${REQ_HASH_FILE}" || "\$(cat "\${REQ_HASH_FILE}")" != "\${REQ_HASH}" ]]; then
+  "\${APP_SERVER_PATH}/.venv/bin/pip" install -r "\${APP_SERVER_PATH}/backend/app/requirements.txt"
+  printf "%s\n" "\${REQ_HASH}" > "\${REQ_HASH_FILE}"
+else
+  echo "Requirements unchanged; skipping pip install"
+fi
 
 systemctl restart "\${APP_SERVICE_NAME}"
-sleep 2
+for attempt in {1..30}; do
+  if curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null; then
+    break
+  fi
+  sleep 1
+done
 curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null
 
 rm -rf "\${REMOTE_TMP_EXTRACT}" "\${REMOTE_TMP_ARCHIVE}" "/tmp/global-pim-\${RELEASE_ID}.remote.sh"
@@ -162,7 +254,7 @@ ssh_run "bash /tmp/global-pim-${RELEASE_ID}.remote.sh"
 
 echo "==> Post-deploy smoke"
 ssh_run "systemctl is-active ${APP_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL}"
-curl -fsS "${APP_PUBLIC_HEALTH_URL}" >/dev/null
+curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
 curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
 
 echo "==> Deploy complete"

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+APP_ENV_FILE="${APP_ENV_FILE:-$HOME/.config/global-pim/production.env}"
+if [[ -f "${APP_ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${APP_ENV_FILE}"
+  set +a
+fi
+
 APP_SERVER_HOST="${APP_SERVER_HOST:-5.129.199.228}"
 APP_SERVER_USER="${APP_SERVER_USER:-root}"
 APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
@@ -42,18 +50,35 @@ if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
     echo "Missing required command: expect" >&2
     exit 1
   }
-  expect -c "
+  APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD}" \
+  APP_SERVER_PORT="${APP_SERVER_PORT}" \
+  SSH_TARGET="${SSH_TARGET}" \
+  REMOTE_SCRIPT_LOCAL="${REMOTE_SCRIPT_LOCAL}" \
+  REMOTE_SCRIPT_PATH="/tmp/global-pim-config-backup-${STAMP}.sh" \
+  expect <<'EXPECT'
     set timeout -1
-    spawn scp -P ${APP_SERVER_PORT} ${REMOTE_SCRIPT_LOCAL} ${SSH_TARGET}:/tmp/global-pim-config-backup-${STAMP}.sh
-    expect \"password:\" { send \"${APP_SERVER_PASSWORD}\r\" }
-    expect eof
-  "
-  expect -c "
+    spawn {*}[list scp -P $env(APP_SERVER_PORT) $env(REMOTE_SCRIPT_LOCAL) "$env(SSH_TARGET):$env(REMOTE_SCRIPT_PATH)"]
+    expect {
+      -re "(?i)password:" { send -- "$env(APP_SERVER_PASSWORD)\r"; exp_continue }
+      eof
+    }
+    catch wait result
+    exit [lindex $result 3]
+EXPECT
+  APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD}" \
+  APP_SERVER_PORT="${APP_SERVER_PORT}" \
+  SSH_TARGET="${SSH_TARGET}" \
+  REMOTE_SCRIPT_PATH="/tmp/global-pim-config-backup-${STAMP}.sh" \
+  expect <<'EXPECT'
     set timeout -1
-    spawn ssh -p ${APP_SERVER_PORT} -o StrictHostKeyChecking=no ${SSH_TARGET} bash /tmp/global-pim-config-backup-${STAMP}.sh
-    expect \"password:\" { send \"${APP_SERVER_PASSWORD}\r\" }
-    expect eof
-  "
+    spawn {*}[list ssh -p $env(APP_SERVER_PORT) -o StrictHostKeyChecking=no $env(SSH_TARGET) bash $env(REMOTE_SCRIPT_PATH)]
+    expect {
+      -re "(?i)password:" { send -- "$env(APP_SERVER_PASSWORD)\r"; exp_continue }
+      eof
+    }
+    catch wait result
+    exit [lindex $result 3]
+EXPECT
 else
   scp -P "${APP_SERVER_PORT}" "${REMOTE_SCRIPT_LOCAL}" "${SSH_TARGET}:/tmp/global-pim-config-backup-${STAMP}.sh"
   ssh -p "${APP_SERVER_PORT}" "${SSH_TARGET}" "bash /tmp/global-pim-config-backup-${STAMP}.sh"

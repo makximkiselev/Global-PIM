@@ -28,6 +28,11 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
    - `/templates/:categoryId` header is context-only;
    - save/build/approve actions live in the model command card;
    - technical summaries were renamed.
+4. Production scripts cleanup
+   - deploy/backup scripts now load production env automatically;
+   - `APP_SERVER_PASSWORD` is no longer interpolated into `expect` command strings;
+   - added `scripts/server_ops.sh` for health/status/logs/restart;
+   - deploy now retries backend/public health and skips `pip install` when requirements did not change.
 
 ## P0 - Documentation And Work Hygiene
 
@@ -325,10 +330,10 @@ Status: needed.
 
 Tasks:
 
-1. improve `deploy_production.sh` health wait because backend may need 15-20 seconds after restart;
-2. add smoke coverage for catalog/templates/sources critical read endpoints;
-3. consider frontend route smoke once Browser Use is stable;
-4. consider code splitting to reduce Vite large chunk warning.
+1. add smoke coverage for catalog/templates/sources critical read endpoints;
+2. consider frontend route smoke once Browser Use is stable;
+3. consider code splitting to reduce Vite large chunk warning;
+4. later consider SSH key auth to remove password-based deploy entirely.
 
 ## Definition Of Done For Current Phase
 

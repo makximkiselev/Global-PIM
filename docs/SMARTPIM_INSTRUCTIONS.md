@@ -177,13 +177,18 @@ Current expected baseline:
 Deploy current backend app and frontend dist:
 
 ```bash
-set -a
-source /Users/maksimkiselev/.config/global-pim/production.env
-set +a
 CI=1 ./scripts/deploy_production.sh
 ```
 
-If the deploy script reports a transient local health failure right after restart, wait 20 seconds and verify manually. The service can take roughly 15-20 seconds to finish startup after restart.
+The deploy script loads `/Users/maksimkiselev/.config/global-pim/production.env` automatically. Use `APP_ENV_FILE=/path/to/file` only if another env file is required.
+
+Fast deploy when `frontend/dist` is already built and only backend/scripts need to be shipped:
+
+```bash
+CI=1 ./scripts/deploy_production.sh --skip-build
+```
+
+The deploy script waits for backend health after restart. If it still reports a transient local health failure, wait 20 seconds and verify manually. The service can take roughly 15-20 seconds to finish startup after restart.
 
 Manual post-deploy checks:
 
@@ -192,23 +197,23 @@ curl -sS https://pim.id-smart.ru/api/health
 curl -sS https://pim.id-smart.ru/ | grep -o 'assets/index-[^" ]*' | head -2
 ```
 
-Server status:
+Server operations use the same local env file automatically:
 
 ```bash
-set -a
-source /Users/maksimkiselev/.config/global-pim/production.env
-set +a
-expect -c 'set timeout 60; spawn ssh -o StrictHostKeyChecking=no root@5.129.199.228 "systemctl status global-pim --no-pager"; expect "password:" {send "$env(APP_SERVER_PASSWORD)\r"}; expect eof'
+scripts/server_ops.sh health
+scripts/server_ops.sh public-health
+scripts/server_ops.sh status
+scripts/server_ops.sh logs
+scripts/server_ops.sh restart
 ```
 
-Server logs:
+Server config backup:
 
 ```bash
-set -a
-source /Users/maksimkiselev/.config/global-pim/production.env
-set +a
-expect -c 'set timeout 60; spawn ssh -o StrictHostKeyChecking=no root@5.129.199.228 "journalctl -u global-pim -n 200 --no-pager"; expect "password:" {send "$env(APP_SERVER_PASSWORD)\r"}; expect eof'
+scripts/backup_server_config.sh
 ```
+
+Production deploy/backup scripts must not interpolate `APP_SERVER_PASSWORD` into command strings. Pass it through environment variables into `expect` and use `send -- "$env(APP_SERVER_PASSWORD)\r"`.
 
 ## Browser QA
 
