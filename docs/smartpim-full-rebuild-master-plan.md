@@ -756,9 +756,9 @@ Create or refactor toward these shared units:
 
 Work in this order and do not jump to the next page until the current route passes browser QA:
 
-1. `/catalog/import`: replace technical category scope controls, reduce summary clutter, align tree with `/catalog`.
-2. `/catalog/export`: apply the same category scope and table/action patterns as import.
-3. `/templates`: replace local model tree with shared category tree shell; remove duplicate summary actions.
+1. `/catalog/import`: replace technical category scope controls, reduce summary clutter, align tree with `/catalog`. First pass done: shared `CategoryScopeSelector` is used by import/export picker.
+2. `/catalog/export`: apply the same category scope and table/action patterns as import. First pass done: same shared scope selector and Russian inspector labels.
+3. `/templates`: replace local model tree with shared category tree shell; remove duplicate summary actions. First pass in progress: tree sidebar now uses shared `CategorySidebar`; remaining work is summary/action dedupe.
 4. `/templates/:categoryId`: keep the improved builder flow, remove duplicated titles/buttons/summaries.
 5. `/sources?tab=sources`: make category mapping a focused page with category context and marketplace/competitor category links.
 6. `/sources?tab=params`: one focused parameter mapping workspace with AI action visible and competitor evidence included.

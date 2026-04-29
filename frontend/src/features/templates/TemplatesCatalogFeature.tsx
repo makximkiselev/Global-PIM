@@ -8,6 +8,7 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
+import CategorySidebar from "../../components/CategorySidebar";
 import DataToolbar from "../../components/data/DataToolbar";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 
@@ -502,29 +503,27 @@ export default function TemplatesCatalogFeature() {
       <WorkspaceFrame
         className="templatesCatalogFrame"
         sidebar={
-          <Card className="tplSidebarCard">
-            <DataToolbar
-              title="Дерево моделей"
-              subtitle={`${nodes.length} категорий в модельном контуре`}
-              actions={
+          <CategorySidebar
+            className="tplSidebarCard tplCategorySidebar"
+            title="Категории"
+            hint={`${nodes.length} категорий в модельном контуре`}
+            searchValue={treeQuery}
+            onSearchChange={setTreeQuery}
+            searchPlaceholder="Поиск категории или модели"
+            controls={
+              <>
                 <div className="tplTreeTools">
                   <Button onClick={expandAll}>Развернуть</Button>
                   <Button onClick={collapseAll}>Свернуть</Button>
                 </div>
-              }
-            />
-            <div className="tplSidebarSearch">
-              <input
-                value={treeQuery}
-                onChange={(event) => setTreeQuery(event.target.value)}
-                placeholder="Поиск категории или модели"
-              />
-            </div>
-            <div className="tplSidebarLegend">
-              <span><span className="tplLegendDot is-own" />Своя модель</span>
-              <span><span className="tplLegendDot is-inherited" />Наследование</span>
-              <span><span className="tplLegendDot" />Пусто</span>
-            </div>
+                <div className="tplSidebarLegend">
+                  <span><span className="tplLegendDot is-own" />Своя модель</span>
+                  <span><span className="tplLegendDot is-inherited" />Наследование</span>
+                  <span><span className="tplLegendDot" />Пусто</span>
+                </div>
+              </>
+            }
+          >
             <div className="tplTreePanel" ref={treeRef}>
               {loading ? (
                 <div className="muted">Загружаю дерево моделей…</div>
@@ -534,7 +533,7 @@ export default function TemplatesCatalogFeature() {
                 roots.map((root) => <TreeNode key={root.id} node={root} depth={0} />)
               )}
             </div>
-          </Card>
+          </CategorySidebar>
         }
         main={
           <div className="tplCanvasStack">
