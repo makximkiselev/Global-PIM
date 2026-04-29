@@ -2557,7 +2557,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
           {importTab === "categories" ? (
             <div className="card mm-card">
-              <div className="mm-summaryCard">
+              {!embedded ? <div className="mm-summaryCard">
                 <div className="mm-summaryHead">
                   <div className="mm-summaryTitleBlock">
                     <div className="mm-title">Сводка</div>
@@ -2589,7 +2589,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     </div>
                   ))}
                 </div>
-              </div>
+              </div> : null}
 
               <div className="mm-workbenchBlock">
               <div className="mm-head mm-headWorkspace">

@@ -238,6 +238,72 @@ Open tasks:
 3. add real counters later from backend when queues/errors are ready;
 4. keep this shell as the only global navigation source.
 
+### 6.2.1 Category Workspace Unification
+
+Status: active / mandatory.
+
+Problem:
+
+Pages that work with the same category tree were built independently and now look and behave differently. This is not acceptable for the PIM workflow.
+
+Pages that must be edited and visually aligned:
+
+1. `/catalog`
+   - final category structure;
+   - product list in selected category;
+   - product movement between categories;
+   - no mapping/import/enrichment dashboards inside the main catalog screen;
+2. `/templates`
+   - same category-tree density, search, expansion behavior, and selected-state logic as catalog;
+   - only info-model state and actions;
+3. `/templates/:categoryId`
+   - model assembly and proposal review for one category;
+   - no duplicated category context or summary blocks;
+4. `/sources?tab=sources&category=:id`
+   - category-to-marketplace binding;
+   - same tree component behavior as catalog/templates;
+   - no top `Сводка` dashboard above the work area;
+5. `/sources?tab=params&category=:id`
+   - parameter mapping for selected category;
+   - category switch must not take over the whole page;
+6. `/sources?tab=values&category=:id`
+   - value mapping for selected category;
+   - sticky headers and horizontal scroll for long tables;
+7. `/sources?tab=competitors&category=:id`
+   - competitor category/product evidence for enrichment;
+   - must not mix category binding, product matching, and parameter mapping in one visual pile.
+
+Universal category workspace rules:
+
+1. category tree has one shared visual language:
+   - same card shape;
+   - same search;
+   - same active state;
+   - same counters/badges density;
+   - same expand/collapse behavior;
+2. `Свернуть` collapses the tree to the selected category parent chain, not to a random saved state;
+3. `Развернуть` expands all visible branches;
+4. search temporarily expands matching branches but does not destroy manual expansion state;
+5. heavy summaries and KPI dashboards are removed from category work screens unless they directly support the current action;
+6. if a page needs metrics, they live inline near the selected object, not as a dashboard above the work area;
+7. terminology must be the same everywhere:
+   - `Категории`;
+   - `Товары`;
+   - `Инфо-модель`;
+   - `Поля`;
+   - `Значения`;
+   - `Каналы`;
+   - `Конкуренты`;
+8. no page should introduce its own local category tree style unless it becomes the new shared component.
+
+Execution order:
+
+1. fix `/templates` collapse behavior;
+2. remove `/sources?tab=sources` top summary and align page header with `/templates`;
+3. align `/catalog` tree header, search, buttons and selected state with `/templates`;
+4. extract shared category tree/workspace component if the third page still duplicates logic;
+5. verify all listed pages in in-app browser.
+
 ### 6.3 Catalog
 
 Status: reopened / not final.

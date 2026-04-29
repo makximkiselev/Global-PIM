@@ -507,11 +507,6 @@ export default function CatalogFeature() {
     model: !!selectedTemplateOwner,
     channels: selectedChannelsCount > 0,
   };
-  const hasExpandedNodes = useMemo(
-    () =>
-      nodes.some((node) => !!expanded[node.id] && (childrenMap.get(node.id) || []).length > 0),
-    [nodes, expanded, childrenMap],
-  );
   const templateCategoryIds = useMemo(
     () =>
       new Set(
@@ -657,7 +652,15 @@ export default function CatalogFeature() {
     setExpanded(next);
   };
 
-  const collapseAll = () => setExpanded({});
+  const collapseAll = () => {
+    const next: Record<string, boolean> = {};
+    let current = selectedId ? nodesById.get(selectedId) : null;
+    while (current?.parent_id) {
+      next[current.parent_id] = true;
+      current = nodesById.get(current.parent_id) || null;
+    }
+    setExpanded(next);
+  };
 
   const openCreateRoot = () => {
     setCreateParentId(null);
@@ -901,7 +904,7 @@ export default function CatalogFeature() {
         sidebar={
           <Card className="catalogTreePanel">
             <DataToolbar
-              title="Дерево категорий"
+              title="Категории"
               subtitle={loading ? "Загружаю структуру…" : `${nodes.length} узлов в каталоге`}
               actions={
                 <div className="catalogTreeToolbarActions">
@@ -912,8 +915,11 @@ export default function CatalogFeature() {
                   >
                     {sortMode ? "Готово" : "Сортировка"}
                   </Button>
-                  <Button className="sm" onClick={hasExpandedNodes ? collapseAll : expandAll}>
-                    {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+                  <Button className="sm" onClick={expandAll}>
+                    Развернуть
+                  </Button>
+                  <Button className="sm" onClick={collapseAll}>
+                    Свернуть
                   </Button>
                 </div>
               }

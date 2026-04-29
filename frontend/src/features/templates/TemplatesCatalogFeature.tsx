@@ -372,7 +372,10 @@ export default function TemplatesCatalogFeature() {
 
   const collapseAll = () => {
     const next: Record<string, boolean> = {};
-    for (const root of roots) next[root.id] = true;
+    const parentPath = selectedPath.slice(0, -1);
+    for (const node of parentPath) {
+      if ((childrenMap.get(node.id) || []).length > 0) next[node.id] = true;
+    }
     setExpanded(next);
   };
 

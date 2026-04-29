@@ -6,6 +6,7 @@ import SourcesValueMappingSection from "./SourcesValueMappingSection";
 import CompetitorDiscoveryPanel from "./CompetitorDiscoveryPanel";
 import PageTabs from "../../components/ui/PageTabs";
 import Badge from "../../components/ui/Badge";
+import PageHeader from "../../components/ui/PageHeader";
 import { api } from "../../lib/api";
 import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
@@ -286,20 +287,16 @@ export default function SourcesMappingFeature() {
 
   return (
     <div className="page-shell sourcesMappingPage">
-      <div className="sourcesMappingTopbar">
-        <div className="sourcesMappingTopbarMain">
-          <div className="sourcesMappingEyebrow">Рабочий контур</div>
-          <div className="sourcesMappingTitleRow">
-            <h1 className="sourcesMappingTitle">Каналы и источники</h1>
+      <PageHeader
+        title="Каналы и источники"
+        subtitle={tabDescription}
+        actions={
+          <div className="sourcesMappingHeaderActions">
             <Badge tone="active">{tabLabel}</Badge>
+            <span>{selectedCategoryName || "Категория не выбрана"}</span>
           </div>
-          <p className="sourcesMappingSubtitle">{tabDescription}</p>
-        </div>
-        <div className="sourcesMappingTopbarMeta">
-          <div className="sourcesMappingMetaLabel">Текущий контур</div>
-          <div className="sourcesMappingMetaValue">{selectedCategoryName || "Выбери категорию в дереве"}</div>
-        </div>
-      </div>
+        }
+      />
 
       <PageTabs
         className="sourcesMappingTabs"
