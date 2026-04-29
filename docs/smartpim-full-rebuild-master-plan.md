@@ -304,6 +304,20 @@ Execution order:
 4. extract shared category tree/workspace component if the third page still duplicates logic;
 5. verify all listed pages in in-app browser.
 
+Current implementation note for `/catalog`:
+
+1. `/catalog` is a two-column workspace: category tree + selected category products;
+2. the old right inspector is removed from catalog because it duplicated actions and added mapping/status noise;
+3. selected-category actions live in the selected category header:
+   - add SKU;
+   - create subcategory;
+   - rename;
+   - delete branch;
+4. product card keeps only product-table actions, currently `Полный список`;
+5. no marketplace/channel/mapping terminology should appear on the catalog screen;
+6. product table in catalog must show products from the selected branch, not only direct products of the selected node;
+7. branch counter and product table count must not contradict each other after reload.
+
 ### 6.3 Catalog
 
 Status: reopened / not final.

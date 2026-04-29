@@ -168,6 +168,7 @@ export default function ProductRegistry({
     if (!isCatalogClean && marketFilter !== "all") params.set("ym", marketFilter);
     if (!isCatalogClean && ozonFilter !== "all") params.set("oz", ozonFilter);
     if (viewFilter !== "all") params.set("view", viewFilter);
+    if (isCatalogClean && scopeCategoryId) params.set("refresh", "1");
     params.set("page", String(overrides?.currentPage || currentPage));
     params.set("page_size", String(DEFAULT_PAGE_SIZE));
     return params;

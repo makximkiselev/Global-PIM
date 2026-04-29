@@ -20,7 +20,6 @@ import Badge from "../../components/ui/Badge";
 import Alert from "../../components/ui/Alert";
 import EmptyState from "../../components/ui/EmptyState";
 import DataToolbar from "../../components/data/DataToolbar";
-import InspectorPanel from "../../components/data/InspectorPanel";
 import ProductRegistry from "../../components/ProductRegistry";
 import { api } from "../../lib/api";
 import "../../styles/catalog-fresh.css";
@@ -43,35 +42,6 @@ type ProductPreviewItem = {
   sku_gt?: string;
   group_id?: string;
   preview_url?: string;
-};
-
-type TemplatePreviewResp = {
-  template: { id: string; category_id: string; name: string } | null;
-  master?: {
-    stats?: {
-      total_count?: number;
-      required_count?: number;
-      category_count?: number;
-    };
-  } | null;
-};
-
-type BindingStateInfo = {
-  state: "direct" | "inherited_from_parent" | "aggregated_from_children" | "none";
-  direct_id?: string | null;
-  inherited_from?: string | null;
-  inherited_id?: string | null;
-  effective_id?: string | null;
-  child_bindings?: Array<{
-    provider_category_id: string;
-    provider_category_name?: string;
-    catalog_ids: string[];
-    catalog_paths: string[];
-  }>;
-};
-
-type CategoriesResp = {
-  binding_states?: Record<string, Record<string, BindingStateInfo>>;
 };
 
 type CatalogTreeFilter = "all" | "with_products" | "empty";
@@ -122,37 +92,6 @@ function computeAggregatedCounts(nodes: NodeT[]) {
   const out = new Map<string, number>();
   for (const node of nodes) out.set(node.id, dfs(node.id));
   return out;
-}
-
-function effectiveTemplateOwner(node: NodeT | null, byId: Map<string, NodeT>) {
-  let current = node;
-  const seen = new Set<string>();
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    if (current.template_id || (current.template_ids || []).length > 0) return current;
-    current = current.parent_id ? byId.get(current.parent_id) || null : null;
-  }
-  return null;
-}
-
-function bindingTone(state: BindingStateInfo | undefined): "neutral" | "pending" | "active" {
-  if (!state || state.state === "none") return "neutral";
-  if (state.state === "direct") return "active";
-  return "pending";
-}
-
-function bindingLabel(state: BindingStateInfo | undefined) {
-  if (!state || state.state === "none") return "Не выгружается";
-  if (state.state === "direct") return "Настроено здесь";
-  if (state.state === "inherited_from_parent") return "От родителя";
-  if (state.state === "aggregated_from_children") return "От подкатегорий";
-  return "Не выгружается";
-}
-
-function providerShort(code: string) {
-  if (code === "yandex_market") return "Я.Маркет";
-  if (code === "ozon") return "Ozon";
-  return code;
 }
 
 function Modal({
@@ -370,45 +309,10 @@ function CatalogProductPreview({
   );
 }
 
-function CatalogTemplateSummary({
-  ownerPath,
-  templateName,
-  requiredCount,
-  totalCount,
-}: {
-  ownerPath: string;
-  templateName: string;
-  requiredCount: number;
-  totalCount: number;
-}) {
-  return (
-    <div className="catalogTemplateSummary">
-      <div className="catalogTemplateSummaryHead">
-        <Badge tone="active">Поля настроены</Badge>
-        <div className="catalogTemplateSummaryTitle">{templateName}</div>
-      </div>
-      <div className="catalogTemplateSummaryText">
-        Набор характеристик для товаров берется из категории: <b>{ownerPath}</b>
-      </div>
-      <div className="catalogTemplateSummaryStats">
-        <div>
-          <strong>{totalCount}</strong>
-          <span>полей в модели</span>
-        </div>
-        <div>
-          <strong>{requiredCount}</strong>
-          <span>обязательных</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function CatalogFeature() {
   const [loading, setLoading] = useState(true);
   const [refreshError, setRefreshError] = useState("");
   const [nodes, setNodes] = useState<NodeT[]>([]);
-  const [bindingStates, setBindingStates] = useState<Record<string, Record<string, BindingStateInfo>>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [treeQuery, setTreeQuery] = useState("");
   const [treeFilter, setTreeFilter] = useState<CatalogTreeFilter>("all");
@@ -438,9 +342,6 @@ export default function CatalogFeature() {
   const [bulkErr, setBulkErr] = useState<string | null>(null);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
   const [bulkQuery, setBulkQuery] = useState("");
-
-  const [templatePreview, setTemplatePreview] = useState<TemplatePreviewResp | null>(null);
-  const [templateLoading, setTemplateLoading] = useState(false);
 
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -486,27 +387,7 @@ export default function CatalogFeature() {
   const selected = selectedId ? nodesById.get(selectedId) || null : null;
   const selectedPath = selected ? collectPath(nodesById, selected.id) : "";
   const selectedChildrenCount = selected ? (childrenMap.get(selected.id) || []).length : 0;
-  const selectedSiblingCount = selected
-    ? Math.max(0, (childrenMap.get(selected.parent_id ?? null) || []).length - 1)
-    : 0;
   const selectedCount = selected ? aggCounts.get(selected.id) ?? 0 : 0;
-  const selectedTemplateOwner = selected ? effectiveTemplateOwner(selected, nodesById) : null;
-  const selectedTemplateOwnerPath = selectedTemplateOwner
-    ? collectPath(nodesById, selectedTemplateOwner.id)
-    : "";
-  const selectedBindingStates = selected ? bindingStates[selected.id] || {} : {};
-  const selectedBindingList = ["yandex_market", "ozon"].map((providerCode) => ({
-    providerCode,
-    state: selectedBindingStates[providerCode],
-  }));
-  const selectedChannelsCount = selectedBindingList.filter(
-    (item) => item.state && item.state.state !== "none",
-  ).length;
-  const selectedReadiness = {
-    products: selectedCount > 0,
-    model: !!selectedTemplateOwner,
-    channels: selectedChannelsCount > 0,
-  };
   const templateCategoryIds = useMemo(
     () =>
       new Set(
@@ -534,15 +415,6 @@ export default function CatalogFeature() {
   useEffect(() => {
     localStorage.setItem("catalog.expanded", JSON.stringify(expanded));
   }, [expanded]);
-
-  async function loadBindingStateSnapshot() {
-    try {
-      const response = await api<CategoriesResp>("/marketplaces/mapping/import/categories");
-      setBindingStates(response.binding_states || {});
-    } catch {
-      setBindingStates({});
-    }
-  }
 
   function expandTo(id: string) {
     setExpanded((prev) => {
@@ -575,8 +447,6 @@ export default function CatalogFeature() {
         if (current && nextNodes.some((node) => node.id === current)) return current;
         return nextNodes.find((node) => !node.parent_id)?.id || null;
       });
-
-      void loadBindingStateSnapshot();
     } catch (error) {
       setRefreshError((error as Error).message || "Не удалось загрузить каталог");
     } finally {
@@ -607,40 +477,6 @@ export default function CatalogFeature() {
     }
     setBulkCategoryId(nextId);
   }, [bulkOpen, bulkCategoryId, selectedId, nodesById, templateCategoryIds, templateCategories]);
-
-  useEffect(() => {
-    if (!selected) {
-      setTemplatePreview(null);
-      return;
-    }
-
-    let cancelled = false;
-    setTemplateLoading(!!selectedTemplateOwner);
-
-    const templateRequest = selectedTemplateOwner
-      ? api<TemplatePreviewResp>(
-          `/templates/by-category/${encodeURIComponent(selectedTemplateOwner.id)}`,
-        )
-      : Promise.resolve<TemplatePreviewResp | null>(null);
-
-    Promise.allSettled([templateRequest]).then((results) => {
-      if (cancelled) return;
-
-      const [templateResult] = results;
-
-      if (templateResult.status === "fulfilled") {
-        setTemplatePreview(templateResult.value || null);
-      } else {
-        setTemplatePreview(null);
-      }
-
-      setTemplateLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, selectedTemplateOwner]);
 
   const toggle = (id: string) => setExpanded((state) => ({ ...state, [id]: !state[id] }));
 
@@ -980,7 +816,7 @@ export default function CatalogFeature() {
             <div className="catalogCanvas isProductsMode">
               <Card className="catalogWorkHeader">
                 <div className="catalogWorkTitleBlock">
-                  <div className="catalogWorkPath">{selectedPath}</div>
+                  <div className="catalogSectionEyebrow">Выбранная категория</div>
                   <div className="catalogWorkTitleRow">
                     <h1>{selected.name}</h1>
                     <Badge tone={selectedCount > 0 ? "active" : "neutral"}>
@@ -988,18 +824,29 @@ export default function CatalogFeature() {
                     </Badge>
                   </div>
                   <div className="catalogWorkMeta">
-                    <span>{selectedCount} SKU</span>
+                    <span>{selectedCount} SKU в ветке</span>
                     <span>{selectedChildrenCount} подкатегорий</span>
-                    <span>приоритет {selected.position ?? 0}</span>
+                    {selectedPath ? <span>{selectedPath}</span> : null}
                   </div>
                 </div>
-                <div className="catalogCanvasActions">
-                  <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selected.id)}`}>
-                    Добавить SKU
-                  </Link>
-                  <Button onClick={() => openCreateChild(selected.id)}>
-                    Подкатегория
-                  </Button>
+                <div className="catalogWorkActionPanel">
+                  <div className="catalogWorkQuickStats">
+                    <span><strong>{selectedCount}</strong> SKU в ветке</span>
+                    <span><strong>{selectedChildrenCount}</strong> подкатегорий</span>
+                    <span><strong>{selected ? selected.products_count ?? 0 : 0}</strong> прямо здесь</span>
+                  </div>
+                  <div className="catalogCanvasActions">
+                    <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selected.id)}`}>
+                      Добавить SKU
+                    </Link>
+                    <Button onClick={() => openCreateChild(selected.id)}>
+                      Подкатегория
+                    </Button>
+                    <Button onClick={() => openRename(selected.id)}>Переименовать</Button>
+                    <Button variant="danger" onClick={() => openDelete(selected.id)}>
+                      Удалить ветку
+                    </Button>
+                  </div>
                 </div>
               </Card>
 
@@ -1017,9 +864,6 @@ export default function CatalogFeature() {
                     </div>
                   </div>
                   <div className="catalogProductsCommandActions">
-                    <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selected.id)}`}>
-                      Добавить SKU
-                    </Link>
                     <Link className="btn" to={openProductsHref}>Полный список</Link>
                   </div>
                 </div>
@@ -1040,55 +884,6 @@ export default function CatalogFeature() {
               title="Выбери категорию слева"
               description="После выбора откроется список SKU и действия с веткой каталога."
             />
-          )
-        }
-        inspector={
-          selected ? (
-            <InspectorPanel
-              title="Выбранная категория"
-              subtitle="Путь, объем ветки и действия со структурой."
-            >
-              <div className="catalogInspectorStack">
-                <div className="catalogInspectorBlock">
-                  <div className="catalogInspectorLabel">Где находится</div>
-                  <div className="catalogInspectorValue">{selectedPath}</div>
-                </div>
-
-                <div className="catalogInspectorMetrics">
-                  <div>
-                    <strong>{selectedCount}</strong>
-                    <span>товаров в ветке</span>
-                  </div>
-                  <div>
-                    <strong>{selectedChildrenCount}</strong>
-                    <span>подкатегорий</span>
-                  </div>
-                  <div>
-                    <strong>{selectedSiblingCount}</strong>
-                    <span>соседних узлов</span>
-                  </div>
-                </div>
-
-                <div className="catalogInspectorActions">
-                  <Button variant="primary" onClick={() => openCreateChild(selected.id)}>
-                    Подкатегория
-                  </Button>
-                  <Button onClick={() => openRename(selected.id)}>Переименовать</Button>
-                  <Button variant="danger" onClick={() => openDelete(selected.id)}>
-                    Удалить ветку
-                  </Button>
-                </div>
-              </div>
-            </InspectorPanel>
-          ) : (
-            <InspectorPanel
-              title="Выбранная категория"
-              subtitle="Выберите категорию слева, чтобы увидеть действия."
-            >
-              <div className="catalogInspectorEmpty">
-                Выберите узел слева, чтобы увидеть SKU и действия со структурой каталога.
-              </div>
-            </InspectorPanel>
           )
         }
       />
