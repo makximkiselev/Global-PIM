@@ -358,9 +358,11 @@ export default function CatalogImportFeature() {
     <div className="cx-workspaceInspector">
       <InspectorPanel title="Область" subtitle="Что именно попадет в прогон">
         <div className="cx-inspectorList">
-          <div className="cx-inspectorRow"><span>Scope</span><strong>{selectedScope}</strong></div>
+          <div className="cx-inspectorRow"><span>Выбрано</span><strong>{selectedScope}</strong></div>
           <div className="cx-inspectorRow"><span>Режим</span><strong>{sourceMode}</strong></div>
-          <div className="cx-inspectorRow"><span>С дочерними</span><strong>{includeDescendants ? "Да" : "Нет"}</strong></div>
+          {selectedNodeIds.length ? (
+            <div className="cx-inspectorRow"><span>Глубина</span><strong>{includeDescendants ? "Вся ветка" : "Только категория"}</strong></div>
+          ) : null}
         </div>
       </InspectorPanel>
 

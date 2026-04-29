@@ -650,3 +650,215 @@ Definition of done for the current phase:
 4. all visible UI text is understandable to a content manager;
 5. key user path for `Смартфоны` can be completed without explanation;
 6. production browser checks pass without console errors.
+
+## 10. Unified Frontend Inventory And Data Audit
+
+Status: active. This section is the working checklist for removing page-by-page duplication and bringing the product to one consistent SaaS system.
+
+### 10.1 Current Active Routes
+
+Active routes are defined in `frontend/src/app/App.tsx` and should be treated as the source of truth for page work:
+
+1. `/` -> `DashboardFeature`;
+2. `/catalog` -> `CatalogFeature`;
+3. `/catalog/groups` -> `ProductGroupsFeature`;
+4. `/products` -> `ProductListFeature`;
+5. `/catalog/import` -> `CatalogImportFeature`;
+6. `/catalog/export` -> `CatalogExportFeature`;
+7. `/templates` -> `TemplatesCatalogFeature`;
+8. `/templates/:categoryId` -> `TemplateEditorFeature`;
+9. `/products/new` -> `ProductNewFeature`;
+10. `/products/:productId` -> `ProductWorkspaceFeature`;
+11. `/dictionaries` -> `DictionariesFeature`;
+12. `/dictionaries/:dictId` -> `DictionaryEditorFeature`;
+13. `/sources` and `/sources-mapping` -> `SourcesMappingFeature`;
+14. `/connectors/status` -> `ConnectorsStatusFeature`;
+15. `/admin/access` -> `AdminAccessFeature`;
+16. `/admin/organizations`, `/admin/members`, `/admin/invites`, `/admin/platform` -> `OrganizationsAdminFeature`.
+
+The old `frontend/src/pages/*` implementations are not active route targets for the main app, but many of them still duplicate feature code. They must not be used as a source for new UI. After route-level confirmation, delete or archive inactive page duplicates.
+
+### 10.2 Universal Blocks Found More Than Once
+
+These blocks must become shared components with one visual language and one behavior contract:
+
+1. page frame: `PageHeader`, `WorkspaceFrame`, page shell spacing;
+2. category tree: search, node row, count badge, active state, expand/collapse, drag support when needed;
+3. category picker drawer: category selection inside sources/templates/import/export;
+4. scope selector: full catalog, full branch, exact category, exact SKU list;
+5. data toolbar: title, subtitle, filters, search, primary/secondary actions;
+6. table shell: sticky header, horizontal scroll, empty/loading/error states;
+7. inspector/action panel: right-side context only when it adds decisions, not duplicate summaries;
+8. tabs/steps: use tabs for peer sections and steps for workflow progress, never both for the same meaning;
+9. badges/status pills: product readiness, model readiness, source status, channel status;
+10. cards/metrics: only operational metrics tied to the current action, no decorative dashboard strips;
+11. source toggles: marketplaces, competitors, import sources;
+12. product registry/list: product rows, SKU, media thumb, category path, group, marketplace readiness;
+13. modal/forms: creation, rename, delete, import, manual URL;
+14. buttons: primary action must be one obvious button per screen area, secondary actions grouped.
+
+### 10.3 Duplicate / Divergent Implementations
+
+Current duplication that must be removed page by page:
+
+1. `CatalogFeature` has its own category tree and toolbar;
+2. `CatalogExchangePicker` has another category tree and product picker for import/export;
+3. `TemplatesCatalogFeature` has a third category/model tree;
+4. `SourcesMarketplaceSection`, `SourcesParamsWorkspaceSection`, and `SourcesValueMappingSection` each render their own category drawer/tree;
+5. old `frontend/src/pages/Catalog*.tsx`, `Templates.tsx`, `Sources*.tsx`, `CatalogImport.tsx`, `CatalogExport.tsx` still duplicate old implementations;
+6. `SummaryMetricRow` exists locally in import/export instead of a shared compact metric strip;
+7. some screens use one toggle button for expand/collapse, others use two buttons;
+8. some pages show right inspectors with duplicated information already visible in the main content;
+9. tables are implemented as raw tables, CSS grid tables, and local card rows with different scrolling behavior.
+
+### 10.4 UX Decisions Fixed From Current Discussion
+
+1. `С подкатегориями` is a technical backend flag and should not be a visible primary wording.
+2. The visible wording must describe user scope:
+   - `Весь каталог`;
+   - `Вся ветка`;
+   - `Только категория`;
+   - exact SKU selection when products are selected manually.
+3. Expand and collapse must be consistent across all tree screens. Current decision: use two separate controls, `Развернуть` and `Свернуть`, unless the control is inside a very small drawer where a single segmented control is later designed deliberately.
+4. Catalog must stay clean: category structure, product viewing, SKU movement, and category actions only.
+5. Dirty/intermediate workflows must live outside clean catalog:
+   - imports;
+   - enrichment;
+   - source/category mapping;
+   - parameter mapping;
+   - value mapping;
+   - export validation.
+6. Each page must answer one user question without explanation:
+   - catalog: what is in this category and where can I move it?
+   - import/enrichment: what do I fill and from which sources?
+   - info-models: which fields define this category?
+   - source mapping: which external categories feed this category?
+   - parameter mapping: which external fields map into our model?
+   - value mapping: how values are transformed per marketplace?
+   - export: what is ready or blocked for each marketplace?
+
+### 10.5 Required Shared Component Targets
+
+Create or refactor toward these shared units:
+
+1. `CategoryTree`: pure tree renderer with search, counts, active row, expand/collapse, optional checkbox, optional DnD hooks.
+2. `CategoryWorkspaceSidebar`: shared tree card with title, hint, search, filters, expand/collapse controls.
+3. `CategoryScopeSelector`: `Весь каталог`, `Вся ветка`, `Только категория`, exact SKU scope.
+4. `WorkspacePage`: page shell with consistent top spacing, max width policy, and action area.
+5. `WorkspaceHeader`: compact header for working screens; no oversized hero blocks.
+6. `TableFrame`: sticky header and horizontal scroll policy for all long tables.
+7. `CompactMetricStrip`: small operational metrics only.
+8. `ActionRail` or `ContextPanel`: right-side actions and blockers, no duplicated summary.
+9. `SourceSelector`: marketplaces/competitors/source toggles with a common design.
+10. `WorkflowSteps`: one consistent stepper for info-model -> parameters -> values -> enrichment -> export.
+
+### 10.6 Page-by-Page Cleanup Order
+
+Work in this order and do not jump to the next page until the current route passes browser QA:
+
+1. `/catalog/import`: replace technical category scope controls, reduce summary clutter, align tree with `/catalog`.
+2. `/catalog/export`: apply the same category scope and table/action patterns as import.
+3. `/templates`: replace local model tree with shared category tree shell; remove duplicate summary actions.
+4. `/templates/:categoryId`: keep the improved builder flow, remove duplicated titles/buttons/summaries.
+5. `/sources?tab=sources`: make category mapping a focused page with category context and marketplace/competitor category links.
+6. `/sources?tab=params`: one focused parameter mapping workspace with AI action visible and competitor evidence included.
+7. `/sources?tab=values`: one focused value-normalization workspace with marketplace output previews.
+8. `/sources?tab=competitors`: moderation queue for competitor candidate links only.
+9. `/catalog`: keep clean catalog only; reuse shared tree/sidebar once extracted.
+10. `/products` and `/products/:productId`: keep product-card improvements, align tables/buttons with shared primitives.
+11. `/connectors/status`: remove dashboard clutter; show credential state, last sync, errors, and actions.
+12. `/admin/*`: remove technical labels, align tabs/search/tables, keep user-facing Russian copy.
+
+### 10.7 Database Audit - Current Findings
+
+Current storage is mixed:
+
+1. `products_rel` is the closest current canonical product table.
+2. `catalog_product_registry_rel` duplicates product summary data for registry/list views.
+3. `catalog_product_page_rel` and `catalog_product_page_tenant_rel` duplicate product/category/template/channel readiness for page queries.
+4. `product_marketplace_status_rel` and tenant variant duplicate marketplace readiness.
+5. `product_variants_rel` exists, but the product rule is now: one product row equals one SKU; variants are SKU rows grouped by `group_id`.
+6. templates/info-models are split across `templates_*`, `template_attributes_*`, and `category_template_links_*`.
+7. mappings are split across category mappings, attribute mappings, attribute value refs, dictionaries, dictionary aliases, provider refs, export maps.
+8. many tables have both global and tenant versions.
+9. legacy JSON compatibility still exists through `json_store` bootstrap/load/save paths.
+
+This is not automatically wrong, but source-of-truth boundaries are unclear. The risk is duplicate writes and stale derived tables.
+
+Current table count in `backend/app/storage/relational_pim_store.py`: 44.
+
+Preliminary ownership classification:
+
+| Table | Current role | Target decision |
+| --- | --- | --- |
+| `catalog_nodes_rel` | canonical catalog tree | keep as canonical `categories` or rename later |
+| `products_rel` | canonical product/SKU row | keep as canonical product table |
+| `product_groups_rel` | canonical grouping | keep; variants are grouped SKU rows, not child products |
+| `product_group_variant_params_rel` | group configuration | keep if UI uses variant dimensions |
+| `templates_rel`, `templates_tenant_rel` | info-model header | keep but clarify tenant/global ownership |
+| `template_attributes_rel`, `template_attributes_tenant_rel` | info-model fields | keep but rename conceptually to `info_model_fields` |
+| `category_template_links_rel`, `category_template_links_tenant_rel` | category -> info-model link | keep if inheritance rules stay here |
+| `category_mappings_rel`, `category_mappings_tenant_rel` | PIM category -> marketplace category | keep; extend to competitor category links or split into `channel_categories` |
+| `attribute_mappings_rel`, `attribute_mappings_tenant_rel` | canonical field -> marketplace field mapping | keep but align with info-model fields |
+| `attribute_value_refs_rel`, `attribute_value_refs_tenant_rel` | field value mapping references | keep or migrate into clearer `value_mappings` |
+| `dictionaries_*` tables | canonical values, aliases, provider refs, export maps | keep but document source-of-truth per value type |
+| `connector_method_state_*` | connector sync/run status | keep |
+| `connector_provider_settings_*` | provider settings | keep, but secrets must stay masked |
+| `connector_import_stores_*` | provider import accounts/stores | keep, but review secret storage |
+| `catalog_product_registry_rel` | derived product registry summary | derived cache only; must be rebuildable from `products_rel` |
+| `catalog_product_page_rel`, `catalog_product_page_tenant_rel` | derived catalog product page read model | derived cache only; not canonical |
+| `product_marketplace_status_rel`, `product_marketplace_status_tenant_rel` | derived channel readiness/status | derived or export-status table; ownership must be clarified |
+| `category_product_counts_rel` | derived count cache | derived cache only |
+| `category_template_resolution_rel`, `category_template_resolution_tenant_rel` | derived inheritance resolution | derived cache only if rebuildable |
+| `dashboard_stats_rel` | derived dashboard stats | derived cache only |
+| `product_variants_rel` | legacy/parallel variant model | migration candidate; conflicts with current rule that one SKU equals one product row |
+
+Product source-of-truth rule:
+
+1. `products_rel` is canonical for SKU identity, category, group, status, main content JSON, and core SKU identifiers.
+2. `catalog_product_registry_rel` and `catalog_product_page_*` must not receive independent business edits; they are read models.
+3. `product_variants_rel` must not become the primary variant model. If kept, it is legacy compatibility or a temporary bridge.
+4. S3/object storage is the binary media store. Product DB stores references in `content_json.media_images`, `content_json.media_videos`, `content_json.media_cover`, and related upload metadata.
+5. Imported/enriched source values currently live inside product content/source metadata and mapping docs. Target state should separate raw source evidence from final canonical product values.
+
+### 10.8 Database Target Direction
+
+Do not rewrite the DB blindly. First produce a table ownership map. Target direction:
+
+1. `products`: canonical one row per SKU, includes core identifiers, category, group, status, canonical content JSON, created/updated timestamps.
+2. `product_groups`: grouping only, not a separate product identity.
+3. `product_relations`: analogs, related products, accessories, replacements, variants if needed as explicit relation rows.
+4. `product_media`: metadata and S3 keys/URLs for images/video/files; binary media stays in S3/object storage.
+5. `product_source_values`: imported/enriched field values with source, confidence, evidence URL, timestamps.
+6. `product_canonical_values`: final approved values used by product card and export.
+7. `categories`: catalog tree.
+8. `info_models`: approved model per category or inherited model reference.
+9. `info_model_fields`: canonical fields with type, requirement, group, dictionary link.
+10. `channel_categories`: marketplace/competitor category links per PIM category.
+11. `channel_field_mappings`: field mapping from marketplace/competitor fields to canonical model fields.
+12. `value_mappings`: canonical value -> channel-specific output value.
+13. `competitor_links`: accepted/rejected candidate URLs by product/category/source.
+14. `connector_accounts` and `connector_runs`: credentials/config and sync history.
+15. derived/cache tables may exist only if named and documented as derived, rebuildable, and not manually edited.
+
+### 10.9 Database Audit Tasks Before Migration
+
+1. list every table created in `relational_pim_store.py`;
+2. mark each table as canonical, derived cache, tenant override, legacy compatibility, or migration candidate;
+3. find every read/write function for each table;
+4. document which API route depends on each table;
+5. confirm where production data currently lives;
+6. confirm S3 media path and which DB fields store media references;
+7. identify duplicate product summary tables and decide which become read models;
+8. write migration plan only after the ownership map is complete.
+
+### 10.10 Immediate Implementation Rule
+
+Until shared components are extracted:
+
+1. no new local category tree implementation;
+2. no new local table shell implementation;
+3. no new local page header variants;
+4. no new duplicated summary/inspector blocks;
+5. if a page needs a block already listed in 10.2, first reuse or extend the shared component;
+6. update this document before and after every page slice.

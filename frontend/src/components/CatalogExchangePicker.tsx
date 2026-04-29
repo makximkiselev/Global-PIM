@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import CategorySidebar from "./CategorySidebar";
+import CategoryScopeSelector, { type CategoryScopeMode } from "./catalog/CategoryScopeSelector";
 import { api } from "../lib/api";
 
 export type ExchangeNode = {
@@ -148,6 +149,12 @@ export default function CatalogExchangePicker(props: Props) {
 
   const hasProductScope = !!selectedTreeCategoryIds || !!qnorm(productQuery);
   const visibleProducts = productItems;
+  const hasSelectedCategoryScope = selectedNodeIds.length > 0;
+  const categoryScopeMode: CategoryScopeMode = !hasSelectedCategoryScope && selectedProductIds.length === 0
+    ? "all"
+    : includeDescendants
+      ? "branch"
+      : "category";
 
   useEffect(() => {
     const exactIds = selectedProductIds.filter(Boolean);
@@ -245,6 +252,16 @@ export default function CatalogExchangePicker(props: Props) {
     setExpanded({});
   }
 
+  function changeCategoryScope(mode: CategoryScopeMode) {
+    if (mode === "all") {
+      onSelectedNodeIdsChange([]);
+      onSelectedProductIdsChange([]);
+      return;
+    }
+    if (!hasSelectedCategoryScope) return;
+    onIncludeDescendantsChange(mode === "branch");
+  }
+
   function renderTree(parentId: string | null, depth = 0): JSX.Element[] {
     const items = childrenByParent.get(parentId || "") || [];
     const q = filteredNodeIds;
@@ -300,23 +317,11 @@ export default function CatalogExchangePicker(props: Props) {
         searchPlaceholder="Поиск категории"
         controls={
           <>
-            <label className={`cx-inlineCheck cx-scopeChip ${selectedNodeIds.length === 0 && selectedProductIds.length === 0 ? "isActive" : ""}`}>
-              <input
-                type="checkbox"
-                checked={selectedNodeIds.length === 0 && selectedProductIds.length === 0}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    onSelectedNodeIdsChange([]);
-                    onSelectedProductIdsChange([]);
-                  }
-                }}
-              />
-              <span>Весь каталог</span>
-            </label>
-            <label className={`cx-inlineCheck cx-scopeChip ${includeDescendants ? "isActive" : ""}`}>
-              <input type="checkbox" checked={includeDescendants} onChange={(e) => onIncludeDescendantsChange(e.target.checked)} />
-              <span>С подкатегориями</span>
-            </label>
+            <CategoryScopeSelector
+              mode={categoryScopeMode}
+              categorySelected={hasSelectedCategoryScope}
+              onModeChange={changeCategoryScope}
+            />
             <button className="btn sm" type="button" onClick={expandAll}>
               Развернуть
             </button>
