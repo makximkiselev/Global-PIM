@@ -222,7 +222,34 @@ Open tasks:
 4. move mapping/import/status complexity to mapping/import pages;
 5. verify product movement/category structure path.
 
-### 6.4 Info-Model Editor
+### 6.4 Info-Model Catalog
+
+Status: active cleanup.
+
+Current accepted structure for `/templates`:
+
+1. page has two columns only:
+   - category/model tree;
+   - selected category workspace;
+2. no separate right `Сводка модели` inspector;
+3. page header has no selected-category action buttons;
+4. expand/collapse controls belong to the tree, not the page header;
+5. selected category workspace owns actions:
+   - create model;
+   - open editor/source;
+   - open category;
+   - open products;
+   - delete own model;
+6. summary metrics are inline and compact, not separate dashboard cards;
+7. model usage blocks are supporting context only and must not duplicate the main action panel.
+
+Open tasks:
+
+1. visually verify `/templates` after every layout change;
+2. check selected categories with own model, inherited model, locked empty node, and creatable empty node;
+3. keep wording focused on user action, not technical status.
+
+### 6.5 Info-Model Editor
 
 Status: active polishing.
 
@@ -266,7 +293,7 @@ Open tasks:
 4. ensure model creation from marketplace fields is understandable without explanation;
 5. verify category with no info-model and category with approved model.
 
-### 6.5 Parameter Mapping
+### 6.6 Parameter Mapping
 
 Status: improved, still active.
 

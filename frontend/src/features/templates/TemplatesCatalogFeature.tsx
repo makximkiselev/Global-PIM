@@ -9,8 +9,6 @@ import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import DataToolbar from "../../components/data/DataToolbar";
-import InspectorPanel from "../../components/data/InspectorPanel";
-import MetricGrid from "../../components/data/MetricGrid";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 
 type NodeT = {
@@ -209,7 +207,6 @@ export default function TemplatesCatalogFeature() {
   const [mappingItems, setMappingItems] = useState<CategoryMappingItem[]>([]);
   const [mappingLoading, setMappingLoading] = useState(false);
   const [productPreview, setProductPreview] = useState<ProductPreviewItem[]>([]);
-  const [productPreviewLoading, setProductPreviewLoading] = useState(false);
   const treeRef = useRef<HTMLDivElement | null>(null);
 
   const nodes = useMemo(() => computeEffectiveAndLocks(nodesRaw), [nodesRaw]);
@@ -262,6 +259,8 @@ export default function TemplatesCatalogFeature() {
 
   const canCreateTemplate = !!selectedNode && !selectedNode.template_id && selectedNode.can_have_own_template !== false;
   const canDeleteTemplate = !!selectedNode?.template_id;
+  const selectedStatusLabel = selectedNode?.template_id ? "Своя модель" : selectedNode?.effective_template_id ? "Наследуется" : "Не задана";
+  const selectedStatusTone = selectedNode?.template_id ? "active" : selectedNode?.effective_template_id ? "pending" : "neutral";
 
   function preserveViewport(run: () => void) {
     const pageY = window.scrollY;
@@ -494,22 +493,7 @@ export default function TemplatesCatalogFeature() {
     <div className="templates-page page-shell">
       <PageHeader
         title="Инфо-модели"
-        subtitle="Категории наследуют модель по ветке. Отдельная модель создается только там, где это действительно нужно."
-        actions={
-          <>
-            <Button onClick={expandAll}>Развернуть</Button>
-            <Button onClick={collapseAll}>Свернуть</Button>
-            <Button onClick={createTemplateForSelected} disabled={!canCreateTemplate || actionLoading}>
-              Создать модель
-            </Button>
-            <Button onClick={() => selectedNode && openEditorForNode(selectedNode)} disabled={!selectedNode || actionLoading}>
-              Открыть редактор
-            </Button>
-            <Button variant="danger" onClick={deleteTemplateForSelected} disabled={!canDeleteTemplate || actionLoading}>
-              Удалить
-            </Button>
-          </>
-        }
+        subtitle="Выберите категорию, проверьте источник модели и переходите к сборке полей."
       />
 
       <WorkspaceFrame
@@ -519,7 +503,12 @@ export default function TemplatesCatalogFeature() {
             <DataToolbar
               title="Дерево моделей"
               subtitle={`${nodes.length} категорий в модельном контуре`}
-              actions={<Badge tone={treeQuery ? "active" : "neutral"}>{treeQuery ? "Фильтр" : "Вся структура"}</Badge>}
+              actions={
+                <div className="tplTreeTools">
+                  <Button onClick={expandAll}>Развернуть</Button>
+                  <Button onClick={collapseAll}>Свернуть</Button>
+                </div>
+              }
             />
             <div className="tplSidebarSearch">
               <input
@@ -555,14 +544,14 @@ export default function TemplatesCatalogFeature() {
                 <Alert tone="error">{previewErr}</Alert>
               ) : (
                 <>
-                  <div className="tplSummaryHeader">
+                  <div className="tplSummaryHeader tplSummaryHeaderClean">
                     <div className="tplSummaryTitleBlock">
-                      <div className="tplSectionEyebrow">Поля товара</div>
-                      <h2>{previewTemplate?.name || `Модель для «${selectedNode.name}» не задана`}</h2>
+                      <div className="tplSectionEyebrow">Выбранная категория</div>
+                      <h2>{selectedNode.name}</h2>
                       <p>
                         {previewTemplate
-                          ? "Здесь задаются поля, обязательность и наследование для товаров выбранной ветки."
-                          : "У этой категории нет собственной модели. Можно создать отдельный набор полей или оставить наследование выше по дереву."}
+                          ? `${previewTemplate.name}. Проверьте поля модели или переходите в редактор.`
+                          : selectedNode.lock_reason || "У категории нет собственной модели. Если категории нужны отдельные поля, создайте модель здесь."}
                       </p>
                       <div className="tplPathChips" aria-label="Путь категории">
                         {selectedPath.map((node) => (
@@ -572,125 +561,121 @@ export default function TemplatesCatalogFeature() {
                         ))}
                       </div>
                     </div>
-                    <div className="tplSummaryStateCard">
-                      <span className="tplSummaryStatusLabel">Состояние</span>
-                      <strong>
-                        {selectedNode.template_id ? "Своя модель" : selectedNode.effective_template_id ? "Наследуется" : "Не задана"}
-                      </strong>
-                      <span>
-                        {selectedNode.template_id
-                          ? "Можно редактировать прямо здесь."
-                          : selectedNode.effective_template_id
-                            ? `Источник: ${inheritedFromNode?.name || "родительская категория"}.`
-                            : selectedNode.lock_reason || "Создайте модель, если категории нужны отдельные поля."}
-                      </span>
+                    <div className="tplSummaryActionPanel">
+                      <Badge tone={selectedStatusTone}>{selectedStatusLabel}</Badge>
+                      <div className="tplSummaryQuickStats">
+                        <span><strong>{totalAttrs || "—"}</strong> полей</span>
+                        <span><strong>{requiredAttrs || "—"}</strong> обязательных</span>
+                        <span>
+                          <strong>
+                            {previewMaster?.stats
+                              ? `${Number(previewMaster.stats.confirmed_count || 0)} / ${Number(previewMaster.stats.row_count || 0)}`
+                              : "—"}
+                          </strong>{" "}
+                          подтверждено
+                        </span>
+                      </div>
+                      <div className="tplSummaryActions">
+                        {canCreateTemplate ? (
+                          <Button variant="primary" onClick={createTemplateForSelected} disabled={actionLoading}>
+                            Создать модель
+                          </Button>
+                        ) : null}
+                        <Button variant={previewTemplate ? "primary" : "default"} onClick={() => openEditorForNode(selectedNode)} disabled={actionLoading}>
+                          {previewTemplate ? "Открыть редактор" : "Открыть источник"}
+                        </Button>
+                        <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(selectedNode.id)}`)}>
+                          Категория
+                        </Button>
+                        <Button onClick={() => nav(`/products?parent=${encodeURIComponent(selectedNode.id)}`)}>
+                          Товары
+                        </Button>
+                        {canDeleteTemplate ? (
+                          <Button variant="danger" onClick={deleteTemplateForSelected} disabled={actionLoading}>
+                            Удалить модель
+                          </Button>
+                        ) : null}
+                      </div>
+                      {!selectedNode.template_id && selectedNode.effective_template_id ? (
+                        <p className="tplSummarySourceNote">Источник модели: {inheritedFromNode?.name || "родительская категория"}.</p>
+                      ) : null}
                     </div>
                   </div>
-
-                  <MetricGrid
-                    className="tplSummaryMetrics"
-                    items={[
-                      { label: "Всего полей", value: totalAttrs || "—" },
-                      { label: "Обязательных", value: requiredAttrs || "—" },
-                      {
-                        label: "Подтверждено",
-                        value: previewMaster?.stats
-                          ? `${Number(previewMaster.stats.confirmed_count || 0)} / ${Number(previewMaster.stats.row_count || 0)}`
-                          : "—",
-                      },
-                    ]}
-                  />
                 </>
               )}
             </Card>
 
             {selectedNode && !previewLoading && !previewErr ? (
               <div className="tplCanvasGrid">
+                {previewTemplate ? (
                 <Card className="tplCanvasCard">
                   <DataToolbar
-                    title="Структура модели"
-                    subtitle={
-                      previewTemplate
-                        ? "Основа товара и категорийные поля живут в одном рабочем кадре."
-                        : "Собственной модели нет. После создания здесь появятся группы полей."
-                    }
+                    title="Поля модели"
+                    subtitle="Быстрый просмотр состава модели. Детальная сборка и AI-проверка находятся в редакторе."
                   />
-                  {previewTemplate ? (
-                    <div className="tplModelSections">
-                      <section className="tplSectionCard">
-                        <div className="tplSectionHead">
-                          <div>
-                            <h3>Основа товара</h3>
-                            <p>Глобальные поля, которые повторяются во всех SKU этой модели.</p>
-                          </div>
-                          <span className="tplSectionCount">{baseAttrs.length}</span>
+                  <div className="tplModelSections">
+                    <section className="tplSectionCard">
+                      <div className="tplSectionHead">
+                        <div>
+                          <h3>Основа товара</h3>
+                          <p>Глобальные поля, которые повторяются во всех SKU этой модели.</p>
                         </div>
-                        {baseAttrs.length ? (
-                          <div className="tplFieldList">
-                            {baseAttrs.slice(0, 8).map((attr, index) => (
-                              <div key={`${attr.id || attr.code || index}-base`} className="tplFieldPreview">
-                                <div className="tplFieldCopy">
-                                  <strong>{attr.name}</strong>
-                                  <span>{TYPE_LABEL[attr.type] || attr.type} · {SCOPE_LABEL[attr.scope] || attr.scope}</span>
-                                </div>
-                                <div className="tplFieldMeta">
-                                  {attr.required ? <span className="tplModePill is-own">Обяз.</span> : null}
-                                </div>
+                        <span className="tplSectionCount">{baseAttrs.length}</span>
+                      </div>
+                      {baseAttrs.length ? (
+                        <div className="tplFieldList">
+                          {baseAttrs.slice(0, 8).map((attr, index) => (
+                            <div key={`${attr.id || attr.code || index}-base`} className="tplFieldPreview">
+                              <div className="tplFieldCopy">
+                                <strong>{attr.name}</strong>
+                                <span>{TYPE_LABEL[attr.type] || attr.type} · {SCOPE_LABEL[attr.scope] || attr.scope}</span>
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <EmptyState title="Базовых полей пока нет" body="После создания модели сюда попадут системные и общие поля товара." />
-                        )}
-                      </section>
+                              <div className="tplFieldMeta">
+                                {attr.required ? <span className="tplModePill is-own">Обяз.</span> : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyState title="Базовых полей пока нет" body="После создания модели сюда попадут системные и общие поля товара." />
+                      )}
+                    </section>
 
-                      <section className="tplSectionCard">
-                        <div className="tplSectionHead">
-                          <div>
-                            <h3>Поля категории</h3>
-                            <p>Часть модели, которая отличает эту ветку каталога от остальных.</p>
-                          </div>
-                          <span className="tplSectionCount">{categoryAttrs.length}</span>
+                    <section className="tplSectionCard">
+                      <div className="tplSectionHead">
+                        <div>
+                          <h3>Поля категории</h3>
+                          <p>Часть модели, которая отличает эту ветку каталога от остальных.</p>
                         </div>
-                        {categoryAttrs.length ? (
-                          <div className="tplFieldList">
-                            {categoryAttrs.slice(0, 12).map((attr, index) => (
-                              <div key={`${attr.id || attr.code || index}-category`} className="tplFieldPreview">
-                                <div className="tplFieldCopy">
-                                  <strong>{attr.name}</strong>
-                                  <span>{TYPE_LABEL[attr.type] || attr.type} · {SCOPE_LABEL[attr.scope] || attr.scope}</span>
-                                </div>
-                                <div className="tplFieldMeta">
-                                  {attr.required ? <span className="tplModePill is-own">Обяз.</span> : null}
-                                  {attr.type === "select" ? <span className="tplModePill is-inherited">Список</span> : null}
-                                </div>
+                        <span className="tplSectionCount">{categoryAttrs.length}</span>
+                      </div>
+                      {categoryAttrs.length ? (
+                        <div className="tplFieldList">
+                          {categoryAttrs.slice(0, 12).map((attr, index) => (
+                            <div key={`${attr.id || attr.code || index}-category`} className="tplFieldPreview">
+                              <div className="tplFieldCopy">
+                                <strong>{attr.name}</strong>
+                                <span>{TYPE_LABEL[attr.type] || attr.type} · {SCOPE_LABEL[attr.scope] || attr.scope}</span>
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <EmptyState title="Полей категории пока нет" body="Категория может жить только на базовом наборе полей до детальной настройки." />
-                        )}
-                      </section>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      title="Модель не задана"
-                      body="Создай отдельную модель на категории или открой источник наследования выше по дереву."
-                      action={
-                        canCreateTemplate ? (
-                          <Button variant="primary" onClick={createTemplateForSelected} disabled={actionLoading}>
-                            Создать модель
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  )}
+                              <div className="tplFieldMeta">
+                                {attr.required ? <span className="tplModePill is-own">Обяз.</span> : null}
+                                {attr.type === "select" ? <span className="tplModePill is-inherited">Список</span> : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyState title="Полей категории пока нет" body="Категория может жить только на базовом наборе полей до детальной настройки." />
+                      )}
+                    </section>
+                  </div>
                 </Card>
+                ) : null}
 
                 <Card className="tplCanvasCard">
                   <DataToolbar
-                    title="Использование модели"
-                    subtitle="Текущее состояние категории, каналов и товаров, которые живут на этой модели."
+                    title="Связанные данные"
+                    subtitle="Каналы и товары по выбранной категории. Настройка связей вынесена в отдельные рабочие страницы."
                   />
                   <div className="tplUsageGrid">
                     <section className="tplSectionCard">
@@ -730,6 +715,7 @@ export default function TemplatesCatalogFeature() {
                       ) : (
                         <EmptyState title="Связей пока нет" body="После канального маппинга здесь появятся площадки и источники структуры." />
                       )}
+                      {mappingLoading ? <div className="muted">Обновляю канальный контур…</div> : null}
                     </section>
 
                     <section className="tplSectionCard">
@@ -740,9 +726,7 @@ export default function TemplatesCatalogFeature() {
                         </div>
                         <span className="tplSectionCount">{productPreview.length}</span>
                       </div>
-                      {productPreviewLoading ? (
-                        <div className="muted">Загружаю SKU…</div>
-                      ) : productPreview.length ? (
+                      {productPreview.length ? (
                         <div className="tplProductPreviewList">
                           {productPreview.map((item, index) => (
                             <button
@@ -768,53 +752,6 @@ export default function TemplatesCatalogFeature() {
               </div>
             ) : null}
           </div>
-        }
-        inspector={
-          <InspectorPanel
-            className="tplInspector"
-            title="Сводка модели"
-            subtitle={selectedNode ? "Текущий узел и ближайшие действия." : "Выбери категорию слева."}
-            actions={selectedNode ? <Badge tone={selectedNode.template_id ? "active" : selectedNode.effective_template_id ? "pending" : "neutral"}>{selectedNode.template_id ? "Своя" : selectedNode.effective_template_id ? "Наследование" : "Пусто"}</Badge> : undefined}
-          >
-            {selectedNode ? (
-              <div className="tplInspectorStack">
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Категория</span>
-                  <strong>{selectedNode.name}</strong>
-                  <span>{selectedPath.map((item) => item.name).join(" / ")}</span>
-                </div>
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Источник модели</span>
-                  <strong>
-                    {selectedNode.template_id
-                      ? "Эта категория"
-                      : inheritedFromNode?.name || "Модель не задана"}
-                  </strong>
-                  <span>{selectedNode.lock_reason || "Ограничений по ветке сейчас нет."}</span>
-                </div>
-                <div className="tplInspectorMetric">
-                  <span className="tplInspectorLabel">Готовность</span>
-                  <strong>
-                    {previewMaster?.stats
-                      ? `${Number(previewMaster.stats.confirmed_count || 0)} / ${Number(previewMaster.stats.row_count || 0)}`
-                      : "—"}
-                  </strong>
-                  <span>Подтвержденные строки модели и готовность к маппингу.</span>
-                </div>
-                <div className="tplInspectorActions">
-                  <Button variant="primary" onClick={() => openEditorForNode(selectedNode)}>
-                    Открыть редактор
-                  </Button>
-                  <Button onClick={() => nav(`/catalog?selected=${encodeURIComponent(selectedNode.id)}`)}>Открыть категорию</Button>
-                  <Button onClick={() => nav(`/products?parent=${encodeURIComponent(selectedNode.id)}`)}>Открыть товары</Button>
-                  <Button onClick={() => nav(`/sources?category=${encodeURIComponent(selectedNode.id)}`)}>К каналам</Button>
-                </div>
-                {mappingLoading ? <div className="muted">Обновляю канальный контур…</div> : null}
-              </div>
-            ) : (
-              <EmptyState title="Нет активной категории" body="Выбери категорию в дереве, чтобы увидеть контекст модели." />
-            )}
-          </InspectorPanel>
         }
       />
     </div>

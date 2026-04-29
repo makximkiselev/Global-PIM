@@ -10,7 +10,7 @@
 }
 
 .templatesCatalogFrame.workspaceFrame {
-  grid-template-columns: minmax(300px, 380px) minmax(620px, 1fr) minmax(300px, 380px);
+  grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -29,8 +29,6 @@
 
 .tplCanvasStack,
 .tplEditorSidebarStack,
-.tplInspectorStack,
-.tplInspectorActions,
 .templates-previewActions {
   display: grid;
   gap: 16px;
@@ -38,17 +36,28 @@
 
 .tplSidebarCard,
 .tplEditorSidebarCard,
-.tplCanvasCard,
-.tplInspector {
+.tplCanvasCard {
   padding: 18px;
 }
 
 .tplSidebarCard,
 .tplEditorSidebarCard,
-.tplCanvasCard,
-.tplInspector {
+.tplCanvasCard {
   border-color: rgba(var(--line-rgb), 0.72);
   background: rgba(var(--card-rgb), 0.92);
+}
+
+.tplTreeTools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tplTreeTools .btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 13px;
 }
 
 .tplSidebarSearch {
@@ -242,6 +251,10 @@
   align-items: stretch;
 }
 
+.tplSummaryHeaderClean {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+}
+
 .tplSummaryTitleBlock {
   min-width: 0;
 }
@@ -284,58 +297,68 @@
   color: var(--text-soft);
 }
 
-.tplSummaryStateCard,
-.tplInspectorMetric {
+.tplSummaryActionPanel {
   display: grid;
-  gap: 6px;
-  padding: 14px 16px;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
   border-radius: 18px;
   border: 1px solid var(--line);
-  background: rgba(var(--card-rgb), 0.72);
+  background: linear-gradient(180deg, rgba(var(--surface-rgb), 0.66), rgba(var(--card-rgb), 0.72));
 }
 
-.tplSummaryStateCard strong,
-.tplInspectorMetric strong {
-  font-size: 18px;
-  line-height: 1.1;
-  font-weight: 950;
+.tplSummaryQuickStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.tplSummaryStateCard span,
-.tplInspectorMetric span {
-  font-size: 13px;
-  line-height: 1.45;
+.tplSummaryQuickStats span {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(var(--card-rgb), 0.7);
   color: var(--text-soft);
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 850;
 }
 
-.tplSummaryStatusLabel,
-.tplInspectorLabel {
+.tplSummaryQuickStats strong {
+  display: block;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 950;
+  margin-bottom: 3px;
+}
+
+.tplSummaryActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tplSummaryActions .btn {
+  min-height: 38px;
+  border-radius: 14px;
+  padding-inline: 14px;
+}
+
+.tplSummarySourceNote {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 760;
+}
+
+.tplSummaryStatusLabel {
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
-}
-
-.tplSummaryMetrics.metricGrid {
-  margin-top: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.tplSummaryMetrics .metricCard,
-.tplSummaryMetrics.metricGrid .metricCard {
-  min-height: 92px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(var(--surface-rgb), 0.54);
-}
-
-.tplSummaryMetrics .metricCardValue,
-.tplSummaryMetrics.metricGrid .metricCardValue {
-  font-size: clamp(24px, 2vw, 32px);
-  line-height: 1;
-  letter-spacing: -0.035em;
 }
 
 .templateEditorMetrics.metric-grid,
@@ -1060,7 +1083,7 @@
 
 @media (max-width: 1400px) {
   .templatesCatalogFrame.workspaceFrame {
-    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-columns: minmax(360px, 460px) minmax(0, 1fr);
   }
 
   .templatesEditorFrame.workspaceFrame {
@@ -1075,10 +1098,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .templatesCatalogFrame .workspaceFrameInspector {
-    grid-column: 2;
-  }
-
   .templatesEditorFrame .workspaceFrameInspector {
     grid-column: 2;
   }
@@ -1091,8 +1110,8 @@
     grid-template-columns: 1fr;
   }
 
-  .tplSummaryMetrics.metricGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .tplSummaryHeaderClean {
+    grid-template-columns: 1fr;
   }
 
   .tplModelSections,
@@ -1110,6 +1129,10 @@
   .templatesEditorFrame.workspaceFrame,
   .templatesCatalogFrame.workspaceFrame {
     grid-template-columns: 1fr;
+  }
+
+  .templatesCatalogFrame.workspaceFrame {
+    grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
   }
 
   .templatesEditorFrameFocused.workspaceFrameTwo {
@@ -1130,7 +1153,7 @@
     position: static;
   }
 
-  .tplSummaryMetrics.metricGrid {
+  .tplSummaryQuickStats {
     grid-template-columns: 1fr;
   }
 
@@ -1171,6 +1194,12 @@
   }
 
   .attr-name-cell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 920px) {
+  .templatesCatalogFrame.workspaceFrame {
     grid-template-columns: 1fr;
   }
 }
