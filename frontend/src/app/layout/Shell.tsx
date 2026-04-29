@@ -14,62 +14,100 @@ import TextInput from "../../components/ui/TextInput";
 
 const groups: ShellNavGroup[] = [
   {
-    title: "Рабочее пространство",
+    title: "Рабочий стол",
     icon: "workspace",
-    summary: "Главная точка входа: обзор, качество и быстрые действия.",
+    summary: "Очередь задач, проблемы качества и быстрый возврат к рабочим процессам.",
+    flow: ["задачи", "ошибки", "последние действия"],
     sections: [
       {
-        title: "Обзор",
-        items: [{ href: "/", label: "Дашборд", page: "dashboard" }],
+        title: "Контроль",
+        items: [{ href: "/", label: "Обзор задач", page: "dashboard", badge: "центр" }],
       },
     ],
   },
   {
     title: "Каталог",
     icon: "catalog",
-    summary: "Категории, товары, группы и обмен данными по каталогу.",
+    summary: "Финальная структура категорий, товары, группы SKU и перемещение внутри каталога.",
+    flow: ["категории", "товары", "группы"],
     sections: [
       {
-        title: "Товары",
+        title: "Рабочий каталог",
         items: [
-          { href: "/catalog", label: "Каталог", page: "catalog" },
-          { href: "/catalog/groups", label: "Группы", page: "product_groups" },
-          { href: "/catalog/content-index", label: "Контент-индекс", page: "stats_card_quality" },
+          { href: "/catalog", label: "Категории и товары", page: "catalog" },
+          { href: "/products", label: "Все SKU", page: "products" },
+          { href: "/products/new", label: "Создать товар", page: "products" },
+          { href: "/catalog/groups", label: "Группы и варианты", page: "product_groups" },
         ],
       },
       {
-        title: "Обмен",
-        items: [
-          { href: "/catalog/import", label: "Импорт", page: "catalog_import" },
-          { href: "/catalog/export", label: "Экспорт", page: "catalog_export" },
-        ],
+        title: "Качество",
+        items: [{ href: "/catalog/content-index", label: "Контент-индекс", page: "stats_card_quality" }],
       },
     ],
   },
   {
     title: "Модели",
     icon: "models",
-    summary: "Шаблоны, параметры и структура товарных моделей.",
+    summary: "Создание инфо-моделей из полей площадок, нормализация параметров и словари значений.",
+    flow: ["собрать поля", "нормализовать", "утвердить модель"],
     sections: [
       {
-        title: "Структура",
+        title: "Инфо-модель",
         items: [
-          { href: "/templates", label: "Мастер-шаблоны", page: "templates" },
-          { href: "/dictionaries", label: "Параметры", page: "dictionaries" },
+          { href: "/templates", label: "Модели категорий", page: "templates" },
+          { href: "/sources-mapping?tab=params", label: "Поля из площадок", page: "sources_mapping", badge: "AI" },
+          { href: "/dictionaries", label: "Словари параметров", page: "dictionaries" },
+          { href: "/sources-mapping?tab=values", label: "Значения для площадок", page: "sources_mapping" },
         ],
       },
     ],
   },
   {
-    title: "Источники",
-    icon: "sources",
-    summary: "Маппинг источников, маркетплейсов и коннекторный контур.",
+    title: "Насыщение",
+    icon: "enrichment",
+    summary: "Импорт товаров, подбор конкурентов, загрузка параметров и очередь модерации.",
+    flow: ["импорт", "кандидаты", "параметры", "модерация"],
     sections: [
       {
-        title: "Контур",
+        title: "Товарные данные",
         items: [
-          { href: "/sources", label: "Маппинг", page: "sources_mapping" },
+          { href: "/catalog/import", label: "Импорт товаров", page: "catalog_import" },
+          { href: "/sources-mapping?tab=competitors", label: "Конкуренты", page: "sources_mapping" },
+          { href: "/sources?tab=competitors", label: "Очередь предложений", page: "sources_mapping", badge: "review" },
+        ],
+      },
+    ],
+  },
+  {
+    title: "Каналы",
+    icon: "sources",
+    summary: "Связка категорий и параметров с маркетплейсами, правила значений и статус API.",
+    flow: ["категории", "параметры", "значения", "API"],
+    sections: [
+      {
+        title: "Маркетплейсы",
+        items: [
+          { href: "/sources?tab=sources", label: "Связка категорий", page: "sources_mapping" },
+          { href: "/sources?tab=params", label: "Сопоставление параметров", page: "sources_mapping", badge: "AI" },
+          { href: "/sources?tab=values", label: "Правила значений", page: "sources_mapping" },
           { href: "/connectors/status", label: "Коннекторы", page: "connectors_status" },
+        ],
+      },
+    ],
+  },
+  {
+    title: "Экспорт",
+    icon: "export",
+    summary: "Подготовка, проверка и выгрузка карточек на подключенные площадки.",
+    flow: ["готовность", "валидация", "выгрузка"],
+    sections: [
+      {
+        title: "Выгрузки",
+        items: [
+          { href: "/catalog/export", label: "Подготовка экспорта", page: "catalog_export" },
+          { href: "/sources?tab=values", label: "Проверка значений", page: "sources_mapping" },
+          { href: "/connectors/status", label: "Статус каналов", page: "connectors_status" },
         ],
       },
     ],
@@ -77,10 +115,11 @@ const groups: ShellNavGroup[] = [
   {
     title: "Медиа",
     icon: "media",
-    summary: "Контентные материалы и генерация визуальных артефактов.",
+    summary: "Файлы, S3-хранилище, привязка изображений к товарам и визуальные материалы.",
+    flow: ["загрузить", "привязать", "проверить"],
     sections: [
       {
-        title: "Контент",
+        title: "Материалы",
         items: [{ href: "/images/infographics", label: "Инфографика", page: "infographics" }],
       },
     ],
@@ -88,7 +127,8 @@ const groups: ShellNavGroup[] = [
   {
     title: "Администрирование",
     icon: "admin",
-    summary: "Организации, команда, роли и права доступа.",
+    summary: "Организация, команда, права, приглашения и технические настройки платформы.",
+    flow: ["организация", "команда", "доступ"],
     sections: [
       {
         title: "Организация",
@@ -109,10 +149,20 @@ const groups: ShellNavGroup[] = [
   },
 ];
 
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
-  if (href === "/catalog") return pathname === "/catalog";
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isActive(currentLocation: string, href: string): boolean {
+  const [currentPath, currentSearch = ""] = currentLocation.split("?");
+  const [hrefPath, hrefSearch = ""] = href.split("?");
+  if (hrefSearch) {
+    const currentParams = new URLSearchParams(currentSearch);
+    const hrefParams = new URLSearchParams(hrefSearch);
+    for (const [key, value] of hrefParams.entries()) {
+      if (currentParams.get(key) !== value) return false;
+    }
+    return currentPath === hrefPath || (hrefPath === "/sources-mapping" && currentPath === "/sources");
+  }
+  if (hrefPath === "/") return currentPath === "/";
+  if (hrefPath === "/catalog") return currentPath === "/catalog";
+  return currentPath === hrefPath || currentPath.startsWith(`${hrefPath}/`);
 }
 
 function filterGroups(canPage: (code: string) => boolean, isDeveloper: boolean): ShellNavGroup[] {
@@ -163,7 +213,7 @@ function shellStatusLabel(status?: string | null) {
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const {
     canPage,
     user,
@@ -183,7 +233,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [switchingOrganization, setSwitchingOrganization] = useState(false);
 
   const visibleGroups = useMemo(() => filterGroups(canPage, isDeveloper), [canPage, isDeveloper]);
-  const currentLabel = useMemo(() => findCurrentLabel(pathname, visibleGroups), [pathname, visibleGroups]);
+  const currentLocation = `${pathname}${search}`;
+  const currentLabel = useMemo(() => findCurrentLabel(currentLocation, visibleGroups), [currentLocation, visibleGroups]);
   const [activeGroupTitle, setActiveGroupTitle] = useState("");
   const showWorkspaceBar = false;
   const showShellHeading = false;
@@ -202,7 +253,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   useEffect(() => {
     const activeGroup =
       visibleGroups.find((group) =>
-        group.sections.some((section) => section.items.some((item) => isActive(pathname, item.href))),
+        group.sections.some((section) => section.items.some((item) => isActive(currentLocation, item.href))),
       ) || visibleGroups[0];
     setActiveGroupTitle((current) => {
       if (!activeGroup?.title) return current;
@@ -211,10 +262,10 @@ export default function Shell({ children }: { children: ReactNode }) {
       if (!currentVisible) return activeGroup.title;
       const routeInsideCurrent = visibleGroups
         .find((group) => group.title === current)
-        ?.sections.some((section) => section.items.some((item) => isActive(pathname, item.href)));
+        ?.sections.some((section) => section.items.some((item) => isActive(currentLocation, item.href)));
       return routeInsideCurrent ? current : activeGroup.title;
     });
-  }, [pathname, visibleGroups]);
+  }, [currentLocation, visibleGroups]);
 
   async function submitPasswordChange() {
     setSavingPassword(true);
@@ -283,6 +334,7 @@ export default function Shell({ children }: { children: ReactNode }) {
               <div className="shellSidebarWorkspace">
                 <ShellSidebarNav
                   pathname={pathname}
+                  currentLocation={currentLocation}
                   groups={visibleGroups}
                   activeGroupTitle={activeGroupTitle}
                   onSelectGroup={setActiveGroupTitle}

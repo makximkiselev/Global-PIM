@@ -9,11 +9,13 @@ export type ShellNavGroup = {
   title: string;
   icon: ShellIconName;
   summary: string;
+  flow?: string[];
   sections: ShellNavSection[];
 };
 
 export default function ShellSidebarNav({
   pathname,
+  currentLocation,
   groups,
   activeGroupTitle,
   onSelectGroup,
@@ -22,6 +24,7 @@ export default function ShellSidebarNav({
   panelFooter,
 }: {
   pathname: string;
+  currentLocation?: string;
   groups: ShellNavGroup[];
   activeGroupTitle: string;
   onSelectGroup: (title: string) => void;
@@ -33,8 +36,9 @@ export default function ShellSidebarNav({
   const closeTimerRef = useRef<number | null>(null);
   const [previewGroupTitle, setPreviewGroupTitle] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const activeLocation = currentLocation || pathname;
   const routeGroup =
-    groups.find((group) => group.sections.some((section) => section.items.some((item) => isActive(pathname, item.href)))) ||
+    groups.find((group) => group.sections.some((section) => section.items.some((item) => isActive(activeLocation, item.href)))) ||
     groups[0] ||
     null;
   const activeGroup = useMemo(
@@ -102,13 +106,7 @@ export default function ShellSidebarNav({
                 className={`shellRailButton${active ? " isActive" : ""}${previewing ? " isPreview" : ""}`}
                 onMouseEnter={() => openGroup(group.title)}
                 onFocus={() => openGroup(group.title)}
-                onClick={() => {
-                  if (panelOpen && activeGroup?.title === group.title) {
-                    closePanel();
-                    return;
-                  }
-                  openGroup(group.title);
-                }}
+                onClick={() => openGroup(group.title)}
               >
                 <span className="shellRailButtonIcon" aria-hidden="true">
                   <ShellIcon name={group.icon} />
@@ -125,9 +123,19 @@ export default function ShellSidebarNav({
         {activeGroup ? (
           <>
             <div className="shellNavPanelHeader">
-              <div className="shellNavPanelEyebrow">Навигация</div>
+              <div className="shellNavPanelEyebrow">Рабочий контур</div>
               <div className="shellNavPanelTitle">{activeGroup.title}</div>
               <div className="shellNavPanelSummary">{activeGroup.summary}</div>
+              {activeGroup.flow?.length ? (
+                <div className="shellNavFlow" aria-label="Порядок работы">
+                  {activeGroup.flow.map((step, index) => (
+                    <span key={`${activeGroup.title}-${step}`} className="shellNavFlowStep">
+                      <span>{index + 1}</span>
+                      {step}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <nav className="shellSidebarNav" aria-label="Основная навигация">
@@ -139,7 +147,7 @@ export default function ShellSidebarNav({
                       <Link
                         key={item.href}
                         to={item.href}
-                        className={`shellSidebarLink${isActive(pathname, item.href) ? " active" : ""}`}
+                        className={`shellSidebarLink${isActive(activeLocation, item.href) ? " active" : ""}`}
                       >
                         <span className="shellSidebarLinkDot" />
                         <span>{item.label}</span>

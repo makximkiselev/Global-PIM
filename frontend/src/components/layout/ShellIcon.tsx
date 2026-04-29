@@ -1,4 +1,4 @@
-type ShellIconName = "workspace" | "catalog" | "models" | "sources" | "media" | "admin" | "sun" | "moon";
+type ShellIconName = "workspace" | "catalog" | "models" | "enrichment" | "sources" | "export" | "media" | "admin" | "sun" | "moon";
 
 function iconPath(name: ShellIconName) {
   switch (name) {
@@ -32,6 +32,27 @@ function iconPath(name: ShellIconName) {
           <path d="M6 18 18.25 5.75" />
           <path d="M11 5.75h7.25V13" />
           <path d="M5 10v8.25h8.25" />
+        </>
+      );
+    case "enrichment":
+      return (
+        <>
+          <path d="M5.25 7.5h8.5" />
+          <path d="M5.25 12h13.5" />
+          <path d="M5.25 16.5h8.5" />
+          <path d="M17.25 6.25v3" />
+          <path d="M15.75 7.75h3" />
+          <path d="M17.25 14.25v4" />
+          <path d="M15.25 16.25h4" />
+        </>
+      );
+    case "export":
+      return (
+        <>
+          <path d="M12 4.5v10" />
+          <path d="m8.25 10.75 3.75 3.75 3.75-3.75" />
+          <path d="M5.25 15.25v3.25h13.5v-3.25" />
+          <path d="M7.75 6.25h8.5" />
         </>
       );
     case "media":

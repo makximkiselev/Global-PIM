@@ -193,14 +193,50 @@ Current rules:
 
 ### 6.2 Navigation Shell
 
-Status: first pass done, needs ongoing consistency QA.
+Status: active redesign.
 
 Current rules:
 
 1. compact left rail is the default;
 2. expanded menu should be full-height and stable on hover;
 3. user, organization, role, and theme toggle must be visible in shell/account area;
-4. no oversized icons or random floating dropdowns.
+4. no oversized icons or random floating dropdowns;
+5. menu is grouped by PIM workflow, not by technical page names;
+6. expanded panel must explain the current working contour with a short process sequence;
+7. route links may point directly to tabbed work modes via `?tab=...`;
+8. labels must be user-facing and Russian, not technical.
+
+Accepted navigation contours:
+
+1. `Рабочий стол`
+   - tasks, errors, latest actions;
+   - current route: `/`;
+2. `Каталог`
+   - category structure, all SKU, product creation, groups/variants, content quality;
+   - routes: `/catalog`, `/products`, `/products/new`, `/catalog/groups`, `/catalog/content-index`;
+3. `Модели`
+   - info-model catalog, marketplace fields, dictionaries, value normalization;
+   - routes: `/templates`, `/sources-mapping?tab=params`, `/dictionaries`, `/sources-mapping?tab=values`;
+4. `Насыщение`
+   - product import, competitor matching, enrichment proposals, moderation queue;
+   - routes: `/catalog/import`, `/sources-mapping?tab=competitors`, `/sources?tab=competitors`;
+5. `Каналы`
+   - category mapping, parameter mapping, value rules, connector/API status;
+   - routes: `/sources?tab=sources`, `/sources?tab=params`, `/sources?tab=values`, `/connectors/status`;
+6. `Экспорт`
+   - export preparation, validation, channel readiness;
+   - routes: `/catalog/export`, `/sources?tab=values`, `/connectors/status`;
+7. `Медиа`
+   - media files, S3, product bindings, infographics;
+8. `Администрирование`
+   - organization, team, roles, invites, platform settings.
+
+Open tasks:
+
+1. verify hover stability and full-height panel on production after every shell change;
+2. verify active state for tabbed links;
+3. add real counters later from backend when queues/errors are ready;
+4. keep this shell as the only global navigation source.
 
 ### 6.3 Catalog
 
