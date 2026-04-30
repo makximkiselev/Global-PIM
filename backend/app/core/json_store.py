@@ -25,6 +25,25 @@ class JsonStoreError(RuntimeError):
     pass
 
 
+class _ManagedPgConnection:
+    """Close the real driver connection when thread-local state is discarded."""
+
+    def __init__(self, conn: Any):
+        self._conn = conn
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    def close(self) -> None:
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+    def __del__(self) -> None:
+        self.close()
+
+
 @dataclass
 class FileLock:
     path: Path | None = None
@@ -172,13 +191,13 @@ def _pg_connect():
             _PG_STATE.json_adapter = None
     driver, kind = _load_psycopg()
     if kind == "psycopg":
-        conn = driver.connect(dsn, autocommit=True)
+        conn = _ManagedPgConnection(driver.connect(dsn, autocommit=True))
         _PG_STATE.conn = conn
         _PG_STATE.kind = kind
         _PG_STATE.json_adapter = None
         return conn, kind, None
     psycopg2_mod, Json = driver
-    conn = psycopg2_mod.connect(dsn)
+    conn = _ManagedPgConnection(psycopg2_mod.connect(dsn))
     conn.autocommit = True
     _PG_STATE.conn = conn
     _PG_STATE.kind = kind
