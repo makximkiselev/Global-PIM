@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Button from "./ui/Button";
 import "../styles/catalog-sidebar.css";
 
 type SidebarAction = {
@@ -39,14 +40,14 @@ export default function CategorySidebar({
           {hint ? <div className="csb-hint">{hint}</div> : null}
         </div>
         {primaryAction ? (
-          <button
-            className={`btn ${primaryAction.kind === "primary" ? "primary" : ""} sm`}
-            type="button"
+          <Button
+            className="sm"
+            variant={primaryAction.kind === "primary" ? "primary" : "default"}
             onClick={primaryAction.onClick}
             disabled={primaryAction.disabled}
           >
             {primaryAction.label}
-          </button>
+          </Button>
         ) : null}
       </div>
 

@@ -99,7 +99,8 @@ def _load_products() -> List[Dict[str, Any]]:
 
 
 def _save_products(items: List[Dict[str, Any]]) -> None:
-    _save_json(PRODUCTS_PATH, items)
+    _ = items
+    raise RuntimeError("CATALOG_PRODUCTS_LEGACY_WRITE_DISABLED")
 
 
 def _serialize_product_list_item(product: Dict[str, Any]) -> Dict[str, Any]:
@@ -728,9 +729,10 @@ def delete_node(node_id: str):
 
     # 4) удаляем товары, которые лежат в удаленной ветке
     products = _load_products()
-    new_products = [p for p in products if p.get("category_id") not in subtree_ids]
-    if len(new_products) != len(products):
-        _save_products(new_products)
+    product_ids = [str(p.get("id") or "").strip() for p in products if p.get("category_id") in subtree_ids]
+    product_ids = [product_id for product_id in product_ids if product_id]
+    if product_ids:
+        delete_products_bulk_service(product_ids)
 
     # 5) удаляем шаблоны/привязки для удалённых категорий
     _cleanup_templates_for_deleted_categories(subtree_ids)
@@ -1316,18 +1318,17 @@ def create_product(payload: ProductCreate):
     if not name:
         raise HTTPException(status_code=400, detail="Empty product name")
 
-    products = _load_products()
-
-    product_id = str(uuid.uuid4())
-    product = {
-        "id": product_id,
-        "name": name,
-        "category_id": payload.category_id,
-    }
-    products.append(product)
-    _save_products(products)
-
-    return {"id": product_id}
+    product = create_product_service(
+        {
+            "category_id": payload.category_id,
+            "type": "single",
+            "title": name,
+            "selected_params": [],
+            "feature_params": [],
+            "exports_enabled": {},
+        }
+    )
+    return {"id": product.get("id")}
 
 
 @router.post("/catalog/products/bulk-delete")

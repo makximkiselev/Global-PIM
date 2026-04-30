@@ -97,63 +97,21 @@
   overscroll-behavior: contain;
 }
 
-.tplTreeNode + .tplTreeNode {
-  margin-top: 6px;
-}
-
-.tplTreeChildren {
-  display: grid;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.tplTreeRow {
-  --depth-step: 16px;
+.tplTreeNodeTemplate {
+  grid-template-columns: 14px minmax(0, 1fr) auto;
   min-height: 52px;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px 9px calc(10px + (var(--depth, 0) * var(--depth-step)));
-  border-radius: 16px;
-  border: 1px solid var(--line);
-  background: rgba(var(--card-rgb), 0.78);
-  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  border: 1px solid transparent;
 }
 
-.tplTreeRow:hover {
-  transform: translateX(1px);
-  border-color: rgba(var(--brand-rgb), 0.18);
-  box-shadow: 0 12px 24px rgba(var(--shadow-rgb), 0.08);
-}
-
-.tplTreeRow.is-selected {
-  border-color: rgba(var(--brand-rgb), 0.34);
-  background: linear-gradient(180deg, rgba(var(--brand-rgb), 0.1), rgba(var(--brand-rgb), 0.04));
-}
-
-.tplTreeRow.is-own:not(.is-selected) {
+.tplTreeNodeTemplate.is-own:not(.is-active) {
   border-color: rgba(16, 185, 129, 0.18);
 }
 
-.tplTreeRow.is-inherited:not(.is-selected) {
+.tplTreeNodeTemplate.is-inherited:not(.is-active) {
   border-color: rgba(var(--brand-rgb), 0.18);
 }
 
-.tplTreeCaret {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.tplTreeCaret:disabled {
-  opacity: 0.55;
-}
-
-.tplTreeMain {
+.tplTreeSelectBtn {
   min-width: 0;
   display: grid;
   gap: 4px;

@@ -444,50 +444,53 @@ export default function TemplatesCatalogFeature() {
         : node.lock_reason || "Модель на категории еще не задана";
 
     return (
-      <div className="tplTreeNode">
-        <div
-          className={`tplTreeRow${selected ? " is-selected" : ""}${hasOwnTemplate ? " is-own" : isInherited ? " is-inherited" : ""}`}
-          style={{ ["--depth" as any]: depth }}
-        >
-          <button
-            className="tplTreeCaret"
-            type="button"
-            disabled={!hasKids}
-            onClick={() => hasKids && toggle(node.id)}
-            aria-label={hasKids ? (isExpanded ? "Свернуть ветку" : "Развернуть ветку") : "Нет вложенных категорий"}
-          >
-            {hasKids ? (isExpanded ? "▾" : "▸") : "•"}
-          </button>
-          <button
-            type="button"
-            className="tplTreeMain"
-            onClick={() => preserveViewport(() => setSelectedId(node.id))}
-            title={hint}
-          >
-            <span className="tplTreeTitle">{node.name}</span>
-            <span className="tplTreeMeta">
-              {hasOwnTemplate
-                ? "Модель задана на категории"
-                : isInherited
-                  ? `Наследуется от ${byId.get(node.effective_from_id || "")?.name || "родителя"}`
-                  : node.lock_reason || "Модель не задана"}
-            </span>
-          </button>
-          <div className="tplTreeActions">
-            <span className={`tplModePill${hasOwnTemplate ? " is-own" : isInherited ? " is-inherited" : ""}`}>{statusText}</span>
-            {(hasOwnTemplate || isInherited) ? (
-              <Button className="sm" type="button" onClick={() => openEditorForNode(node)}>
-                Открыть
-              </Button>
-            ) : null}
+      <div>
+        <div className="csb-treeRow" style={{ ["--depth" as any]: depth }}>
+          <div className={`csb-treeNode tplTreeNodeTemplate ${selected ? "is-active" : ""}${hasOwnTemplate ? " is-own" : isInherited ? " is-inherited" : ""}`}>
+            {hasKids ? (
+              <button
+                className="csb-caretBtn"
+                type="button"
+                onClick={() => toggle(node.id)}
+                aria-label={isExpanded ? "Свернуть ветку" : "Развернуть ветку"}
+                title={isExpanded ? "Свернуть" : "Развернуть"}
+              >
+                {isExpanded ? "▾" : "▸"}
+              </button>
+            ) : (
+              <span className="csb-caretSpacer" aria-hidden="true" />
+            )}
+            <button
+              type="button"
+              className="csb-treeSelectBtn tplTreeSelectBtn"
+              onClick={() => preserveViewport(() => setSelectedId(node.id))}
+              title={hint}
+            >
+              <span className="csb-treeName tplTreeTitle">{node.name}</span>
+              <span className="tplTreeMeta">
+                {hasOwnTemplate
+                  ? "Модель задана на категории"
+                  : isInherited
+                    ? `Наследуется от ${byId.get(node.effective_from_id || "")?.name || "родителя"}`
+                    : node.lock_reason || "Модель не задана"}
+              </span>
+            </button>
+            <div className="csb-treeCount tplTreeActions">
+              <span className={`tplModePill${hasOwnTemplate ? " is-own" : isInherited ? " is-inherited" : ""}`}>{statusText}</span>
+              {(hasOwnTemplate || isInherited) ? (
+                <Button className="sm" type="button" onClick={() => openEditorForNode(node)}>
+                  Открыть
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
         {hasKids && isExpanded ? (
-          <div className="tplTreeChildren">
+          <>
             {visibleKids.map((kid) => (
               <TreeNode key={kid.id} node={kid} depth={depth + 1} />
             ))}
-          </div>
+          </>
         ) : null}
       </div>
     );
@@ -524,7 +527,7 @@ export default function TemplatesCatalogFeature() {
               </>
             }
           >
-            <div className="tplTreePanel" ref={treeRef}>
+            <div className="csb-tree tplTreePanel" ref={treeRef}>
               {loading ? (
                 <div className="muted">Загружаю дерево моделей…</div>
               ) : roots.length === 0 ? (

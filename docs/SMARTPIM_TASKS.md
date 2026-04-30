@@ -219,6 +219,20 @@ Risks found:
 3. `backend/.env` is not shell-source-safe because at least one value contains `&`; scripts should not assume `source backend/.env`;
 4. global vs tenant tables are not consistently documented, so accidental reads from global fallback can hide missing tenant data;
 5. product variant logic still has two models: `products_rel.group_id` and legacy `product_variants_rel`.
+6. `/catalog/products` had a dangerous mixed path: product reads were relational, but create/delete used legacy `_save_products()`; fixed on 2026-04-30 by routing create/delete through product services and disabling the local legacy writer;
+7. `products_rel` and legacy `json_documents.products.json` are already not equal: 1090 vs 1087 rows;
+8. connector state reads are mixed: connector status writes relational tenant state, but product/export/Yandex/Ozon paths still read JSON connector docs.
+9. cleanup SQL must stay review-only by default; generated DROP/DELETE statements need an explicit guard and rollback until backup/parity sign-off.
+10. consolidated connector accounts must not store raw API keys/tokens in JSONB; store a secret reference plus masked metadata only.
+
+DDL/audit readiness review on 2026-04-30:
+
+1. `backend/scripts/db_consolidation_audit.py` cleanup output is review-only and non-destructive if pasted as-is;
+2. stale organization cleanup now discovers tenant-scoped tables dynamically by `organization_id`;
+3. `deploy/sql/014_consolidated_pim_schema_draft.sql` has tenant-scoped FKs to `organizations`;
+4. consolidated product/model/value tables have tenant-aware FKs and JSONB shape checks;
+5. external snapshot expiry indexes include `organization_id`;
+6. connector credentials are modeled as `credentials_ref` plus masked `credentials_meta_json`, not raw secret JSON.
 
 Target rules:
 
@@ -306,16 +320,58 @@ Migration principle:
 6. freeze old writes;
 7. remove old tables only after production parity and backup.
 
+Required read adapters before write switching:
+
+1. `ConnectorsStateReadAdapter`
+   - one source for connector state;
+   - replace direct `read_doc(connectors_scheduler.json)` in product/export/Yandex/Ozon paths.
+2. `MarketplaceProviderCacheReadAdapter`
+   - one source for Yandex/Ozon category trees, params, offer cards, import info, rating and external snapshots.
+3. `ProductCatalogReadAdapter`
+   - one source for catalog product list/search/page data;
+   - replace mixed `load_catalog_product_items`, `query_catalog_product_items`, `query_products_full` usage where page shape matters.
+4. `CompetitorMappingReadAdapter`
+   - read-only facade over current competitor JSON first;
+   - later backed by `pim_channel_links`.
+5. `TemplateReadAdapter`
+   - typed methods for `get_template`, `list_by_category`, `resolve_for_category`, `editor_payload`;
+   - API should stop depending on legacy whole-doc `category_to_template/category_to_templates`.
+
+Most dangerous write paths:
+
+1. product bulk/upsert/import/Yandex sync because they affect SKU, content, counts, registry and page data;
+2. `/catalog/products` legacy JSON write path because it can create phantom divergence;
+3. template create/update/delete/apply-to-products because it mutates model fields and product features;
+4. marketplace mapping AI/save because it mutates mappings, templates, dictionaries and value refs;
+5. connector config because it contains tenant-scoped credentials and legacy readers may miss updates;
+6. catalog delete/move because category subtree operations can affect products and templates.
+
+Mandatory UI/API QA after read-model changes:
+
+1. `/catalog`;
+2. `/products`;
+3. `/products/:productId`;
+4. `/products/new?category_id=...`;
+5. `/templates`;
+6. `/templates/:categoryId`;
+7. `/sources?tab=sources`;
+8. `/sources?tab=params&category=...`;
+9. `/sources?tab=values&category=...`;
+10. `/sources?tab=competitors`;
+11. `/catalog/import`;
+12. `/catalog/export`;
+13. `/connectors/status`;
+14. `/`.
+
 Next tasks:
 
-1. write a concrete DDL proposal for the consolidated `pim_*` schema;
-2. create a safe DB cleanup script with dry-run mode for backup tables and stale test organizations;
-3. add a parity check between `products_rel` and legacy `json_documents.products.json`;
-4. add a parity check between `catalog_nodes_rel` and legacy `json_documents.catalog_nodes.json`;
-5. decide whether `deploy/sql/*` becomes official migrations or is removed;
-6. migrate `product_variants_rel` final row into `products_rel`/group model or drop after confirmation;
-7. classify all `json_documents` keys and move active operational docs to explicit tables where needed;
-8. build read adapters over consolidated tables before switching UI/API writes.
+1. use `backend/scripts/db_consolidation_audit.py` before and after every DB migration step;
+2. audit remaining legacy product write paths in `catalog_exchange.py` and `yandex_market.py`;
+3. implement `ConnectorsStateReadAdapter`;
+4. implement `ProductCatalogReadAdapter`;
+5. classify all `json_documents` keys and decide cache/run/snapshot/migrate/delete;
+6. create idempotent backfill for `pim_categories`, `pim_products`, `pim_models`, `pim_model_fields`;
+7. run parity checks and only then add read adapters over consolidated tables.
 
 ## P1 - Catalog Cleanup
 
