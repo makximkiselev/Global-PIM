@@ -109,6 +109,8 @@ The deploy script reads:
 
 Never print the env file contents.
 
+Do not `source backend/.env` in shell scripts. Some application env values are not shell-escaped. If a script needs backend env values, parse key/value lines deliberately and never print secrets.
+
 ## Local Commands
 
 Install backend dependencies:

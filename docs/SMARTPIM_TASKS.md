@@ -141,37 +141,103 @@ Next tasks:
 
 ## P0 - Database Ownership Audit
 
-Status: not started beyond preliminary classification.
+Status: first production audit complete / cleanup not executed.
 
-Problem:
+Runtime schema sources:
 
-The DB has 44 relational tables plus legacy compatibility paths. Some are canonical, some are tenant overrides, some are derived read models, and some are migration candidates.
+1. `backend/app/storage/relational_pim_store.py` creates 44 PIM relational tables.
+2. `backend/app/core/control_plane.py` creates 8 control-plane tables.
+3. `backend/app/core/json_store.py` creates `json_documents`.
+4. `deploy/sql/*` is historical/ops schema reference, not the active runtime migration source.
 
-Known current classification:
+Production snapshot on 2026-04-30:
 
-1. canonical: `products_rel`, `catalog_nodes_rel`, `product_groups_rel`;
-2. info-model config: `templates_*`, `template_attributes_*`, `category_template_links_*`;
-3. mapping config: `category_mappings_*`, `attribute_mappings_*`, `attribute_value_refs_*`, dictionaries/provider/export map tables;
-4. derived/read models: `catalog_product_registry_rel`, `catalog_product_page_*`, `category_product_counts_rel`, `dashboard_stats_rel`;
-5. ownership unclear: `product_marketplace_status_*`;
-6. migration candidate: `product_variants_rel`.
+1. total public tables: 61;
+2. expected runtime tables: 53;
+3. extra tables: 8 `backup_20260428_*` control-plane backup tables;
+4. active organization: `org_default / Global Trade`;
+5. stale provisioning organizations: 16 test/QA organizations;
+6. `products_rel`: 1090 rows;
+7. `catalog_nodes_rel`: 272 rows;
+8. `product_groups_rel`: 105 rows;
+9. `product_variants_rel`: 1 row;
+10. `json_documents`: 85 rows.
+
+Canonical source-of-truth tables:
+
+1. catalog: `catalog_nodes_rel`;
+2. products/SKU: `products_rel`;
+3. product groups: `product_groups_rel`, `product_group_variant_params_rel`;
+4. organization/users/access: `platform_users`, `organizations`, `organization_members`, `organization_invites`;
+5. tenant registry/provisioning: `tenant_registry`, `tenant_provisioning_jobs`.
+
+Config tables:
+
+1. info-models: `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`;
+2. global fallback/reference info-models: `templates_rel`, `template_attributes_rel`, `category_template_links_rel`;
+3. category mappings: `category_mappings_tenant_rel`, `category_mappings_rel`;
+4. parameter mappings: `attribute_mappings_tenant_rel`, `attribute_mappings_rel`;
+5. source/value refs: `attribute_value_refs_tenant_rel`, `attribute_value_refs_rel`;
+6. dictionaries/value mapping: `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`;
+7. global dictionary fallback/reference: non-tenant dictionary tables.
+
+Derived/read-model tables:
+
+1. `catalog_product_registry_rel`;
+2. `category_product_counts_rel`;
+3. `category_template_resolution_rel`;
+4. `category_template_resolution_tenant_rel`;
+5. `product_marketplace_status_rel`;
+6. `product_marketplace_status_tenant_rel`;
+7. `catalog_product_page_rel`;
+8. `catalog_product_page_tenant_rel`;
+9. `dashboard_stats_rel`.
+
+Legacy/migration candidates:
+
+1. `product_variants_rel` conflicts with the accepted model where every variant is also a row in `products_rel` with its own SKU and shared `group_id`;
+2. `json_documents` contains many legacy snapshots that duplicate relational tables: `products.json`, `catalog_nodes.json`, `templates.json`, `dictionaries.json`, `product_groups.json`, SKU indexes;
+3. `json_documents` also stores active non-relational operational docs: import/export runs, marketplace caches, offer cache, competitor mapping, ComfyUI runs if used;
+4. `platform_user_roles` has 0 rows and no current product-facing use; keep only if platform-level RBAC is still planned;
+5. `deploy/sql/*` duplicates runtime schema and must either become the real migration source or be removed after migration strategy is decided.
+
+Immediate cleanup candidates after backup/confirmation:
+
+1. drop `backup_20260428_102730_*` and `backup_20260428_102824_*` tables;
+2. delete 16 stale `provisioning` test organizations and related `tenant_registry` / `tenant_provisioning_jobs` rows;
+3. delete derived tenant rows for stale orgs:
+   - `catalog_product_page_tenant_rel`;
+   - `product_marketplace_status_tenant_rel`;
+   - `category_template_resolution_tenant_rel`;
+4. delete legacy auth cleanup docs from `json_documents` after confirming current auth tables/sessions are enough;
+5. remove legacy duplicate JSON docs only after relational parity checks pass.
+
+Risks found:
+
+1. tenant read models are duplicated across stale test orgs: `catalog_product_page_tenant_rel` and `product_marketplace_status_tenant_rel` have 11960 rows each for roughly 1090 real products;
+2. mixed storage remains: core PIM entities are relational, but many workflows still read/write `json_documents`;
+3. `backend/.env` is not shell-source-safe because at least one value contains `&`; scripts should not assume `source backend/.env`;
+4. global vs tenant tables are not consistently documented, so accidental reads from global fallback can hide missing tenant data;
+5. product variant logic still has two models: `products_rel.group_id` and legacy `product_variants_rel`.
 
 Target rules:
 
 1. one product row equals one SKU;
-2. product groups define variant grouping;
-3. media binaries stay in S3/object storage;
-4. source evidence should be separated from final canonical values;
-5. derived tables must be rebuildable and not manually edited.
+2. variants are product rows grouped by `group_id`, not separate variant rows;
+3. media binaries stay in S3/object storage; DB stores references only;
+4. raw source evidence and final canonical values must be separated;
+5. derived tables must be rebuildable and never manually edited;
+6. every JSON document that remains in `json_documents` must be classified as cache, run log, external snapshot, or migration backlog item.
 
 Next tasks:
 
-1. list every table with read/write functions;
-2. mark every table as canonical, derived cache, tenant override, legacy compatibility, or migration candidate;
-3. map every table to API routes;
-4. confirm production source of truth;
-5. confirm S3 media fields and upload paths;
-6. propose migration only after ownership map is complete.
+1. create a safe DB cleanup script with dry-run mode for backup tables and stale test organizations;
+2. add a parity check between `products_rel` and legacy `json_documents.products.json`;
+3. add a parity check between `catalog_nodes_rel` and legacy `json_documents.catalog_nodes.json`;
+4. decide whether `deploy/sql/*` becomes official migrations or is removed;
+5. migrate `product_variants_rel` final row into `products_rel`/group model or drop after confirmation;
+6. classify all `json_documents` keys and move active operational docs to explicit tables where needed;
+7. define final minimal schema proposal before destructive DB cleanup.
 
 ## P1 - Catalog Cleanup
 
