@@ -266,6 +266,109 @@ Do not amend commits unless the user explicitly asks.
 
 Do not revert user changes unless the user explicitly asks.
 
+## Autonomous Team Protocol
+
+Default operating model:
+
+1. the main Codex agent is the tech lead and integrator;
+2. subagents are domain workers, not final approvers;
+3. subagents may inspect and patch only their assigned ownership zone;
+4. the integrator reviews every subagent diff before staging;
+5. no change is approved until relevant checks pass locally.
+
+Domain ownership:
+
+1. Backend/API owner:
+   - `backend/app/api/**`;
+   - `backend/app/core/**`;
+   - backend route/service tests in `backend/tests/**`.
+2. DB/storage owner:
+   - `backend/app/storage/**`;
+   - `backend/scripts/db_*`;
+   - `deploy/sql/**`;
+   - DB audit/backfill/parity logic.
+3. Frontend/UI owner:
+   - `frontend/src/components/**`;
+   - `frontend/src/features/**`;
+   - `frontend/src/routes/**`;
+   - `frontend/src/styles/**`.
+4. DevOps/deploy owner:
+   - `scripts/**`;
+   - `Makefile`;
+   - deployment and server operation scripts.
+5. Documentation/task owner:
+   - `docs/SMARTPIM_INSTRUCTIONS.md`;
+   - `docs/SMARTPIM_TASKS.md`.
+
+Integrator-only decisions:
+
+1. schema direction and data ownership changes;
+2. route/page structure changes that affect multiple workflows;
+3. shared component API changes;
+4. production deploys;
+5. commits and pushes;
+6. destructive DB or filesystem operations;
+7. creating/deleting documentation files.
+
+Subagent task rules:
+
+1. every subagent prompt must state the repo path;
+2. every subagent prompt must state that other agents may be editing concurrently;
+3. every subagent prompt must define file/module ownership;
+4. every subagent prompt must forbid reverting unrelated edits;
+5. every subagent prompt must require a final report with changed files, checks, and risks;
+6. do not assign the same file ownership to two active subagents;
+7. do not let agents edit production secrets or print secret values;
+8. close finished or stalled subagents before final response.
+
+Parallel work rules:
+
+1. run DB, backend, and frontend work in parallel only when file ownership is disjoint;
+2. keep cross-cutting refactors small and staged;
+3. if a backend API shape changes, frontend work must wait for the new response contract or use a typed compatibility layer;
+4. if a DB storage path changes, route writes must be switched only after parity/read-adapter checks;
+5. if frontend shared components change, test at least one route that uses the component and one route that was not edited directly.
+
+Review checklist before accepting subagent changes:
+
+1. inspect `git diff` manually;
+2. confirm no secrets were added;
+3. confirm no unrelated files were changed;
+4. confirm no local duplicate component/style was introduced;
+5. confirm no legacy JSON write path was introduced;
+6. confirm error/loading/empty states are not broken;
+7. confirm tests/build match the changed area.
+
+Required gates by change type:
+
+1. backend route/service change:
+   - `python3 -m py_compile <changed python files>`;
+   - targeted unittest for touched workflow;
+   - `make test` before commit when storage/auth/product/mapping logic changes.
+2. DB/storage change:
+   - `python3 backend/scripts/db_consolidation_audit.py`;
+   - targeted storage tests;
+   - no destructive SQL unless explicitly approved;
+   - backfill/parity plan documented in `docs/SMARTPIM_TASKS.md`.
+3. frontend change:
+   - `cd frontend && npm run build`;
+   - Browser Use/in-app visual check when a page layout changes and browser tools are available;
+   - no page-specific duplicate of shared buttons, tree, tables, tabs, panels, or badges.
+4. deploy/script change:
+   - shell syntax/readability check where possible;
+   - never print passwords/tokens;
+   - keep production env outside repository.
+5. documentation-only change:
+   - `git diff --check`.
+
+Commit rules:
+
+1. one commit should contain one coherent slice;
+2. avoid mixing unrelated frontend, backend, DB, and deploy changes;
+3. when a mixed commit is necessary, the final answer must explain why;
+4. commit only after all relevant gates pass;
+5. push only after `git status --short` shows only intended staged/committed changes.
+
 ## Frontend Architecture Rules
 
 Active routes are in `frontend/src/app/App.tsx`.
