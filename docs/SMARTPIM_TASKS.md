@@ -366,12 +366,22 @@ Mandatory UI/API QA after read-model changes:
 Next tasks:
 
 1. use `backend/scripts/db_consolidation_audit.py` before and after every DB migration step;
-2. audit remaining legacy product write paths in `catalog_exchange.py` and `yandex_market.py`;
-3. implement `ConnectorsStateReadAdapter`;
-4. implement `ProductCatalogReadAdapter`;
-5. classify all `json_documents` keys and decide cache/run/snapshot/migrate/delete;
-6. create idempotent backfill for `pim_categories`, `pim_products`, `pim_models`, `pim_model_fields`;
-7. run parity checks and only then add read adapters over consolidated tables.
+2. implement `ProductCatalogReadAdapter`;
+3. classify all `json_documents` keys and decide cache/run/snapshot/migrate/delete;
+4. create idempotent backfill for `pim_categories`, `pim_products`, `pim_models`, `pim_model_fields`;
+5. run parity checks and only then add read adapters over consolidated tables.
+
+Product write audit on 2026-04-30:
+
+1. `catalog.py` local `_save_products()` legacy writer is disabled and create/delete routes use product services;
+2. `catalog_exchange.py` and `yandex_market.py` `_save_products()` helpers already route through `bulk_upsert_product_items`;
+3. no remaining direct `products.json` write was found in the catalog create/delete path.
+
+Connector state adapter status on 2026-04-30:
+
+1. `backend/app/core/connectors_state.py` is the read adapter seam for connector provider settings/import stores;
+2. product channel summary, catalog export, Yandex defaults and Ozon defaults use the adapter instead of direct route-level `connectors_scheduler.json` reads;
+3. remaining `connectors_scheduler.json` access is limited to relational storage bootstrap/backfill.
 
 ## P1 - Catalog Cleanup
 

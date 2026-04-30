@@ -45,27 +45,6 @@
   gap:8px;
 }
 
-.catalogTreeSearch{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin-top:16px;
-  padding:0 14px;
-  min-height:48px;
-  border-radius:16px;
-  border:1px solid var(--line-strong);
-  background:rgba(var(--bg-rgb),.28);
-}
-
-.catalogTreeSearch input{
-  width:100%;
-  border:0;
-  outline:0;
-  background:transparent;
-  color:var(--text);
-  font-size:14px;
-}
-
 .catalogTree{
   margin-top:16px;
   display:flex;
@@ -784,39 +763,34 @@
   flex-direction:column;
 }
 
-.catalogTreePanel .dataToolbar{
-  gap:8px;
+.catalogTreePanel .csb-body{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+
+.catalogTreePanel .csb-controls{
+  flex-direction:column;
+  align-items:stretch;
 }
 
 .catalogTreeToolbarActions{
   gap:6px;
 }
 
-.catalogTreeToolbarActions .btn{
+.catalogTreeToolbarActions .btn,
+.catalogTreeFilters .btn{
   min-height:32px;
   padding:0 10px;
   border-radius:10px;
   font-size:12px;
 }
 
-.catalogTreeSearch{
-  min-height:38px;
-  margin-top:10px;
-  padding:0 11px;
-  border-radius:12px;
-  background:rgba(var(--surface-rgb),.42);
-}
-
-.catalogTreeSearch input{
-  font-size:13px;
-  font-weight:750;
-}
-
 .catalogTreeFilters{
   display:flex;
   flex-wrap:wrap;
   gap:6px;
-  margin-top:8px;
 }
 
 .catalogTreeFilter{

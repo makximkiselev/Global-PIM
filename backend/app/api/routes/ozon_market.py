@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
 from app.storage.relational_pim_store import load_catalog_nodes, query_products_full
 
@@ -17,8 +18,6 @@ router = APIRouter(prefix="/marketplaces/ozon", tags=["marketplaces-ozon"])
 BASE_DIR = Path(__file__).resolve().parents[3]  # backend/
 DATA_DIR = BASE_DIR / "data" / "marketplaces" / "ozon"
 ENV_PATH = BASE_DIR / ".env"
-MARKETPLACES_DIR = BASE_DIR / "data" / "marketplaces"
-CONNECTORS_STATE_PATH = MARKETPLACES_DIR / "connectors_scheduler.json"
 PRODUCTS_PATH = BASE_DIR / "data" / "products.json"
 CATALOG_NODES_PATH = BASE_DIR / "data" / "catalog_nodes.json"
 
@@ -110,20 +109,9 @@ def _load_nodes() -> List[Dict[str, Any]]:
 
 
 def _default_import_store_credentials() -> Dict[str, Any]:
-    state = read_doc(CONNECTORS_STATE_PATH, default={"providers": {}})
-    providers = state.get("providers") if isinstance(state, dict) else {}
-    if not isinstance(providers, dict):
-        return {}
-    prow = providers.get("ozon")
-    stores = prow.get("import_stores") if isinstance(prow, dict) else []
-    if isinstance(stores, list):
-        for store in stores:
-            if not isinstance(store, dict):
-                continue
-            if not bool(store.get("enabled")):
-                continue
-            if str(store.get("client_id") or "").strip() and str(store.get("api_key") or "").strip():
-                return store
+    store = ConnectorsStateReadAdapter().first_enabled_import_store("ozon")
+    if store and str(store.get("client_id") or "").strip() and str(store.get("api_key") or "").strip():
+        return dict(store)
     return {}
 
 

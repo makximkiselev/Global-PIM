@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
 from app.core.value_mapping import provider_export_value, provider_import_value
 from app.storage.relational_pim_store import (
@@ -37,7 +38,6 @@ MARKETPLACES_DIR = BASE_DIR / "data" / "marketplaces"
 CATEGORY_MAPPING_PATH = MARKETPLACES_DIR / "category_mapping.json"
 ATTR_MAPPING_PATH = MARKETPLACES_DIR / "attribute_master_mapping.json"
 ATTR_VALUES_DICT_PATH = MARKETPLACES_DIR / "attribute_value_dictionary.json"
-CONNECTORS_STATE_PATH = MARKETPLACES_DIR / "connectors_scheduler.json"
 PRODUCTS_PATH = BASE_DIR / "data" / "products.json"
 CATALOG_NODES_PATH = BASE_DIR / "data" / "catalog_nodes.json"
 PRODUCT_GROUPS_PATH = BASE_DIR / "data" / "product_groups.json"
@@ -266,44 +266,26 @@ def _yandex_offer_id_source() -> str:
 
 
 def _default_import_business_id() -> str:
-    doc = read_doc(CONNECTORS_STATE_PATH, default={})
-    providers = doc.get("providers") if isinstance(doc, dict) else {}
-    prow = providers.get("yandex_market") if isinstance(providers, dict) else {}
-    stores = prow.get("import_stores") if isinstance(prow, dict) else []
-    if isinstance(stores, list):
-        for store in stores:
-            if not isinstance(store, dict):
-                continue
-            if not bool(store.get("enabled")):
-                continue
-            business_id = str(store.get("business_id") or "").strip()
-            if business_id:
-                return business_id
+    store = ConnectorsStateReadAdapter().first_enabled_import_store("yandex_market")
+    if store:
+        business_id = str(store.get("business_id") or "").strip()
+        if business_id:
+            return business_id
     return ""
 
 
 def _default_import_store_credentials() -> Dict[str, str]:
-    doc = read_doc(CONNECTORS_STATE_PATH, default={})
-    providers = doc.get("providers") if isinstance(doc, dict) else {}
-    prow = providers.get("yandex_market") if isinstance(providers, dict) else {}
-    stores = prow.get("import_stores") if isinstance(prow, dict) else []
-    if isinstance(stores, list):
-        for store in stores:
-            if not isinstance(store, dict):
-                continue
-            if not bool(store.get("enabled")):
-                continue
-            business_id = str(store.get("business_id") or "").strip()
-            if not business_id:
-                continue
-            auth_mode = str(store.get("auth_mode") or "").strip().lower() or "auto"
-            if auth_mode not in {"auto", "api-key", "oauth", "bearer"}:
-                auth_mode = "auto"
-            return {
-                "business_id": business_id,
-                "token": str(store.get("token") or "").strip(),
-                "auth_mode": auth_mode,
-            }
+    store = ConnectorsStateReadAdapter().first_enabled_import_store("yandex_market")
+    business_id = str((store or {}).get("business_id") or "").strip()
+    if business_id:
+        auth_mode = str((store or {}).get("auth_mode") or "").strip().lower() or "auto"
+        if auth_mode not in {"auto", "api-key", "oauth", "bearer"}:
+            auth_mode = "auto"
+        return {
+            "business_id": business_id,
+            "token": str((store or {}).get("token") or "").strip(),
+            "auth_mode": auth_mode,
+        }
     return {"business_id": "", "token": "", "auth_mode": "auto"}
 
 

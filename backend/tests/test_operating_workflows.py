@@ -204,12 +204,10 @@ class OperatingWorkflowTests(unittest.TestCase):
 
         with (
             patch.object(catalog_exchange, "_resolve_products", return_value=[{"id": "product_1", "title": "Meta Quest 3 128GB"}]),
-            patch.object(catalog_exchange, "read_doc", return_value={
-                "providers": {
-                    "yandex_market": {"import_stores": [{"id": "ym-1", "title": "YM", "enabled": True}]},
-                    "ozon": {"import_stores": [{"id": "oz-1", "title": "Ozon", "enabled": True}]},
-                }
-            }),
+            patch.object(catalog_exchange.ConnectorsStateReadAdapter, "import_stores", side_effect=lambda provider: {
+                "yandex_market": [{"id": "ym-1", "title": "YM", "enabled": True}],
+                "ozon": [{"id": "oz-1", "title": "Ozon", "enabled": True}],
+            }.get(provider, [])),
             patch.object(catalog_exchange, "yandex_export_preview", return_value={
                 "ready_count": 1,
                 "count": 1,

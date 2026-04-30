@@ -20,6 +20,7 @@ from app.core.products.service import (
     allocate_sku_pairs_service,
 )
 from app.core.json_store import JsonStoreError, read_doc, DATA_DIR
+from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.object_storage import ObjectStorageError, delete_object, s3_enabled, upload_bytes
 from app.storage.json_store import load_dictionaries_db, load_templates_db
 from app.storage.relational_pim_store import load_catalog_nodes
@@ -27,7 +28,6 @@ from app.storage.relational_pim_store import load_catalog_nodes
 router = APIRouter(prefix="/products", tags=["products"])
 
 YANDEX_OFFER_CARDS_PATH = DATA_DIR / "marketplaces" / "yandex_market" / "offer_cards_content.json"
-CONNECTORS_STATE_PATH = DATA_DIR / "marketplaces" / "connectors_scheduler.json"
 OZON_PRODUCT_RATING_PATH = DATA_DIR / "marketplaces" / "ozon" / "product_rating_by_sku.json"
 OZON_IMPORT_INFO_PATH = DATA_DIR / "marketplaces" / "ozon" / "import_products_info.json"
 _PRODUCT_NEW_BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
@@ -171,12 +171,7 @@ def _normalize_ozon_status(value: str) -> str:
 
 
 def _load_ozon_summary(product: Dict[str, Any]) -> Dict[str, Any]:
-    state = _load_connectors_state()
-    providers = state.get("providers") if isinstance(state, dict) else {}
-    if not isinstance(providers, dict):
-        providers = {}
-    ozon_provider = providers.get("ozon") if isinstance(providers.get("ozon"), dict) else {}
-    stores = ozon_provider.get("import_stores") if isinstance(ozon_provider.get("import_stores"), list) else []
+    stores = ConnectorsStateReadAdapter().import_stores("ozon")
 
     rating_doc = read_doc(OZON_PRODUCT_RATING_PATH, default={"items": {}})
     rating_items = rating_doc.get("items") if isinstance(rating_doc, dict) else {}
@@ -241,13 +236,7 @@ def _load_ozon_summary(product: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _load_connectors_state() -> Dict[str, Any]:
-    state = read_doc(CONNECTORS_STATE_PATH, default={"providers": {}})
-    if not isinstance(state, dict):
-        return {"providers": {}}
-    providers = state.get("providers")
-    if not isinstance(providers, dict):
-        state["providers"] = {}
-    return state
+    return ConnectorsStateReadAdapter().state_doc()
 
 
 @router.get("/{product_id}/channels-summary")
@@ -272,12 +261,7 @@ def product_channels_summary(product_id: str):
         if label and url and label not in links_by_label:
             links_by_label[label] = url
 
-    state = _load_connectors_state()
-    providers = state.get("providers") if isinstance(state, dict) else {}
-    if not isinstance(providers, dict):
-        providers = {}
-    yandex_provider = providers.get("yandex_market") if isinstance(providers.get("yandex_market"), dict) else {}
-    configured_yandex_stores = yandex_provider.get("import_stores") if isinstance(yandex_provider.get("import_stores"), list) else []
+    configured_yandex_stores = ConnectorsStateReadAdapter().import_stores("yandex_market")
 
     cards_doc = read_doc(YANDEX_OFFER_CARDS_PATH, default={"items": {}})
     card_items = cards_doc.get("items") if isinstance(cards_doc, dict) else {}

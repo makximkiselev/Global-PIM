@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
 from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
@@ -36,7 +37,6 @@ PRODUCTS_PATH = DATA_DIR / "products.json"
 CATALOG_PATH = DATA_DIR / "catalog_nodes.json"
 IMPORT_RUNS_PATH = DATA_DIR / "catalog_import_runs.json"
 EXPORT_RUNS_PATH = DATA_DIR / "catalog_export_runs.json"
-CONNECTORS_STATUS_PATH = DATA_DIR / "marketplaces" / "connectors_scheduler.json"
 
 AUTHORIZED_SITES = {
     "restore": {"restore", "re-store.ru"},
@@ -980,16 +980,13 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
     products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants))
     products = products[: int(req.limit)]
     product_ids = [str(p.get("id") or "").strip() for p in products if str(p.get("id") or "").strip()]
-    state = read_doc(CONNECTORS_STATUS_PATH, default={"providers": {}})
-    providers_state = state.get("providers") if isinstance(state, dict) else {}
-    if not isinstance(providers_state, dict):
-        providers_state = {}
+    connectors_state = ConnectorsStateReadAdapter()
     batches: List[Dict[str, Any]] = []
     for target in req.targets or []:
         provider = str(target.provider or "").strip()
         if provider == "yandex_market":
             preview = yandex_export_preview(ExportPreviewReq(product_ids=product_ids, only_active=False, limit=len(product_ids) or 1000))
-            stores = (providers_state.get("yandex_market") or {}).get("import_stores") if isinstance((providers_state.get("yandex_market") or {}).get("import_stores"), list) else []
+            stores = connectors_state.import_stores("yandex_market")
             selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
             selected_stores = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids] if selected_store_ids else [s for s in stores if bool(s.get("enabled", True))]
             if not selected_stores:
@@ -1005,7 +1002,7 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
                     "items": preview.get("items") if isinstance(preview.get("items"), list) else [],
                 })
         elif provider == "ozon":
-            stores = (providers_state.get("ozon") or {}).get("import_stores") if isinstance((providers_state.get("ozon") or {}).get("import_stores"), list) else []
+            stores = connectors_state.import_stores("ozon")
             selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
             selected_stores = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids] if selected_store_ids else [s for s in stores if bool(s.get("enabled", True))]
             if not selected_stores:

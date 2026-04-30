@@ -19,7 +19,7 @@ import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Alert from "../../components/ui/Alert";
 import EmptyState from "../../components/ui/EmptyState";
-import DataToolbar from "../../components/data/DataToolbar";
+import CategorySidebar from "../../components/CategorySidebar";
 import ProductRegistry from "../../components/ProductRegistry";
 import { api } from "../../lib/api";
 import "../../styles/catalog-fresh.css";
@@ -738,11 +738,15 @@ export default function CatalogFeature() {
       <WorkspaceFrame
         className="catalogWorkspaceFrame"
         sidebar={
-          <Card className="catalogTreePanel">
-            <DataToolbar
-              title="Категории"
-              subtitle={loading ? "Загружаю структуру…" : `${nodes.length} узлов в каталоге`}
-              actions={
+          <CategorySidebar
+            className="catalogTreePanel"
+            title="Категории"
+            hint={loading ? "Загружаю структуру…" : `${nodes.length} узлов в каталоге`}
+            searchValue={treeQuery}
+            onSearchChange={setTreeQuery}
+            searchPlaceholder="Поиск категории"
+            controls={
+              <>
                 <div className="catalogTreeToolbarActions">
                   <Button
                     className="sm"
@@ -758,35 +762,25 @@ export default function CatalogFeature() {
                     Свернуть
                   </Button>
                 </div>
-              }
-            />
 
-            <div className="catalogTreeSearch">
-              <span aria-hidden="true">🔎</span>
-              <input
-                value={treeQuery}
-                onChange={(event) => setTreeQuery(event.target.value)}
-                placeholder="Поиск категории"
-              />
-            </div>
-
-            <div className="catalogTreeFilters" aria-label="Фильтры категорий">
-              {[
-                { key: "all", label: "Все" },
-                { key: "with_products", label: "С товарами" },
-                { key: "empty", label: "Пустые" },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  className={`catalogTreeFilter${treeFilter === item.key ? " isActive" : ""}`}
-                  type="button"
-                  onClick={() => setTreeFilter(item.key as CatalogTreeFilter)}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
+                <div className="catalogTreeFilters" aria-label="Фильтры категорий">
+                  {[
+                    { key: "all", label: "Все" },
+                    { key: "with_products", label: "С товарами" },
+                    { key: "empty", label: "Пустые" },
+                  ].map((item) => (
+                    <Button
+                      key={item.key}
+                      className={`sm catalogTreeFilter${treeFilter === item.key ? " isActive" : ""}`}
+                      onClick={() => setTreeFilter(item.key as CatalogTreeFilter)}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+              </>
+            }
+          >
             <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
               <div className="catalogTree">
                 {loading ? (
@@ -809,7 +803,7 @@ export default function CatalogFeature() {
                 {activeNode ? <div className="catalogTreeDragOverlay">{activeNode.name}</div> : null}
               </DragOverlay>
             </DndContext>
-          </Card>
+          </CategorySidebar>
         }
         main={
           selected ? (
