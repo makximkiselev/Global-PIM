@@ -229,15 +229,93 @@ Target rules:
 5. derived tables must be rebuildable and never manually edited;
 6. every JSON document that remains in `json_documents` must be classified as cache, run log, external snapshot, or migration backlog item.
 
+Target consolidated schema direction:
+
+Do not move everything into one physical table. Use a small number of large domain tables so pages share the same source, while keeping high-write and high-cardinality data indexable.
+
+Core tables:
+
+1. `pim_categories`
+   - replaces `catalog_nodes_rel`;
+   - stores tree, path, position, category state, category-level summary JSON;
+   - every category workspace page reads this table.
+2. `pim_products`
+   - replaces `products_rel`, `catalog_product_registry_rel`, `catalog_product_page_*`, `product_marketplace_status_*`, and legacy `product_variants_rel`;
+   - one row equals one SKU;
+   - contains stable columns for `id`, `organization_id`, `category_id`, `group_id`, `sku_gt`, `sku_pim`, `title`, `status`;
+   - contains JSONB blocks for content, media refs, relations, final channel readiness, export flags, competitor links, and UI-ready summary;
+   - product list, catalog product preview, product card, export readiness, and variant grouping read from this table.
+3. `pim_product_values`
+   - stores one canonical product parameter value per product/field;
+   - includes source/evidence pointers, confidence, approval status, and value normalization state;
+   - used by product card, enrichment, validation, and export.
+4. `pim_models`
+   - replaces templates/category template links/resolution tables;
+   - stores category model identity, inheritance/source category, status, and model-level JSON summary;
+   - model catalog/editor read from this table.
+5. `pim_model_fields`
+   - replaces template attributes, attribute mappings, attribute value refs, dictionary provider refs, and value maps where possible;
+   - one row per canonical PIM field per model/category;
+   - stores field type, required state, allowed values, marketplace field mappings, competitor field evidence, and channel output rules as JSONB;
+   - info-model builder, parameter mapping, value mapping, and export validation read from this table.
+6. `pim_channel_links`
+   - one table for category/product/source links to external systems;
+   - covers marketplace categories, competitor category links, competitor product URLs, imported offer IDs, and moderation state;
+   - sources mapping and competitor discovery read/write this table.
+7. `pim_runs`
+   - one table for import/export/enrichment/connector run history;
+   - replaces JSON run docs like `catalog_import_runs.json`, `catalog_export_runs.json`, connector scheduler docs where possible.
+8. `pim_connector_accounts`
+   - replaces connector method/settings/import store split;
+   - stores masked credentials/config/status per organization/provider/store.
+9. `pim_external_snapshots`
+   - cache table for heavy external payloads from marketplaces and competitors;
+   - replaces most marketplace cache documents in `json_documents`;
+   - not a source of truth, rebuildable.
+
+Control-plane tables stay separate:
+
+1. `platform_users`;
+2. `organizations`;
+3. `organization_members`;
+4. `organization_invites`;
+5. `tenant_registry` and `tenant_provisioning_jobs` only if real multi-tenant provisioning remains.
+
+Why not one table:
+
+1. product rows are updated frequently by content managers;
+2. parameter values are high-cardinality and need filtering/search/validation;
+3. marketplace and competitor evidence can grow much faster than product identity;
+4. import/export run logs and external snapshots are caches/history, not product truth;
+5. separate domain tables allow partial indexes without making every page scan giant JSON.
+
+Accepted denormalization:
+
+1. `pim_products` should be wide and include UI-ready JSON summaries to avoid reassembling catalog/product lists from many joins;
+2. `pim_model_fields` should include marketplace/competitor mapping JSON so mapping pages share one source;
+3. `pim_channel_links` should include moderation state and link candidates so competitor/category/source pages share one source;
+4. derived summaries can live inside JSONB columns if they are explicitly rebuildable.
+
+Migration principle:
+
+1. create new consolidated tables beside old tables;
+2. backfill from old tables and `json_documents`;
+3. add read adapters that serve existing API from new tables;
+4. switch write paths page by page;
+5. add parity checks;
+6. freeze old writes;
+7. remove old tables only after production parity and backup.
+
 Next tasks:
 
-1. create a safe DB cleanup script with dry-run mode for backup tables and stale test organizations;
-2. add a parity check between `products_rel` and legacy `json_documents.products.json`;
-3. add a parity check between `catalog_nodes_rel` and legacy `json_documents.catalog_nodes.json`;
-4. decide whether `deploy/sql/*` becomes official migrations or is removed;
-5. migrate `product_variants_rel` final row into `products_rel`/group model or drop after confirmation;
-6. classify all `json_documents` keys and move active operational docs to explicit tables where needed;
-7. define final minimal schema proposal before destructive DB cleanup.
+1. write a concrete DDL proposal for the consolidated `pim_*` schema;
+2. create a safe DB cleanup script with dry-run mode for backup tables and stale test organizations;
+3. add a parity check between `products_rel` and legacy `json_documents.products.json`;
+4. add a parity check between `catalog_nodes_rel` and legacy `json_documents.catalog_nodes.json`;
+5. decide whether `deploy/sql/*` becomes official migrations or is removed;
+6. migrate `product_variants_rel` final row into `products_rel`/group model or drop after confirmation;
+7. classify all `json_documents` keys and move active operational docs to explicit tables where needed;
+8. build read adapters over consolidated tables before switching UI/API writes.
 
 ## P1 - Catalog Cleanup
 
