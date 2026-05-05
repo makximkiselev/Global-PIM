@@ -25,16 +25,18 @@ Core workflow:
 Top-level menu is fixed to five product zones and should be organized around user work, not internal database entities:
 
 1. `Сводка` - operational health, queues, problems, and quick return to active work.
-2. `Каталог` - import, category structure, SKU list, product card, groups, variants, and content readiness.
-3. `Инфо-модели` - competitor evidence, field collection, field approval, dictionaries, media preparation, and enrichment rules.
-4. `Каналы` - connector status, marketplace category mapping, parameter mapping, value rules, validation, and export.
+2. `Каталог` - category structure, SKU list, product card, groups, variants, media, and content readiness.
+3. `Импорт и модель` - product import, parameter matching, competitor matching, info-model approval, and dictionaries.
+4. `Каналы` - connector status, marketplace category mapping, value rules, validation, and export.
 5. `Администрирование` - organization, users, roles, invitations, and platform settings.
 
 Do not add new top-level menu groups without explicit approval. New workflows must be added as tabs, sections, or local actions inside one of these five zones.
 
 Menu labels must describe the user's task. Prefer `Импортировать товары`, `Собрать модель`, `Сопоставить параметры`, `Настроить значения`, and `Выгрузить товары` over technical nouns.
 
-Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Инфо-модели`.
+`Сопоставить параметры` belongs to import/model preparation. Channels should not duplicate it as a marketplace setup item unless the UI explicitly separates import-field matching from export-field mapping.
+
+Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Каталог`.
 
 Every substantial page must have:
 

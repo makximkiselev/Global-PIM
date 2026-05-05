@@ -28,17 +28,17 @@ const groups: ShellNavGroup[] = [
   {
     title: "Каталог",
     icon: "catalog",
-    summary: "Импорт, категории, SKU, группы вариантов и финальный товарный каталог.",
-    flow: ["импорт", "категории", "SKU", "группы"],
+    summary: "Категории, SKU, группы вариантов, медиа и готовность контента.",
+    flow: ["категории", "SKU", "группы", "медиа"],
     sections: [
       {
         title: "Работа с товарами",
         items: [
-          { href: "/catalog/import", label: "Импортировать товары", page: "catalog_import" },
           { href: "/catalog", label: "Каталог и перемещение", page: "catalog" },
           { href: "/products", label: "Список SKU", page: "products" },
           { href: "/products/new", label: "Создать SKU", page: "products" },
           { href: "/catalog/groups", label: "Группы вариантов", page: "product_groups" },
+          { href: "/images/infographics", label: "Медиа", page: "infographics" },
         ],
       },
       {
@@ -48,11 +48,19 @@ const groups: ShellNavGroup[] = [
     ],
   },
   {
-    title: "Инфо-модели",
+    title: "Импорт и модель",
     icon: "models",
-    summary: "Поля, словари, конкуренты и правила наполнения товаров.",
-    flow: ["конкуренты", "поля", "словари", "наполнение"],
+    summary: "Загрузка товаров, сопоставление параметров, конкуренты, инфо-модель и словари.",
+    flow: ["импорт", "параметры", "конкуренты", "модель"],
     sections: [
+      {
+        title: "Загрузка и сопоставление",
+        items: [
+          { href: "/catalog/import", label: "Импортировать товары", page: "catalog_import" },
+          { href: "/sources?tab=params", label: "Сопоставить параметры", page: "sources_mapping" },
+          { href: "/data-prep/competitors", label: "Сопоставить конкурентов", page: "sources_mapping" },
+        ],
+      },
       {
         title: "Модель данных",
         items: [
@@ -60,19 +68,12 @@ const groups: ShellNavGroup[] = [
           { href: "/dictionaries", label: "Словари", page: "dictionaries" },
         ],
       },
-      {
-        title: "Источники наполнения",
-        items: [
-          { href: "/data-prep/competitors", label: "Сопоставить конкурентов", page: "sources_mapping" },
-          { href: "/images/infographics", label: "Подготовить медиа", page: "infographics" },
-        ],
-      },
     ],
   },
   {
     title: "Каналы",
     icon: "sources",
-    summary: "Площадки, категории, параметры, значения, проверка и выгрузка.",
+    summary: "Подключения, категории площадок, значения, проверка и выгрузка.",
     flow: ["подключить", "сопоставить", "проверить", "выгрузить"],
     sections: [
       {
@@ -80,7 +81,6 @@ const groups: ShellNavGroup[] = [
         items: [
           { href: "/connectors/status", label: "Подключения", page: "connectors_status" },
           { href: "/sources?tab=sources", label: "Сопоставить категории", page: "sources_mapping" },
-          { href: "/sources?tab=params", label: "Сопоставить параметры", page: "sources_mapping" },
           { href: "/sources?tab=values", label: "Настроить значения", page: "sources_mapping" },
           { href: "/catalog/export", label: "Выгрузить товары", page: "catalog_export" },
         ],
