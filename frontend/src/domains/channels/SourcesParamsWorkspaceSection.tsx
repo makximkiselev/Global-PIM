@@ -653,7 +653,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       {savingRowId === String(selectedRow.id) ? "Сохраняю..." : "Подтвердить"}
                     </button>
                     <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть значения</Link>
-                    <Link className="btn" to={`/sources-mapping?tab=competitors&category=${encodeURIComponent(selectedCategoryId)}`}>Очередь конкурентов</Link>
+                    <Link className="btn" to={`/data-prep/competitors?category=${encodeURIComponent(selectedCategoryId)}`}>Очередь конкурентов</Link>
                   </div>
                 </div>
 

@@ -17,6 +17,13 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 
 ## Completed Recent Slices
 
+1. `/sources` competitor/channel separation
+   - added dedicated `/data-prep/competitors` page under `Подготовка данных`;
+   - moved competitor discovery/mapping UI code to `frontend/src/domains/data-prep`;
+   - removed competitor tab from `Каналы`;
+   - removed competitor context from marketplace category binding screen;
+   - legacy `/competitor-mapping` redirects to `/data-prep/competitors`;
+   - legacy `/sources?tab=competitors` redirects inside the feature to `/data-prep/competitors`.
 1. Product navigation collapse first pass
    - accepted five top-level zones: `Сводка`, `Товары`, `Подготовка данных`, `Каналы`, `Администрирование`;
    - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`;
@@ -131,7 +138,7 @@ Target frontend folders:
 
 Frontend structure debts:
 
-1. `/sources` still serves both `Подготовка данных` competitor enrichment and `Каналы` marketplace mapping; split the user-facing flow or make the tabs explicitly domain-owned.
+1. `/sources` competitor tab is split out to `/data-prep/competitors`; remaining debt is that parameter mapping still displays competitor evidence as supporting context.
 2. `frontend/src/components` still contains shared UI/layout primitives; move into `frontend/src/shared` only after import paths are stabilized.
 3. auth-only pages remain in `frontend/src/pages`; either keep as public auth pages or move to `frontend/src/app/auth/pages` in a separate auth cleanup.
 

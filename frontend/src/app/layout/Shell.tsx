@@ -63,7 +63,7 @@ const groups: ShellNavGroup[] = [
       {
         title: "Обогащение",
         items: [
-          { href: "/sources?tab=competitors", label: "Конкуренты", page: "sources_mapping", badge: "review" },
+          { href: "/data-prep/competitors", label: "Конкуренты", page: "sources_mapping", badge: "review" },
           { href: "/images/infographics", label: "Медиа и инфографика", page: "infographics" },
         ],
       },

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
-import CompetitorDiscoveryPanel from "./CompetitorDiscoveryPanel";
 import PageTabs from "../../components/ui/PageTabs";
 import Badge from "../../components/ui/Badge";
 import PageHeader from "../../components/ui/PageHeader";
@@ -12,40 +11,13 @@ import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
 import "../../styles/sources-mapping-modern.css";
 
-type SourcesTab = "sources" | "params" | "values" | "competitors";
+type SourcesTab = "sources" | "params" | "values";
 
 type MappingBootstrapResp = {
   catalog_nodes?: Array<{ id: string; parent_id: string | null; name: string }>;
   catalog_items?: Array<{ id: string; name: string; path?: string }>;
   mappings?: Record<string, Record<string, string>>;
 };
-type CompetitorSourceSuggestion = {
-  id: string;
-  type: "observed" | "search" | string;
-  label: string;
-  url: string;
-  confidence?: number;
-  products_count?: number;
-  evidence?: string;
-  examples?: string[];
-};
-type CompetitorCategorySource = {
-  id: "restore" | "store77" | string;
-  name: string;
-  domain: string;
-  status: string;
-  products_count: number;
-  confirmed_count: number;
-  candidates_count: number;
-  needs_review_count: number;
-  suggestions: CompetitorSourceSuggestion[];
-};
-type CompetitorCategoryResp = {
-  ok: boolean;
-  category: { id: string; name: string; products_count: number; scanned_product_ids?: string[] };
-  sources: CompetitorCategorySource[];
-};
-
 const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v1";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
@@ -54,8 +26,6 @@ function normalizeTab(value: string | null): SourcesTab {
   if (value === "params") return "params";
   if (value === "mp_attributes" || value === "attributes") return "params";
   if (value === "values") return "values";
-  if (value === "competitor_links" || value === "competitor" || value === "discovery") return "competitors";
-  if (value === "competitors") return "competitors";
   return "sources";
 }
 
@@ -85,95 +55,9 @@ async function loadMappingBootstrap() {
   return data;
 }
 
-function confidenceLabel(value?: number) {
-  const raw = Number(value || 0);
-  if (!Number.isFinite(raw) || raw <= 0) return "нет score";
-  return `${Math.round(raw * 100)}%`;
-}
-
-function CategoryCompetitorSourcesPanel({ categoryId, categoryName }: { categoryId: string; categoryName: string }) {
-  const [data, setData] = useState<CompetitorCategoryResp | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!categoryId) {
-      setData(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    api<CompetitorCategoryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(categoryId)}`)
-      .then((response) => {
-        if (!cancelled) setData(response);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Не удалось загрузить competitors");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [categoryId]);
-
-  return (
-    <div className="sourcesCategoryCompetitors">
-      <div className="sourcesCategoryCompetitorsHead">
-        <div>
-          <div className="sourcesCategoryCompetitorsKicker">Конкурентные источники</div>
-          <div className="sourcesCategoryCompetitorsTitle">re-store / store77</div>
-        </div>
-        <Badge tone={data?.category?.products_count ? "active" : "neutral"}>
-          {loading ? "loading" : `${data?.category?.products_count || 0} SKU`}
-        </Badge>
-      </div>
-      <p className="sourcesCategoryCompetitorsText">
-        Разделы и поиск конкурентов для enrichment выбранной ветки.
-      </p>
-
-      {error ? <div className="sourcesCategoryCompetitorsError">{error}</div> : null}
-      {loading ? <div className="sourcesCategoryCompetitorsEmpty">Загружаем источники для “{categoryName}”...</div> : null}
-
-      {!loading && data?.sources?.length ? (
-        <div className="sourcesCategoryCompetitorsList">
-          {data.sources.map((source) => (
-            <div className="sourcesCategoryCompetitorCard" key={source.id}>
-              <div className="sourcesCategoryCompetitorCardHead">
-                <div>
-                  <strong>{source.name}</strong>
-                  <span>{source.domain}</span>
-                </div>
-                <Badge tone={source.needs_review_count ? "pending" : source.confirmed_count ? "active" : "neutral"}>
-                  {source.confirmed_count ? `${source.confirmed_count} confirmed` : source.needs_review_count ? `${source.needs_review_count} review` : "нет связей"}
-                </Badge>
-              </div>
-              <div className="sourcesCategoryCompetitorStats">
-                <span>{source.candidates_count} candidates</span>
-                <span>{source.confirmed_count} links</span>
-              </div>
-              <div className="sourcesCategoryCompetitorSuggestions">
-                {(source.suggestions || []).map((suggestion) => (
-                  <a className="sourcesCategoryCompetitorSuggestion" href={suggestion.url} target="_blank" rel="noreferrer" key={suggestion.id}>
-                    <span>{suggestion.label}</span>
-                    <em>
-                      {suggestion.type === "search" ? "поиск" : "найдено"} · {confidenceLabel(suggestion.confidence)}
-                    </em>
-                  </a>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function SourcesMappingFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
   const initialCategoryId = searchParams.get("category") || "";
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
@@ -187,17 +71,15 @@ export default function SourcesMappingFeature() {
         ? "Сопоставление параметров"
         : tab === "values"
           ? "Значения параметров"
-          : "Конкуренты";
+          : "Значения параметров";
 
   const tabDescription = useMemo(
     () =>
       tab === "sources"
-        ? "Маркетплейсы — куда выгружаем товары. Конкуренты — откуда берем evidence для enrichment. Параметры и значения живут на следующих вкладках."
+        ? "Свяжите ветку PIM с категориями Я.Маркета и Ozon. Здесь только каналы выгрузки, без конкурентных источников."
         : tab === "params"
-          ? "Рабочий экран для связи параметров инфо-модели с полями каналов и конкурентных площадок."
-          : tab === "values"
-            ? "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру."
-            : "Очередь найденных конкурентных карточек re-store/store77, matching score и модерация контент-менеджером.",
+          ? "Свяжите параметры инфо-модели с полями каналов и проверьте обязательные поля для выгрузки."
+          : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
 
@@ -285,10 +167,15 @@ export default function SourcesMappingFeature() {
     setSearchParams(next, { replace: true });
   }
 
+  if (rawTab === "competitors" || rawTab === "competitor" || rawTab === "competitor_links" || rawTab === "discovery") {
+    const categoryParam = selectedCategoryId ? `?category=${encodeURIComponent(selectedCategoryId)}` : "";
+    return <Navigate to={`/data-prep/competitors${categoryParam}`} replace />;
+  }
+
   return (
     <div className="page-shell sourcesMappingPage">
       <PageHeader
-        title="Каналы и источники"
+        title="Каналы"
         subtitle={tabDescription}
         actions={
           <div className="sourcesMappingHeaderActions">
@@ -303,10 +190,9 @@ export default function SourcesMappingFeature() {
         activeKey={tab}
         onChange={(key) => setTab(key as SourcesTab)}
         items={[
-          { key: "sources", label: "Категории и источники" },
+          { key: "sources", label: "Категории площадок" },
           { key: "params", label: "Сопоставление параметров" },
           { key: "values", label: "Значения" },
-          { key: "competitors", label: "Конкуренты" },
         ]}
       />
 
@@ -324,7 +210,7 @@ export default function SourcesMappingFeature() {
           <div className="sourcesMappingCanvasIntro">
             <div className="sourcesMappingCanvasTitle">Категории и источники</div>
             <div className="sourcesMappingCanvasSub">
-              Слева дерево PIM, в центре категории Я.Маркета/Ozon, справа competitor context по re-store/store77 для выбранной ветки.
+              Слева дерево PIM, в центре категории Я.Маркета/Ozon. Конкурентные источники вынесены в подготовку данных.
             </div>
           </div>
         ) : null}
@@ -341,9 +227,6 @@ export default function SourcesMappingFeature() {
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}
-            renderCategoryDetailExtra={(categoryId, categoryName) => (
-              <CategoryCompetitorSourcesPanel categoryId={categoryId} categoryName={categoryName} />
-            )}
           />
         )}
 
@@ -364,8 +247,6 @@ export default function SourcesMappingFeature() {
             }}
           />
         )}
-
-        {tab === "competitors" && <CompetitorDiscoveryPanel />}
       </div>
     </div>
   );
