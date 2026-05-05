@@ -1,4 +1,4 @@
-import TemplatesCatalogFeature from "../features/templates/TemplatesCatalogFeature";
+import TemplatesCatalogFeature from "../domains/data-prep/TemplatesCatalogFeature";
 
 export default function TemplatesRoute() {
   return <TemplatesCatalogFeature />;

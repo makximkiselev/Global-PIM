@@ -10,12 +10,12 @@ import ProductListRoute from "../routes/ProductListRoute";
 import ProductNewRoute from "../routes/ProductNewRoute";
 import ProductRoute from "../routes/ProductRoute";
 import ProductGroupsRoute from "../routes/ProductGroupsRoute";
-import Infographics from "../pages/Infographics";
+import Infographics from "../domains/data-prep/InfographicsFeature";
 import CatalogImportRoute from "../routes/CatalogImportRoute";
 import CatalogExportRoute from "../routes/CatalogExportRoute";
 
 // ✅ mapping
-import Placeholder from "../pages/Placeholder";
+import Placeholder from "../shared/placeholders/Placeholder";
 
 // ✅ dictionaries
 import Login from "../pages/Login";

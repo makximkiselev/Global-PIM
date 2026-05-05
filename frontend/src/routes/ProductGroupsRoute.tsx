@@ -1,4 +1,4 @@
-import ProductGroupsFeature from "../features/catalog/ProductGroupsFeature";
+import ProductGroupsFeature from "../domains/products/ProductGroupsFeature";
 
 export default function ProductGroupsRoute() {
   return <ProductGroupsFeature />;

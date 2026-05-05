@@ -1,4 +1,4 @@
-import CatalogImportFeature from "../features/catalog/CatalogImportFeature";
+import CatalogImportFeature from "../domains/products/CatalogImportFeature";
 
 export default function CatalogImportRoute() {
   return <CatalogImportFeature />;

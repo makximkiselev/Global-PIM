@@ -1,4 +1,4 @@
-import DashboardFeature from "../features/dashboard/DashboardFeature";
+import DashboardFeature from "../domains/overview/DashboardFeature";
 
 export default function DashboardRoute() {
   return <DashboardFeature />;

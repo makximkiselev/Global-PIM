@@ -1,4 +1,4 @@
-import OrganizationsAdminFeature from "../features/organizations/OrganizationsAdminFeature";
+import OrganizationsAdminFeature from "../domains/admin/OrganizationsAdminFeature";
 
 type Props = {
   initialTab: "organizations" | "members" | "invites" | "platform";

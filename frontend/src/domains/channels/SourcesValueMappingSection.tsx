@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import CategorySidebar from "../../components/CategorySidebar";
-import DictionaryEditorFeature from "../dictionary/DictionaryEditorFeature";
+import DictionaryEditorFeature from "../data-prep/DictionaryEditorFeature";
 import { api } from "../../lib/api";
 import "../../styles/marketplace-mapping.css";
 

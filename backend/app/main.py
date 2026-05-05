@@ -8,28 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import (
-    health,
-    uploads,
-    auth,
-    platform,
-    catalog,
-    products,
-    variants,
-    templates,
-    info_models,
-    competitor_mapping,
-    dictionaries,
-    attributes,   # ✅ add
-    stats,
-    product_groups,
-    yandex_market,
-    ozon_market,
-    marketplace_mapping,
-    connectors_status,
-    comfyui,
-    catalog_exchange,
-)
+from app.api.router_registry import connectors_status, include_api_routers, stats
 from app.core.auth import PUBLIC_API_PATHS, auth_from_request
 from app.core import auth as auth_core
 from app.core import control_plane as control_plane_core
@@ -78,26 +57,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 # =========================
 # API
 # =========================
-app.include_router(health.router, prefix="/api")
-app.include_router(uploads.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
-app.include_router(platform.router, prefix="/api")
-app.include_router(catalog.router, prefix="/api")
-app.include_router(products.router, prefix="/api")
-app.include_router(variants.router, prefix="/api")
-app.include_router(templates.router, prefix="/api")
-app.include_router(info_models.router, prefix="/api")
-app.include_router(competitor_mapping.router, prefix="/api")
-app.include_router(dictionaries.router, prefix="/api")
-app.include_router(attributes.router, prefix="/api")
-app.include_router(stats.router, prefix="/api")
-app.include_router(product_groups.router, prefix="/api")
-app.include_router(yandex_market.router, prefix="/api")
-app.include_router(ozon_market.router, prefix="/api")
-app.include_router(marketplace_mapping.router, prefix="/api")
-app.include_router(connectors_status.router, prefix="/api")
-app.include_router(comfyui.router, prefix="/api")
-app.include_router(catalog_exchange.router, prefix="/api")
+include_api_routers(app, prefix="/api")
 
 
 @app.middleware("http")

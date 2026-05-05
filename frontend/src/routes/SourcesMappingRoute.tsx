@@ -1,4 +1,4 @@
-import SourcesMappingFeature from "../features/sources/SourcesMappingFeature";
+import SourcesMappingFeature from "../domains/channels/SourcesMappingFeature";
 
 export default function SourcesMappingRoute() {
   return <SourcesMappingFeature />;

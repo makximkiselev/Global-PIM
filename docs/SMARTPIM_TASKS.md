@@ -21,7 +21,19 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
    - accepted five top-level zones: `Сводка`, `Товары`, `Подготовка данных`, `Каналы`, `Администрирование`;
    - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`;
    - kept existing routes as subpages/tabs inside the new product zones.
-1. `807e815 Align import export scope controls`
+2. Frontend domain folder first pass
+   - moved product/catalog features to `frontend/src/domains/products`;
+   - moved dashboard to `frontend/src/domains/overview`;
+   - moved templates, dictionaries, and infographics to `frontend/src/domains/data-prep`;
+   - moved sources/mapping/connectors to `frontend/src/domains/channels`;
+   - moved organization/access admin features to `frontend/src/domains/admin`;
+   - removed old empty `frontend/src/features/*` folders.
+3. Backend API router registry first pass
+   - added `backend/app/api/router_registry.py`;
+   - grouped existing flat API route modules by product zones without changing URLs;
+   - changed `backend/app/main.py` to include routers through the registry;
+   - kept flat route modules in place until compatibility shims or module moves are safe.
+4. `807e815 Align import export scope controls`
    - added shared `CategoryScopeSelector`;
    - replaced technical `С подкатегориями` with `Весь каталог`, `Вся ветка`, `Только категория`;
    - cleaned active import/export inspector labels.
@@ -109,13 +121,19 @@ Page/layout rules:
 
 Target frontend folders:
 
-1. `frontend/src/app` - app shell, auth context, routing composition only;
-2. `frontend/src/shared` - reusable UI primitives, layout components, table/list/tree/selectors, hooks, formatters;
-3. `frontend/src/domains/overview` - `Сводка`;
-4. `frontend/src/domains/products` - `Товары`;
-5. `frontend/src/domains/data-prep` - `Подготовка данных`;
-6. `frontend/src/domains/channels` - `Каналы`;
-7. `frontend/src/domains/admin` - `Администрирование`.
+1. `frontend/src/app` - app shell, auth context, routing composition only. Status: current.
+2. `frontend/src/shared` - reusable UI primitives, layout components, table/list/tree/selectors, hooks, formatters. Status: started with shared placeholder; UI primitives still live in `frontend/src/components` until component consolidation.
+3. `frontend/src/domains/overview` - `Сводка`. Status: moved.
+4. `frontend/src/domains/products` - `Товары`. Status: moved.
+5. `frontend/src/domains/data-prep` - `Подготовка данных`. Status: moved for templates/dictionaries/import-adjacent media; competitor tab still shares the `/sources` implementation under `channels`.
+6. `frontend/src/domains/channels` - `Каналы`. Status: moved for sources/mapping/connectors.
+7. `frontend/src/domains/admin` - `Администрирование`. Status: moved.
+
+Frontend structure debts:
+
+1. `/sources` still serves both `Подготовка данных` competitor enrichment and `Каналы` marketplace mapping; split the user-facing flow or make the tabs explicitly domain-owned.
+2. `frontend/src/components` still contains shared UI/layout primitives; move into `frontend/src/shared` only after import paths are stabilized.
+3. auth-only pages remain in `frontend/src/pages`; either keep as public auth pages or move to `frontend/src/app/auth/pages` in a separate auth cleanup.
 
 Target backend folders:
 
@@ -126,6 +144,13 @@ Target backend folders:
 5. `backend/app/api/routes/admin` - organizations, users, access, platform APIs;
 6. `backend/app/domain/<zone>` - business services for each zone;
 7. `backend/app/storage/<zone>` - query/repository functions when storage logic is too large for shared storage.
+
+Backend structure constraint:
+
+1. `backend/app/api/routes` currently has flat modules such as `products.py`, `catalog.py`, `templates.py`, and direct imports between them.
+2. A direct folder move to `backend/app/api/routes/products/` conflicts with the existing `products.py` module name.
+3. Backend restructuring must therefore be done through a router registry and compatibility aliases first, then module moves one zone at a time.
+4. Do not mechanically move backend route files until direct imports are replaced or compatibility shims are prepared.
 
 DB map requirement per page:
 
@@ -151,10 +176,10 @@ Initial DB ownership map:
 
 Implementation order:
 
-1. collapse menu to the accepted five zones;
-2. document current route/table ownership before moving code;
-3. create frontend domain folders and move routes one zone at a time with import-safe commits;
-4. create backend route/service folder aliases one zone at a time without changing behavior;
+1. collapse menu to the accepted five zones. Status: done.
+2. document current route/table ownership before moving code. Status: first zone-level map done; page-level maps still needed.
+3. create frontend domain folders and move routes one zone at a time with import-safe commits. Status: first pass done.
+4. create backend route/service folder aliases one zone at a time without changing behavior. Status: registry added; physical module moves still pending.
 5. replace duplicated page-local components with shared components during each page pass;
 6. run build/tests and Browser Use QA after every zone;
 7. only after parity is proven, remove old folders/import paths.
