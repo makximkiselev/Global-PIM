@@ -77,6 +77,7 @@ type ProductWorkspaceSummaryResp = {
     sku_pim?: string;
     sku_gt?: string;
     group_id?: string;
+    preview_url?: string;
   }>;
 };
 
@@ -844,6 +845,7 @@ function ProductWorkspaceFeature() {
       setChannels(null);
       setChannelsLoading(false);
       let shellResolved = false;
+      let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
       void api<{ nodes: CatalogNode[] }>("/catalog/nodes")
         .then((nodesResponse) => {
@@ -865,10 +867,17 @@ function ProductWorkspaceFeature() {
             category_id: normalizeText(summary.category_id) || undefined,
             group_id: normalizeText(summary.group_id) || undefined,
             status: "draft",
-            content: {},
+            content: normalizeText(summary.preview_url)
+              ? {
+                  media: [{ url: normalizeText(summary.preview_url) }],
+                  media_images: [{ url: normalizeText(summary.preview_url) }],
+                }
+              : {},
           };
-          setProduct(summaryProduct);
-          setLoading(false);
+          if (!fullProductResolved) {
+            setProduct(summaryProduct);
+            setLoading(false);
+          }
           return summaryProduct;
         })
         .catch(() => {
@@ -878,7 +887,8 @@ function ProductWorkspaceFeature() {
       try {
         const productResponse = await api<ProductResponse>(`/products/${productId}`);
         if (cancelled) return;
-        const summary = summaryProduct || await summaryPromise;
+        fullProductResolved = true;
+        const summary = summaryProduct;
         const mergedProduct = {
           ...(summary || {}),
           ...productResponse.product,
