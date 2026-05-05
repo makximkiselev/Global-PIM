@@ -22,19 +22,18 @@ Core workflow:
 
 ## Product Navigation Contract
 
-Top-level menu is fixed to five product zones and should be organized around user work, not internal database entities:
+Top-level menu is fixed to four product zones and should be organized around user work, not internal database entities:
 
 1. `Сводка` - operational health, queues, problems, and quick return to active work.
-2. `Каталог` - category structure, SKU list, product card, groups, variants, media, and content readiness.
-3. `Импорт и модель` - product import, parameter matching, competitor matching, info-model approval, and dictionaries.
-4. `Каналы` - connector status, marketplace category mapping, value rules, validation, and export.
-5. `Администрирование` - organization, users, roles, invitations, and platform settings.
+2. `Каталог` - product catalog, products, product groups, product media, infographics, content index, import, and export.
+3. `Инфо-модели` - info-models, category matching, parameter matching, dictionaries, competitor sources, and marketplace sources.
+4. `Администрирование` - organization, users, rights, roles, invitations, and platform settings.
 
-Do not add new top-level menu groups without explicit approval. New workflows must be added as tabs, sections, or local actions inside one of these five zones.
+Do not add new top-level menu groups without explicit approval. New workflows must be added as tabs, sections, or local actions inside one of these four zones.
 
 Menu labels must describe the user's task. Prefer `Импортировать товары`, `Собрать модель`, `Сопоставить параметры`, `Настроить значения`, and `Выгрузить товары` over technical nouns.
 
-`Сопоставить параметры` belongs to import/model preparation. Channels should not duplicate it as a marketplace setup item unless the UI explicitly separates import-field matching from export-field mapping.
+`Сопоставить параметры` and `Сопоставление категорий` belong to the info-model workflow. Export belongs to the product catalog workflow.
 
 Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Каталог`.
 

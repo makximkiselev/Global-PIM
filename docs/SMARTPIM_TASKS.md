@@ -18,15 +18,15 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 ## Completed Recent Slices
 
 1. `/sources` competitor/channel separation
-   - added dedicated `/data-prep/competitors` page under `Импорт и модель`;
+   - added dedicated `/data-prep/competitors` page under `Инфо-модели`;
    - moved competitor discovery/mapping UI code to `frontend/src/domains/data-prep`;
    - removed competitor tab from `Каналы`;
    - removed competitor context from marketplace category binding screen;
    - legacy `/competitor-mapping` redirects to `/data-prep/competitors`;
    - legacy `/sources?tab=competitors` redirects inside the feature to `/data-prep/competitors`.
 1. Product navigation collapse first pass
-   - accepted five top-level zones: `Сводка`, `Каталог`, `Импорт и модель`, `Каналы`, `Администрирование`;
-   - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`, and `Подготовка данных`;
+   - accepted four top-level zones: `Сводка`, `Каталог`, `Инфо-модели`, `Администрирование`;
+   - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`, `Каналы`, and `Подготовка данных`;
    - changed menu labels toward user actions instead of internal entities;
    - kept existing routes as subpages/tabs inside the new product zones.
 2. Frontend domain folder first pass
@@ -94,7 +94,7 @@ Status: active / product structure accepted on 2026-05-05.
 
 Goal:
 
-1. rebuild navigation around five business zones;
+1. rebuild navigation around product work zones;
 2. make every page belong to exactly one zone;
 3. move related frontend/backend code into discoverable domain folders;
 4. document table ownership for every zone and page before destructive DB changes.
@@ -102,10 +102,9 @@ Goal:
 Accepted top-level zones:
 
 1. `Сводка` - operational health, queues, problems, and quick return to active work.
-2. `Каталог` - category structure, SKU list, product card, product creation, groups, variants, media, and content readiness.
-3. `Импорт и модель` - product import, parameter matching, competitor matching, info-model approval, and dictionaries.
-4. `Каналы` - connector status, marketplace category mapping, value rules, validation, and export.
-5. `Администрирование` - organization, users, roles, invitations, and platform settings.
+2. `Каталог` - product catalog, products, product groups, product media, infographics, content index, import, and export.
+3. `Инфо-модели` - info-models, category matching, parameter matching, dictionaries, competitor sources, and marketplace sources.
+4. `Администрирование` - organization, users, rights, roles, invitations, and platform settings.
 
 Primary user path:
 
@@ -129,9 +128,8 @@ Route ownership:
 | Zone | Routes | Primary task |
 | --- | --- | --- |
 | `Сводка` | `/` | Show what needs attention and where to continue. |
-| `Каталог` | `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/images/infographics`, `/catalog/content-index` | Manage categories, SKU, product cards, groups, media, and final catalog state. |
-| `Импорт и модель` | `/catalog/import`, `/sources?tab=params`, `/templates`, `/templates/:categoryId`, `/dictionaries`, `/dictionaries/:dictId`, `/data-prep/competitors` | Import products, match parameters, collect fields, approve models, manage dictionaries, and connect competitor evidence. |
-| `Каналы` | `/connectors/status`, `/sources?tab=sources`, `/sources?tab=values`, `/catalog/export` | Connect marketplaces, map categories/values, validate, export. |
+| `Каталог` | `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/products/media`, `/images/infographics`, `/catalog/content-index`, `/catalog/import`, `/catalog/export` | Manage product categories, SKU, product cards, groups, media, import, export, and final catalog state. |
+| `Инфо-модели` | `/templates`, `/templates/:categoryId`, `/sources?tab=sources`, `/sources?tab=params`, `/sources?tab=values`, `/dictionaries`, `/dictionaries/:dictId`, `/data-prep/competitors`, `/connectors/status` | Build info-models, match categories and parameters, manage dictionaries, and connect external sources. |
 | `Администрирование` | `/admin/organizations`, `/admin/members`, `/admin/invites`, `/admin/access`, `/admin/platform` | Manage organization, team, permissions, and platform context. |
 
 Page/layout rules:
@@ -150,8 +148,8 @@ Target frontend folders:
 2. `frontend/src/shared` - reusable UI primitives, layout components, table/list/tree/selectors, hooks, formatters. Status: started with shared placeholder; UI primitives still live in `frontend/src/components` until component consolidation.
 3. `frontend/src/domains/overview` - `Сводка`. Status: moved.
 4. `frontend/src/domains/products` - `Каталог`. Status: moved.
-5. `frontend/src/domains/data-prep` - `Импорт и модель`. Status: moved for templates/dictionaries/competitors/media prep; folder name remains `data-prep` until a separate import-safe rename is justified.
-6. `frontend/src/domains/channels` - `Каналы`. Status: moved for sources/mapping/connectors.
+5. `frontend/src/domains/data-prep` - `Инфо-модели`. Status: moved for templates/dictionaries/competitors/media prep; folder name remains `data-prep` until a separate import-safe rename is justified.
+6. `frontend/src/domains/channels` - mapping/source implementation used by `Инфо-модели`; folder name remains until a safe rename is justified.
 7. `frontend/src/domains/admin` - `Администрирование`. Status: moved.
 
 Frontend structure debts:
@@ -195,13 +193,12 @@ Initial DB ownership map:
 | --- | --- | --- | --- |
 | `Сводка` | none directly; reads product/catalog/channel/admin state | `dashboard_stats_rel` | Reads all zones, writes only explicit dashboard snapshots. |
 | `Каталог` | `products_rel`, `catalog_nodes_rel`, `product_groups_rel`, `product_group_variant_params_rel` | `catalog_product_registry_rel`, `category_product_counts_rel`, `catalog_product_page_rel`, `catalog_product_page_tenant_rel`, `product_marketplace_status_rel`, `product_marketplace_status_tenant_rel` | Reads info-model/channel readiness; writes product/category/group state. |
-| `Импорт и модель` | `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`, `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`, selected `json_documents` operational docs for import/competitor jobs | `category_template_resolution_tenant_rel` | Reads products/categories and channel field sources; writes models, dictionaries, enrichment evidence. |
-| `Каналы` | `category_mappings_tenant_rel`, `attribute_mappings_tenant_rel`, `attribute_value_refs_tenant_rel`, connector account/state tables, selected `json_documents` marketplace cache docs | `product_marketplace_status_tenant_rel`, marketplace export/readiness snapshots | Reads products, info-models, dictionaries; writes marketplace bindings, export status, connector state. |
+| `Инфо-модели` | `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`, `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`, `category_mappings_tenant_rel`, `attribute_mappings_tenant_rel`, `attribute_value_refs_tenant_rel`, connector account/state tables, selected `json_documents` operational docs for import/competitor/marketplace jobs | `category_template_resolution_tenant_rel`, marketplace export/readiness snapshots | Reads products/categories; writes models, dictionaries, enrichment evidence, marketplace bindings, and source state. |
 | `Администрирование` | `platform_users`, `organizations`, `organization_members`, `organization_invites`, `tenant_registry`, `tenant_provisioning_jobs` | none by default | Owns access context for every zone. |
 
 Implementation order:
 
-1. collapse menu to the accepted five zones. Status: done.
+1. collapse menu to the accepted four zones. Status: done.
 2. document current route/table ownership before moving code. Status: first zone-level map done; page-level maps still needed.
 3. create frontend domain folders and move routes one zone at a time with import-safe commits. Status: first pass done.
 4. create backend route/service folder aliases one zone at a time without changing behavior. Status: registry added; physical module moves still pending.

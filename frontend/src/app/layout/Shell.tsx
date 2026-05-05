@@ -28,61 +28,55 @@ const groups: ShellNavGroup[] = [
   {
     title: "Каталог",
     icon: "catalog",
-    summary: "Категории, SKU, группы вариантов, медиа и готовность контента.",
-    flow: ["категории", "SKU", "группы", "медиа"],
+    summary: "Категории, товары, группы, медиа, импорт, экспорт и индекс контента.",
+    flow: ["каталог", "товары", "медиа", "обмен"],
     sections: [
       {
-        title: "Работа с товарами",
+        title: "Товары",
         items: [
-          { href: "/catalog", label: "Каталог и перемещение", page: "catalog" },
-          { href: "/products", label: "Список SKU", page: "products" },
-          { href: "/products/new", label: "Создать SKU", page: "products" },
-          { href: "/catalog/groups", label: "Группы вариантов", page: "product_groups" },
-          { href: "/images/infographics", label: "Медиа", page: "infographics" },
+          { href: "/catalog", label: "Каталог товаров", page: "catalog" },
+          { href: "/products", label: "Товары", page: "products" },
+          { href: "/catalog/groups", label: "Группы товаров", page: "product_groups" },
         ],
       },
       {
-        title: "Готовность",
-        items: [{ href: "/catalog/content-index", label: "Индекс контента", page: "stats_card_quality" }],
+        title: "Медиа и качество",
+        items: [
+          { href: "/products/media", label: "Медиа товаров", page: "infographics" },
+          { href: "/images/infographics", label: "Создание инфографики", page: "infographics" },
+          { href: "/catalog/content-index", label: "Индекс контента", page: "stats_card_quality" },
+        ],
+      },
+      {
+        title: "Обмен",
+        items: [
+          { href: "/catalog/import", label: "Импортировать товары", page: "catalog_import" },
+          { href: "/catalog/export", label: "Экспорт товаров", page: "catalog_export" },
+        ],
       },
     ],
   },
   {
-    title: "Импорт и модель",
+    title: "Инфо-модели",
     icon: "models",
-    summary: "Загрузка товаров, сопоставление параметров, конкуренты, инфо-модель и словари.",
-    flow: ["импорт", "параметры", "конкуренты", "модель"],
+    summary: "Инфо-модели, сопоставление категорий, параметры, словари и источники.",
+    flow: ["категории", "параметры", "модель", "источники"],
     sections: [
       {
-        title: "Загрузка и сопоставление",
+        title: "Модель и сопоставления",
         items: [
-          { href: "/catalog/import", label: "Импортировать товары", page: "catalog_import" },
+          { href: "/templates", label: "Инфо-модели", page: "templates" },
+          { href: "/sources?tab=sources", label: "Сопоставление категорий", page: "sources_mapping" },
           { href: "/sources?tab=params", label: "Сопоставить параметры", page: "sources_mapping" },
-          { href: "/data-prep/competitors", label: "Сопоставить конкурентов", page: "sources_mapping" },
-        ],
-      },
-      {
-        title: "Модель данных",
-        items: [
-          { href: "/templates", label: "Собрать модель", page: "templates" },
+          { href: "/sources?tab=values", label: "Значения параметров", page: "sources_mapping" },
           { href: "/dictionaries", label: "Словари", page: "dictionaries" },
         ],
       },
-    ],
-  },
-  {
-    title: "Каналы",
-    icon: "sources",
-    summary: "Подключения, категории площадок, значения, проверка и выгрузка.",
-    flow: ["подключить", "сопоставить", "проверить", "выгрузить"],
-    sections: [
       {
-        title: "Подготовка выгрузки",
+        title: "Источники",
         items: [
-          { href: "/connectors/status", label: "Подключения", page: "connectors_status" },
-          { href: "/sources?tab=sources", label: "Сопоставить категории", page: "sources_mapping" },
-          { href: "/sources?tab=values", label: "Настроить значения", page: "sources_mapping" },
-          { href: "/catalog/export", label: "Выгрузить товары", page: "catalog_export" },
+          { href: "/data-prep/competitors", label: "Источники конкурентов", page: "sources_mapping" },
+          { href: "/connectors/status", label: "Источники площадок", page: "connectors_status" },
         ],
       },
     ],
@@ -90,7 +84,7 @@ const groups: ShellNavGroup[] = [
   {
     title: "Администрирование",
     icon: "admin",
-    summary: "Организация, команда, права, приглашения и системные настройки.",
+    summary: "Организация, команда, права, роли и приглашения.",
     flow: ["организация", "команда", "доступ"],
     sections: [
       {
@@ -104,7 +98,7 @@ const groups: ShellNavGroup[] = [
       {
         title: "Права",
         items: [
-          { href: "/admin/access", label: "Роли и права", page: "admin_access" },
+          { href: "/admin/access", label: "Права и роли", page: "admin_access" },
           { href: "/admin/platform", label: "Платформа", page: "admin_access", developerOnly: true },
         ],
       },
