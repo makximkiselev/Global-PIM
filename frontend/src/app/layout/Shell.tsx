@@ -14,28 +14,28 @@ import TextInput from "../../components/ui/TextInput";
 
 const groups: ShellNavGroup[] = [
   {
-    title: "Рабочий стол",
+    title: "Сводка",
     icon: "workspace",
     summary: "Очередь задач, проблемы качества и быстрый возврат к рабочим процессам.",
-    flow: ["задачи", "ошибки", "последние действия"],
+    flow: ["задачи", "ошибки", "очереди"],
     sections: [
       {
         title: "Контроль",
-        items: [{ href: "/", label: "Обзор задач", page: "dashboard", badge: "центр" }],
+        items: [{ href: "/", label: "Обзор", page: "dashboard", badge: "центр" }],
       },
     ],
   },
   {
-    title: "Каталог",
+    title: "Товары",
     icon: "catalog",
-    summary: "Финальная структура категорий, товары, группы SKU и перемещение внутри каталога.",
-    flow: ["категории", "товары", "группы"],
+    summary: "Категории, SKU, группы вариантов и финальная карточка товара.",
+    flow: ["категории", "SKU", "группы"],
     sections: [
       {
         title: "Рабочий каталог",
         items: [
-          { href: "/catalog", label: "Категории и товары", page: "catalog" },
-          { href: "/products", label: "Все SKU", page: "products" },
+          { href: "/catalog", label: "Каталог", page: "catalog" },
+          { href: "/products", label: "Товары", page: "products" },
           { href: "/products/new", label: "Создать товар", page: "products" },
           { href: "/catalog/groups", label: "Группы и варианты", page: "product_groups" },
         ],
@@ -47,34 +47,24 @@ const groups: ShellNavGroup[] = [
     ],
   },
   {
-    title: "Модели",
+    title: "Подготовка данных",
     icon: "models",
-    summary: "Создание инфо-моделей из полей площадок, нормализация параметров и словари значений.",
-    flow: ["собрать поля", "нормализовать", "утвердить модель"],
+    summary: "Импорт, инфо-модели, словари, конкуренты и медиа-подготовка до работы с каналами.",
+    flow: ["импорт", "модель", "конкуренты", "медиа"],
     sections: [
       {
-        title: "Инфо-модель",
+        title: "Ввод данных",
         items: [
-          { href: "/templates", label: "Модели категорий", page: "templates" },
-          { href: "/sources-mapping?tab=params", label: "Поля из площадок", page: "sources_mapping", badge: "AI" },
-          { href: "/dictionaries", label: "Словари параметров", page: "dictionaries" },
-          { href: "/sources-mapping?tab=values", label: "Значения для площадок", page: "sources_mapping" },
+          { href: "/catalog/import", label: "Импорт", page: "catalog_import" },
+          { href: "/templates", label: "Инфо-модели", page: "templates" },
+          { href: "/dictionaries", label: "Словари", page: "dictionaries" },
         ],
       },
-    ],
-  },
-  {
-    title: "Насыщение",
-    icon: "enrichment",
-    summary: "Импорт товаров, подбор конкурентов, загрузка параметров и очередь модерации.",
-    flow: ["импорт", "кандидаты", "параметры", "модерация"],
-    sections: [
       {
-        title: "Товарные данные",
+        title: "Обогащение",
         items: [
-          { href: "/catalog/import", label: "Импорт товаров", page: "catalog_import" },
-          { href: "/sources-mapping?tab=competitors", label: "Конкуренты", page: "sources_mapping" },
-          { href: "/sources?tab=competitors", label: "Очередь предложений", page: "sources_mapping", badge: "review" },
+          { href: "/sources?tab=competitors", label: "Конкуренты", page: "sources_mapping", badge: "review" },
+          { href: "/images/infographics", label: "Медиа и инфографика", page: "infographics" },
         ],
       },
     ],
@@ -82,58 +72,31 @@ const groups: ShellNavGroup[] = [
   {
     title: "Каналы",
     icon: "sources",
-    summary: "Связка категорий и параметров с маркетплейсами, правила значений и статус API.",
-    flow: ["категории", "параметры", "значения", "API"],
+    summary: "Подключения, сопоставления с площадками, правила значений, валидация и экспорт.",
+    flow: ["подключить", "сопоставить", "проверить", "выгрузить"],
     sections: [
       {
-        title: "Маркетплейсы",
+        title: "Площадки",
         items: [
-          { href: "/sources?tab=sources", label: "Связка категорий", page: "sources_mapping" },
-          { href: "/sources?tab=params", label: "Сопоставление параметров", page: "sources_mapping", badge: "AI" },
-          { href: "/sources?tab=values", label: "Правила значений", page: "sources_mapping" },
-          { href: "/connectors/status", label: "Коннекторы", page: "connectors_status" },
+          { href: "/connectors/status", label: "Подключения", page: "connectors_status" },
+          { href: "/sources?tab=sources", label: "Категории площадок", page: "sources_mapping" },
+          { href: "/sources?tab=params", label: "Параметры площадок", page: "sources_mapping", badge: "AI" },
+          { href: "/sources?tab=values", label: "Значения площадок", page: "sources_mapping" },
+          { href: "/catalog/export", label: "Экспорт", page: "catalog_export" },
         ],
-      },
-    ],
-  },
-  {
-    title: "Экспорт",
-    icon: "export",
-    summary: "Подготовка, проверка и выгрузка карточек на подключенные площадки.",
-    flow: ["готовность", "валидация", "выгрузка"],
-    sections: [
-      {
-        title: "Выгрузки",
-        items: [
-          { href: "/catalog/export", label: "Подготовка экспорта", page: "catalog_export" },
-          { href: "/sources?tab=values", label: "Проверка значений", page: "sources_mapping" },
-          { href: "/connectors/status", label: "Статус каналов", page: "connectors_status" },
-        ],
-      },
-    ],
-  },
-  {
-    title: "Медиа",
-    icon: "media",
-    summary: "Файлы, S3-хранилище, привязка изображений к товарам и визуальные материалы.",
-    flow: ["загрузить", "привязать", "проверить"],
-    sections: [
-      {
-        title: "Материалы",
-        items: [{ href: "/images/infographics", label: "Инфографика", page: "infographics" }],
       },
     ],
   },
   {
     title: "Администрирование",
     icon: "admin",
-    summary: "Организация, команда, права, приглашения и технические настройки платформы.",
+    summary: "Организация, команда, права, приглашения и системные настройки.",
     flow: ["организация", "команда", "доступ"],
     sections: [
       {
         title: "Организация",
         items: [
-          { href: "/admin/organizations", label: "Организации", page: "admin_access" },
+          { href: "/admin/organizations", label: "Организация", page: "admin_access" },
           { href: "/admin/members", label: "Команда", page: "admin_access" },
           { href: "/admin/invites", label: "Инвайты", page: "admin_access" },
         ],

@@ -17,6 +17,10 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 
 ## Completed Recent Slices
 
+1. Product navigation collapse first pass
+   - accepted five top-level zones: `Сводка`, `Товары`, `Подготовка данных`, `Каналы`, `Администрирование`;
+   - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`;
+   - kept existing routes as subpages/tabs inside the new product zones.
 1. `807e815 Align import export scope controls`
    - added shared `CategoryScopeSelector`;
    - replaced technical `С подкатегориями` with `Весь каталог`, `Вся ветка`, `Только категория`;
@@ -63,6 +67,97 @@ Done when:
 Current note:
 
 1. this phase is done; keep the section as a standing rule.
+
+## P0 - Product Navigation, Module Ownership, And DB Maps
+
+Status: active / product structure accepted on 2026-05-05.
+
+Goal:
+
+1. rebuild navigation around five business zones;
+2. make every page belong to exactly one zone;
+3. move related frontend/backend code into discoverable domain folders;
+4. document table ownership for every zone and page before destructive DB changes.
+
+Accepted top-level zones:
+
+1. `Сводка` - operational health, queues, problems, and quick return to active work.
+2. `Товары` - catalog, SKU list, product card, product creation, groups, and variants.
+3. `Подготовка данных` - import, info-models, dictionaries, competitor evidence, and media preparation.
+4. `Каналы` - connector status, marketplace category mapping, parameter mapping, value rules, validation, and export.
+5. `Администрирование` - organization, users, roles, invitations, and platform settings.
+
+Route ownership:
+
+| Zone | Routes | Primary task |
+| --- | --- | --- |
+| `Сводка` | `/` | Show what needs attention and where to continue. |
+| `Товары` | `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/catalog/content-index` | Work with categories, SKU, product cards, groups, and final catalog state. |
+| `Подготовка данных` | `/catalog/import`, `/templates`, `/templates/:categoryId`, `/dictionaries`, `/dictionaries/:dictId`, `/sources?tab=competitors`, `/images/infographics` | Build/import/enrich data before marketplace preparation. |
+| `Каналы` | `/connectors/status`, `/sources?tab=sources`, `/sources?tab=params`, `/sources?tab=values`, `/catalog/export` | Connect marketplaces, map categories/fields/values, validate, export. |
+| `Администрирование` | `/admin/organizations`, `/admin/members`, `/admin/invites`, `/admin/access`, `/admin/platform` | Manage organization, team, permissions, and platform context. |
+
+Page/layout rules:
+
+1. every page has one primary job and may use tabs for adjacent jobs;
+2. no duplicated headers, summaries, counters, or action buttons on the same screen;
+3. catalog/category tree must be the same shared component everywhere;
+4. long tables must keep headers and horizontal scroll usable;
+5. inspectors must explain action/state, not duplicate the center panel;
+6. technical labels must not leak into product UI unless the user needs them for work;
+7. Browser Use/in-app browser QA is mandatory for each finished route.
+
+Target frontend folders:
+
+1. `frontend/src/app` - app shell, auth context, routing composition only;
+2. `frontend/src/shared` - reusable UI primitives, layout components, table/list/tree/selectors, hooks, formatters;
+3. `frontend/src/domains/overview` - `Сводка`;
+4. `frontend/src/domains/products` - `Товары`;
+5. `frontend/src/domains/data-prep` - `Подготовка данных`;
+6. `frontend/src/domains/channels` - `Каналы`;
+7. `frontend/src/domains/admin` - `Администрирование`.
+
+Target backend folders:
+
+1. `backend/app/api/routes/overview` - dashboard/readiness/queue APIs;
+2. `backend/app/api/routes/products` - catalog, products, groups, product card APIs;
+3. `backend/app/api/routes/data_prep` - import, templates, dictionaries, competitors, media prep APIs;
+4. `backend/app/api/routes/channels` - connectors, marketplace mapping, validation, export APIs;
+5. `backend/app/api/routes/admin` - organizations, users, access, platform APIs;
+6. `backend/app/domain/<zone>` - business services for each zone;
+7. `backend/app/storage/<zone>` - query/repository functions when storage logic is too large for shared storage.
+
+DB map requirement per page:
+
+1. page route;
+2. frontend domain files;
+3. backend route files;
+4. backend services/storage functions;
+5. source-of-truth tables;
+6. derived/read-model tables;
+7. cross-zone dependencies;
+8. allowed writes;
+9. forbidden local duplicate state.
+
+Initial DB ownership map:
+
+| Zone | Source-of-truth tables | Derived/read-model tables | Cross-zone dependencies |
+| --- | --- | --- | --- |
+| `Сводка` | none directly; reads product/catalog/channel/admin state | `dashboard_stats_rel` | Reads all zones, writes only explicit dashboard snapshots. |
+| `Товары` | `products_rel`, `catalog_nodes_rel`, `product_groups_rel`, `product_group_variant_params_rel` | `catalog_product_registry_rel`, `category_product_counts_rel`, `catalog_product_page_rel`, `catalog_product_page_tenant_rel`, `product_marketplace_status_rel`, `product_marketplace_status_tenant_rel` | Reads info-model/channel readiness; writes product/category/group state. |
+| `Подготовка данных` | `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`, `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`, selected `json_documents` operational docs for imports/competitors/media jobs | `category_template_resolution_tenant_rel` | Reads products/categories and channel field sources; writes models, dictionaries, enrichment evidence. |
+| `Каналы` | `category_mappings_tenant_rel`, `attribute_mappings_tenant_rel`, `attribute_value_refs_tenant_rel`, connector account/state tables, selected `json_documents` marketplace cache docs | `product_marketplace_status_tenant_rel`, marketplace export/readiness snapshots | Reads products, info-models, dictionaries; writes marketplace bindings, export status, connector state. |
+| `Администрирование` | `platform_users`, `organizations`, `organization_members`, `organization_invites`, `tenant_registry`, `tenant_provisioning_jobs` | none by default | Owns access context for every zone. |
+
+Implementation order:
+
+1. collapse menu to the accepted five zones;
+2. document current route/table ownership before moving code;
+3. create frontend domain folders and move routes one zone at a time with import-safe commits;
+4. create backend route/service folder aliases one zone at a time without changing behavior;
+5. replace duplicated page-local components with shared components during each page pass;
+6. run build/tests and Browser Use QA after every zone;
+7. only after parity is proven, remove old folders/import paths.
 
 ## P0 - Category Workspace Unification
 

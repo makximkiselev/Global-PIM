@@ -20,6 +20,28 @@ Core workflow:
 8. manage media, relations, analogs, variants, competitor evidence;
 9. validate and export products.
 
+## Product Navigation Contract
+
+Top-level menu is fixed to five product zones:
+
+1. `Сводка` - operational health, queues, problems, and quick return to active work.
+2. `Товары` - catalog, SKU list, product card, product creation, groups, and variants.
+3. `Подготовка данных` - import, info-models, dictionaries, competitor evidence, and media preparation.
+4. `Каналы` - connector status, marketplace category mapping, parameter mapping, value rules, validation, and export.
+5. `Администрирование` - organization, users, roles, invitations, and platform settings.
+
+Do not add new top-level menu groups without explicit approval. New workflows must be added as tabs, sections, or local actions inside one of these five zones.
+
+Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Подготовка данных`.
+
+Every substantial page must have:
+
+1. one primary user task;
+2. clear tab structure for secondary tasks;
+3. no duplicated summary/action blocks;
+4. shared UI components for repeated buttons, lists, tables, category trees, tabs, selectors, and inspectors;
+5. a documented data ownership map in `docs/SMARTPIM_TASKS.md` before backend/schema changes.
+
 Main entity rule:
 
 1. one product record equals one SKU;
