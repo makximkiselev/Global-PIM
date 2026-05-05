@@ -18,20 +18,21 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 ## Completed Recent Slices
 
 1. `/sources` competitor/channel separation
-   - added dedicated `/data-prep/competitors` page under `Подготовка данных`;
+   - added dedicated `/data-prep/competitors` page under `Инфо-модели`;
    - moved competitor discovery/mapping UI code to `frontend/src/domains/data-prep`;
    - removed competitor tab from `Каналы`;
    - removed competitor context from marketplace category binding screen;
    - legacy `/competitor-mapping` redirects to `/data-prep/competitors`;
    - legacy `/sources?tab=competitors` redirects inside the feature to `/data-prep/competitors`.
 1. Product navigation collapse first pass
-   - accepted five top-level zones: `Сводка`, `Товары`, `Подготовка данных`, `Каналы`, `Администрирование`;
-   - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`;
+   - accepted five top-level zones: `Сводка`, `Каталог`, `Инфо-модели`, `Каналы`, `Администрирование`;
+   - removed separate top-level `Модели`, `Насыщение`, `Экспорт`, `Медиа`, and `Подготовка данных`;
+   - changed menu labels toward user actions instead of internal entities;
    - kept existing routes as subpages/tabs inside the new product zones.
 2. Frontend domain folder first pass
    - moved product/catalog features to `frontend/src/domains/products`;
    - moved dashboard to `frontend/src/domains/overview`;
-   - moved templates, dictionaries, and infographics to `frontend/src/domains/data-prep`;
+   - moved templates, dictionaries, competitors, and infographics to `frontend/src/domains/data-prep`;
    - moved sources/mapping/connectors to `frontend/src/domains/channels`;
    - moved organization/access admin features to `frontend/src/domains/admin`;
    - removed old empty `frontend/src/features/*` folders.
@@ -101,18 +102,35 @@ Goal:
 Accepted top-level zones:
 
 1. `Сводка` - operational health, queues, problems, and quick return to active work.
-2. `Товары` - catalog, SKU list, product card, product creation, groups, and variants.
-3. `Подготовка данных` - import, info-models, dictionaries, competitor evidence, and media preparation.
+2. `Каталог` - import, category structure, SKU list, product card, product creation, groups, variants, and content readiness.
+3. `Инфо-модели` - competitor evidence, field collection, field approval, dictionaries, media preparation, and enrichment rules.
 4. `Каналы` - connector status, marketplace category mapping, parameter mapping, value rules, validation, and export.
 5. `Администрирование` - organization, users, roles, invitations, and platform settings.
+
+Primary user path:
+
+1. import products;
+2. group SKU variants;
+3. map catalog categories and competitor sources;
+4. collect and approve the info-model;
+5. map marketplace channels, parameters, values, and competitor evidence;
+6. enrich products;
+7. validate and export.
+
+Menu rule:
+
+1. left rail shows broad work areas only;
+2. concrete entities and operations live as submenu items or page tabs;
+3. submenu labels must be action-oriented where possible;
+4. do not duplicate the same operation in multiple left-menu groups.
 
 Route ownership:
 
 | Zone | Routes | Primary task |
 | --- | --- | --- |
 | `Сводка` | `/` | Show what needs attention and where to continue. |
-| `Товары` | `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/catalog/content-index` | Work with categories, SKU, product cards, groups, and final catalog state. |
-| `Подготовка данных` | `/catalog/import`, `/templates`, `/templates/:categoryId`, `/dictionaries`, `/dictionaries/:dictId`, `/sources?tab=competitors`, `/images/infographics` | Build/import/enrich data before marketplace preparation. |
+| `Каталог` | `/catalog/import`, `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/catalog/content-index` | Import products, manage categories, SKU, product cards, groups, and final catalog state. |
+| `Инфо-модели` | `/templates`, `/templates/:categoryId`, `/dictionaries`, `/dictionaries/:dictId`, `/data-prep/competitors`, `/images/infographics` | Collect fields, approve models, manage dictionaries, connect competitor evidence, and prepare media/enrichment inputs. |
 | `Каналы` | `/connectors/status`, `/sources?tab=sources`, `/sources?tab=params`, `/sources?tab=values`, `/catalog/export` | Connect marketplaces, map categories/fields/values, validate, export. |
 | `Администрирование` | `/admin/organizations`, `/admin/members`, `/admin/invites`, `/admin/access`, `/admin/platform` | Manage organization, team, permissions, and platform context. |
 
@@ -131,8 +149,8 @@ Target frontend folders:
 1. `frontend/src/app` - app shell, auth context, routing composition only. Status: current.
 2. `frontend/src/shared` - reusable UI primitives, layout components, table/list/tree/selectors, hooks, formatters. Status: started with shared placeholder; UI primitives still live in `frontend/src/components` until component consolidation.
 3. `frontend/src/domains/overview` - `Сводка`. Status: moved.
-4. `frontend/src/domains/products` - `Товары`. Status: moved.
-5. `frontend/src/domains/data-prep` - `Подготовка данных`. Status: moved for templates/dictionaries/import-adjacent media; competitor tab still shares the `/sources` implementation under `channels`.
+4. `frontend/src/domains/products` - `Каталог`. Status: moved.
+5. `frontend/src/domains/data-prep` - `Инфо-модели`. Status: moved for templates/dictionaries/competitors/media prep; folder name remains `data-prep` until a separate import-safe rename is justified.
 6. `frontend/src/domains/channels` - `Каналы`. Status: moved for sources/mapping/connectors.
 7. `frontend/src/domains/admin` - `Администрирование`. Status: moved.
 
@@ -176,8 +194,8 @@ Initial DB ownership map:
 | Zone | Source-of-truth tables | Derived/read-model tables | Cross-zone dependencies |
 | --- | --- | --- | --- |
 | `Сводка` | none directly; reads product/catalog/channel/admin state | `dashboard_stats_rel` | Reads all zones, writes only explicit dashboard snapshots. |
-| `Товары` | `products_rel`, `catalog_nodes_rel`, `product_groups_rel`, `product_group_variant_params_rel` | `catalog_product_registry_rel`, `category_product_counts_rel`, `catalog_product_page_rel`, `catalog_product_page_tenant_rel`, `product_marketplace_status_rel`, `product_marketplace_status_tenant_rel` | Reads info-model/channel readiness; writes product/category/group state. |
-| `Подготовка данных` | `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`, `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`, selected `json_documents` operational docs for imports/competitors/media jobs | `category_template_resolution_tenant_rel` | Reads products/categories and channel field sources; writes models, dictionaries, enrichment evidence. |
+| `Каталог` | `products_rel`, `catalog_nodes_rel`, `product_groups_rel`, `product_group_variant_params_rel` | `catalog_product_registry_rel`, `category_product_counts_rel`, `catalog_product_page_rel`, `catalog_product_page_tenant_rel`, `product_marketplace_status_rel`, `product_marketplace_status_tenant_rel` | Reads info-model/channel readiness; writes product/category/group state. |
+| `Инфо-модели` | `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`, `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`, selected `json_documents` operational docs for competitors/media jobs | `category_template_resolution_tenant_rel` | Reads products/categories and channel field sources; writes models, dictionaries, enrichment evidence. |
 | `Каналы` | `category_mappings_tenant_rel`, `attribute_mappings_tenant_rel`, `attribute_value_refs_tenant_rel`, connector account/state tables, selected `json_documents` marketplace cache docs | `product_marketplace_status_tenant_rel`, marketplace export/readiness snapshots | Reads products, info-models, dictionaries; writes marketplace bindings, export status, connector state. |
 | `Администрирование` | `platform_users`, `organizations`, `organization_members`, `organization_invites`, `tenant_registry`, `tenant_provisioning_jobs` | none by default | Owns access context for every zone. |
 
@@ -209,7 +227,7 @@ Routes in scope:
 6. `/sources?tab=sources&category=:id`;
 7. `/sources?tab=params&category=:id`;
 8. `/sources?tab=values&category=:id`;
-9. `/sources?tab=competitors&category=:id`.
+9. `/data-prep/competitors?category=:id`.
 
 Rules:
 
@@ -484,7 +502,7 @@ Mandatory UI/API QA after read-model changes:
 7. `/sources?tab=sources`;
 8. `/sources?tab=params&category=...`;
 9. `/sources?tab=values&category=...`;
-10. `/sources?tab=competitors`;
+10. `/data-prep/competitors`;
 11. `/catalog/import`;
 12. `/catalog/export`;
 13. `/connectors/status`;

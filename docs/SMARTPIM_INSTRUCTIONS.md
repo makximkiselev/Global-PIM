@@ -12,27 +12,29 @@ Core workflow:
 
 1. register organization;
 2. add users and access rights;
-3. connect import/export channels;
-4. create catalog categories;
-5. collect and approve info-model fields;
-6. map categories, parameters, and values to marketplaces;
-7. create/import/enrich products;
-8. manage media, relations, analogs, variants, competitor evidence;
+3. import products;
+4. group SKU variants;
+5. map catalog categories and competitor sources;
+6. collect and approve info-model fields;
+7. map channels, parameters, values, and competitor evidence;
+8. enrich products and media;
 9. validate and export products.
 
 ## Product Navigation Contract
 
-Top-level menu is fixed to five product zones:
+Top-level menu is fixed to five product zones and should be organized around user work, not internal database entities:
 
 1. `Сводка` - operational health, queues, problems, and quick return to active work.
-2. `Товары` - catalog, SKU list, product card, product creation, groups, and variants.
-3. `Подготовка данных` - import, info-models, dictionaries, competitor evidence, and media preparation.
+2. `Каталог` - import, category structure, SKU list, product card, groups, variants, and content readiness.
+3. `Инфо-модели` - competitor evidence, field collection, field approval, dictionaries, media preparation, and enrichment rules.
 4. `Каналы` - connector status, marketplace category mapping, parameter mapping, value rules, validation, and export.
 5. `Администрирование` - organization, users, roles, invitations, and platform settings.
 
 Do not add new top-level menu groups without explicit approval. New workflows must be added as tabs, sections, or local actions inside one of these five zones.
 
-Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Подготовка данных`.
+Menu labels must describe the user's task. Prefer `Импортировать товары`, `Собрать модель`, `Сопоставить параметры`, `Настроить значения`, and `Выгрузить товары` over technical nouns.
+
+Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Инфо-модели`.
 
 Every substantial page must have:
 

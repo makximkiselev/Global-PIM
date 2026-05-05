@@ -16,55 +16,55 @@ const groups: ShellNavGroup[] = [
   {
     title: "Сводка",
     icon: "workspace",
-    summary: "Очередь задач, проблемы качества и быстрый возврат к рабочим процессам.",
-    flow: ["задачи", "ошибки", "очереди"],
+    summary: "Что требует внимания и где продолжить работу.",
+    flow: ["очереди", "ошибки", "следующий шаг"],
     sections: [
       {
         title: "Контроль",
-        items: [{ href: "/", label: "Обзор", page: "dashboard", badge: "центр" }],
+        items: [{ href: "/", label: "Рабочая сводка", page: "dashboard" }],
       },
     ],
   },
   {
-    title: "Товары",
+    title: "Каталог",
     icon: "catalog",
-    summary: "Категории, SKU, группы вариантов и финальная карточка товара.",
-    flow: ["категории", "SKU", "группы"],
+    summary: "Импорт, категории, SKU, группы вариантов и финальный товарный каталог.",
+    flow: ["импорт", "категории", "SKU", "группы"],
     sections: [
       {
-        title: "Рабочий каталог",
+        title: "Работа с товарами",
         items: [
-          { href: "/catalog", label: "Каталог", page: "catalog" },
-          { href: "/products", label: "Товары", page: "products" },
-          { href: "/products/new", label: "Создать товар", page: "products" },
-          { href: "/catalog/groups", label: "Группы и варианты", page: "product_groups" },
+          { href: "/catalog/import", label: "Импортировать товары", page: "catalog_import" },
+          { href: "/catalog", label: "Каталог и перемещение", page: "catalog" },
+          { href: "/products", label: "Список SKU", page: "products" },
+          { href: "/products/new", label: "Создать SKU", page: "products" },
+          { href: "/catalog/groups", label: "Группы вариантов", page: "product_groups" },
         ],
       },
       {
-        title: "Качество",
-        items: [{ href: "/catalog/content-index", label: "Контент-индекс", page: "stats_card_quality" }],
+        title: "Готовность",
+        items: [{ href: "/catalog/content-index", label: "Индекс контента", page: "stats_card_quality" }],
       },
     ],
   },
   {
-    title: "Подготовка данных",
+    title: "Инфо-модели",
     icon: "models",
-    summary: "Импорт, инфо-модели, словари, конкуренты и медиа-подготовка до работы с каналами.",
-    flow: ["импорт", "модель", "конкуренты", "медиа"],
+    summary: "Поля, словари, конкуренты и правила наполнения товаров.",
+    flow: ["конкуренты", "поля", "словари", "наполнение"],
     sections: [
       {
-        title: "Ввод данных",
+        title: "Модель данных",
         items: [
-          { href: "/catalog/import", label: "Импорт", page: "catalog_import" },
-          { href: "/templates", label: "Инфо-модели", page: "templates" },
+          { href: "/templates", label: "Собрать модель", page: "templates" },
           { href: "/dictionaries", label: "Словари", page: "dictionaries" },
         ],
       },
       {
-        title: "Обогащение",
+        title: "Источники наполнения",
         items: [
-          { href: "/data-prep/competitors", label: "Конкуренты", page: "sources_mapping", badge: "review" },
-          { href: "/images/infographics", label: "Медиа и инфографика", page: "infographics" },
+          { href: "/data-prep/competitors", label: "Сопоставить конкурентов", page: "sources_mapping" },
+          { href: "/images/infographics", label: "Подготовить медиа", page: "infographics" },
         ],
       },
     ],
@@ -72,17 +72,17 @@ const groups: ShellNavGroup[] = [
   {
     title: "Каналы",
     icon: "sources",
-    summary: "Подключения, сопоставления с площадками, правила значений, валидация и экспорт.",
+    summary: "Площадки, категории, параметры, значения, проверка и выгрузка.",
     flow: ["подключить", "сопоставить", "проверить", "выгрузить"],
     sections: [
       {
-        title: "Площадки",
+        title: "Подготовка выгрузки",
         items: [
           { href: "/connectors/status", label: "Подключения", page: "connectors_status" },
-          { href: "/sources?tab=sources", label: "Категории площадок", page: "sources_mapping" },
-          { href: "/sources?tab=params", label: "Параметры площадок", page: "sources_mapping", badge: "AI" },
-          { href: "/sources?tab=values", label: "Значения площадок", page: "sources_mapping" },
-          { href: "/catalog/export", label: "Экспорт", page: "catalog_export" },
+          { href: "/sources?tab=sources", label: "Сопоставить категории", page: "sources_mapping" },
+          { href: "/sources?tab=params", label: "Сопоставить параметры", page: "sources_mapping" },
+          { href: "/sources?tab=values", label: "Настроить значения", page: "sources_mapping" },
+          { href: "/catalog/export", label: "Выгрузить товары", page: "catalog_export" },
         ],
       },
     ],
