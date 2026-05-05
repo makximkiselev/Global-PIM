@@ -280,7 +280,7 @@ Next tasks:
 1. run full user path for `Смартфоны`;
 2. verify marketplace field import for Ozon and Yandex;
 3. verify competitor evidence from re-store/store77;
-4. remove duplicate counters/tabs in parameter mapping;
+4. remove duplicate counters/tabs in parameter mapping. Status: first pass done for `/sources?tab=params`;
 5. make binding edit action obvious;
 6. inspect and simplify value mapping.
 

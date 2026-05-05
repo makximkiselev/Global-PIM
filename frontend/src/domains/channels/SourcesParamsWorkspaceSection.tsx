@@ -136,12 +136,6 @@ function providerCodes(details: AttrDetailsResp | null) {
   return codes.length ? codes : ["yandex_market", "ozon"];
 }
 
-function confidenceLabel(value?: number) {
-  const raw = Number(value || 0);
-  if (!Number.isFinite(raw) || raw <= 0) return "нет score";
-  return `${Math.round(raw * 100)}%`;
-}
-
 function rowProviderCoverage(row: AttrRow, codes: string[]) {
   return codes.filter((code) => !!String(row.provider_map?.[code]?.id || row.provider_map?.[code]?.name || "").trim()).length;
 }
@@ -183,20 +177,6 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     const resp = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
     setDetails(resp);
     onSelectedCategoryChange?.(resp.category.id, resp.category.name);
-  }
-
-  async function loadCompetitors(categoryId: string) {
-    setCompetitorsLoading(true);
-    setCompetitorsError("");
-    try {
-      const resp = await api<CompetitorCategoryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(categoryId)}`);
-      setCompetitors(resp);
-    } catch (err) {
-      setCompetitors(null);
-      setCompetitorsError(err instanceof Error ? err.message : "Не удалось загрузить конкурентные источники");
-    } finally {
-      setCompetitorsLoading(false);
-    }
   }
 
   useEffect(() => {
@@ -306,12 +286,16 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const categoryName = details?.category?.name || "Выберите категорию";
   const categoryPath = details?.category?.path || "Категория не выбрана";
   const readinessText = stats.total ? `${stats.ready}/${stats.total} готово` : "нет параметров";
-  const topSourceCandidates = useMemo(() => {
-    return (competitors?.sources || []).flatMap((source) =>
-      (source.suggestions || []).slice(0, 2).map((suggestion) => ({
-        source,
-        suggestion,
-      }))
+  const competitorTotals = useMemo(() => {
+    const sources = competitors?.sources || [];
+    return sources.reduce(
+      (acc, source) => ({
+        sources: acc.sources + 1,
+        products: acc.products + Number(source.products_count || 0),
+        links: acc.links + Number(source.confirmed_count || 0),
+        review: acc.review + Number(source.needs_review_count || 0),
+      }),
+      { sources: 0, products: 0, links: 0, review: 0 },
     );
   }, [competitors]);
 
@@ -446,10 +430,15 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             <div className="paramsEyebrow">Категория · параметры · выгрузка</div>
             <h2>{categoryName}</h2>
             <p>{categoryPath}</p>
+            <div className="paramsCommandBadges" aria-label="Готовность параметров">
+              <span>{Object.keys(details?.mapping || {}).length ? "категории связаны" : "нужна связка категорий"}</span>
+              <span>{codes.length} площадки</span>
+              <span>{readinessText}</span>
+              <span>{stats.values} с вариантами значений</span>
+            </div>
           </div>
           <div className="paramsCommandActions">
             <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
-            <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>К значениям</Link>
             <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
               {aiMatching ? "Собираю..." : "Собрать с AI"}
             </button>
@@ -492,20 +481,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
         {loading ? <div className="paramsAlert">Загружаю параметры категории...</div> : null}
 
-        <div className="paramsSteps">
-          <div className="paramsStep isDone"><span>1</span><strong>Категории</strong><em>{Object.keys(details?.mapping || {}).length ? "связаны" : "нужна связка"}</em></div>
-          <div className="paramsStep isDone"><span>2</span><strong>Источники</strong><em>{codes.length} площадки</em></div>
-          <div className={`paramsStep ${stats.attention ? "isWarn" : "isDone"}`}><span>3</span><strong>Параметры</strong><em>{readinessText}</em></div>
-          <Link className="paramsStep" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}><span>4</span><strong>Значения</strong><em>варианты написания</em></Link>
-          <Link className="paramsStep" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}><span>5</span><strong>Выгрузка</strong><em>проверить готовность</em></Link>
-        </div>
-
         <div className="paramsFocusLayout">
           <div className="paramsQueueBlock">
             <div className="paramsSectionHead">
               <div>
                 <h3>Параметры инфо-модели</h3>
-                <p>Рабочая очередь показывает только поля категории. Выберите поле, проверьте источники справа и подтвердите привязку.</p>
+                <p>Выберите поле, свяжите его с площадками справа и подтвердите результат.</p>
               </div>
             </div>
 
@@ -613,36 +594,28 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                 </div>
 
                 <div className="paramsInspectorSection">
-                  <h4>Конкуренты для наполнения</h4>
-                  <p>Конкуренты помогают заполнить товары и проверить значения, но не заменяют поля Я.Маркет/Ozon.</p>
+                  <h4>Источники наполнения</h4>
+                  <p>Конкуренты используются как источник фактов для товара и значений.</p>
                   {competitorsLoading ? <div className="paramsMiniAlert">Загружаю конкурентов...</div> : null}
                   {competitorsError ? <div className="paramsMiniAlert">{competitorsError}</div> : null}
                   <div className="paramsEvidenceGrid">
-                    {(competitors?.sources || []).map((source) => (
-                      <div className="paramsEvidenceCard" key={source.id}>
-                        <strong>{source.name}</strong>
-                        <span>{source.products_count || 0} SKU · {source.confirmed_count || 0} связей</span>
-                        <em>{source.needs_review_count || 0} на проверке</em>
-                      </div>
-                    ))}
-                    {!competitorsLoading && !competitors?.sources?.length ? <div className="paramsMiniAlert">Источники конкурентов еще не найдены.</div> : null}
-                  </div>
-                  {topSourceCandidates.length ? (
-                    <div className="paramsSuggestionList">
-                      {topSourceCandidates.slice(0, 4).map(({ source, suggestion }) => (
-                        <a href={suggestion.url} target="_blank" rel="noreferrer" key={`${source.id}-${suggestion.id}`}>
-                          <span>{source.name}</span>
-                          <strong>{suggestion.label}</strong>
-                          <em>{suggestion.type === "search" ? "поиск" : "найдено"} · {confidenceLabel(suggestion.confidence)}</em>
-                        </a>
-                      ))}
+                    <div className="paramsEvidenceCard">
+                      <strong>{competitorTotals.sources || "нет"} источников</strong>
+                      <span>{competitorTotals.products || 0} SKU в пуле</span>
+                      <em>{competitorTotals.links || 0} подтверждено</em>
                     </div>
-                  ) : null}
+                    <div className="paramsEvidenceCard">
+                      <strong>{competitorTotals.review || 0} на проверке</strong>
+                      <span>re-store / store77</span>
+                      <em>отдельная очередь</em>
+                    </div>
+                  </div>
+                  <Link className="btn" to={`/data-prep/competitors?category=${encodeURIComponent(selectedCategoryId)}`}>Открыть конкурентов</Link>
                 </div>
 
                 <div className="paramsInspectorSection">
-                  <h4>Значения и выгрузка</h4>
-                  <p>Если поле имеет варианты значений, следующий шаг — настроить написание для каждой площадки.</p>
+                  <h4>Следующее действие</h4>
+                  <p>После подтверждения поля настройте варианты написания для площадок.</p>
                   <div className="paramsInspectorActions">
                     <button
                       className="btn btn-primary"
@@ -652,8 +625,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     >
                       {savingRowId === String(selectedRow.id) ? "Сохраняю..." : "Подтвердить"}
                     </button>
-                    <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть значения</Link>
-                    <Link className="btn" to={`/data-prep/competitors?category=${encodeURIComponent(selectedCategoryId)}`}>Очередь конкурентов</Link>
+                    <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Настроить значения</Link>
                   </div>
                 </div>
 
