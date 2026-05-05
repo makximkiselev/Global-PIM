@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { toRenderableMediaUrl } from "../lib/media";
 import "../styles/products-list.css";
 
 type ProductItem = {
@@ -535,7 +536,7 @@ export default function ProductRegistry({
             {!loading && products.map((p) => {
               const title = String(p.title || p.name || "").trim() || p.id;
               const breadcrumbs = String(p.category_path || "");
-              const previewUrl = String(p.preview_url || "").trim();
+              const previewUrl = toRenderableMediaUrl(String(p.preview_url || "").trim());
               const gid = String(p.group_id || "").trim();
               const gname = String(p.group_name || "").trim();
               const skuGt = String(p.sku_gt || "").trim();
