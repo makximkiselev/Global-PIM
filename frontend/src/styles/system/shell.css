@@ -180,9 +180,10 @@
   top:10px;
   bottom:10px;
   left:76px;
-  width:340px;
+  width:min(304px, calc(100vw - 94px));
+  max-width:calc(100vw - 94px);
   min-height:calc(100vh - 20px);
-  z-index:44;
+  z-index:80;
   display:flex;
   flex-direction:column;
   border:1px solid var(--line);
@@ -207,7 +208,11 @@
 }
 
 .shellNavPanelHeader{
-  padding:18px 18px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 14px 12px;
   border-bottom:1px solid var(--line);
 }
 
@@ -222,10 +227,36 @@
 
 .shellNavPanelTitle{
   margin-top:2px;
-  font-size:16px;
+  font-size:18px;
   line-height:1;
   letter-spacing:-.04em;
   font-weight:1000;
+}
+
+.shellNavPanelClose{
+  width:34px;
+  height:34px;
+  flex:0 0 auto;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(var(--card-rgb),.82);
+  color:var(--text-soft);
+  cursor:pointer;
+  font-size:21px;
+  line-height:1;
+  font-weight:700;
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.shellNavPanelClose:hover{
+  transform:translateY(-1px);
+  background:var(--surface-4);
+  color:var(--text);
+  border-color:rgba(var(--brand-rgb),.18);
 }
 
 .shellNavPanelSummary{
@@ -276,7 +307,7 @@
   flex:1 1 auto;
   min-height:0;
   overflow:auto;
-  padding:12px 12px 12px;
+  padding:10px 10px 12px;
   display:flex;
   flex-direction:column;
   gap:10px;
@@ -291,7 +322,7 @@
 }
 
 .shellSidebarSectionTitle{
-  padding:0 2px 3px;
+  padding:0 2px 4px;
   color:var(--muted);
   font-size:10px;
   font-weight:900;
@@ -309,7 +340,7 @@
   display:flex;
   align-items:center;
   gap:8px;
-  min-height:38px;
+  min-height:36px;
   padding:0 10px;
   border-radius:12px;
   border:1px solid transparent;
@@ -661,7 +692,7 @@
     grid-template-columns:72px minmax(0, 1fr);
   }
   .shellNavPanel{
-    width:320px;
+    width:min(296px, calc(100vw - 94px));
   }
   .shellContentTitle{
     font-size:34px;
@@ -681,14 +712,16 @@
     border-radius:14px;
   }
   .shellNavPanel{
-    left:calc(100% + 4px);
-    width:min(300px, calc(100vw - 96px));
+    left:70px;
+    right:10px;
+    width:auto;
+    max-width:none;
   }
   .shellNavPanelHeader{
     padding:14px 14px 12px;
   }
   .shellNavPanelTitle{
-    font-size:22px;
+    font-size:18px;
   }
   .shellNavPanelSummary{
     font-size:12px;
@@ -762,15 +795,17 @@
     font-size:12px;
   }
   .shellNavPanel{
-    left:calc(100% + 2px);
-    width:min(208px, calc(100vw - 60px));
+    left:62px;
+    right:8px;
+    width:auto;
+    max-width:none;
     border-radius:18px;
   }
   .shellNavPanelHeader{
     padding:12px 12px 10px;
   }
   .shellNavPanelTitle{
-    font-size:20px;
+    font-size:17px;
   }
   .shellNavPanelSummary{
     margin-top:6px;

@@ -150,25 +150,6 @@ function findCurrentLabel(pathname: string, groupsList: ShellNavGroup[]) {
   return "";
 }
 
-function shellRoleLabel(code?: string | null, isDeveloper = false) {
-  if (isDeveloper) return "Разработчик";
-  const normalized = String(code || "").toLowerCase();
-  if (normalized === "org_owner") return "Владелец";
-  if (normalized === "org_admin") return "Администратор";
-  if (normalized === "org_editor") return "Редактор";
-  if (normalized === "org_viewer") return "Наблюдатель";
-  return "Участник";
-}
-
-function shellStatusLabel(status?: string | null) {
-  const normalized = String(status || "").toLowerCase();
-  if (normalized === "active" || normalized === "ready") return "Активна";
-  if (normalized === "provisioning") return "Настраивается";
-  if (normalized === "pending") return "Ожидает";
-  if (["failed", "error", "suspended", "revoked"].includes(normalized)) return "Проблема";
-  return "Неизвестно";
-}
-
 export default function Shell({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const {
@@ -195,10 +176,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [activeGroupTitle, setActiveGroupTitle] = useState("");
   const showWorkspaceBar = false;
   const showShellHeading = false;
-  const organizationStatus = String(provisioningStatus?.organization?.status || currentOrganization?.status || "unknown");
   const userLabel = user?.name || user?.login || user?.email || "Пользователь";
   const userMeta = user?.login || user?.email || "";
-  const roleLabel = shellRoleLabel(currentOrganization?.membership_role, isDeveloper);
   const userInitials = userLabel
     .split(" ")
     .filter(Boolean)
@@ -309,52 +288,6 @@ export default function Shell({ children }: { children: ReactNode }) {
                         {userInitials}
                       </button>
                     </>
-                  }
-                  panelFooter={
-                    <div className="shellNavAccount">
-                      <div className="shellNavAccountOrg">
-                        <div className="shellNavAccountLabel">Организация</div>
-                        {organizations.length > 1 ? (
-                          <select
-                            className="shellNavAccountSelect"
-                            value={currentOrganization?.id || ""}
-                            disabled={switchingOrganization}
-                            onChange={(event) => void handleOrganizationChange(event.target.value)}
-                          >
-                            {organizations.map((organization) => (
-                              <option key={organization.id} value={organization.id}>
-                                {organization.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div className="shellNavAccountName">{currentOrganization?.name || "Организация"}</div>
-                        )}
-                        <div className={`shellStatusBadge is-${organizationStatus.toLowerCase()}`}>{shellStatusLabel(organizationStatus)}</div>
-                      </div>
-                      <div className="shellNavAccountUser">
-                        <div className="shellNavAvatar">{userInitials}</div>
-                        <div className="shellNavUserCopy">
-                          <div className="shellNavUserName">{userLabel}</div>
-                          <div className="shellNavUserMeta">{userMeta || roleLabel}</div>
-                        </div>
-                        <div className="shellRoleBadge">{roleLabel}</div>
-                      </div>
-                      <div className="shellNavAccountActions">
-                        <button type="button" className="shellNavAccountButton" onClick={() => setShowPasswordModal(true)}>
-                          Сменить пароль
-                        </button>
-                        <button
-                          type="button"
-                          className="shellNavAccountButton"
-                          onClick={() => {
-                            void logout();
-                          }}
-                        >
-                          Выйти
-                        </button>
-                      </div>
-                    </div>
                   }
                 />
               </div>

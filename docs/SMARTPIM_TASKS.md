@@ -669,22 +669,25 @@ Next tasks:
 
 ## P2 - Navigation Shell
 
-Status: active redesign.
+Status: active redesign / responsive menu bug found on 2026-05-05.
 
 Rules:
 
 1. compact left rail default;
-2. expanded menu full-height and stable on hover;
-3. user, organization, role, and theme toggle visible in shell/account area;
-4. no oversized icons or random floating dropdowns;
-5. menu grouped by PIM workflow, not technical page names;
-6. active state works for tabbed links.
+2. expanded menu must open by click and remain pinned until link click, outside click, close button, or Escape;
+3. hover may preview a section, but cannot be the only way to open the menu;
+4. expanded menu must stay inside viewport on smaller desktop widths;
+5. user and theme controls stay in the rail/account entry, not as a heavy duplicated block inside every menu panel;
+6. no oversized icons or random floating dropdowns;
+7. menu grouped by PIM workflow, not technical page names;
+8. active state works for tabbed links.
 
 Next tasks:
 
-1. verify hover stability and full-height panel on production;
+1. verify click-pinned menu and smaller-width behavior in Browser Use/in-app browser;
 2. verify active state for tabbed links;
-3. add real counters later from backend queues/errors.
+3. reduce remaining dashboard/menu English labels (`Control Center`, `Sources / Mapping`, `Channels`);
+4. add real counters later from backend queues/errors.
 
 ## P3 - Testing And Deploy Hardening
 

@@ -34,7 +34,10 @@ export default function ShellSidebarNav({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const closeTimerRef = useRef<number | null>(null);
+  const suppressPreviewUntilRef = useRef(0);
+  const previousLocationRef = useRef(currentLocation || pathname);
   const [previewGroupTitle, setPreviewGroupTitle] = useState<string | null>(null);
+  const [pinnedGroupTitle, setPinnedGroupTitle] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const activeLocation = currentLocation || pathname;
   const routeGroup =
@@ -44,9 +47,10 @@ export default function ShellSidebarNav({
   const activeGroup = useMemo(
     () =>
       groups.find((group) => group.title === previewGroupTitle) ||
+      groups.find((group) => group.title === pinnedGroupTitle) ||
       groups.find((group) => group.title === activeGroupTitle) ||
       routeGroup,
-    [groups, previewGroupTitle, activeGroupTitle, routeGroup],
+    [groups, previewGroupTitle, pinnedGroupTitle, activeGroupTitle, routeGroup],
   );
 
   function clearCloseTimer() {
@@ -56,20 +60,38 @@ export default function ShellSidebarNav({
     }
   }
 
-  function openGroup(title: string) {
+  function previewGroup(title: string) {
+    if (pinnedGroupTitle) return;
+    if (Date.now() < suppressPreviewUntilRef.current) return;
     clearCloseTimer();
     onSelectGroup(title);
     setPreviewGroupTitle(title);
     setPanelOpen(true);
   }
 
-  function closePanel() {
+  function pinGroup(title: string) {
     clearCloseTimer();
+    const alreadyPinned = pinnedGroupTitle === title && panelOpen;
+    if (alreadyPinned) {
+      closePanel();
+      return;
+    }
+    onSelectGroup(title);
     setPreviewGroupTitle(null);
+    setPinnedGroupTitle(title);
+    setPanelOpen(true);
+  }
+
+  function closePanel(suppressPreview = false) {
+    clearCloseTimer();
+    if (suppressPreview) suppressPreviewUntilRef.current = Date.now() + 450;
+    setPreviewGroupTitle(null);
+    setPinnedGroupTitle(null);
     setPanelOpen(false);
   }
 
   function scheduleClose() {
+    if (pinnedGroupTitle) return;
     clearCloseTimer();
     closeTimerRef.current = window.setTimeout(() => {
       setPreviewGroupTitle(null);
@@ -80,10 +102,35 @@ export default function ShellSidebarNav({
 
   useEffect(() => () => clearCloseTimer(), []);
 
+  useEffect(() => {
+    if (previousLocationRef.current === activeLocation) return;
+    previousLocationRef.current = activeLocation;
+    closePanel(true);
+  }, [activeLocation]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closePanel(true);
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!pinnedGroupTitle) return;
+      if (containerRef.current?.contains(event.target as Node)) return;
+      closePanel(true);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [pinnedGroupTitle]);
+
   return (
     <div
       ref={containerRef}
-      className={`shellWorkspaceNav${panelOpen ? " isPanelOpen" : ""}`}
+      className={`shellWorkspaceNav${panelOpen ? " isPanelOpen" : ""}${pinnedGroupTitle ? " isPinned" : ""}`}
       onMouseEnter={clearCloseTimer}
       onMouseLeave={scheduleClose}
       onBlurCapture={(event) => {
@@ -104,9 +151,9 @@ export default function ShellSidebarNav({
                 aria-label={group.title}
                 data-label={group.title}
                 className={`shellRailButton${active ? " isActive" : ""}${previewing ? " isPreview" : ""}`}
-                onMouseEnter={() => openGroup(group.title)}
-                onFocus={() => openGroup(group.title)}
-                onClick={() => openGroup(group.title)}
+                onMouseEnter={() => previewGroup(group.title)}
+                onFocus={() => previewGroup(group.title)}
+                onClick={() => pinGroup(group.title)}
               >
                 <span className="shellRailButtonIcon" aria-hidden="true">
                   <ShellIcon name={group.icon} />
@@ -123,19 +170,13 @@ export default function ShellSidebarNav({
         {activeGroup ? (
           <>
             <div className="shellNavPanelHeader">
-              <div className="shellNavPanelEyebrow">Рабочий контур</div>
-              <div className="shellNavPanelTitle">{activeGroup.title}</div>
-              <div className="shellNavPanelSummary">{activeGroup.summary}</div>
-              {activeGroup.flow?.length ? (
-                <div className="shellNavFlow" aria-label="Порядок работы">
-                  {activeGroup.flow.map((step, index) => (
-                    <span key={`${activeGroup.title}-${step}`} className="shellNavFlowStep">
-                      <span>{index + 1}</span>
-                      {step}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              <div>
+                <div className="shellNavPanelEyebrow">Раздел</div>
+                <div className="shellNavPanelTitle">{activeGroup.title}</div>
+              </div>
+              <button type="button" className="shellNavPanelClose" aria-label="Закрыть меню" onClick={() => closePanel(true)}>
+                ×
+              </button>
             </div>
 
             <nav className="shellSidebarNav" aria-label="Основная навигация">
@@ -148,6 +189,7 @@ export default function ShellSidebarNav({
                         key={item.href}
                         to={item.href}
                         className={`shellSidebarLink${isActive(activeLocation, item.href) ? " active" : ""}`}
+                        onClick={() => closePanel(true)}
                       >
                         <span className="shellSidebarLinkDot" />
                         <span>{item.label}</span>
