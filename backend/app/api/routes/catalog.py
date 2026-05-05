@@ -14,6 +14,7 @@ from app.storage.relational_pim_store import (
     load_catalog_nodes,
     save_catalog_nodes,
     load_catalog_product_items,
+    load_products_by_ids,
     load_product_groups_doc,
     query_catalog_product_items,
     save_catalog_product_page_rows,
@@ -857,6 +858,13 @@ def search_products(
         q=query,
         limit=limit,
     )
+    full_products_by_id: Dict[str, Dict[str, Any]] = {}
+    if requested_ids:
+        full_products_by_id = {
+            str(item.get("id") or "").strip(): item
+            for item in load_products_by_ids(sorted(requested_ids))
+            if isinstance(item, dict) and str(item.get("id") or "").strip()
+        }
 
     items = []
     for p in products:
@@ -866,7 +874,13 @@ def search_products(
         if not query and not requested_ids and not requested_category_ids:
             continue
 
-        items.append(dict(p))
+        item = dict(p)
+        full_product = full_products_by_id.get(product_id)
+        if isinstance(full_product, dict):
+            content = full_product.get("content")
+            if isinstance(content, dict):
+                item["content"] = content
+        items.append(item)
 
     items.sort(
         key=lambda item: (

@@ -78,6 +78,7 @@ type ProductWorkspaceSummaryResp = {
     sku_gt?: string;
     group_id?: string;
     preview_url?: string;
+    content?: ProductContent;
   }>;
 };
 
@@ -867,12 +868,14 @@ function ProductWorkspaceFeature() {
             category_id: normalizeText(summary.category_id) || undefined,
             group_id: normalizeText(summary.group_id) || undefined,
             status: "draft",
-            content: normalizeText(summary.preview_url)
-              ? {
-                  media: [{ url: normalizeText(summary.preview_url) }],
-                  media_images: [{ url: normalizeText(summary.preview_url) }],
-                }
-              : {},
+            content: summary.content && typeof summary.content === "object"
+              ? summary.content
+              : normalizeText(summary.preview_url)
+                ? {
+                    media: [{ url: normalizeText(summary.preview_url) }],
+                    media_images: [{ url: normalizeText(summary.preview_url) }],
+                  }
+                : {},
           };
           if (!fullProductResolved) {
             setProduct(summaryProduct);
