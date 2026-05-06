@@ -73,7 +73,6 @@ def list_organizations(auth=Depends(require_auth)):
         "ok": True,
         "organizations": payload.get("organizations") or [],
         "current_organization": payload.get("current_organization"),
-        "platform_roles": payload.get("platform_roles") or [],
         "flags": payload.get("flags") or {},
     }
 
@@ -94,7 +93,6 @@ def workspace_bootstrap(request: Request, organization_id: str | None = None, au
         "members": list_organization_members(target_id),
         "invites": list_organization_invites(target_id),
         "tenant": tenant_context_payload(getattr(request.state, "tenant", None)),
-        "platform_roles": payload.get("platform_roles") or [],
         "flags": payload.get("flags") or {},
     }
 

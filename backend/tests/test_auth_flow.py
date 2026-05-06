@@ -172,7 +172,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -315,17 +314,10 @@ class AuthFlowTests(unittest.TestCase):
                 "created_at": None,
                 "updated_at": None,
             },
-            "tenant_registry": {
+            "provisioning": {
                 "organization_id": "org_default",
-                "db_host": "",
-                "db_port": 5432,
-                "db_name": "tenant_default",
-                "db_user": "",
-                "db_secret_ref": "tenant_registry/org_default",
                 "status": "provisioning",
                 "schema_version": None,
-                "created_at": None,
-                "updated_at": None,
             },
             "latest_job": {
                 "id": "tenant_job_1",
@@ -345,6 +337,7 @@ class AuthFlowTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["ok"], True)
         self.assertEqual(body["organization"]["status"], "provisioning")
+        self.assertEqual(body["provisioning"]["status"], "provisioning")
         self.assertEqual(body["latest_job"]["status"], "pending")
 
     def test_workspace_bootstrap_returns_organizations_members_and_invites(self) -> None:
@@ -352,7 +345,6 @@ class AuthFlowTests(unittest.TestCase):
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
 
         session_ctx = {
-            "platform_roles": [],
             "organizations": [
                 {
                     "id": "org_default",
@@ -557,7 +549,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -574,17 +565,10 @@ class AuthFlowTests(unittest.TestCase):
                     "created_at": None,
                     "updated_at": None,
                 },
-                "tenant_registry": {
+                "provisioning": {
                     "organization_id": target["id"],
-                    "db_host": "",
-                    "db_port": 5432,
-                    "db_name": f"tenant_{target['slug']}",
-                    "db_user": "",
-                    "db_secret_ref": f"tenant_registry/{target['id']}",
                     "status": "active",
                     "schema_version": None,
-                    "created_at": None,
-                    "updated_at": None,
                 },
                 "latest_job": {
                     "id": f"tenant_job_{target['id']}",
@@ -710,7 +694,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -727,17 +710,10 @@ class AuthFlowTests(unittest.TestCase):
                     "created_at": None,
                     "updated_at": None,
                 },
-                "tenant_registry": {
+                "provisioning": {
                     "organization_id": target["id"],
-                    "db_host": "",
-                    "db_port": 5432,
-                    "db_name": f"tenant_{target['slug']}",
-                    "db_user": "",
-                    "db_secret_ref": f"tenant_registry/{target['id']}",
                     "status": "active",
                     "schema_version": None,
-                    "created_at": None,
-                    "updated_at": None,
                 },
                 "latest_job": {
                     "id": f"tenant_job_{target['id']}",
@@ -911,7 +887,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -928,17 +903,10 @@ class AuthFlowTests(unittest.TestCase):
                     "created_at": None,
                     "updated_at": None,
                 },
-                "tenant_registry": {
+                "provisioning": {
                     "organization_id": target["id"],
-                    "db_host": "",
-                    "db_port": 5432,
-                    "db_name": f"tenant_{target['slug']}",
-                    "db_user": "",
-                    "db_secret_ref": f"tenant_registry/{target['id']}",
                     "status": "active",
                     "schema_version": None,
-                    "created_at": None,
-                    "updated_at": None,
                 },
                 "latest_job": {
                     "id": f"tenant_job_{target['id']}",
@@ -1060,7 +1028,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -1077,17 +1044,10 @@ class AuthFlowTests(unittest.TestCase):
                     "created_at": None,
                     "updated_at": None,
                 },
-                "tenant_registry": {
+                "provisioning": {
                     "organization_id": target["id"],
-                    "db_host": "",
-                    "db_port": 5432,
-                    "db_name": f"tenant_{target['slug']}",
-                    "db_user": "",
-                    "db_secret_ref": f"tenant_registry/{target['id']}",
                     "status": "active",
                     "schema_version": None,
-                    "created_at": None,
-                    "updated_at": None,
                 },
                 "latest_job": {
                     "id": f"tenant_job_{target['id']}",
@@ -1297,7 +1257,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -1314,17 +1273,10 @@ class AuthFlowTests(unittest.TestCase):
                     "created_at": None,
                     "updated_at": None,
                 },
-                "tenant_registry": {
+                "provisioning": {
                     "organization_id": target["id"],
-                    "db_host": "",
-                    "db_port": 5432,
-                    "db_name": f"tenant_{target['slug']}",
-                    "db_user": "",
-                    "db_secret_ref": f"tenant_registry/{target['id']}",
                     "status": "active",
                     "schema_version": None,
-                    "created_at": None,
-                    "updated_at": None,
                 },
                 "latest_job": {
                     "id": f"tenant_job_{target['id']}",
@@ -1529,7 +1481,6 @@ class AuthFlowTests(unittest.TestCase):
         def fake_session_ctx(user, roles, current_organization_id=None):
             current = next((row for row in organizations if row["id"] == current_organization_id), None) or organizations[0]
             return {
-                "platform_roles": [],
                 "organizations": organizations,
                 "current_organization": current,
                 "flags": {"is_developer": False},
@@ -1546,17 +1497,10 @@ class AuthFlowTests(unittest.TestCase):
                     "created_at": None,
                     "updated_at": None,
                 },
-                "tenant_registry": {
+                "provisioning": {
                     "organization_id": target["id"],
-                    "db_host": "",
-                    "db_port": 5432,
-                    "db_name": f"tenant_{target['slug']}",
-                    "db_user": "",
-                    "db_secret_ref": f"tenant_registry/{target['id']}",
                     "status": "active",
                     "schema_version": None,
-                    "created_at": None,
-                    "updated_at": None,
                 },
                 "latest_job": {
                     "id": f"tenant_job_{target['id']}",

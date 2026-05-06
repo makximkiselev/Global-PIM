@@ -74,6 +74,12 @@ Rule:
 
 ## Completed Recent Slices
 
+1. Auth/admin compatibility cleanup
+   - removed `platform_roles` from session, platform organizations, workspace bootstrap, frontend auth context, and auth tests;
+   - replaced runtime `tenant_registry` payload with `provisioning` for organization status and tenant context resolution;
+   - updated `deploy/sql/013_control_plane_foundation.sql` to the current admin schema: `users`, `roles`, `organizations`, `organization_members`, and `organization_invites`;
+   - kept `backend/scripts/consolidate_admin_schema.py` legacy-aware because it is a migration script that must still detect/drop old production tables;
+   - Browser Use bridge was checked: `node_repl` is available, but `iab` currently reports no active Codex browser pane for selected/new tabs.
 1. Admin schema consolidation
    - added `backend/scripts/consolidate_admin_schema.py` with guarded dry-run/apply modes;
    - migrated auth/admin users and roles into relational `users` and `roles`;

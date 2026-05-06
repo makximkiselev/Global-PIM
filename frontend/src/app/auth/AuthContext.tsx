@@ -3,12 +3,6 @@ import { api } from "../../lib/api";
 import { firstAllowedPath } from "./permissions";
 
 type CatalogRow = { code: string; title: string };
-type PlatformRoleRow = {
-  id: string;
-  code: string;
-  name: string;
-  description?: string;
-};
 type OrganizationRow = {
   id: string;
   slug: string;
@@ -25,22 +19,15 @@ type ProvisioningJobRow = {
   created_at?: string | null;
   updated_at?: string | null;
 };
-type TenantRegistryRow = {
+type ProvisioningRow = {
   organization_id: string;
-  db_host: string;
-  db_port: number;
-  db_name: string;
-  db_user: string;
-  db_secret_ref: string;
   status: string;
   schema_version?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
 };
 type ProvisioningStatusResp = {
   ok: boolean;
   organization: OrganizationRow;
-  tenant_registry?: TenantRegistryRow | null;
+  provisioning?: ProvisioningRow | null;
   latest_job?: ProvisioningJobRow | null;
 };
 type RoleRow = {
@@ -66,7 +53,6 @@ type SessionResp = {
   authenticated: boolean;
   user?: UserRow | null;
   roles?: RoleRow[];
-  platform_roles?: PlatformRoleRow[];
   organizations?: OrganizationRow[];
   current_organization?: OrganizationRow | null;
   effective_access?: { pages: string[]; actions: string[] };
@@ -79,7 +65,6 @@ type AuthCtx = {
   authenticated: boolean;
   user: UserRow | null;
   roles: RoleRow[];
-  platformRoles: PlatformRoleRow[];
   organizations: OrganizationRow[];
   currentOrganization: OrganizationRow | null;
   isDeveloper: boolean;
@@ -135,7 +120,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authenticated: !!data.authenticated,
       user: data.user || null,
       roles: data.roles || [],
-      platform_roles: data.platform_roles || [],
       organizations: data.organizations || [],
       current_organization: data.current_organization || null,
       effective_access: data.effective_access || { pages: data.user?.pages || [], actions: data.user?.actions || [] },
@@ -225,7 +209,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authenticated: !!session.authenticated,
       user: session.user || null,
       roles: session.roles || [],
-      platformRoles: session.platform_roles || [],
       organizations: session.organizations || [],
       currentOrganization: session.current_organization || null,
       isDeveloper: !!session.flags?.is_developer,

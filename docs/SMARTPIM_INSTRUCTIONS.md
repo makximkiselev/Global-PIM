@@ -274,6 +274,13 @@ Required checks for changed frontend pages:
 
 If Browser Use has no active in-app pane, state that clearly and do not pretend visual QA was completed. Use build, curl, DOM/API checks as fallback only.
 
+Current Browser Use diagnostic:
+
+1. `node_repl` / `mcp__node_repl__js` is available;
+2. browser-client loads with `backend = "iab"`;
+3. if `agent.browser.tabs.selected()` and `agent.browser.tabs.new()` both report no active Codex browser pane, the blocker is the in-app browser pane/bridge, not missing `node_repl`;
+4. do not fall back silently to external Playwright for an explicit Browser Use request; record the blocker and continue with non-visual checks only when needed.
+
 After browser automation, close any external Playwright/Chromium processes started by the agent. Do not kill unrelated user browser processes.
 
 ## Git

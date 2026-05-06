@@ -613,7 +613,6 @@ def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]], session: 
             "pages": pages,
             "actions": actions,
         },
-        "platform_roles": org_ctx.get("platform_roles") or [],
         "organizations": org_ctx.get("organizations") or [],
         "current_organization": org_ctx.get("current_organization"),
         "effective_access": {

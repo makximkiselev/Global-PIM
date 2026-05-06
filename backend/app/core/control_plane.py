@@ -348,7 +348,6 @@ def load_user_session_context(
         "membership_role": _org_role_from_legacy_roles(legacy_role_codes),
     }
     fallback = {
-        "platform_roles": [],
         "organizations": [default_org] if isinstance(user, dict) else [],
         "current_organization": default_org if isinstance(user, dict) else None,
         "flags": {"is_developer": False},
@@ -381,7 +380,6 @@ def load_user_session_context(
         current_org_id = _normalize_text(current_organization_id)
         current_org = next((row for row in organizations if row["id"] == current_org_id), None) or organizations[0]
         return {
-            "platform_roles": [],
             "organizations": organizations,
             "current_organization": current_org,
             "flags": {"is_developer": False},
@@ -631,7 +629,7 @@ def get_organization_provisioning_status(organization_id: str) -> Dict[str, Any]
         provisioning_error = _normalize_text(org_row[5]) or None
         return {
             "organization": organization,
-            "tenant_registry": {
+            "provisioning": {
                 "organization_id": organization["id"],
                 "status": tenant_status,
                 "schema_version": _normalize_text(org_row[6]) or None,

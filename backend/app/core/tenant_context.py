@@ -45,22 +45,22 @@ def resolve_tenant_context_from_auth(auth: Optional[AuthContext]) -> Optional[Te
     except Exception:
         return None
     organization = payload.get("organization") if isinstance(payload, dict) else {}
-    tenant_registry = payload.get("tenant_registry") if isinstance(payload, dict) else {}
+    provisioning = payload.get("provisioning") if isinstance(payload, dict) else {}
     if not isinstance(organization, dict):
         return None
-    if not isinstance(tenant_registry, dict):
-        tenant_registry = {}
+    if not isinstance(provisioning, dict):
+        provisioning = {}
     org_status = _normalize_text(organization.get("status")) or "unknown"
-    tenant_status = _normalize_text(tenant_registry.get("status")) or org_status
+    tenant_status = _normalize_text(provisioning.get("status")) or org_status
     return TenantContext(
         organization_id=_normalize_text(organization.get("id")),
         organization_slug=_normalize_text(organization.get("slug")),
         organization_name=_normalize_text(organization.get("name")),
         organization_status=org_status,
         tenant_status=tenant_status,
-        tenant_db_name=_normalize_text(tenant_registry.get("db_name")),
-        tenant_db_host=_normalize_text(tenant_registry.get("db_host")),
-        schema_version=_normalize_text(tenant_registry.get("schema_version")) or None,
+        tenant_db_name="",
+        tenant_db_host="",
+        schema_version=_normalize_text(provisioning.get("schema_version")) or None,
         ready=tenant_status == "active" and org_status == "active",
     )
 
