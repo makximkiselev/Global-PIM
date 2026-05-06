@@ -95,13 +95,16 @@ const groups: ShellNavGroup[] = [
 function isActive(currentLocation: string, href: string): boolean {
   const [currentPath, currentSearch = ""] = currentLocation.split("?");
   const [hrefPath, hrefSearch = ""] = href.split("?");
+  if ((hrefPath === "/sources" || hrefPath === "/sources-mapping") && (currentPath === "/sources" || currentPath === "/sources-mapping")) {
+    return true;
+  }
   if (hrefSearch) {
     const currentParams = new URLSearchParams(currentSearch);
     const hrefParams = new URLSearchParams(hrefSearch);
     for (const [key, value] of hrefParams.entries()) {
       if (currentParams.get(key) !== value) return false;
     }
-    return currentPath === hrefPath || (hrefPath === "/sources-mapping" && currentPath === "/sources");
+    return currentPath === hrefPath;
   }
   if (hrefPath === "/") return currentPath === "/";
   if (hrefPath === "/catalog") return currentPath === "/catalog";

@@ -64,6 +64,7 @@ function ProtectedApp() {
         <Route path="/catalog" element={<RequirePage page="catalog"><CatalogRoute /></RequirePage>} />
         <Route path="/catalog/groups" element={<RequirePage page="product_groups"><ProductGroupsRoute /></RequirePage>} />
         <Route path="/products/media" element={<RequirePage page="infographics"><Placeholder title="Медиа товаров" /></RequirePage>} />
+        <Route path="/media" element={<Navigate to="/products/media" replace />} />
         <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
         <Route path="/products" element={<RequirePage page="products"><ProductListRoute /></RequirePage>} />
         <Route path="/catalog/exchange" element={<RequireAnyPage pages={["catalog_import", "catalog_export"]}><CatalogExchangeFeature /></RequireAnyPage>} />
@@ -87,6 +88,7 @@ function ProtectedApp() {
         <Route path="/marketplace-mapping" element={<Navigate to="/sources?tab=sources" replace />} />
         <Route path="/connectors/status" element={<RequireAnyPage pages={["connectors_status", "sources_mapping"]}><DataSourcesFeature /></RequireAnyPage>} />
         <Route path="/images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />
+        <Route path="/data-prep/infographics" element={<Navigate to="/images/infographics" replace />} />
 
         <Route path="/admin/access" element={<RequirePage page="admin_access"><AdminAccessRoute /></RequirePage>} />
         <Route path="/admin/organizations" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="organizations" /></RequirePage>} />
