@@ -59,6 +59,7 @@ type StatusResp = {
   providers: ProviderRow[];
   schedule_options: ScheduleOption[];
 };
+type ConnectorsView = "overview" | "marketplaces" | "stores";
 
 function fmtDate(s?: string | null) {
   if (!s) return "еще не запускался";
@@ -94,7 +95,7 @@ function storeAccessLabel(store: ImportStore) {
   return "ожидает проверки";
 }
 
-export default function ConnectorsStatus({ embedded = false }: { embedded?: boolean } = {}) {
+export default function ConnectorsStatus({ embedded = false, view = "overview" }: { embedded?: boolean; view?: ConnectorsView } = {}) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [runningProvider, setRunningProvider] = useState("");
@@ -218,11 +219,11 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
       return;
     }
     if (storeProvider === "yandex_market" && !storeBusinessId.trim()) {
-      setError("Заполните Business ID");
+      setError("Заполните ID кабинета");
       return;
     }
     if (storeProvider === "ozon" && (!storeClientId.trim() || !storeToken.trim())) {
-      setError("Заполните Client ID и Api-Key");
+      setError("Заполните ID клиента и ключ доступа");
       return;
     }
     setSaving(true);
@@ -306,12 +307,15 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
   const criticalCount = allMethods.filter((m) => m.status === "critical").length;
   const readyMethods = allMethods.filter((m) => m.status === "ok").length;
   const systemState = criticalCount ? "Есть блокеры" : "Контур готов";
+  const showOverview = view === "overview";
+  const showMarketplaceMethods = view === "marketplaces";
+  const showStores = view === "stores";
   const readinessCards = [
     {
       title: "Доступы",
       value: `${checkedStores.length}/${enabledStores.length || stores.length}`,
       state: checkedStores.length === enabledStores.length && enabledStores.length > 0 ? "isReady" : "isBlocked",
-      text: "магазины и API",
+      text: "магазины и доступы",
     },
     {
       title: "Категории",
@@ -323,7 +327,7 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
       title: "Параметры",
       value: `${attrMethods.filter((m) => m.status === "ok").length}/${attrMethods.length || 0}`,
       state: attrMethods.every((m) => m.status === "ok") && attrMethods.length ? "isReady" : "isBlocked",
-      text: "инфо-модели и mapping",
+      text: "инфо-модели и сопоставления",
     },
     {
       title: "Товары",
@@ -349,13 +353,13 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
 
       {error ? <Alert tone="error">{error}</Alert> : null}
 
-      <section className="cs-commandGrid page-center">
+      {showOverview ? <section className="cs-commandGrid page-center">
         <Card className="cs-healthPanel">
           <div className="cs-healthHero">
             <div>
-              <span className="cs-eyebrow">Command center</span>
+              <span className="cs-eyebrow">Центр подключений</span>
               <h2>{systemState}</h2>
-              <p>Сводка оставляет на первом экране только состояние контура. Подробные методы, магазины и расписания раскрываются ниже по источнику.</p>
+              <p>Здесь только готовность источников. Магазины, ключи, расписания и ручные проверки вынесены в отдельные вкладки.</p>
             </div>
             <div className="cs-healthScore">
               <strong>{readyMethods}/{allMethods.length || 0}</strong>
@@ -406,7 +410,7 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
             )}
           </div>
         </aside>
-      </section>
+      </section> : null}
 
       <section className="cs-providers page-center" aria-label="Подключения">
         {providers.map((provider, providerIndex) => {
@@ -415,14 +419,14 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
           return (
             <Card
               key={provider.code}
-              className="cs-providerCard"
+              className={`cs-providerCard ${showOverview ? "isSummary" : ""}`}
               style={{ "--stagger": providerIndex } as CSSProperties}
             >
               <div className="cs-providerHead">
                 <div className="cs-providerTitleBlock">
                   <span className={`cs-statusPill ${health}`}>{healthLabel(health)}</span>
                   <h3>{provider.title}</h3>
-                  <p>{provider.methods.length} методов, {providerStores.length} магазинов импорта</p>
+                  <p>{provider.methods.length} процесса, {providerStores.length} магазина импорта</p>
                 </div>
                 <Button
                   variant="primary"
@@ -433,11 +437,27 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
                 </Button>
               </div>
 
-              {(provider.code === "yandex_market" || provider.code === "ozon") ? (
+              {showOverview ? (
                 <div className="cs-providerSection">
                   <div className="cs-sectionHead">
                     <div>
-                      <span className="cs-eyebrow">Доступы</span>
+                      <span className="cs-eyebrow">Что дальше</span>
+                      <strong>{health === "ok" ? "Источник готов" : "Нужна проверка"}</strong>
+                    </div>
+                  </div>
+                  <div className="cs-summaryRows">
+                    <div><span>Магазины</span><strong>{providerStores.filter((store) => store.enabled).length} включено</strong></div>
+                    <div><span>Категории</span><strong>{provider.methods.filter((method) => methodIntent(method).label === "Категории" && method.status === "ok").length}/{provider.methods.filter((method) => methodIntent(method).label === "Категории").length || 0}</strong></div>
+                    <div><span>Параметры</span><strong>{provider.methods.filter((method) => methodIntent(method).label === "Параметры" && method.status === "ok").length}/{provider.methods.filter((method) => methodIntent(method).label === "Параметры").length || 0}</strong></div>
+                  </div>
+                </div>
+              ) : null}
+
+              {showStores && (provider.code === "yandex_market" || provider.code === "ozon") ? (
+                <div className="cs-providerSection">
+                  <div className="cs-sectionHead">
+                    <div>
+                      <span className="cs-eyebrow">Доступы магазинов</span>
                       <strong>Магазины импорта</strong>
                     </div>
                     <Button onClick={() => openCreateStore(provider.code)} disabled={saving || !!runningProvider}>
@@ -446,7 +466,7 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
                   </div>
                   {provider.code === "yandex_market" ? (
                     <div className="cs-offerBox">
-                      <span>ID для offerId</span>
+                      <span>Артикул для выгрузки</span>
                       <strong>SKU GT</strong>
                     </div>
                   ) : null}
@@ -462,13 +482,13 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
                         <dl className="cs-storeMeta">
                           {provider.code === "yandex_market" ? (
                             <>
-                              <div><dt>Business ID</dt><dd>{store.business_id}</dd></div>
-                              <div><dt>Token</dt><dd>{maskToken(store.token)}</dd></div>
+                              <div><dt>ID кабинета</dt><dd>{store.business_id}</dd></div>
+                              <div><dt>Ключ доступа</dt><dd>{maskToken(store.token)}</dd></div>
                             </>
                           ) : (
                             <>
-                              <div><dt>Client ID</dt><dd>{store.client_id}</dd></div>
-                              <div><dt>Api-Key</dt><dd>{maskToken(store.api_key)}</dd></div>
+                              <div><dt>ID клиента</dt><dd>{store.client_id}</dd></div>
+                              <div><dt>Ключ доступа</dt><dd>{maskToken(store.api_key)}</dd></div>
                             </>
                           )}
                         </dl>
@@ -493,11 +513,11 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
                 </div>
               ) : null}
 
-              <div className="cs-providerSection">
+              {showMarketplaceMethods ? <div className="cs-providerSection">
                 <div className="cs-sectionHead">
                   <div>
-                    <span className="cs-eyebrow">Синхронизации</span>
-                    <strong>Методы источника</strong>
+                    <span className="cs-eyebrow">Процессы площадки</span>
+                    <strong>Что загружаем и как часто</strong>
                   </div>
                 </div>
                 <div className="cs-methodList">
@@ -550,7 +570,7 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
                     );
                   })}
                 </div>
-              </div>
+              </div> : null}
             </Card>
           );
         })}
@@ -566,19 +586,19 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
         </Field>
         {storeProvider === "yandex_market" ? (
           <>
-            <Field label="Business ID">
+            <Field label="ID кабинета">
               <TextInput value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
             </Field>
             <Field
-              label="Токен"
-              hint="`ACMA:...` используйте как `Api-Key`. `y0_...` относится к OAuth/Bearer."
+              label="Ключ доступа"
+              hint="Ключ хранится скрыто и используется только для проверки доступа и импорта."
             >
               <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
             </Field>
             <Field label="Тип авторизации">
               <Select value={storeAuthMode} onChange={(e) => setStoreAuthMode(e.target.value as "auto" | "api-key" | "oauth" | "bearer")}>
                 <option value="auto">Авто</option>
-                <option value="api-key">Api-Key</option>
+                <option value="api-key">Ключ доступа</option>
                 <option value="oauth">OAuth</option>
                 <option value="bearer">Bearer</option>
               </Select>
@@ -586,10 +606,10 @@ export default function ConnectorsStatus({ embedded = false }: { embedded?: bool
           </>
         ) : (
           <>
-            <Field label="Client ID">
+            <Field label="ID клиента">
               <TextInput value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
             </Field>
-            <Field label="Api-Key">
+            <Field label="Ключ доступа">
               <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
             </Field>
           </>

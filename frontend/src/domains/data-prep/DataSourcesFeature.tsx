@@ -4,10 +4,11 @@ import PageHeader from "../../components/ui/PageHeader";
 import PageTabs from "../../components/ui/PageTabs";
 import CompetitorSourcesFeature from "./CompetitorSourcesFeature";
 
-type DataSourcesTab = "marketplaces" | "competitors";
+type DataSourcesTab = "overview" | "marketplaces" | "stores" | "competitors";
 
 function normalizeTab(value: string | null): DataSourcesTab {
-  return value === "competitors" ? "competitors" : "marketplaces";
+  if (value === "marketplaces" || value === "stores" || value === "competitors") return value;
+  return "overview";
 }
 
 export default function DataSourcesFeature() {
@@ -24,7 +25,7 @@ export default function DataSourcesFeature() {
     <div className="dataSourcesPage">
       <PageHeader
         title="Источники данных"
-        subtitle="Подключения площадок, магазины, конкуренты и проверки источников в одном рабочем месте."
+        subtitle="Сначала подключаем магазины, площадки и конкурентов. Затем эти источники питают импорт, инфо-модели, насыщение и экспорт."
         actions={
           <>
             <Link className="btn" to="/sources?tab=sources">К сопоставлениям</Link>
@@ -37,12 +38,14 @@ export default function DataSourcesFeature() {
         activeKey={tab}
         onChange={(key) => setTab(key as DataSourcesTab)}
         items={[
-          { key: "marketplaces", label: "Площадки и магазины" },
+          { key: "overview", label: "Готовность" },
+          { key: "marketplaces", label: "Площадки" },
+          { key: "stores", label: "Магазины" },
           { key: "competitors", label: "Конкуренты" },
         ]}
       />
 
-      {tab === "competitors" ? <CompetitorSourcesFeature embedded /> : <ConnectorsStatusFeature embedded />}
+      {tab === "competitors" ? <CompetitorSourcesFeature embedded /> : <ConnectorsStatusFeature embedded view={tab} />}
     </div>
   );
 }

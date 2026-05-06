@@ -33,7 +33,14 @@ Work must follow the real first-run user path, not isolated technical pages:
    - invites;
    - rights and roles;
    - password change and logout.
-3. `P0 Catalog Workflow`
+3. `P0 Data Sources + Store Connections`
+   - marketplace/source connections;
+   - import stores;
+   - competitor sources;
+   - access checks;
+   - source errors and health states;
+   - no technical connector noise in the main user path.
+4. `P0 Catalog Workflow`
    - catalog tree;
    - products;
    - create product;
@@ -41,11 +48,6 @@ Work must follow the real first-run user path, not isolated technical pages:
    - product media;
    - infographics;
    - import/export.
-4. `P0 Data Sources`
-   - marketplace/source connections;
-   - stores;
-   - competitors;
-   - access checks and source errors.
 5. `P0 Info Models + Mapping`
    - model creation;
    - category mapping;
@@ -74,6 +76,14 @@ Rule:
 
 ## Completed Recent Slices
 
+1. Data sources first pass
+   - moved the source setup order ahead of catalog in the active user path;
+   - `/connectors/status` now starts with a readiness overview instead of a long technical feed;
+   - split source work into tabs: `Готовность`, `Площадки`, `Магазины`, and `Конкуренты`;
+   - first screen no longer exposes marketplace access identifiers or masked keys;
+   - marketplace process tab now owns schedules and source run state;
+   - stores tab now owns import stores, masked credentials, access checks, and store editing;
+   - competitor queue copy was cleaned from English technical labels to Russian product workflow labels.
 1. Auth/admin rights polish
    - rights page now shows user-facing Russian role names even when legacy DB rows had stale English role names;
    - system role names/descriptions are normalized back into relational `roles` on auth bootstrap;

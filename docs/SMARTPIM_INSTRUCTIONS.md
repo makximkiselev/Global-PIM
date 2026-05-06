@@ -12,13 +12,14 @@ Core workflow:
 
 1. register organization;
 2. add users and access rights;
-3. import products;
-4. group SKU variants;
-5. map catalog categories and competitor sources;
-6. collect and approve info-model fields;
-7. map channels, parameters, values, and competitor evidence;
-8. enrich products and media;
-9. validate and export products.
+3. connect marketplaces, stores, competitor sources, and source health checks;
+4. import products;
+5. group SKU variants;
+6. map catalog categories and competitor sources;
+7. collect and approve info-model fields;
+8. map channels, parameters, values, and competitor evidence;
+9. enrich products and media;
+10. validate and export products.
 
 ## Product Navigation Contract
 

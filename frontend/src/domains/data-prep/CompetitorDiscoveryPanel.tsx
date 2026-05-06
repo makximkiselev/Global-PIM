@@ -66,6 +66,20 @@ function statusLabel(status: Candidate["status"]): string {
   return status || "—";
 }
 
+function runStatusLabel(status?: string | null) {
+  if (status === "queued") return "в очереди";
+  if (status === "running") return "идет поиск";
+  if (status === "done" || status === "completed") return "завершен";
+  if (status === "failed" || status === "error") return "ошибка";
+  return status || "—";
+}
+
+function sourceStrategyLabel(value?: string | null) {
+  if (value === "restore") return "re-store";
+  if (value === "store77") return "store77";
+  return value || "активен";
+}
+
 export default function CompetitorDiscoveryPanel() {
   const [sources, setSources] = useState<Source[]>([]);
   const [items, setItems] = useState<Candidate[]>([]);
@@ -174,7 +188,7 @@ export default function CompetitorDiscoveryPanel() {
         <div>
           <div className="sourcesMappingCanvasTitle">Очередь конкурентных ссылок</div>
           <div className="sourcesMappingCanvasSub">
-            Система ищет карточки на re-store и store77, сопоставляет их с нашими SKU и отправляет candidates на модерацию.
+            Система ищет карточки на re-store и store77, сопоставляет их с нашими SKU и отправляет найденные ссылки на модерацию.
           </div>
         </div>
         <div className="competitorDiscoveryActions">
@@ -190,10 +204,10 @@ export default function CompetitorDiscoveryPanel() {
       <MetricGrid
         className="competitorDiscoveryMetrics"
         items={[
-          { label: "Candidates", value: counts.total, meta: "все найденные ссылки" },
+          { label: "Найдено", value: counts.total, meta: "все найденные ссылки" },
           { label: "На модерации", value: counts.review, meta: "нужно решение" },
-          { label: "Approved", value: counts.approved, meta: "связано с товаром" },
-          { label: "Rejected", value: counts.rejected, meta: "negative signal" },
+          { label: "Подтверждено", value: counts.approved, meta: "связано с товаром" },
+          { label: "Отклонено", value: counts.rejected, meta: "не подходит" },
         ]}
       />
 
@@ -204,14 +218,14 @@ export default function CompetitorDiscoveryPanel() {
               <strong>{source.name}</strong>
               <span>{source.domain}</span>
             </div>
-            <Badge tone={source.status === "active" ? "active" : "neutral"}>{source.parser_strategy || source.status}</Badge>
+            <Badge tone={source.status === "active" ? "active" : "neutral"}>{sourceStrategyLabel(source.parser_strategy || source.status)}</Badge>
           </div>
         ))}
       </div>
 
       {lastRun ? (
         <div className="competitorDiscoveryNotice">
-          Последний запуск: {lastRun.status}, товаров просканировано: {lastRun.scanned_products_count || 0}, candidates: {(lastRun.created_count || 0) + (lastRun.updated_count || 0)}
+          Последний запуск: {runStatusLabel(lastRun.status)}, товаров просканировано: {lastRun.scanned_products_count || 0}, ссылок найдено: {(lastRun.created_count || 0) + (lastRun.updated_count || 0)}
         </div>
       ) : null}
       {error ? <div className="competitorDiscoveryError">{error}</div> : null}
@@ -219,12 +233,12 @@ export default function CompetitorDiscoveryPanel() {
       <div className="competitorDiscoveryWorkspace">
         <div className="competitorDiscoveryTablePanel">
           {loading ? (
-            <EmptyState title="Загружаем competitor queue" description="Подтягиваем sources и candidates." />
+            <EmptyState title="Загружаем очередь ссылок" description="Подтягиваем конкурентов и найденные варианты." />
           ) : (
             <DataTable
               rows={items}
               rowKey={(row) => row.id}
-              empty="Пока нет candidates. Запусти поиск по re-store и store77."
+              empty="Пока нет найденных ссылок. Запустите поиск по re-store и store77."
               gridTemplate="minmax(260px, 1.2fr) minmax(120px, .5fr) minmax(130px, .45fr) minmax(130px, .45fr)"
               columns={[
                 {
@@ -244,7 +258,7 @@ export default function CompetitorDiscoveryPanel() {
                 },
                 {
                   key: "score",
-                  label: "Score",
+                  label: "Точность",
                   render: (row) => <strong>{score(row)}</strong>,
                 },
                 {
@@ -258,7 +272,7 @@ export default function CompetitorDiscoveryPanel() {
         </div>
 
         <InspectorPanel
-          title={selected ? "Candidate" : "Нет candidate"}
+          title={selected ? "Найденная ссылка" : "Ссылка не выбрана"}
           subtitle={selected ? selected.url : "Запусти поиск или выбери строку в очереди."}
           className="competitorDiscoveryInspector"
           actions={
@@ -279,21 +293,21 @@ export default function CompetitorDiscoveryPanel() {
               <div><span>Товар</span><strong>{selected.product_title || selected.product_id}</strong></div>
               <div><span>SKU</span><strong>{selected.product_sku || "—"}</strong></div>
               <div><span>Источник</span><strong>{selected.source_name || selected.source_id}</strong></div>
-              <div><span>Score</span><strong>{score(selected)}</strong></div>
+              <div><span>Точность</span><strong>{score(selected)}</strong></div>
               <div><span>Статус</span><Badge tone={statusTone(selected.status)}>{statusLabel(selected.status)}</Badge></div>
               <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
               {selected.rejection_reason ? <div><span>Причина</span><strong>{selected.rejection_reason}</strong></div> : null}
               <div className="competitorDiscoveryReasons">
-                <span>Evidence</span>
+                <span>Почему система предложила ссылку</span>
                 {(selected.confidence_reasons || []).length ? (
                   selected.confidence_reasons?.map((reason) => <em key={reason}>{reason}</em>)
                 ) : (
-                  <em>Evidence появится после discovery run.</em>
+                  <em>Объяснение появится после запуска поиска.</em>
                 )}
               </div>
             </div>
           ) : (
-            <EmptyState title="Очередь пуста" description="Candidates появятся после discovery run." />
+            <EmptyState title="Очередь пуста" description="Найденные ссылки появятся после запуска поиска." />
           )}
         </InspectorPanel>
       </div>
