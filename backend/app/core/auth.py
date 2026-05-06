@@ -442,7 +442,10 @@ def _load_auth_base() -> Dict[str, Any]:
 
 def load_auth_base_db() -> Dict[str, Any]:
     db = _load_auth_base()
-    return _ensure_system_roles(db)
+    db = _ensure_system_roles(db)
+    if db.pop("_system_roles_changed", False):
+        _save_auth_base(db)
+    return db
 
 
 def _save_auth_base(db: Dict[str, Any]) -> None:
@@ -510,6 +513,7 @@ def _hash_session_token(token: str) -> str:
 
 def _ensure_system_roles(db: Dict[str, Any]) -> Dict[str, Any]:
     roles = db.get("roles") if isinstance(db.get("roles"), dict) else {}
+    changed = False
     by_code: Dict[str, Dict[str, Any]] = {}
     for role in roles.values():
         if isinstance(role, dict):
@@ -519,11 +523,21 @@ def _ensure_system_roles(db: Dict[str, Any]) -> Dict[str, Any]:
     for row in SYSTEM_ROLES:
         existing = by_code.get(row["code"])
         if existing:
-            existing["name"] = row["name"]
-            existing["description"] = row["description"]
-            existing["is_system"] = True
-            existing.setdefault("pages", _clone(row["pages"]))
-            existing.setdefault("actions", _clone(row["actions"]))
+            if existing.get("name") != row["name"]:
+                existing["name"] = row["name"]
+                changed = True
+            if existing.get("description") != row["description"]:
+                existing["description"] = row["description"]
+                changed = True
+            if existing.get("is_system") is not True:
+                existing["is_system"] = True
+                changed = True
+            if "pages" not in existing:
+                existing["pages"] = _clone(row["pages"])
+                changed = True
+            if "actions" not in existing:
+                existing["actions"] = _clone(row["actions"])
+                changed = True
             continue
         roles[row["id"]] = {
             "id": row["id"],
@@ -536,7 +550,10 @@ def _ensure_system_roles(db: Dict[str, Any]) -> Dict[str, Any]:
             "created_at": _iso(),
             "updated_at": _iso(),
         }
+        changed = True
     db["roles"] = roles
+    if changed:
+        db["_system_roles_changed"] = True
     return db
 
 

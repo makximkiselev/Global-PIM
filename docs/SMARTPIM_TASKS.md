@@ -74,6 +74,15 @@ Rule:
 
 ## Completed Recent Slices
 
+1. Auth/admin rights polish
+   - rights page now shows user-facing Russian role names even when legacy DB rows had stale English role names;
+   - system role names/descriptions are normalized back into relational `roles` on auth bootstrap;
+   - access sidebar search was added for users and roles;
+   - search automatically opens matching role groups so users are not hidden in collapsed sections;
+   - user rows now show email/login naturally instead of uppercased technical identifiers;
+   - legacy owner display is rendered as `Владелец` in admin/profile UI without changing the user's credentials;
+   - legacy admin routes `/admin/members` and `/admin/invites` now keep `Администрирование` active in the shell;
+   - rights page subtitle and role hero copy were simplified around the user's task.
 1. Auth/admin compatibility cleanup
    - removed `platform_roles` from session, platform organizations, workspace bootstrap, frontend auth context, and auth tests;
    - replaced runtime `tenant_registry` payload with `provisioning` for organization status and tenant context resolution;

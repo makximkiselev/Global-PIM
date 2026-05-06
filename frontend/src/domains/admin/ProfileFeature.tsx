@@ -23,6 +23,9 @@ function roleLabel(code?: string | null) {
 }
 
 function splitName(value?: string | null) {
+  if (String(value || "").trim().toLowerCase() === "owner") {
+    return { firstName: "Владелец", lastName: "" };
+  }
   const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
   return {
     firstName: parts[0] || "",
@@ -108,7 +111,7 @@ export default function ProfileFeature() {
           <div className="profileAvatar">{initials || "SP"}</div>
           <div className="profileHeroMain">
             <div className="profileEyebrow">Текущий пользователь</div>
-            <h1>{user?.name || user?.email || user?.login || "Пользователь"}</h1>
+            <h1>{firstName || lastName ? `${firstName}${lastName ? ` ${lastName}` : ""}` : user?.email || user?.login || "Пользователь"}</h1>
             <p>{currentOrganization?.name || "Организация не выбрана"}</p>
           </div>
           <Badge tone={user?.is_active ? "active" : "danger"}>{user?.is_active ? "Активен" : "Отключен"}</Badge>

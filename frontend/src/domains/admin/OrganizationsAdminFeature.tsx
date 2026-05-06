@@ -98,6 +98,12 @@ function roleLabel(code?: string | null) {
   return ROLE_LABELS[String(code || "")] || String(code || "—");
 }
 
+function personName(name?: string | null, email?: string | null) {
+  const normalized = String(name || "").trim();
+  if (normalized.toLowerCase() === "owner") return "Владелец";
+  return normalized || String(email || "Сотрудник");
+}
+
 function statusLabel(status?: string | null) {
   const normalized = String(status || "").toLowerCase();
   if (normalized === "active" || normalized === "ready") return "Активна";
@@ -367,9 +373,9 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
               onClick={() => setSelectedMemberId(member.id)}
             >
               <span className="orgAdminPersonIdentity">
-                <span className="orgAdminPersonAvatar">{(member.name || member.email || "?").slice(0, 2).toUpperCase()}</span>
+                <span className="orgAdminPersonAvatar">{personName(member.name, member.email).slice(0, 2).toUpperCase()}</span>
                 <span>
-                  <strong>{member.name || member.email}</strong>
+                  <strong>{personName(member.name, member.email)}</strong>
                   <small>{member.email}</small>
                 </span>
               </span>

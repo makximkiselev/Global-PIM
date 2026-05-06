@@ -52,8 +52,25 @@ const EMPTY_USER: UserRow = { id: "", login: "", email: "", name: "", role_ids: 
 const EMPTY_CREATE_USER = { login: "", email: "", name: "", role_ids: [] as string[], is_active: true };
 type AdminTab = "users" | "roles";
 
+const ROLE_CODE_LABELS: Record<string, string> = {
+  owner: "Владелец",
+  admin: "Администратор",
+  editor: "Контент-менеджер",
+  viewer: "Наблюдатель",
+};
+
 function normalizeAdminTab(value: string | null): AdminTab {
   return value === "roles" ? "roles" : "users";
+}
+
+function roleDisplayName(role?: Pick<RoleRow, "code" | "name"> | null) {
+  if (!role) return "Без роли";
+  return ROLE_CODE_LABELS[String(role.code || "").toLowerCase()] || role.name || "Без роли";
+}
+
+function userDisplayName(user: UserRow) {
+  if (String(user.name || "").trim().toLowerCase() === "owner") return "Владелец";
+  return user.name || user.email || user.login || "Пользователь";
 }
 
 function fmt(s?: string | null) {
@@ -84,6 +101,7 @@ export default function AdminAccessFeature() {
     pages: true,
     actions: true,
   });
+  const [accessQuery, setAccessQuery] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordResult, setResetPasswordResult] = useState("");
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -166,7 +184,7 @@ export default function AdminAccessFeature() {
     load();
   }, []);
 
-  const roleOptions = useMemo(() => roles.map((role) => ({ id: role.id, name: role.name })), [roles]);
+  const roleOptions = useMemo(() => roles.map((role) => ({ id: role.id, name: roleDisplayName(role) })), [roles]);
   const usersByRole = useMemo(() => {
     const order = roleOptions.map((role) => role.name);
     const buckets = new Map<string, UserRow[]>();
@@ -192,9 +210,24 @@ export default function AdminAccessFeature() {
       })
       .map(([name, items]) => ({
         name,
-        items: [...items].sort((a, b) => (a.name || a.login).localeCompare(b.name || b.login, "ru")),
+        items: [...items].sort((a, b) => userDisplayName(a).localeCompare(userDisplayName(b), "ru")),
       }));
   }, [users, roleOptions]);
+  const filteredUsersByRole = useMemo(() => {
+    const q = accessQuery.trim().toLowerCase();
+    if (!q || tab !== "users") return usersByRole;
+    return usersByRole
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((user) => `${user.name} ${user.email} ${user.login}`.toLowerCase().includes(q)),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [accessQuery, tab, usersByRole]);
+  const filteredRoles = useMemo(() => {
+    const q = accessQuery.trim().toLowerCase();
+    if (!q || tab !== "roles") return roles;
+    return roles.filter((role) => `${roleDisplayName(role)} ${role.description || ""} ${role.code}`.toLowerCase().includes(q));
+  }, [accessQuery, roles, tab]);
   const selectedUserRoleNames = useMemo(
     () => roleOptions.filter((role) => editingUser.role_ids.includes(role.id)).map((role) => role.name),
     [roleOptions, editingUser.role_ids],
@@ -365,7 +398,7 @@ export default function AdminAccessFeature() {
       <div className="page-header">
         <div className="page-header-main">
           <div className="page-title">Роли и права</div>
-          <div className="page-subtitle">Пользователи, роли, страницы и действия. Здесь настраивается доступ, а не состав команды организации.</div>
+          <div className="page-subtitle">Настройте, кто может входить в систему и какие рабочие действия доступны каждой роли.</div>
         </div>
       </div>
       <div className="page-tabs">
@@ -376,7 +409,7 @@ export default function AdminAccessFeature() {
       <div className="accessWorkspace">
         <aside className="card accessSidebar">
           <div className="accessListHeader">
-            <div className="accessListTitle">{tab === "users" ? "Пользователи" : "Роли"}</div>
+            <div className="accessListTitle">{tab === "users" ? "Пользователи" : "Роли доступа"}</div>
             <button
               className="btn"
               onClick={() => {
@@ -391,23 +424,28 @@ export default function AdminAccessFeature() {
               }}
               disabled={tab === "users" ? !canAction("users.manage") : !canAction("roles.manage")}
             >
-              Создать
+              {tab === "users" ? "Добавить" : "Новая роль"}
             </button>
           </div>
-          {tab === "users" ? <div className="accessListHint">Пользователи, которым можно назначать роли и права.</div> : null}
+          <input
+            className="accessSearch"
+            value={accessQuery}
+            onChange={(event) => setAccessQuery(event.target.value)}
+            placeholder={tab === "users" ? "Найти пользователя" : "Найти роль"}
+          />
           <div className="accessList">
             {tab === "users"
-              ? usersByRole.map((group) => (
+              ? filteredUsersByRole.map((group) => (
                   <div key={group.name} className="accessListGroup">
                     <button
-                      className={`accessListGroupToggle${expandedRoleGroups.includes(group.name) ? " isOpen" : ""}`}
+                      className={`accessListGroupToggle${accessQuery.trim() || expandedRoleGroups.includes(group.name) ? " isOpen" : ""}`}
                       onClick={() => setExpandedRoleGroups((cur) => cur.includes(group.name) ? cur.filter((name) => name !== group.name) : [...cur, group.name])}
                     >
-                      <span className="accessListGroupCaret">{expandedRoleGroups.includes(group.name) ? "▾" : "▸"}</span>
+                      <span className="accessListGroupCaret">{accessQuery.trim() || expandedRoleGroups.includes(group.name) ? "▾" : "▸"}</span>
                       <span className="accessListGroupTitle">{group.name}</span>
                       <span className="accessListGroupCount">{group.items.length}</span>
                     </button>
-                    {expandedRoleGroups.includes(group.name) ? (
+                    {accessQuery.trim() || expandedRoleGroups.includes(group.name) ? (
                       <div className="accessListGroupRows">
                         {group.items.map((item) => (
                           <button
@@ -415,24 +453,26 @@ export default function AdminAccessFeature() {
                             className={`accessRow${editingUser.id === item.id ? " active" : ""}`}
                             onClick={() => selectUser(item, group.name)}
                           >
-                            <div className="accessRowTitle">{item.name}</div>
-                            <div className="accessRowSub">{item.login}</div>
+                            <div className="accessRowTitle">{userDisplayName(item)}</div>
+                            <div className="accessRowSub">{item.email || item.login}</div>
                           </button>
                         ))}
                       </div>
                     ) : null}
                   </div>
                 ))
-              : roles.map((item) => (
+              : filteredRoles.map((item) => (
                   <button
                     key={item.id}
                     className={`accessRow${editingRole.id === item.id ? " active" : ""}`}
                     onClick={() => selectRole(item as RoleRow)}
                   >
-                    <div className="accessRowTitle">{item.name}</div>
-                    <div className="accessRowSub">{(item as RoleRow).code}</div>
+                    <div className="accessRowTitle">{roleDisplayName(item)}</div>
+                    <div className="accessRowSub">{item.description || (item.is_system ? "Системная роль" : "Настраиваемая роль")}</div>
                   </button>
                 ))}
+            {tab === "users" && !filteredUsersByRole.length ? <div className="accessEmpty">Пользователи не найдены.</div> : null}
+            {tab === "roles" && !filteredRoles.length ? <div className="accessEmpty">Роли не найдены.</div> : null}
           </div>
         </aside>
 
@@ -441,8 +481,8 @@ export default function AdminAccessFeature() {
             <div className="card accessHero">
               <div className="accessHeroMain">
                 <div className="accessEditorHeader">Пользователь</div>
-                <div className="accessHeroName">{editingUser.name || "Новый пользователь"}</div>
-                <div className="accessHeroSub">{editingUser.login || "Логин не задан"}</div>
+                <div className="accessHeroName">{userDisplayName(editingUser) || "Новый пользователь"}</div>
+                <div className="accessHeroSub">{editingUser.email || editingUser.login || "Email не задан"}</div>
               </div>
               <div className="accessHeroMeta">
                 <button className="btn primary accessHeroSaveBtn" onClick={saveUser} disabled={!canAction("users.manage") || saving || loading}>Сохранить</button>
@@ -534,8 +574,8 @@ export default function AdminAccessFeature() {
             <div className="card accessRoleHero">
               <div className="accessRoleHeroTop">
                 <div className="accessHeroMain">
-                  <div className="accessHeroName">{editingRole.name || "Новая роль"}</div>
-                  <div className="accessHeroSub">@{editingRole.code || "role_code"}</div>
+                  <div className="accessHeroName">{roleDisplayName(editingRole) || "Новая роль"}</div>
+                  <div className="accessHeroSub">{editingRole.description || "Настройте страницы и действия для этой роли."}</div>
                 </div>
                 <div className="accessRoleHeroAside">
                   <div className="accessRoleHeroActions">

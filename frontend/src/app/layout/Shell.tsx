@@ -98,6 +98,12 @@ function isActive(currentLocation: string, href: string): boolean {
   if ((hrefPath === "/sources" || hrefPath === "/sources-mapping") && (currentPath === "/sources" || currentPath === "/sources-mapping")) {
     return true;
   }
+  if (hrefPath === "/admin/organizations" && ["/admin/organizations", "/admin/members", "/admin/invites"].includes(currentPath)) {
+    return true;
+  }
+  if (hrefPath === "/admin/access" && currentPath === "/admin/access") {
+    return true;
+  }
   if (hrefSearch) {
     const currentParams = new URLSearchParams(currentSearch);
     const hrefParams = new URLSearchParams(hrefSearch);
