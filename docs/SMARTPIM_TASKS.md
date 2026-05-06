@@ -57,6 +57,14 @@ Work must follow the real first-run user path, not isolated technical pages:
 7. `P1 Import/Export Polish`.
 8. `P1 DB ownership maps and schema cleanup`.
 
+Current admin DB cleanup decision:
+
+1. obsolete `backup_20260428_*` control-plane backup tables may be removed;
+2. obsolete provisioning QA/test organizations may be removed when they are not `org_default` and their slug/name contains `test`, `qa`, `verify`, `shot`, `shell`, `catalog`, `full`, `view`, `codex`, or `control-center`;
+3. `org_default / Global Trade` must remain active and is the cleanup guard;
+4. schema consolidation target is four user-facing admin entities: users, organizations, organization members/roles, and invites;
+5. do not drop `platform_user_roles`, `tenant_registry`, `tenant_provisioning_jobs`, or `json_documents` until backend auth/control-plane code is migrated.
+
 Rule:
 
 1. For each block, complete a vertical slice: scenario, data/API needs, UI, browser QA, build, deploy, commit.
@@ -65,6 +73,13 @@ Rule:
 
 ## Completed Recent Slices
 
+1. Admin DB cleanup
+   - added `backend/scripts/admin_db_cleanup.py` with guarded dry-run/apply modes;
+   - removed 8 obsolete `backup_20260428_*` control-plane backup tables from production DB;
+   - removed 16 obsolete provisioning QA/test organizations from production DB;
+   - verified `org_default / Global Trade` remains the only organization and is active;
+   - verified production control-plane counts after cleanup: `organizations=1`, `platform_users=2`, `organization_members=2`, `organization_invites=0`, `tenant_registry=0`, `tenant_provisioning_jobs=0`, `backup_tables=0`;
+   - `make check-backend` passed.
 1. Profile and administration verification
    - checked profile/admin frontend contracts: `/profile`, `/admin/organizations`, `/admin/members`, `/admin/invites`, and `/admin/access`;
    - checked backend contracts: `/auth/session`, `/auth/change-password`, `/auth/admin/bootstrap`, and `/platform/workspace/bootstrap`;
