@@ -265,15 +265,14 @@ export default function Shell({ children }: { children: ReactNode }) {
                   railFooter={
                     <>
                       <ShellThemeToggle />
-                      <button
-                        type="button"
+                      <Link
+                        to="/profile"
                         className="shellRailUser"
                         aria-label={`Пользователь: ${userLabel}`}
                         title={`${userLabel}${userMeta ? ` · ${userMeta}` : ""}`}
-                        onClick={() => setShowPasswordModal(true)}
                       >
                         {userInitials}
-                      </button>
+                      </Link>
                     </>
                   }
                 />

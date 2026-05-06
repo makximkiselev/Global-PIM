@@ -519,6 +519,7 @@
 
 .shellRailUser{
   width:48px;
+  height:48px;
   min-height:48px;
   border:1px solid rgba(var(--brand-rgb),.18);
   border-radius:16px;
@@ -530,6 +531,9 @@
   font-weight:1000;
   letter-spacing:.02em;
   cursor:pointer;
+  display:grid;
+  place-items:center;
+  text-decoration:none;
   box-shadow:0 16px 34px rgba(var(--brand-rgb),.2);
 }
 

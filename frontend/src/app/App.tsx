@@ -13,6 +13,7 @@ import ProductGroupsRoute from "../routes/ProductGroupsRoute";
 import Infographics from "../domains/data-prep/InfographicsFeature";
 import CatalogExchangeFeature from "../domains/products/CatalogExchangeFeature";
 import DataSourcesFeature from "../domains/data-prep/DataSourcesFeature";
+import ProfileFeature from "../domains/admin/ProfileFeature";
 
 // ✅ mapping
 import Placeholder from "../shared/placeholders/Placeholder";
@@ -68,6 +69,7 @@ function ProtectedApp() {
         <Route path="/catalog/exchange" element={<RequireAnyPage pages={["catalog_import", "catalog_export"]}><CatalogExchangeFeature /></RequireAnyPage>} />
         <Route path="/catalog/import" element={<Navigate to="/catalog/exchange?tab=import" replace />} />
         <Route path="/catalog/export" element={<Navigate to="/catalog/exchange?tab=export" replace />} />
+        <Route path="/profile" element={<ProfileFeature />} />
 
         <Route path="/templates" element={<RequirePage page="templates"><TemplatesRoute /></RequirePage>} />
         <Route path="/templates/:categoryId" element={<RequirePage page="templates"><TemplateEditorRoute /></RequirePage>} />

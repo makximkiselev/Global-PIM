@@ -65,6 +65,12 @@ Rule:
 
 ## Completed Recent Slices
 
+1. User profile page
+   - added protected `/profile` page for the current user;
+   - clicking the user avatar in the left rail now opens the profile page;
+   - profile shows first name, last name, email, login, organization, organization role, and access roles;
+   - profile actions include password change and logout;
+   - local `frontend/node_modules` was reinstalled with `npm ci` after `postcss`/`fsevents` optional dependency hang; frontend build passed.
 1. Admin first-run cleanup
    - left navigation now keeps administration to two user-facing entries: `Организация` and `Права и роли`;
    - team and invitations are internal tabs of the organization page instead of separate left-menu destinations;
