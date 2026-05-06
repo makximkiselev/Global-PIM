@@ -62,8 +62,9 @@ Current admin DB cleanup decision:
 1. obsolete `backup_20260428_*` control-plane backup tables may be removed;
 2. obsolete provisioning QA/test organizations may be removed when they are not `org_default` and their slug/name contains `test`, `qa`, `verify`, `shot`, `shell`, `catalog`, `full`, `view`, `codex`, or `control-center`;
 3. `org_default / Global Trade` must remain active and is the cleanup guard;
-4. schema consolidation target is four user-facing admin entities: users, organizations, organization members/roles, and invites;
-5. do not drop `platform_user_roles`, `tenant_registry`, `tenant_provisioning_jobs`, or `json_documents` until backend auth/control-plane code is migrated.
+4. schema consolidation target is five physical admin tables: `users`, `roles`, `organizations`, `organization_members`, and `organization_invites`;
+5. `json_documents` remains as shared document storage for sessions/login-events and other PIM documents, but auth users/roles must live in relational tables;
+6. `platform_users`, `platform_roles`, `platform_user_roles`, `tenant_registry`, and `tenant_provisioning_jobs` are removed after backend auth/control-plane migration.
 
 Rule:
 
@@ -73,6 +74,17 @@ Rule:
 
 ## Completed Recent Slices
 
+1. Admin schema consolidation
+   - added `backend/scripts/consolidate_admin_schema.py` with guarded dry-run/apply modes;
+   - migrated auth/admin users and roles into relational `users` and `roles`;
+   - migrated organization membership from `platform_user_id` to `user_id`;
+   - moved tenant/provisioning status into `organizations` columns and removed separate provisioning tables;
+   - removed legacy production tables: `platform_users`, `platform_roles`, `platform_user_roles`, `tenant_registry`, and `tenant_provisioning_jobs`;
+   - current production admin physical tables are `users`, `roles`, `organizations`, `organization_members`, and `organization_invites`;
+   - production counts after migration: `users=2`, `roles=4`, `organizations=1`, `organization_members=2`, `organization_invites=0`;
+   - backend now reads/writes auth users and roles from relational tables in normal runtime and falls back to JSON auth storage only for isolated tests;
+   - deployed backend/frontend bundle to production after DB migration;
+   - `make test`, `make check-backend`, and `cd frontend && npm run build` passed.
 1. Admin DB cleanup
    - added `backend/scripts/admin_db_cleanup.py` with guarded dry-run/apply modes;
    - removed 8 obsolete `backup_20260428_*` control-plane backup tables from production DB;

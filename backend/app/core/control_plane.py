@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import threading
 import time
@@ -8,12 +9,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.core.json_store import JsonStoreError, _is_retryable_pg_error, _pg_connect, _reset_pg_connection
-
-PLATFORM_ROLE_SEEDS: List[Dict[str, str]] = [
-    {"id": "platform_role_developer", "code": "developer", "name": "Developer", "description": "Глобальный доступ ко всем организациям."},
-    {"id": "platform_role_admin", "code": "platform_admin", "name": "Platform Admin", "description": "Управление control-plane сущностями."},
-    {"id": "platform_role_support", "code": "platform_support", "name": "Platform Support", "description": "Поддержка и диагностика организаций."},
-]
 
 DEFAULT_ORGANIZATION_ID = "org_default"
 DEFAULT_ORGANIZATION_SLUG = "default"
@@ -109,44 +104,48 @@ def _ensure_control_plane_tables() -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS platform_users (
+                CREATE TABLE IF NOT EXISTS users (
                   id TEXT PRIMARY KEY,
-                  legacy_user_id TEXT NULL,
+                  login TEXT NOT NULL DEFAULT '',
                   email TEXT NOT NULL,
-                  password_hash TEXT NULL,
+                  password_hash TEXT NOT NULL DEFAULT '',
+                  password_salt TEXT NOT NULL DEFAULT '',
                   name TEXT NOT NULL,
+                  role_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  is_active BOOLEAN NOT NULL DEFAULT TRUE,
                   status TEXT NOT NULL DEFAULT 'active',
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                  last_login_at TIMESTAMPTZ NULL
+                  last_login_at TIMESTAMPTZ NULL,
+                  last_login_ip TEXT NULL,
+                  last_user_agent TEXT NULL
                 )
                 """
             )
             cur.execute(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_users_lower_email
-                  ON platform_users ((lower(email)))
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_lower_login
+                  ON users ((lower(login)))
                 """
             )
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS platform_roles (
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_lower_email_non_empty
+                  ON users ((lower(email))) WHERE email <> ''
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS roles (
                   id TEXT PRIMARY KEY,
                   code TEXT NOT NULL UNIQUE,
                   name TEXT NOT NULL,
                   description TEXT NULL,
+                  pages JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  actions JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  is_system BOOLEAN NOT NULL DEFAULT FALSE,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                """
-            )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS platform_user_roles (
-                  platform_user_id TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
-                  platform_role_id TEXT NOT NULL REFERENCES platform_roles(id) ON DELETE CASCADE,
-                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                  PRIMARY KEY (platform_user_id, platform_role_id)
                 )
                 """
             )
@@ -157,6 +156,9 @@ def _ensure_control_plane_tables() -> bool:
                   slug TEXT NOT NULL,
                   name TEXT NOT NULL,
                   status TEXT NOT NULL DEFAULT 'active',
+                  tenant_status TEXT NULL,
+                  provisioning_error TEXT NULL,
+                  schema_version TEXT NULL,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
@@ -173,7 +175,7 @@ def _ensure_control_plane_tables() -> bool:
                 CREATE TABLE IF NOT EXISTS organization_members (
                   id TEXT PRIMARY KEY,
                   organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-                  platform_user_id TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+                  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                   org_role_code TEXT NOT NULL,
                   status TEXT NOT NULL DEFAULT 'active',
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -184,7 +186,7 @@ def _ensure_control_plane_tables() -> bool:
             cur.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_members_unique
-                  ON organization_members (organization_id, platform_user_id)
+                  ON organization_members (organization_id, user_id)
                 """
             )
             cur.execute(
@@ -197,8 +199,8 @@ def _ensure_control_plane_tables() -> bool:
                   token_hash TEXT NOT NULL,
                   status TEXT NOT NULL DEFAULT 'pending',
                   expires_at TIMESTAMPTZ NOT NULL,
-                  created_by_user_id TEXT NOT NULL REFERENCES platform_users(id),
-                  accepted_by_user_id TEXT NULL REFERENCES platform_users(id),
+                  created_by_user_id TEXT NOT NULL REFERENCES users(id),
+                  accepted_by_user_id TEXT NULL REFERENCES users(id),
                   accepted_at TIMESTAMPTZ NULL,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
@@ -216,48 +218,6 @@ def _ensure_control_plane_tables() -> bool:
                   ON organization_invites (organization_id, lower(email))
                 """
             )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tenant_registry (
-                  organization_id TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
-                  db_host TEXT NOT NULL,
-                  db_port INTEGER NOT NULL,
-                  db_name TEXT NOT NULL,
-                  db_user TEXT NOT NULL,
-                  db_secret_ref TEXT NOT NULL,
-                  status TEXT NOT NULL DEFAULT 'pending',
-                  schema_version TEXT NULL,
-                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                """
-            )
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tenant_provisioning_jobs (
-                  id TEXT PRIMARY KEY,
-                  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-                  status TEXT NOT NULL DEFAULT 'pending',
-                  attempt INTEGER NOT NULL DEFAULT 0,
-                  error TEXT NULL,
-                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                """
-            )
-            for row in PLATFORM_ROLE_SEEDS:
-                cur.execute(
-                    """
-                    INSERT INTO platform_roles (id, code, name, description, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, NOW(), NOW())
-                    ON CONFLICT (id) DO UPDATE
-                    SET code = EXCLUDED.code,
-                        name = EXCLUDED.name,
-                        description = EXCLUDED.description,
-                        updated_at = NOW()
-                    """,
-                    (row["id"], row["code"], row["name"], row["description"]),
-                )
             cur.execute(
                 """
                 INSERT INTO organizations (id, slug, name, status, created_at, updated_at)
@@ -293,28 +253,34 @@ def ensure_control_plane_foundation() -> bool:
 
 
 def _ensure_platform_user(conn: Any, user: Dict[str, Any]) -> str:
-    user_id = _normalize_text(user.get("id")) or f"platform_user_{secrets.token_hex(6)}"
+    user_id = _normalize_text(user.get("id")) or f"user_{secrets.token_hex(6)}"
+    login = _normalize_text(user.get("login")).lower()
     email = _normalize_email(user.get("email")) or f"{_normalize_text(user.get('login')) or user_id}@local.invalid"
     name = _normalize_text(user.get("name")) or _normalize_text(user.get("login")) or email
     password_hash = _normalize_text(user.get("password_hash"))
+    password_salt = _normalize_text(user.get("password_salt"))
+    role_ids = [str(x) for x in (user.get("role_ids") or []) if str(x).strip()]
     last_login_at = user.get("last_login_at")
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO platform_users (
-              id, legacy_user_id, email, password_hash, name, status, created_at, updated_at, last_login_at
+            INSERT INTO users (
+              id, login, email, password_hash, password_salt, name, role_ids, is_active, status, created_at, updated_at, last_login_at
             )
-            VALUES (%s, %s, %s, %s, %s, 'active', NOW(), NOW(), %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, TRUE, 'active', NOW(), NOW(), %s)
             ON CONFLICT (id) DO UPDATE
-            SET legacy_user_id = EXCLUDED.legacy_user_id,
+            SET login = COALESCE(NULLIF(EXCLUDED.login, ''), users.login),
                 email = EXCLUDED.email,
-                password_hash = COALESCE(NULLIF(EXCLUDED.password_hash, ''), platform_users.password_hash),
+                password_hash = COALESCE(NULLIF(EXCLUDED.password_hash, ''), users.password_hash),
+                password_salt = COALESCE(NULLIF(EXCLUDED.password_salt, ''), users.password_salt),
                 name = EXCLUDED.name,
+                role_ids = EXCLUDED.role_ids,
+                is_active = TRUE,
                 status = 'active',
                 updated_at = NOW(),
-                last_login_at = COALESCE(EXCLUDED.last_login_at, platform_users.last_login_at)
+                last_login_at = COALESCE(EXCLUDED.last_login_at, users.last_login_at)
             """,
-            (user_id, user_id, email, password_hash, name, last_login_at),
+            (user_id, login, email, password_hash, password_salt, name, json.dumps(role_ids, ensure_ascii=False), last_login_at),
         )
     return user_id
 
@@ -326,35 +292,35 @@ def ensure_user_membership_context(user: Optional[Dict[str, Any]], legacy_roles:
         return False
 
     role_codes = [_normalize_text((role or {}).get("code")).lower() for role in legacy_roles if isinstance(role, dict)]
-    platform_user_cache_key = f"{_normalize_text(user.get('id'))}:{_org_role_from_legacy_roles(role_codes)}"
+    user_cache_key = f"{_normalize_text(user.get('id'))}:{_org_role_from_legacy_roles(role_codes)}"
     now = time.monotonic()
     with _MEMBERSHIP_CONTEXT_LOCK:
-        cached_ts = float(_MEMBERSHIP_CONTEXT_STATE.get(platform_user_cache_key) or 0.0)
+        cached_ts = float(_MEMBERSHIP_CONTEXT_STATE.get(user_cache_key) or 0.0)
         if cached_ts and now - cached_ts < _MEMBERSHIP_CONTEXT_CACHE_TTL_SECONDS:
             return True
 
     def _run() -> bool:
         conn, _, _ = _pg_connect()
-        platform_user_id = _ensure_platform_user(conn, user)
+        user_id = _ensure_platform_user(conn, user)
         org_role_code = _org_role_from_legacy_roles(role_codes)
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT 1
                 FROM organization_members
-                WHERE organization_id = %s AND platform_user_id = %s
+                WHERE organization_id = %s AND user_id = %s
                 """,
-                (DEFAULT_ORGANIZATION_ID, platform_user_id),
+                (DEFAULT_ORGANIZATION_ID, user_id),
             )
             if cur.fetchone() is None:
                 cur.execute(
                     """
                     INSERT INTO organization_members (
-                      id, organization_id, platform_user_id, org_role_code, status, created_at, updated_at
+                      id, organization_id, user_id, org_role_code, status, created_at, updated_at
                     )
                     VALUES (%s, %s, %s, %s, 'active', NOW(), NOW())
                     """,
-                    (f"org_member_{secrets.token_hex(6)}", DEFAULT_ORGANIZATION_ID, platform_user_id, org_role_code),
+                    (f"org_member_{secrets.token_hex(6)}", DEFAULT_ORGANIZATION_ID, user_id, org_role_code),
                 )
         return True
 
@@ -362,7 +328,7 @@ def ensure_user_membership_context(user: Optional[Dict[str, Any]], legacy_roles:
         ready = bool(_with_pg_retry(_run))
         if ready:
             with _MEMBERSHIP_CONTEXT_LOCK:
-                _MEMBERSHIP_CONTEXT_STATE[platform_user_cache_key] = time.monotonic()
+                _MEMBERSHIP_CONTEXT_STATE[user_cache_key] = time.monotonic()
         return ready
     except Exception:
         return False
@@ -399,56 +365,26 @@ def load_user_session_context(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT pr.id, pr.code, pr.name, pr.description
-                FROM platform_roles pr
-                JOIN platform_user_roles pur ON pur.platform_role_id = pr.id
-                WHERE pur.platform_user_id = %s
-                ORDER BY pr.code
+                SELECT o.id, o.slug, o.name, o.status, om.org_role_code AS membership_role
+                FROM organization_members om
+                JOIN organizations o ON o.id = om.organization_id
+                WHERE om.user_id = %s
+                  AND om.status = 'active'
+                  AND o.status <> 'deleted'
+                ORDER BY lower(o.name), o.id
                 """,
                 (user_id,),
             )
-            platform_roles = [
-                {
-                    "id": _normalize_text(row.get("id")),
-                    "code": _normalize_text(row.get("code")),
-                    "name": _normalize_text(row.get("name")),
-                    "description": _normalize_text(row.get("description")),
-                }
-                for row in _extract_rows(cur)
-            ]
-            is_developer = any(_normalize_text(row.get("code")).lower() == "developer" for row in platform_roles)
-            if is_developer:
-                cur.execute(
-                    """
-                    SELECT o.id, o.slug, o.name, o.status, NULL::TEXT AS membership_role
-                    FROM organizations o
-                    WHERE o.status <> 'deleted'
-                    ORDER BY lower(o.name), o.id
-                    """
-                )
-            else:
-                cur.execute(
-                    """
-                    SELECT o.id, o.slug, o.name, o.status, om.org_role_code AS membership_role
-                    FROM organization_members om
-                    JOIN organizations o ON o.id = om.organization_id
-                    WHERE om.platform_user_id = %s
-                      AND om.status = 'active'
-                      AND o.status <> 'deleted'
-                    ORDER BY lower(o.name), o.id
-                    """,
-                    (user_id,),
-                )
             organizations = [_org_public(row) for row in _extract_rows(cur)]
         if not organizations:
             organizations = [default_org]
         current_org_id = _normalize_text(current_organization_id)
         current_org = next((row for row in organizations if row["id"] == current_org_id), None) or organizations[0]
         return {
-            "platform_roles": platform_roles,
+            "platform_roles": [],
             "organizations": organizations,
             "current_organization": current_org,
-            "flags": {"is_developer": is_developer},
+            "flags": {"is_developer": False},
         }
 
     try:
@@ -495,50 +431,31 @@ def create_organization_with_owner(user: Dict[str, Any], organization_name: str)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
-        platform_user_id = _ensure_platform_user(conn, user)
+        user_id = _ensure_platform_user(conn, user)
         org_id = f"org_{secrets.token_hex(6)}"
         org_slug = _next_org_slug(conn, org_name)
-        tenant_db_name = f"tenant_{org_slug.replace('-', '_')}"
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO organizations (id, slug, name, status, created_at, updated_at)
-                VALUES (%s, %s, %s, 'provisioning', NOW(), NOW())
+                VALUES (%s, %s, %s, 'active', NOW(), NOW())
                 """,
                 (org_id, org_slug, org_name),
             )
             cur.execute(
                 """
                 INSERT INTO organization_members (
-                  id, organization_id, platform_user_id, org_role_code, status, created_at, updated_at
+                  id, organization_id, user_id, org_role_code, status, created_at, updated_at
                 )
                 VALUES (%s, %s, %s, 'org_owner', 'active', NOW(), NOW())
                 """,
-                (f"org_member_{secrets.token_hex(6)}", org_id, platform_user_id),
-            )
-            cur.execute(
-                """
-                INSERT INTO tenant_registry (
-                  organization_id, db_host, db_port, db_name, db_user, db_secret_ref, status, schema_version, created_at, updated_at
-                )
-                VALUES (%s, '', 5432, %s, '', %s, 'provisioning', NULL, NOW(), NOW())
-                """,
-                (org_id, tenant_db_name, f"tenant_registry/{org_id}"),
-            )
-            cur.execute(
-                """
-                INSERT INTO tenant_provisioning_jobs (
-                  id, organization_id, status, attempt, error, created_at, updated_at
-                )
-                VALUES (%s, %s, 'pending', 0, NULL, NOW(), NOW())
-                """,
-                (f"tenant_job_{secrets.token_hex(6)}", org_id),
+                (f"org_member_{secrets.token_hex(6)}", org_id, user_id),
             )
         return {
             "id": org_id,
             "slug": org_slug,
             "name": org_name,
-            "status": "provisioning",
+            "status": "active",
             "membership_role": "org_owner",
         }
 
@@ -629,7 +546,7 @@ def accept_organization_invite(token: str, accepted_by_user_id: str) -> Dict[str
                 raise ValueError("INVITE_NOT_PENDING")
             if expires_at and expires_at <= _now():
                 raise ValueError("INVITE_EXPIRED")
-            cur.execute("SELECT id, email FROM platform_users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
             user_row = cur.fetchone()
             if not user_row:
                 raise ValueError("USER_NOT_FOUND")
@@ -639,7 +556,7 @@ def accept_organization_invite(token: str, accepted_by_user_id: str) -> Dict[str
                 """
                 SELECT id
                 FROM organization_members
-                WHERE organization_id = %s AND platform_user_id = %s
+                WHERE organization_id = %s AND user_id = %s
                 """,
                 (organization_id, user_id),
             )
@@ -648,7 +565,7 @@ def accept_organization_invite(token: str, accepted_by_user_id: str) -> Dict[str
                 cur.execute(
                     """
                     INSERT INTO organization_members (
-                      id, organization_id, platform_user_id, org_role_code, status, created_at, updated_at
+                      id, organization_id, user_id, org_role_code, status, created_at, updated_at
                     )
                     VALUES (%s, %s, %s, %s, 'active', NOW(), NOW())
                     """,
@@ -692,7 +609,7 @@ def get_organization_provisioning_status(organization_id: str) -> Dict[str, Any]
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, slug, name, status, created_at, updated_at
+                SELECT id, slug, name, status, tenant_status, provisioning_error, schema_version, created_at, updated_at
                 FROM organizations
                 WHERE id = %s
                 """,
@@ -702,65 +619,28 @@ def get_organization_provisioning_status(organization_id: str) -> Dict[str, Any]
             if not org_row:
                 raise ValueError("ORGANIZATION_NOT_FOUND")
 
-            cur.execute(
-                """
-                SELECT organization_id, db_host, db_port, db_name, db_user, db_secret_ref, status, schema_version, created_at, updated_at
-                FROM tenant_registry
-                WHERE organization_id = %s
-                """,
-                (org_id,),
-            )
-            registry_row = cur.fetchone()
-
-            cur.execute(
-                """
-                SELECT id, organization_id, status, attempt, error, created_at, updated_at
-                FROM tenant_provisioning_jobs
-                WHERE organization_id = %s
-                ORDER BY created_at DESC, id DESC
-                LIMIT 1
-                """,
-                (org_id,),
-            )
-            job_row = cur.fetchone()
-
         organization = {
             "id": _normalize_text(org_row[0]),
             "slug": _normalize_text(org_row[1]),
             "name": _normalize_text(org_row[2]),
             "status": _normalize_text(org_row[3]),
-            "created_at": str(org_row[4]) if org_row[4] is not None else None,
-            "updated_at": str(org_row[5]) if org_row[5] is not None else None,
+            "created_at": str(org_row[7]) if org_row[7] is not None else None,
+            "updated_at": str(org_row[8]) if org_row[8] is not None else None,
         }
-        tenant_registry = None
-        if registry_row:
-            tenant_registry = {
-                "organization_id": _normalize_text(registry_row[0]),
-                "db_host": _normalize_text(registry_row[1]),
-                "db_port": registry_row[2],
-                "db_name": _normalize_text(registry_row[3]),
-                "db_user": _normalize_text(registry_row[4]),
-                "db_secret_ref": _normalize_text(registry_row[5]),
-                "status": _normalize_text(registry_row[6]),
-                "schema_version": _normalize_text(registry_row[7]) or None,
-                "created_at": str(registry_row[8]) if registry_row[8] is not None else None,
-                "updated_at": str(registry_row[9]) if registry_row[9] is not None else None,
-            }
-        latest_job = None
-        if job_row:
-            latest_job = {
-                "id": _normalize_text(job_row[0]),
-                "organization_id": _normalize_text(job_row[1]),
-                "status": _normalize_text(job_row[2]),
-                "attempt": int(job_row[3] or 0),
-                "error": _normalize_text(job_row[4]) or None,
-                "created_at": str(job_row[5]) if job_row[5] is not None else None,
-                "updated_at": str(job_row[6]) if job_row[6] is not None else None,
-            }
+        tenant_status = _normalize_text(org_row[4]) or organization["status"]
+        provisioning_error = _normalize_text(org_row[5]) or None
         return {
             "organization": organization,
-            "tenant_registry": tenant_registry,
-            "latest_job": latest_job,
+            "tenant_registry": {
+                "organization_id": organization["id"],
+                "status": tenant_status,
+                "schema_version": _normalize_text(org_row[6]) or None,
+            },
+            "latest_job": {
+                "organization_id": organization["id"],
+                "status": tenant_status,
+                "error": provisioning_error,
+            } if provisioning_error or tenant_status not in {"", "active"} else None,
         }
 
     return _with_pg_retry(_run)
@@ -780,11 +660,10 @@ def list_organizations_overview(organization_ids: Optional[List[str]] = None) ->
                   o.slug,
                   o.name,
                   o.status,
-                  tr.status AS tenant_status,
+                  o.tenant_status AS tenant_status,
                   COALESCE(mem.member_count, 0) AS member_count,
                   COALESCE(inv.pending_invite_count, 0) AS pending_invite_count
                 FROM organizations o
-                LEFT JOIN tenant_registry tr ON tr.organization_id = o.id
                 LEFT JOIN (
                   SELECT organization_id, COUNT(*) AS member_count
                   FROM organization_members
@@ -836,7 +715,7 @@ def list_organization_members(organization_id: str) -> List[Dict[str, Any]]:
                 SELECT
                   om.id,
                   om.organization_id,
-                  om.platform_user_id,
+                  om.user_id,
                   om.org_role_code,
                   om.status,
                   om.created_at,
@@ -846,7 +725,7 @@ def list_organization_members(organization_id: str) -> List[Dict[str, Any]]:
                   pu.status AS user_status,
                   pu.last_login_at
                 FROM organization_members om
-                JOIN platform_users pu ON pu.id = om.platform_user_id
+                JOIN users pu ON pu.id = om.user_id
                 WHERE om.organization_id = %s
                 ORDER BY
                   CASE om.org_role_code
@@ -865,7 +744,7 @@ def list_organization_members(organization_id: str) -> List[Dict[str, Any]]:
             {
                 "id": _normalize_text(row.get("id")),
                 "organization_id": _normalize_text(row.get("organization_id")),
-                "platform_user_id": _normalize_text(row.get("platform_user_id")),
+                "user_id": _normalize_text(row.get("user_id")),
                 "org_role_code": _normalize_text(row.get("org_role_code")),
                 "status": _normalize_text(row.get("status")) or "active",
                 "created_at": str(row.get("created_at")) if row.get("created_at") is not None else None,
@@ -905,7 +784,7 @@ def list_organization_invites(organization_id: str) -> List[Dict[str, Any]]:
                   creator.name AS created_by_name,
                   creator.email AS created_by_email
                 FROM organization_invites oi
-                LEFT JOIN platform_users creator ON creator.id = oi.created_by_user_id
+                LEFT JOIN users creator ON creator.id = oi.created_by_user_id
                 WHERE oi.organization_id = %s
                 ORDER BY
                   CASE oi.status WHEN 'pending' THEN 1 ELSE 2 END,

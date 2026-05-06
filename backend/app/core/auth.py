@@ -12,9 +12,10 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 from fastapi import Request
 
 from app.core.control_plane import can_access_organization, ensure_user_membership_context, load_user_session_context
-from app.core.json_store import DATA_DIR, read_doc, write_doc
+from app.core.json_store import DATA_DIR, _database_url, _pg_connect, _reset_pg_connection, read_doc, write_doc
 
-AUTH_BASE_PATH = DATA_DIR / "auth" / "access.json"
+DEFAULT_AUTH_BASE_PATH = DATA_DIR / "auth" / "access.json"
+AUTH_BASE_PATH = DEFAULT_AUTH_BASE_PATH
 AUTH_SESSIONS_PATH = DATA_DIR / "auth" / "sessions.json"
 AUTH_EVENTS_PATH = DATA_DIR / "auth" / "login_events.json"
 SESSION_COOKIE = "pim_session"
@@ -141,7 +142,294 @@ def _clone(v: Any) -> Any:
     return json.loads(json.dumps(v))
 
 
+def _extract_rows(cur: Any) -> List[Dict[str, Any]]:
+    cols = [str((item or [None])[0] or "") for item in (cur.description or [])]
+    rows: List[Dict[str, Any]] = []
+    for raw in cur.fetchall() or []:
+        if isinstance(raw, dict):
+            rows.append({str(k): raw[k] for k in raw.keys()})
+            continue
+        rows.append({cols[idx]: raw[idx] for idx in range(min(len(cols), len(raw)))})
+    return rows
+
+
+def _relational_auth_enabled() -> bool:
+    return AUTH_BASE_PATH == DEFAULT_AUTH_BASE_PATH and bool(_database_url())
+
+
+def _json_param(kind: str, payload: Any) -> Any:
+    import json
+
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _ensure_auth_tables() -> bool:
+    if not _relational_auth_enabled():
+        return False
+    try:
+        conn, kind, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS roles (
+                  id TEXT PRIMARY KEY,
+                  code TEXT NOT NULL UNIQUE,
+                  name TEXT NOT NULL,
+                  description TEXT NULL,
+                  pages JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  actions JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  is_system BOOLEAN NOT NULL DEFAULT FALSE,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                  id TEXT PRIMARY KEY,
+                  login TEXT NOT NULL,
+                  email TEXT NOT NULL DEFAULT '',
+                  name TEXT NOT NULL,
+                  password_hash TEXT NOT NULL DEFAULT '',
+                  password_salt TEXT NOT NULL DEFAULT '',
+                  role_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                  status TEXT NOT NULL DEFAULT 'active',
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  last_login_at TIMESTAMPTZ NULL,
+                  last_login_ip TEXT NULL,
+                  last_user_agent TEXT NULL
+                )
+                """
+            )
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_lower_login ON users ((lower(login)))")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_lower_email_non_empty ON users ((lower(email))) WHERE email <> ''")
+        _migrate_auth_json_to_relational(kind)
+        return True
+    except Exception:
+        _reset_pg_connection()
+        return False
+
+
+def _migrate_auth_json_to_relational(kind: str) -> None:
+    legacy = read_doc(AUTH_BASE_PATH, default=_clone(DEFAULT_AUTH_BASE_DB))
+    if not isinstance(legacy, dict):
+        legacy = _clone(DEFAULT_AUTH_BASE_DB)
+    conn, _, _ = _pg_connect()
+    roles = legacy.get("roles") if isinstance(legacy.get("roles"), dict) else {}
+    users = legacy.get("users") if isinstance(legacy.get("users"), dict) else {}
+    with conn.cursor() as cur:
+        for role in roles.values():
+            if not isinstance(role, dict):
+                continue
+            role_id = _normalize_text(role.get("id"))
+            code = _normalize_text(role.get("code"))
+            if not role_id or not code:
+                continue
+            cur.execute(
+                """
+                INSERT INTO roles (id, code, name, description, pages, actions, is_system, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, COALESCE(%s::timestamptz, NOW()), COALESCE(%s::timestamptz, NOW()))
+                ON CONFLICT (id) DO UPDATE
+                SET code = EXCLUDED.code,
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    pages = EXCLUDED.pages,
+                    actions = EXCLUDED.actions,
+                    is_system = EXCLUDED.is_system,
+                    updated_at = NOW()
+                """,
+                (
+                    role_id,
+                    code,
+                    _normalize_text(role.get("name")) or code,
+                    _normalize_text(role.get("description")),
+                    _json_param(kind, role.get("pages") if isinstance(role.get("pages"), list) else []),
+                    _json_param(kind, role.get("actions") if isinstance(role.get("actions"), list) else []),
+                    bool(role.get("is_system")),
+                    role.get("created_at"),
+                    role.get("updated_at"),
+                ),
+            )
+        for user in users.values():
+            if not isinstance(user, dict):
+                continue
+            user_id = _normalize_text(user.get("id"))
+            login = _normalize_login(user.get("login")) or _normalize_text(user.get("email")).lower()
+            if not user_id or not login:
+                continue
+            cur.execute(
+                """
+                INSERT INTO users (
+                  id, login, email, name, password_hash, password_salt, role_ids, is_active, status,
+                  created_at, updated_at, last_login_at, last_login_ip, last_user_agent
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, COALESCE(%s::timestamptz, NOW()), COALESCE(%s::timestamptz, NOW()), %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET login = EXCLUDED.login,
+                    email = EXCLUDED.email,
+                    name = EXCLUDED.name,
+                    password_hash = COALESCE(NULLIF(EXCLUDED.password_hash, ''), users.password_hash),
+                    password_salt = COALESCE(NULLIF(EXCLUDED.password_salt, ''), users.password_salt),
+                    role_ids = EXCLUDED.role_ids,
+                    is_active = EXCLUDED.is_active,
+                    status = EXCLUDED.status,
+                    updated_at = NOW(),
+                    last_login_at = COALESCE(EXCLUDED.last_login_at, users.last_login_at),
+                    last_login_ip = COALESCE(EXCLUDED.last_login_ip, users.last_login_ip),
+                    last_user_agent = COALESCE(EXCLUDED.last_user_agent, users.last_user_agent)
+                """,
+                (
+                    user_id,
+                    login,
+                    _normalize_text(user.get("email")).lower(),
+                    _normalize_text(user.get("name")) or login,
+                    _normalize_text(user.get("password_hash")),
+                    _normalize_text(user.get("password_salt")),
+                    _json_param(kind, [str(x) for x in (user.get("role_ids") or []) if str(x).strip()]),
+                    bool(user.get("is_active", True)),
+                    "active" if bool(user.get("is_active", True)) else "disabled",
+                    user.get("created_at"),
+                    user.get("updated_at"),
+                    user.get("last_login_at"),
+                    _normalize_text(user.get("last_login_ip")),
+                    _normalize_text(user.get("last_user_agent")),
+                ),
+            )
+
+
+def _row_to_role(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": _normalize_text(row.get("id")),
+        "code": _normalize_text(row.get("code")),
+        "name": _normalize_text(row.get("name")),
+        "description": _normalize_text(row.get("description")),
+        "pages": row.get("pages") if isinstance(row.get("pages"), list) else [],
+        "actions": row.get("actions") if isinstance(row.get("actions"), list) else [],
+        "is_system": bool(row.get("is_system")),
+        "created_at": str(row.get("created_at")) if row.get("created_at") is not None else None,
+        "updated_at": str(row.get("updated_at")) if row.get("updated_at") is not None else None,
+    }
+
+
+def _row_to_user(row: Dict[str, Any]) -> Dict[str, Any]:
+    status = _normalize_text(row.get("status")) or "active"
+    return {
+        "id": _normalize_text(row.get("id")),
+        "login": _normalize_login(row.get("login")),
+        "email": _normalize_text(row.get("email")).lower(),
+        "name": _normalize_text(row.get("name")),
+        "password_hash": _normalize_text(row.get("password_hash")),
+        "password_salt": _normalize_text(row.get("password_salt")),
+        "role_ids": row.get("role_ids") if isinstance(row.get("role_ids"), list) else [],
+        "is_active": bool(row.get("is_active", status == "active")),
+        "created_at": str(row.get("created_at")) if row.get("created_at") is not None else None,
+        "updated_at": str(row.get("updated_at")) if row.get("updated_at") is not None else None,
+        "last_login_at": str(row.get("last_login_at")) if row.get("last_login_at") is not None else None,
+        "last_login_ip": _normalize_text(row.get("last_login_ip")),
+        "last_user_agent": _normalize_text(row.get("last_user_agent")),
+    }
+
+
+def _load_auth_base_relational() -> Dict[str, Any]:
+    conn, _, _ = _pg_connect()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, code, name, description, pages, actions, is_system, created_at, updated_at FROM roles ORDER BY code")
+        roles = {_normalize_text(row.get("id")): _row_to_role(row) for row in _extract_rows(cur)}
+        cur.execute(
+            """
+            SELECT id, login, email, name, password_hash, password_salt, role_ids, is_active, status,
+                   created_at, updated_at, last_login_at, last_login_ip, last_user_agent
+            FROM users
+            ORDER BY lower(name), lower(email), lower(login)
+            """
+        )
+        users = {_normalize_text(row.get("id")): _row_to_user(row) for row in _extract_rows(cur)}
+    return {"version": 2, "roles": roles, "users": users}
+
+
+def _save_auth_base_relational(db: Dict[str, Any]) -> None:
+    conn, kind, _ = _pg_connect()
+    roles = db.get("roles") if isinstance(db.get("roles"), dict) else {}
+    users = db.get("users") if isinstance(db.get("users"), dict) else {}
+    with conn.cursor() as cur:
+        for role in roles.values():
+            if not isinstance(role, dict):
+                continue
+            cur.execute(
+                """
+                INSERT INTO roles (id, code, name, description, pages, actions, is_system, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, COALESCE(%s::timestamptz, NOW()), NOW())
+                ON CONFLICT (id) DO UPDATE
+                SET code = EXCLUDED.code,
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    pages = EXCLUDED.pages,
+                    actions = EXCLUDED.actions,
+                    is_system = EXCLUDED.is_system,
+                    updated_at = NOW()
+                """,
+                (
+                    _normalize_text(role.get("id")),
+                    _normalize_text(role.get("code")),
+                    _normalize_text(role.get("name")),
+                    _normalize_text(role.get("description")),
+                    _json_param(kind, role.get("pages") if isinstance(role.get("pages"), list) else []),
+                    _json_param(kind, role.get("actions") if isinstance(role.get("actions"), list) else []),
+                    bool(role.get("is_system")),
+                    role.get("created_at"),
+                ),
+            )
+        for user in users.values():
+            if not isinstance(user, dict):
+                continue
+            cur.execute(
+                """
+                INSERT INTO users (
+                  id, login, email, name, password_hash, password_salt, role_ids, is_active, status,
+                  created_at, updated_at, last_login_at, last_login_ip, last_user_agent
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, COALESCE(%s::timestamptz, NOW()), NOW(), %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET login = EXCLUDED.login,
+                    email = EXCLUDED.email,
+                    name = EXCLUDED.name,
+                    password_hash = EXCLUDED.password_hash,
+                    password_salt = EXCLUDED.password_salt,
+                    role_ids = EXCLUDED.role_ids,
+                    is_active = EXCLUDED.is_active,
+                    status = EXCLUDED.status,
+                    updated_at = NOW(),
+                    last_login_at = EXCLUDED.last_login_at,
+                    last_login_ip = EXCLUDED.last_login_ip,
+                    last_user_agent = EXCLUDED.last_user_agent
+                """,
+                (
+                    _normalize_text(user.get("id")),
+                    _normalize_login(user.get("login")),
+                    _normalize_text(user.get("email")).lower(),
+                    _normalize_text(user.get("name")),
+                    _normalize_text(user.get("password_hash")),
+                    _normalize_text(user.get("password_salt")),
+                    _json_param(kind, [str(x) for x in (user.get("role_ids") or []) if str(x).strip()]),
+                    bool(user.get("is_active", True)),
+                    "active" if bool(user.get("is_active", True)) else "disabled",
+                    user.get("created_at"),
+                    user.get("last_login_at"),
+                    _normalize_text(user.get("last_login_ip")),
+                    _normalize_text(user.get("last_user_agent")),
+                ),
+            )
+
+
 def _load_auth_base() -> Dict[str, Any]:
+    if _ensure_auth_tables():
+        try:
+            return _load_auth_base_relational()
+        except Exception:
+            _reset_pg_connection()
     db = read_doc(AUTH_BASE_PATH, default=_clone(DEFAULT_AUTH_BASE_DB))
     if not isinstance(db, dict):
         db = _clone(DEFAULT_AUTH_BASE_DB)
@@ -158,6 +446,12 @@ def load_auth_base_db() -> Dict[str, Any]:
 
 
 def _save_auth_base(db: Dict[str, Any]) -> None:
+    if _ensure_auth_tables():
+        try:
+            _save_auth_base_relational(db)
+            return
+        except Exception:
+            _reset_pg_connection()
     payload = {
         "version": db.get("version", 1),
         "roles": db.get("roles") if isinstance(db.get("roles"), dict) else {},
