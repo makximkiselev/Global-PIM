@@ -48,12 +48,11 @@ EXPECTED_RUNTIME_TABLES = {
     "dictionary_values_rel",
     "dictionary_values_tenant_rel",
     "json_documents",
+    "roles",
+    "users",
     "organization_invites",
     "organization_members",
     "organizations",
-    "platform_roles",
-    "platform_user_roles",
-    "platform_users",
     "product_group_variant_params_rel",
     "product_groups_rel",
     "product_marketplace_status_rel",
@@ -64,8 +63,6 @@ EXPECTED_RUNTIME_TABLES = {
     "template_attributes_tenant_rel",
     "templates_rel",
     "templates_tenant_rel",
-    "tenant_provisioning_jobs",
-    "tenant_registry",
 }
 
 TENANT_TABLES = (
@@ -79,8 +76,6 @@ TENANT_TABLES = (
 )
 
 CONTROL_PLANE_CLEANUP_TABLES = (
-    "tenant_provisioning_jobs",
-    "tenant_registry",
     "organization_invites",
     "organization_members",
 )
@@ -231,6 +226,8 @@ def print_report(cur: Any) -> int:
         "catalog_product_page_tenant_rel",
         "product_marketplace_status_tenant_rel",
         "json_documents",
+        "roles",
+        "users",
     ):
         if table_exists(cur, table):
             print(f"{table}\t{count_table(cur, table)}")

@@ -64,7 +64,7 @@ Current admin DB cleanup decision:
 3. `org_default / Global Trade` must remain active and is the cleanup guard;
 4. schema consolidation target is five physical admin tables: `users`, `roles`, `organizations`, `organization_members`, and `organization_invites`;
 5. `json_documents` remains as shared document storage for sessions/login-events and other PIM documents, but auth users/roles must live in relational tables;
-6. `platform_users`, `platform_roles`, `platform_user_roles`, `tenant_registry`, and `tenant_provisioning_jobs` are removed after backend auth/control-plane migration.
+6. Admin/auth runtime schema is consolidated into `users`, `roles`, `organizations`, `organization_members`, and `organization_invites`; legacy `platform_users`, `platform_roles`, `platform_user_roles`, `tenant_registry`, and `tenant_provisioning_jobs` are removed from production.
 
 Rule:
 
@@ -90,7 +90,7 @@ Rule:
    - removed 8 obsolete `backup_20260428_*` control-plane backup tables from production DB;
    - removed 16 obsolete provisioning QA/test organizations from production DB;
    - verified `org_default / Global Trade` remains the only organization and is active;
-   - verified production control-plane counts after cleanup: `organizations=1`, `platform_users=2`, `organization_members=2`, `organization_invites=0`, `tenant_registry=0`, `tenant_provisioning_jobs=0`, `backup_tables=0`;
+   - verified production control-plane counts after cleanup: `organizations=1`, `users=2`, `organization_members=2`, `organization_invites=0`, `backup_tables=0`;
    - `make check-backend` passed.
 1. Profile and administration verification
    - checked profile/admin frontend contracts: `/profile`, `/admin/organizations`, `/admin/members`, `/admin/invites`, and `/admin/access`;
@@ -317,7 +317,7 @@ Initial DB ownership map:
 | `Сводка` | none directly; reads product/catalog/channel/admin state | `dashboard_stats_rel` | Reads all zones, writes only explicit dashboard snapshots. |
 | `Каталог` | `products_rel`, `catalog_nodes_rel`, `product_groups_rel`, `product_group_variant_params_rel` | `catalog_product_registry_rel`, `category_product_counts_rel`, `catalog_product_page_rel`, `catalog_product_page_tenant_rel`, `product_marketplace_status_rel`, `product_marketplace_status_tenant_rel` | Reads info-model/channel readiness; writes product/category/group state. |
 | `Инфо-модели` | `templates_tenant_rel`, `template_attributes_tenant_rel`, `category_template_links_tenant_rel`, `dictionaries_tenant_rel`, `dictionary_values_tenant_rel`, `dictionary_value_sources_tenant_rel`, `dictionary_provider_refs_tenant_rel`, `dictionary_export_maps_tenant_rel`, `category_mappings_tenant_rel`, `attribute_mappings_tenant_rel`, `attribute_value_refs_tenant_rel`, connector account/state tables, selected `json_documents` operational docs for import/competitor/marketplace jobs | `category_template_resolution_tenant_rel`, marketplace export/readiness snapshots | Reads products/categories; writes models, dictionaries, enrichment evidence, marketplace bindings, and source state. |
-| `Администрирование` | `platform_users`, `organizations`, `organization_members`, `organization_invites`, `tenant_registry`, `tenant_provisioning_jobs` | none by default | Owns access context for every zone. |
+| `Администрирование` | `users`, `roles`, `organizations`, `organization_members`, `organization_invites` | none by default | Owns access context for every zone. |
 
 Implementation order:
 
@@ -433,8 +433,7 @@ Canonical source-of-truth tables:
 1. catalog: `catalog_nodes_rel`;
 2. products/SKU: `products_rel`;
 3. product groups: `product_groups_rel`, `product_group_variant_params_rel`;
-4. organization/users/access: `platform_users`, `organizations`, `organization_members`, `organization_invites`;
-5. tenant registry/provisioning: `tenant_registry`, `tenant_provisioning_jobs`.
+4. organization/users/access: `users`, `roles`, `organizations`, `organization_members`, `organization_invites`.
 
 Config tables:
 
@@ -463,23 +462,17 @@ Legacy/migration candidates:
 1. `product_variants_rel` conflicts with the accepted model where every variant is also a row in `products_rel` with its own SKU and shared `group_id`;
 2. `json_documents` contains many legacy snapshots that duplicate relational tables: `products.json`, `catalog_nodes.json`, `templates.json`, `dictionaries.json`, `product_groups.json`, SKU indexes;
 3. `json_documents` also stores active non-relational operational docs: import/export runs, marketplace caches, offer cache, competitor mapping, ComfyUI runs if used;
-4. `platform_user_roles` has 0 rows and no current product-facing use; keep only if platform-level RBAC is still planned;
-5. `deploy/sql/*` duplicates runtime schema and must either become the real migration source or be removed after migration strategy is decided.
+4. `deploy/sql/*` duplicates runtime schema and must either become the real migration source or be removed after migration strategy is decided.
 
 Immediate cleanup candidates after backup/confirmation:
 
-1. drop `backup_20260428_102730_*` and `backup_20260428_102824_*` tables;
-2. delete 16 stale `provisioning` test organizations and related `tenant_registry` / `tenant_provisioning_jobs` rows;
-3. delete derived tenant rows for stale orgs:
-   - `catalog_product_page_tenant_rel`;
-   - `product_marketplace_status_tenant_rel`;
-   - `category_template_resolution_tenant_rel`;
-4. delete legacy auth cleanup docs from `json_documents` after confirming current auth tables/sessions are enough;
-5. remove legacy duplicate JSON docs only after relational parity checks pass.
+1. remove orphan tenant rows for organizations that no longer exist in `organizations`;
+2. remove legacy duplicate JSON docs only after relational parity checks pass;
+3. decide whether `deploy/sql/*` becomes the migration source or is removed after migration strategy is fixed.
 
 Risks found:
 
-1. tenant read models are duplicated across stale test orgs: `catalog_product_page_tenant_rel` and `product_marketplace_status_tenant_rel` have 11960 rows each for roughly 1090 real products;
+1. tenant read models still contain orphan rows for deleted test organizations; `catalog_product_page_tenant_rel` and `product_marketplace_status_tenant_rel` have 11960 rows each for roughly 1090 real products;
 2. mixed storage remains: core PIM entities are relational, but many workflows still read/write `json_documents`;
 3. `backend/.env` is not shell-source-safe because at least one value contains `&`; scripts should not assume `source backend/.env`;
 4. global vs tenant tables are not consistently documented, so accidental reads from global fallback can hide missing tenant data;
@@ -552,13 +545,13 @@ Core tables:
    - replaces most marketplace cache documents in `json_documents`;
    - not a source of truth, rebuildable.
 
-Control-plane tables stay separate:
+Control-plane tables stay separate from product tables:
 
-1. `platform_users`;
-2. `organizations`;
-3. `organization_members`;
-4. `organization_invites`;
-5. `tenant_registry` and `tenant_provisioning_jobs` only if real multi-tenant provisioning remains.
+1. `users`;
+2. `roles`;
+3. `organizations`;
+4. `organization_members`;
+5. `organization_invites`.
 
 Why not one table:
 

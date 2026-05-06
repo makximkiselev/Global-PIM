@@ -252,7 +252,7 @@ def ensure_control_plane_foundation() -> bool:
     return _ensure_control_plane_tables()
 
 
-def _ensure_platform_user(conn: Any, user: Dict[str, Any]) -> str:
+def _ensure_user_row(conn: Any, user: Dict[str, Any]) -> str:
     user_id = _normalize_text(user.get("id")) or f"user_{secrets.token_hex(6)}"
     login = _normalize_text(user.get("login")).lower()
     email = _normalize_email(user.get("email")) or f"{_normalize_text(user.get('login')) or user_id}@local.invalid"
@@ -301,7 +301,7 @@ def ensure_user_membership_context(user: Optional[Dict[str, Any]], legacy_roles:
 
     def _run() -> bool:
         conn, _, _ = _pg_connect()
-        user_id = _ensure_platform_user(conn, user)
+        user_id = _ensure_user_row(conn, user)
         org_role_code = _org_role_from_legacy_roles(role_codes)
         with conn.cursor() as cur:
             cur.execute(
@@ -431,7 +431,7 @@ def create_organization_with_owner(user: Dict[str, Any], organization_name: str)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
-        user_id = _ensure_platform_user(conn, user)
+        user_id = _ensure_user_row(conn, user)
         org_id = f"org_{secrets.token_hex(6)}"
         org_slug = _next_org_slug(conn, org_name)
         with conn.cursor() as cur:
