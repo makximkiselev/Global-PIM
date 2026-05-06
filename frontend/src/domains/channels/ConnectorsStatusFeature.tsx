@@ -94,7 +94,7 @@ function storeAccessLabel(store: ImportStore) {
   return "ожидает проверки";
 }
 
-export default function ConnectorsStatus() {
+export default function ConnectorsStatus({ embedded = false }: { embedded?: boolean } = {}) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [runningProvider, setRunningProvider] = useState("");
@@ -335,15 +335,17 @@ export default function ConnectorsStatus() {
 
   return (
     <div className="cs-page page-shell">
-      <PageHeader
-        title="Источники и подключения"
-        subtitle="Короткая панель готовности: какие источники работают, что блокирует модели, товары и экспорт."
-        actions={
-          <Button onClick={load} disabled={loading || !!runningProvider || saving}>
-            {loading ? "Обновляю..." : "Обновить все"}
-          </Button>
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Источники и подключения"
+          subtitle="Короткая панель готовности: какие источники работают, что блокирует модели, товары и экспорт."
+          actions={
+            <Button onClick={load} disabled={loading || !!runningProvider || saving}>
+              {loading ? "Обновляю..." : "Обновить все"}
+            </Button>
+          }
+        />
+      ) : null}
 
       {error ? <Alert tone="error">{error}</Alert> : null}
 

@@ -182,6 +182,7 @@ Target frontend folders:
 Frontend structure debts:
 
 1. `/sources` competitor tab is split out to `/data-prep/competitors`; remaining debt is that parameter mapping still displays competitor evidence as supporting context.
+   Update 2026-05-06: `Источники данных` now owns a single `/connectors/status` workspace with `Площадки и магазины` and `Конкуренты` tabs; legacy `/data-prep/competitors` redirects to `/connectors/status?tab=competitors`.
 2. `frontend/src/components` still contains shared UI/layout primitives; move into `frontend/src/shared` only after import paths are stabilized.
 3. auth-only pages remain in `frontend/src/pages`; either keep as public auth pages or move to `frontend/src/app/auth/pages` in a separate auth cleanup.
 

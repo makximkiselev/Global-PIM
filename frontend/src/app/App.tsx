@@ -11,8 +11,8 @@ import ProductNewRoute from "../routes/ProductNewRoute";
 import ProductRoute from "../routes/ProductRoute";
 import ProductGroupsRoute from "../routes/ProductGroupsRoute";
 import Infographics from "../domains/data-prep/InfographicsFeature";
-import CompetitorSourcesFeature from "../domains/data-prep/CompetitorSourcesFeature";
 import CatalogExchangeFeature from "../domains/products/CatalogExchangeFeature";
+import DataSourcesFeature from "../domains/data-prep/DataSourcesFeature";
 
 // ✅ mapping
 import Placeholder from "../shared/placeholders/Placeholder";
@@ -23,7 +23,6 @@ import Register from "../pages/Register";
 import InviteAccept from "../pages/InviteAccept";
 import AdminAccessRoute from "../routes/AdminAccessRoute";
 import OrganizationsRoute from "../routes/OrganizationsRoute";
-import ConnectorsStatusRoute from "../routes/ConnectorsStatusRoute";
 import DictionariesRoute from "../routes/DictionariesRoute";
 import DictionaryEditorRoute from "../routes/DictionaryEditorRoute";
 import SourcesMappingRoute from "../routes/SourcesMappingRoute";
@@ -78,13 +77,13 @@ function ProtectedApp() {
 
         <Route path="/dictionaries" element={<RequirePage page="dictionaries"><DictionariesRoute /></RequirePage>} />
         <Route path="/dictionaries/:dictId" element={<RequirePage page="dictionaries"><DictionaryEditorRoute /></RequirePage>} />
-        <Route path="/data-prep/competitors" element={<RequirePage page="sources_mapping"><CompetitorSourcesFeature /></RequirePage>} />
+        <Route path="/data-prep/competitors" element={<Navigate to="/connectors/status?tab=competitors" replace />} />
 
         <Route path="/sources" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
         <Route path="/sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
         <Route path="/competitor-mapping" element={<Navigate to="/data-prep/competitors" replace />} />
         <Route path="/marketplace-mapping" element={<Navigate to="/sources?tab=sources" replace />} />
-        <Route path="/connectors/status" element={<RequirePage page="connectors_status"><ConnectorsStatusRoute /></RequirePage>} />
+        <Route path="/connectors/status" element={<RequireAnyPage pages={["connectors_status", "sources_mapping"]}><DataSourcesFeature /></RequireAnyPage>} />
         <Route path="/images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />
 
         <Route path="/admin/access" element={<RequirePage page="admin_access"><AdminAccessRoute /></RequirePage>} />

@@ -194,7 +194,7 @@ export default function DashboardFeature() {
     {
       title: "Проверить площадки",
       text: "Посмотреть подключение источников и ошибки перед выгрузкой.",
-      to: "/connectors/status",
+      to: "/connectors/status?tab=marketplaces",
       label: "Источники",
     },
   ];
@@ -257,7 +257,7 @@ export default function DashboardFeature() {
                 Проверь подключение площадок и сопоставление параметров до следующей выгрузки.
               </div>
             </div>
-            <Link className="btn" to="/connectors/status">
+            <Link className="btn" to="/connectors/status?tab=marketplaces">
               Открыть источники
             </Link>
           </div>

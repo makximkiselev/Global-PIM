@@ -65,7 +65,7 @@ const groups: ShellNavGroup[] = [
         items: [
           { href: "/templates", label: "Инфо-модели", page: "templates" },
           { href: "/sources?tab=sources", label: "Сопоставления", page: "sources_mapping" },
-          { href: "/connectors/status", label: "Источники данных", page: "connectors_status" },
+          { href: "/connectors/status", label: "Источники данных", pages: ["connectors_status", "sources_mapping"] },
         ],
       },
     ],
