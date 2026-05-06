@@ -50,6 +50,14 @@ function QuickActionCard({ action }: { action: QuickAction }) {
   );
 }
 
+function platformWord(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return "площадка";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "площадки";
+  return "площадок";
+}
+
 export default function DashboardFeature() {
   const { loading: authLoading, authenticated } = useAuth();
   const [stats, setStats] = useState<StatsSummary | null>(null);
@@ -83,11 +91,11 @@ export default function DashboardFeature() {
         if (!alive) return;
         setStats(null);
         if (error instanceof Error && error.name === "AbortError") {
-          setLoadError("Live summary не ответил вовремя. Экран открыт в fallback-режиме.");
+          setLoadError("Сводка не ответила вовремя. Экран открыт с базовыми данными.");
         } else if (error instanceof Error && error.message === "AUTH_REQUIRED") {
           setLoadError("Сессия истекла. Нужно войти заново.");
         } else {
-          setLoadError("Live summary временно недоступен. Экран открыт в fallback-режиме.");
+          setLoadError("Сводка временно недоступна. Экран открыт с базовыми данными.");
         }
       } finally {
         window.clearTimeout(timeoutId);
@@ -114,7 +122,7 @@ export default function DashboardFeature() {
     { label: "Категории", value: stats ? stats.categories : "—", meta: "структура каталога" },
     { label: "Товары", value: stats ? stats.products : "—", meta: "рабочие SKU" },
     { label: "Инфо-модели", value: stats ? stats.templates : "—", meta: "активные модели" },
-    { label: "Каналы", value: connectorsLabel, meta: "подключено к контуру" },
+    { label: "Площадки", value: connectorsLabel, meta: "готовы к обмену" },
   ];
 
   const queueItems: QueueItem[] = [
@@ -138,12 +146,13 @@ export default function DashboardFeature() {
     },
   ];
 
+  const missingConnectors = stats ? Math.max(0, stats.connectors_total - stats.connectors_configured) : 0;
   const connectorIssue =
-    stats && stats.connectors_total > 0 && stats.connectors_configured < stats.connectors_total
-      ? `${stats.connectors_total - stats.connectors_configured} канал(ов) требует настройки`
+    stats && stats.connectors_total > 0 && missingConnectors > 0
+      ? `${missingConnectors} ${platformWord(missingConnectors)} ${missingConnectors === 1 ? "требует" : "требуют"} настройки`
       : stats && stats.connectors_total === 0
-        ? "Каналы еще не подключены"
-        : "Канальный контур подключен";
+        ? "Площадки еще не подключены"
+        : "Площадки готовы к обмену";
 
   const readinessItems = [
     {
@@ -157,44 +166,44 @@ export default function DashboardFeature() {
       meta: "моделей можно использовать в товарах",
     },
     {
-      label: "Коннекторы",
+      label: "Площадки",
       value: connectorsLabel,
-      meta: "каналов в операционном контуре",
+      meta: "площадок в рабочем контуре",
     },
   ];
 
   const quickActions: QuickAction[] = [
     {
       title: "Создать товар",
-      text: "Открыть новый SKU и сразу перейти в продуктовый workspace.",
+      text: "Завести новый SKU и сразу перейти к наполнению карточки.",
       to: "/products/new",
       label: "Новый SKU",
     },
     {
       title: "Открыть импорт",
-      text: "Запустить Excel/import flow и завести данные в товары.",
+      text: "Загрузить Excel и создать или обновить товары в каталоге.",
       to: "/catalog/import",
-      label: "Import",
+      label: "Импорт",
     },
     {
-      title: "Проверить маппинг",
-      text: "Открыть category и parameter mapping по каналам.",
+      title: "Сопоставить параметры",
+      text: "Проверить связи категорий, полей и значений для площадок.",
       to: "/sources-mapping",
-      label: "Mapping",
+      label: "Инфо-модель",
     },
     {
-      title: "Проверить каналы",
-      text: "Посмотреть состояние коннекторов и ошибки до выгрузки.",
+      title: "Проверить площадки",
+      text: "Посмотреть подключение источников и ошибки перед выгрузкой.",
       to: "/connectors/status",
-      label: "Channels",
+      label: "Источники",
     },
   ];
 
   return (
     <div className="dashboard-page page-shell controlCenterPage">
       <PageHeader
-        title="Control Center"
-        subtitle="Рабочий центр каталога, товаров, каналов и операций. Отсюда команда входит в SKU, ошибки и публикацию."
+        title="Рабочая сводка"
+        subtitle="Короткий вход в товары, каталог, инфо-модели и подготовку к выгрузке."
         actions={
           <>
             <Link className="btn" to="/products">
@@ -230,7 +239,7 @@ export default function DashboardFeature() {
         <Card className="controlCenterPanel">
           <div className="controlCenterPanelHead">
             <div>
-              <div className="controlCenterEyebrow">Проблемы каналов</div>
+              <div className="controlCenterEyebrow">Площадки</div>
               <div className="controlCenterPanelTitle">Что требует внимания сейчас</div>
             </div>
             <Badge tone={stats && stats.connectors_total > stats.connectors_configured ? "danger" : "active"}>
@@ -239,17 +248,17 @@ export default function DashboardFeature() {
           </div>
           <div className="controlCenterIssueStack">
             <div className="controlCenterIssueCard">
-              <div className="controlCenterIssueTitle">Состояние коннекторов</div>
+              <div className="controlCenterIssueTitle">Состояние площадок</div>
               <div className="controlCenterIssueText">{connectorIssue}</div>
             </div>
             <div className="controlCenterIssueCard">
               <div className="controlCenterIssueTitle">Следующий шаг</div>
               <div className="controlCenterIssueText">
-                Проверь подключение каналов и перейди в mapping до следующей выгрузки.
+                Проверь подключение площадок и сопоставление параметров до следующей выгрузки.
               </div>
             </div>
             <Link className="btn" to="/connectors/status">
-              Открыть коннекторы
+              Открыть источники
             </Link>
           </div>
         </Card>
@@ -259,7 +268,7 @@ export default function DashboardFeature() {
         <Card className="controlCenterPanel">
           <div className="controlCenterPanelHead">
             <div>
-              <div className="controlCenterEyebrow">Readiness</div>
+              <div className="controlCenterEyebrow">Готовность</div>
               <div className="controlCenterPanelTitle">Готовность рабочего контура</div>
             </div>
           </div>
@@ -270,7 +279,7 @@ export default function DashboardFeature() {
           <div className="controlCenterPanelHead">
             <div>
               <div className="controlCenterEyebrow">Операции</div>
-              <div className="controlCenterPanelTitle">Импорт, экспорт и каналы</div>
+              <div className="controlCenterPanelTitle">Импорт, экспорт и сопоставления</div>
             </div>
           </div>
           <div className="controlCenterOperations">
@@ -279,21 +288,21 @@ export default function DashboardFeature() {
                 <strong>Импорт каталога</strong>
                 <small>Загрузка Excel и импорт в товары.</small>
               </div>
-              <span>Import</span>
+              <span>Импорт</span>
             </Link>
             <Link className="controlCenterOperationRow" to="/catalog/export">
               <div>
                 <strong>Экспорт данных</strong>
                 <small>Выгрузка подготовленных данных и контроль ошибок.</small>
               </div>
-              <span>Export</span>
+              <span>Экспорт</span>
             </Link>
             <Link className="controlCenterOperationRow" to="/sources-mapping">
               <div>
-                <strong>Sources / Mapping</strong>
-                <small>Связка категорий, параметров и источников.</small>
+                <strong>Сопоставления</strong>
+                <small>Связка категорий, параметров, значений и источников.</small>
               </div>
-              <span>Open</span>
+              <span>Открыть</span>
             </Link>
           </div>
         </Card>

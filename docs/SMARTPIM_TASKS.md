@@ -686,7 +686,7 @@ Next tasks:
 
 1. verify click-pinned menu and smaller-width behavior in Browser Use/in-app browser;
 2. verify active state for tabbed links;
-3. reduce remaining dashboard/menu English labels (`Control Center`, `Sources / Mapping`, `Channels`);
+3. reduce remaining dashboard/menu English labels (`Control Center`, `Sources / Mapping`, `Channels`). Status: done for `/` dashboard on 2026-05-06;
 4. add real counters later from backend queues/errors.
 
 ## P3 - Testing And Deploy Hardening
