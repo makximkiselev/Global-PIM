@@ -689,7 +689,59 @@
 
 .orgAdminTabs{
   max-width:var(--page-content-width);
-  margin:0 auto 22px;
+  margin:0 auto 14px;
+}
+
+.orgAdminWorkspaceFlat{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.orgAdminSwitcher{
+  display:flex;
+  gap:10px;
+  overflow:auto;
+  padding:2px 0 4px;
+}
+
+.orgAdminSwitchCard{
+  appearance:none;
+  min-width:220px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(var(--card-rgb),.8);
+  color:var(--text);
+  padding:10px 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  cursor:pointer;
+  box-shadow:var(--shadow-soft);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.orgAdminSwitchCard:hover,
+.orgAdminSwitchCard.active{
+  transform:translateY(-1px);
+  border-color:rgba(var(--brand-rgb),.36);
+  background:rgba(var(--brand-rgb),.08);
+}
+
+.orgAdminSwitchCard span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:13px;
+  line-height:1.2;
+  font-weight:900;
 }
 
 .orgAdminWorkspace.workspaceFrameTwo{
@@ -823,7 +875,7 @@
 }
 
 .orgAdminCommand{
-  padding:14px;
+  padding:14px 16px;
   border:1px solid var(--line);
   border-radius:18px;
   background:rgba(var(--card-rgb),.76);
@@ -1170,6 +1222,11 @@
   .orgAdminSearch{
     min-width:0;
     width:100%;
+  }
+
+  .orgAdminCommand{
+    align-items:stretch;
+    flex-direction:column;
   }
 }
 

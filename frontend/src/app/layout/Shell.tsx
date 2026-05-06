@@ -80,15 +80,12 @@ const groups: ShellNavGroup[] = [
         title: "Организация",
         items: [
           { href: "/admin/organizations", label: "Организация", page: "admin_access" },
-          { href: "/admin/members", label: "Команда", page: "admin_access" },
-          { href: "/admin/invites", label: "Инвайты", page: "admin_access" },
         ],
       },
       {
         title: "Права",
         items: [
           { href: "/admin/access", label: "Права и роли", page: "admin_access" },
-          { href: "/admin/platform", label: "Платформа", page: "admin_access", developerOnly: true },
         ],
       },
     ],
@@ -252,7 +249,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                   <div className="logo" />
                   <div className="shellSidebarBrandText">
                     <div className="shellSidebarBrandTitle">SmartPim</div>
-                    <div className="shellSidebarBrandSub">Control surface</div>
+                    <div className="shellSidebarBrandSub">Рабочая панель</div>
                   </div>
                 </Link>
               </div>

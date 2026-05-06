@@ -5,7 +5,6 @@ import DataList from "../../components/data/DataList";
 import DataTable from "../../components/data/DataTable";
 import InspectorPanel from "../../components/data/InspectorPanel";
 import MetricGrid from "../../components/data/MetricGrid";
-import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -59,21 +58,18 @@ type WorkspaceBootstrapResp = {
   selected_organization: OrganizationRow;
   members: MemberRow[];
   invites: InviteRow[];
-  platform_roles: Array<{ code: string; name: string }>;
-  flags?: { is_developer?: boolean };
 };
 
-type AdminMode = "organizations" | "members" | "invites" | "platform";
+type AdminMode = "organizations" | "members" | "invites";
 
 type Props = {
-  initialTab: AdminMode;
+  initialTab: AdminMode | "platform";
 };
 
 const TAB_TO_PATH: Record<AdminMode, string> = {
   organizations: "/admin/organizations",
   members: "/admin/members",
   invites: "/admin/invites",
-  platform: "/admin/platform",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -131,7 +127,7 @@ function pluralRu(value: number, forms: [string, string, string]) {
 export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentOrganization, switchOrganization, isDeveloper, provisioningStatus } = useAuth();
+  const { currentOrganization, switchOrganization } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -144,7 +140,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const [inviteRole, setInviteRole] = useState("org_editor");
   const [inviteResult, setInviteResult] = useState("");
 
-  const activeTab: AdminMode = initialTab === "platform" && !isDeveloper ? "organizations" : initialTab;
+  const activeTab: AdminMode = initialTab === "platform" ? "organizations" : initialTab;
   const selectedOrganizationId = searchParams.get("organization") || currentOrganization?.id || "";
 
   async function load(targetOrganizationId?: string) {
@@ -202,7 +198,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const searchPlaceholder =
     activeTab === "organizations" ? "Поиск организации" :
     activeTab === "members" ? "Поиск сотрудника" :
-    activeTab === "invites" ? "Поиск инвайта" :
+    activeTab === "invites" ? "Поиск приглашения" :
     "Поиск";
 
   async function handleOrganizationSelect(nextOrganizationId: string) {
@@ -252,39 +248,21 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     await navigator.clipboard.writeText(inviteResult);
   }
 
-  const sidebar = (
-    <div className="orgAdminSidebar">
-      <div className="orgAdminSidebarHead">
-        <div>
-          <div className="orgAdminSidebarTitle">Организации</div>
-          <div className="orgAdminSidebarMeta">{organizationRows.length} доступно</div>
-        </div>
-        <Button onClick={() => void load()}>Обновить</Button>
-      </div>
-      <div className="orgAdminSidebarList">
-        {organizationRows.map((organization) => (
-          <button
-            key={organization.id}
-            type="button"
-            className={`orgAdminOrgCard${organization.id === selectedOrganizationId ? " active" : ""}`}
-            onClick={() => void handleOrganizationSelect(organization.id)}
-          >
-            <div className="orgAdminOrgTop">
-              <div>
-                <div className="orgAdminOrgName">{organization.name}</div>
-                <div className="orgAdminOrgMeta">{organizationCaption(organization)}</div>
-              </div>
-              <Badge tone={badgeToneFromStatus(organization.status)}>{statusLabel(organization.status)}</Badge>
-            </div>
-            <div className="orgAdminOrgStats">
-              <span>{organization.member_count} {pluralRu(organization.member_count, ["сотрудник", "сотрудника", "сотрудников"])}</span>
-              <span>{organization.pending_invite_count} {pluralRu(organization.pending_invite_count, ["приглашение", "приглашения", "приглашений"])}</span>
-            </div>
-          </button>
-        ))}
-      </div>
+  const organizationSwitcher = organizationRows.length > 1 ? (
+    <div className="orgAdminSwitcher" aria-label="Выбор организации">
+      {organizationRows.map((organization) => (
+        <button
+          key={organization.id}
+          type="button"
+          className={`orgAdminSwitchCard${organization.id === selectedOrganizationId ? " active" : ""}`}
+          onClick={() => void handleOrganizationSelect(organization.id)}
+        >
+          <span>{organization.name}</span>
+          <Badge tone={badgeToneFromStatus(organization.status)}>{statusLabel(organization.status)}</Badge>
+        </button>
+      ))}
     </div>
-  );
+  ) : null;
 
   const inspector = (
     <div className="orgAdminInspectorStack">
@@ -303,7 +281,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       </InspectorPanel>
 
       {activeTab === "invites" ? (
-        <InspectorPanel title="Инвайт" subtitle={selectedInvite?.email || "Нет активного выбора"}>
+        <InspectorPanel title="Приглашение" subtitle={selectedInvite?.email || "Нет активного выбора"}>
           {selectedInvite ? (
             <div className="orgAdminInspectorRows">
               <div><span>Роль</span><strong>{roleLabel(selectedInvite.org_role_code)}</strong></div>
@@ -313,20 +291,11 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
               <div><span>Принят</span><strong>{formatDate(selectedInvite.accepted_at)}</strong></div>
             </div>
           ) : (
-            <div className="dataListEmpty">Инвайты пока отсутствуют.</div>
+            <div className="dataListEmpty">Приглашений пока нет.</div>
           )}
         </InspectorPanel>
       ) : null}
 
-      {activeTab === "platform" && isDeveloper ? (
-        <InspectorPanel title="Платформа" subtitle="Служебный режим">
-          <div className="orgAdminInspectorRows">
-            <div><span>Организация</span><strong>{currentOrganization?.name || "—"}</strong></div>
-            <div><span>Состояние</span><strong>{statusLabel(provisioningStatus?.organization?.status || selectedOrganization?.status)}</strong></div>
-            <div><span>Последняя задача</span><strong>{statusLabel(provisioningStatus?.latest_job?.status)}</strong></div>
-          </div>
-        </InspectorPanel>
-      ) : null}
     </div>
   );
 
@@ -335,22 +304,24 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       <div className="orgAdminCommand">
         <div>
           <div className="orgAdminCommandTitle">
-            {activeTab === "organizations" ? "Организация" : activeTab === "members" ? "Команда" : activeTab === "invites" ? "Приглашения" : "Платформа"}
+            {activeTab === "organizations" ? "Организация" : activeTab === "members" ? "Команда" : "Приглашения"}
           </div>
           <div className="orgAdminCommandMeta">
             {selectedOrganization ? `${selectedOrganization.name} · ${organizationCaption(selectedOrganization)}` : "Организация не выбрана"}
           </div>
         </div>
-        <TextInput
-          className="orgAdminSearch"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={searchPlaceholder}
-        />
+        {activeTab === "members" || activeTab === "invites" ? (
+          <TextInput
+            className="orgAdminSearch"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={searchPlaceholder}
+          />
+        ) : null}
       </div>
 
       {loading ? <div className="pageLoading">Загрузка...</div> : null}
-      {!loading && !selectedOrganization ? <EmptyState title="Нет доступной организации" description="Организация нужна для управления сотрудниками и инвайтами." /> : null}
+      {!loading && !selectedOrganization ? <EmptyState title="Нет доступной организации" description="Организация нужна для управления сотрудниками и приглашениями." /> : null}
 
       {!loading && selectedOrganization && activeTab === "organizations" ? (
         <div className="orgAdminOrgOverview">
@@ -427,7 +398,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
               </Select>
             </Field>
             <Button type="submit" variant="primary" disabled={submittingInvite || !inviteEmail.trim()}>
-              {submittingInvite ? "Создаем..." : "Создать инвайт"}
+              {submittingInvite ? "Создаем..." : "Создать приглашение"}
             </Button>
             {inviteResult ? (
               <div className="orgAdminInviteResult">
@@ -442,7 +413,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
             gridTemplate="minmax(150px,1fr) 96px 72px 92px"
             rows={filteredInvites}
             rowKey={(invite) => invite.id}
-            empty="Инвайты не найдены."
+            empty="Приглашения не найдены."
             columns={[
               {
                 key: "invite",
@@ -462,20 +433,10 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         </div>
       ) : null}
 
-      {!loading && selectedOrganization && activeTab === "platform" && isDeveloper ? (
-        <MetricGrid
-          className="orgAdminPlatform"
-          items={[
-            { label: "Организация", value: currentOrganization?.name || "—" },
-            { label: "Состояние", value: statusLabel(provisioningStatus?.organization?.status || selectedOrganization.status) },
-            { label: "Последняя задача", value: statusLabel(provisioningStatus?.latest_job?.status) },
-          ]}
-        />
-      ) : null}
     </div>
   );
 
-  const showInlineInspector = activeTab === "invites" || (activeTab === "platform" && isDeveloper);
+  const showInlineInspector = activeTab === "invites";
 
   return (
     <div className="page-shell orgAdminPage">
@@ -491,8 +452,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         items={[
           { key: "organizations", label: "Организации" },
           { key: "members", label: "Команда" },
-          { key: "invites", label: "Инвайты" },
-          ...(isDeveloper ? [{ key: "platform", label: "Платформа" }] : []),
+          { key: "invites", label: "Приглашения" },
         ]}
         onChange={(key) => {
           const next = key as AdminMode;
@@ -502,16 +462,13 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
 
       {error ? <Alert tone="error" className="orgAdminNotice">{error}</Alert> : null}
 
-      <WorkspaceFrame
-        className="orgAdminWorkspace"
-        sidebar={sidebar}
-        main={(
-          <div className={`orgAdminWorkSurface${showInlineInspector ? "" : " noInspector"}`}>
-            <div className="orgAdminWorkMain">{main}</div>
-            {showInlineInspector ? <aside className="orgAdminInlineInspector">{inspector}</aside> : null}
-          </div>
-        )}
-      />
+      <div className="orgAdminWorkspaceFlat">
+        {organizationSwitcher}
+        <div className={`orgAdminWorkSurface${showInlineInspector ? "" : " noInspector"}`}>
+          <div className="orgAdminWorkMain">{main}</div>
+          {showInlineInspector ? <aside className="orgAdminInlineInspector">{inspector}</aside> : null}
+        </div>
+      </div>
     </div>
   );
 }

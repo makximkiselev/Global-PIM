@@ -54,7 +54,7 @@ export default function InviteAccept() {
     <AuthShell
       mode="invite"
       title="Принять приглашение"
-      subtitle="Подтверди пользователя и войди в организацию по инвайт-ссылке."
+      subtitle="Подтвердите пользователя и войдите в организацию по ссылке-приглашению."
       showModeTabs={false}
     >
       <form className="authForm authFormPremium" onSubmit={onSubmit}>

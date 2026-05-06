@@ -15,8 +15,62 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 7. Connector/admin pages were improved once but still need cleanup and consistency checks.
 8. Competitor discovery exists conceptually and partially in product/category workflows, but matching quality still needs iteration.
 
+## Current Execution Priority
+
+Status: active / user-path order accepted on 2026-05-06.
+
+Work must follow the real first-run user path, not isolated technical pages:
+
+1. `P0 Auth + Registration`
+   - login;
+   - organization registration;
+   - expired session;
+   - first owner creation;
+   - no technical text or broken transitions.
+2. `P0 Administration`
+   - organization profile;
+   - team;
+   - invites;
+   - rights and roles;
+   - password change and logout.
+3. `P0 Catalog Workflow`
+   - catalog tree;
+   - products;
+   - create product;
+   - product groups;
+   - product media;
+   - infographics;
+   - import/export.
+4. `P0 Data Sources`
+   - marketplace/source connections;
+   - stores;
+   - competitors;
+   - access checks and source errors.
+5. `P0 Info Models + Mapping`
+   - model creation;
+   - category mapping;
+   - parameter mapping;
+   - value mapping;
+   - competitor/platform evidence;
+   - readiness checks.
+6. `P1 Product Card Polish`.
+7. `P1 Import/Export Polish`.
+8. `P1 DB ownership maps and schema cleanup`.
+
+Rule:
+
+1. For each block, complete a vertical slice: scenario, data/API needs, UI, browser QA, build, deploy, commit.
+2. Do not jump to later product workflows until auth/admin baseline is usable.
+3. Browser Use/in-app browser is preferred for QA; if the bridge cannot see the pane, record the blocker and run available build/HTTP checks.
+
 ## Completed Recent Slices
 
+1. Admin first-run cleanup
+   - left navigation now keeps administration to two user-facing entries: `Организация` and `Права и роли`;
+   - team and invitations are internal tabs of the organization page instead of separate left-menu destinations;
+   - developer/service platform panel was removed from the visible administration UI;
+   - English shell label and technical authorization copy were replaced with Russian user-facing text;
+   - Browser Use QA is currently blocked because the in-app bridge does not see an active pane; build verification passed.
 1. `/sources` competitor/channel separation
    - added dedicated `/data-prep/competitors` page under `Инфо-модели`;
    - moved competitor discovery/mapping UI code to `frontend/src/domains/data-prep`;

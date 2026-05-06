@@ -394,7 +394,7 @@ export default function AdminAccessFeature() {
               Создать
             </button>
           </div>
-          {tab === "users" ? <div className="accessListHint">Показываются пользователи модуля авторизации.</div> : null}
+          {tab === "users" ? <div className="accessListHint">Пользователи, которым можно назначать роли и права.</div> : null}
           <div className="accessList">
             {tab === "users"
               ? usersByRole.map((group) => (
@@ -657,7 +657,7 @@ export default function AdminAccessFeature() {
             <div className="modalHeader">
               <div>
                 <div className="modalTitle">Новый пользователь</div>
-                <div className="modalSubtitle">Создание пользователя модуля авторизации.</div>
+                <div className="modalSubtitle">Создай пользователя и сразу назначь ему роль.</div>
               </div>
               <button className="btn" onClick={() => setShowCreateUserModal(false)} disabled={saving}>Закрыть</button>
             </div>
