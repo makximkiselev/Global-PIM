@@ -65,6 +65,14 @@ Rule:
 
 ## Completed Recent Slices
 
+1. Profile and administration verification
+   - checked profile/admin frontend contracts: `/profile`, `/admin/organizations`, `/admin/members`, `/admin/invites`, and `/admin/access`;
+   - checked backend contracts: `/auth/session`, `/auth/change-password`, `/auth/admin/bootstrap`, and `/platform/workspace/bootstrap`;
+   - added backend coverage for profile password change: wrong current password is rejected, correct password updates credentials, old password stops working, new password logs in;
+   - verified production SPA routes `/profile`, `/admin/organizations`, and `/admin/access` return the application shell;
+   - verified unauthenticated production `/auth/session` remains public and protected admin endpoints remain closed;
+   - checked production DB control-plane state: `org_default` is `Global Trade`, active, with owner and Codex QA memberships; pending invites are zero;
+   - `make test`, `make check-backend`, and `cd frontend && npm run build` passed.
 1. User profile page
    - added protected `/profile` page for the current user;
    - clicking the user avatar in the left rail now opens the profile page;

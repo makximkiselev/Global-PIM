@@ -109,6 +109,32 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(session_after_logout.status_code, 200)
         self.assertEqual(session_after_logout.json()["authenticated"], False)
 
+    def test_authenticated_user_can_change_password_from_profile(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        invalid_current = self.client.post(
+            "/api/auth/change-password",
+            json={"current_password": "wrong-password", "new_password": "newpass123"},
+        )
+        self.assertEqual(invalid_current.status_code, 400)
+        self.assertIn("INVALID_CURRENT_PASSWORD", invalid_current.text)
+
+        changed = self.client.post(
+            "/api/auth/change-password",
+            json={"current_password": "testpass123", "new_password": "newpass123"},
+        )
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.json()["ok"], True)
+
+        self.client.post("/api/auth/logout")
+        old_password_login = self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+        self.assertEqual(old_password_login.status_code, 401)
+
+        new_password_login = self.client.post("/api/auth/login", json={"login": "owner", "password": "newpass123"})
+        self.assertEqual(new_password_login.status_code, 200)
+        self.assertEqual(new_password_login.json()["authenticated"], True)
+
     def test_owner_can_open_admin_bootstrap_after_login(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
