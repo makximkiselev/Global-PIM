@@ -179,7 +179,7 @@ function ProductsResultsTable({
   );
 }
 
-export default function CatalogImportFeature() {
+export default function CatalogImportFeature({ embedded = false }: { embedded?: boolean } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
@@ -398,18 +398,20 @@ export default function CatalogImportFeature() {
 
   return (
     <div className="cx-page cx-pageModern">
-      <PageHeader
-        title="Импорт контента"
-        subtitle="Заполняй товары через Яндекс.Маркет и конкурентные источники без переходов между отдельными экранами."
-        actions={(
-          <>
-            <Link className="btn" to="/catalog">К каталогу</Link>
-            <Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
-              {loading ? "Заполняю…" : "Запустить заполнение"}
-            </Button>
-          </>
-        )}
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Импорт контента"
+          subtitle="Заполняй товары через Яндекс.Маркет и конкурентные источники без переходов между отдельными экранами."
+          actions={(
+            <>
+              <Link className="btn" to="/catalog">К каталогу</Link>
+              <Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
+                {loading ? "Заполняю…" : "Запустить заполнение"}
+              </Button>
+            </>
+          )}
+        />
+      ) : null}
 
       {err ? <div className="card cx-error">{err}</div> : null}
 

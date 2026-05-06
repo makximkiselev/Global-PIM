@@ -41,7 +41,7 @@ function SummaryMetricRow({ items }: { items: MetricItem[] }) {
   );
 }
 
-export default function CatalogExportFeature() {
+export default function CatalogExportFeature({ embedded = false }: { embedded?: boolean } = {}) {
   const [searchParams] = useSearchParams();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
@@ -166,18 +166,20 @@ export default function CatalogExportFeature() {
 
   return (
     <div className="cx-page cx-pageModern">
-      <PageHeader
-        title="Экспорт"
-        subtitle="Собирай batch-выгрузку по выбранным каналам и магазинам из той же рабочей области, где отбирается каталог."
-        actions={(
-          <>
-            <Link className="btn" to="/products">К товарам</Link>
-            <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>
-              {loading ? "Готовлю…" : "Подготовить экспорт"}
-            </Button>
-          </>
-        )}
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Экспорт"
+          subtitle="Собирай batch-выгрузку по выбранным каналам и магазинам из той же рабочей области, где отбирается каталог."
+          actions={(
+            <>
+              <Link className="btn" to="/products">К товарам</Link>
+              <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>
+                {loading ? "Готовлю…" : "Подготовить экспорт"}
+              </Button>
+            </>
+          )}
+        />
+      ) : null}
 
       {err ? <div className="card cx-error">{err}</div> : null}
 

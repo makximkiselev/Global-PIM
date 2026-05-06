@@ -33,6 +33,19 @@ Do not add new top-level menu groups without explicit approval. New workflows mu
 
 Menu labels must describe the user's task. Prefer `Импортировать товары`, `Собрать модель`, `Сопоставить параметры`, `Настроить значения`, and `Выгрузить товары` over technical nouns.
 
+Current submenu contract:
+
+1. `Сводка` contains `Рабочая сводка`.
+2. `Каталог` contains `Каталог`, `Товары`, `Группы`, `Медиа по товарам`, `Создание инфографики`, and `Импорт / Экспорт`.
+3. `Инфо-модели` contains `Инфо-модели`, `Сопоставления`, and `Источники данных`.
+4. `Администрирование` contains `Организация` and `Права и роли`.
+
+Use tabs inside a page for close variants of the same work:
+
+1. `Импорт / Экспорт` owns import/export tabs.
+2. `Сопоставления` owns category, parameter, value, competitor/platform evidence, and check tabs.
+3. `Источники данных` owns marketplace, competitor, store, and connection-status tabs/sections.
+
 `Сопоставить параметры` and `Сопоставление категорий` belong to the info-model workflow. Export belongs to the product catalog workflow.
 
 Media is not a separate top-level zone. Product media lives in the product card and product workflows; infographics and bulk media preparation live under `Каталог`.

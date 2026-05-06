@@ -28,30 +28,28 @@ const groups: ShellNavGroup[] = [
   {
     title: "Каталог",
     icon: "catalog",
-    summary: "Категории, товары, группы, медиа, импорт, экспорт и индекс контента.",
+    summary: "Категории, товары, группы, медиа, инфографика, импорт и экспорт.",
     flow: ["каталог", "товары", "медиа", "обмен"],
     sections: [
       {
-        title: "Товары",
+        title: "Работа с товарами",
         items: [
-          { href: "/catalog", label: "Каталог товаров", page: "catalog" },
+          { href: "/catalog", label: "Каталог", page: "catalog" },
           { href: "/products", label: "Товары", page: "products" },
-          { href: "/catalog/groups", label: "Группы товаров", page: "product_groups" },
+          { href: "/catalog/groups", label: "Группы", page: "product_groups" },
         ],
       },
       {
-        title: "Медиа и качество",
+        title: "Медиа",
         items: [
-          { href: "/products/media", label: "Медиа товаров", page: "infographics" },
+          { href: "/products/media", label: "Медиа по товарам", page: "infographics" },
           { href: "/images/infographics", label: "Создание инфографики", page: "infographics" },
-          { href: "/catalog/content-index", label: "Индекс контента", page: "stats_card_quality" },
         ],
       },
       {
         title: "Обмен",
         items: [
-          { href: "/catalog/import", label: "Импортировать товары", page: "catalog_import" },
-          { href: "/catalog/export", label: "Экспорт товаров", page: "catalog_export" },
+          { href: "/catalog/exchange", label: "Импорт / Экспорт", pages: ["catalog_import", "catalog_export"] },
         ],
       },
     ],
@@ -59,24 +57,15 @@ const groups: ShellNavGroup[] = [
   {
     title: "Инфо-модели",
     icon: "models",
-    summary: "Инфо-модели, сопоставление категорий, параметры, словари и источники.",
+    summary: "Инфо-модели, сопоставления и источники данных.",
     flow: ["категории", "параметры", "модель", "источники"],
     sections: [
       {
-        title: "Модель и сопоставления",
+        title: "Рабочие области",
         items: [
           { href: "/templates", label: "Инфо-модели", page: "templates" },
-          { href: "/sources?tab=sources", label: "Сопоставление категорий", page: "sources_mapping" },
-          { href: "/sources?tab=params", label: "Сопоставить параметры", page: "sources_mapping" },
-          { href: "/sources?tab=values", label: "Значения параметров", page: "sources_mapping" },
-          { href: "/dictionaries", label: "Словари", page: "dictionaries" },
-        ],
-      },
-      {
-        title: "Источники",
-        items: [
-          { href: "/data-prep/competitors", label: "Источники конкурентов", page: "sources_mapping" },
-          { href: "/connectors/status", label: "Источники площадок", page: "connectors_status" },
+          { href: "/sources?tab=sources", label: "Сопоставления", page: "sources_mapping" },
+          { href: "/connectors/status", label: "Источники данных", page: "connectors_status" },
         ],
       },
     ],
@@ -131,6 +120,7 @@ function filterGroups(canPage: (code: string) => boolean, isDeveloper: boolean):
           ...section,
           items: section.items.filter((item) => {
             if (item.developerOnly && !isDeveloper) return false;
+            if (item.pages?.length) return item.pages.some((page) => canPage(page));
             return !item.page || canPage(item.page);
           }),
         }))

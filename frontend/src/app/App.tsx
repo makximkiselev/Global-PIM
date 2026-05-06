@@ -12,8 +12,7 @@ import ProductRoute from "../routes/ProductRoute";
 import ProductGroupsRoute from "../routes/ProductGroupsRoute";
 import Infographics from "../domains/data-prep/InfographicsFeature";
 import CompetitorSourcesFeature from "../domains/data-prep/CompetitorSourcesFeature";
-import CatalogImportRoute from "../routes/CatalogImportRoute";
-import CatalogExportRoute from "../routes/CatalogExportRoute";
+import CatalogExchangeFeature from "../domains/products/CatalogExchangeFeature";
 
 // ✅ mapping
 import Placeholder from "../shared/placeholders/Placeholder";
@@ -49,6 +48,14 @@ function RequirePage({ page, children }: { page: string; children: JSX.Element }
   return children;
 }
 
+function RequireAnyPage({ pages, children }: { pages: string[]; children: JSX.Element }) {
+  const { loading, authenticated, canPage, user } = useAuth();
+  if (loading) return <div className="pageLoading">Загрузка...</div>;
+  if (!authenticated || !user) return <Navigate to="/login" replace />;
+  if (!pages.some((page) => canPage(page))) return <SessionKickToLogin reason="denied" />;
+  return children;
+}
+
 function ProtectedApp() {
   return (
     <Shell>
@@ -59,8 +66,9 @@ function ProtectedApp() {
         <Route path="/products/media" element={<RequirePage page="infographics"><Placeholder title="Медиа товаров" /></RequirePage>} />
         <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
         <Route path="/products" element={<RequirePage page="products"><ProductListRoute /></RequirePage>} />
-        <Route path="/catalog/import" element={<RequirePage page="catalog_import"><CatalogImportRoute /></RequirePage>} />
-        <Route path="/catalog/export" element={<RequirePage page="catalog_export"><CatalogExportRoute /></RequirePage>} />
+        <Route path="/catalog/exchange" element={<RequireAnyPage pages={["catalog_import", "catalog_export"]}><CatalogExchangeFeature /></RequireAnyPage>} />
+        <Route path="/catalog/import" element={<Navigate to="/catalog/exchange?tab=import" replace />} />
+        <Route path="/catalog/export" element={<Navigate to="/catalog/exchange?tab=export" replace />} />
 
         <Route path="/templates" element={<RequirePage page="templates"><TemplatesRoute /></RequirePage>} />
         <Route path="/templates/:categoryId" element={<RequirePage page="templates"><TemplateEditorRoute /></RequirePage>} />

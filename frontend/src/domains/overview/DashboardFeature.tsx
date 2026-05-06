@@ -182,7 +182,7 @@ export default function DashboardFeature() {
     {
       title: "Открыть импорт",
       text: "Загрузить Excel и создать или обновить товары в каталоге.",
-      to: "/catalog/import",
+      to: "/catalog/exchange?tab=import",
       label: "Импорт",
     },
     {
@@ -283,14 +283,14 @@ export default function DashboardFeature() {
             </div>
           </div>
           <div className="controlCenterOperations">
-            <Link className="controlCenterOperationRow" to="/catalog/import">
+            <Link className="controlCenterOperationRow" to="/catalog/exchange?tab=import">
               <div>
                 <strong>Импорт каталога</strong>
                 <small>Загрузка Excel и импорт в товары.</small>
               </div>
               <span>Импорт</span>
             </Link>
-            <Link className="controlCenterOperationRow" to="/catalog/export">
+            <Link className="controlCenterOperationRow" to="/catalog/exchange?tab=export">
               <div>
                 <strong>Экспорт данных</strong>
                 <small>Выгрузка подготовленных данных и контроль ошибок.</small>

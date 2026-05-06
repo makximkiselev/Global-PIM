@@ -90,7 +90,7 @@ Current note:
 
 ## P0 - Product Navigation, Module Ownership, And DB Maps
 
-Status: active / product structure accepted on 2026-05-05.
+Status: active / product structure accepted on 2026-05-05, menu-vs-tabs contract updated on 2026-05-06.
 
 Goal:
 
@@ -123,12 +123,39 @@ Menu rule:
 3. submenu labels must be action-oriented where possible;
 4. do not duplicate the same operation in multiple left-menu groups.
 
+Accepted submenu contract:
+
+1. `Сводка`:
+   - `Рабочая сводка`.
+2. `Каталог`:
+   - `Каталог`;
+   - `Товары`;
+   - `Группы`;
+   - `Медиа по товарам`;
+   - `Создание инфографики`;
+   - `Импорт / Экспорт`.
+3. `Инфо-модели`:
+   - `Инфо-модели`;
+   - `Сопоставления`;
+   - `Источники данных`.
+4. `Администрирование`:
+   - `Организация`;
+   - `Права и роли`.
+
+Tab contract:
+
+1. `Импорт / Экспорт` owns tabs `Импорт товаров` and `Экспорт товаров`; old `/catalog/import` and `/catalog/export` URLs must redirect to the matching tab.
+2. `Сопоставления` owns tabs for categories, parameters, values, competitors/platform evidence, and checks; these should not be separate menu items.
+3. `Источники данных` owns tabs/sections for marketplaces, competitors, stores, and connection status; these should not be separate menu items.
+4. `Организация` owns tabs for profile, team, and invites.
+5. `Права и роли` owns tabs/sections for roles, access, and developer-only platform settings.
+
 Route ownership:
 
 | Zone | Routes | Primary task |
 | --- | --- | --- |
 | `Сводка` | `/` | Show what needs attention and where to continue. |
-| `Каталог` | `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/products/media`, `/images/infographics`, `/catalog/content-index`, `/catalog/import`, `/catalog/export` | Manage product categories, SKU, product cards, groups, media, import, export, and final catalog state. |
+| `Каталог` | `/catalog`, `/products`, `/products/new`, `/products/:productId`, `/catalog/groups`, `/products/media`, `/images/infographics`, `/catalog/content-index`, `/catalog/exchange?tab=import`, `/catalog/exchange?tab=export` | Manage product categories, SKU, product cards, groups, media, import, export, and final catalog state. |
 | `Инфо-модели` | `/templates`, `/templates/:categoryId`, `/sources?tab=sources`, `/sources?tab=params`, `/sources?tab=values`, `/dictionaries`, `/dictionaries/:dictId`, `/data-prep/competitors`, `/connectors/status` | Build info-models, match categories and parameters, manage dictionaries, and connect external sources. |
 | `Администрирование` | `/admin/organizations`, `/admin/members`, `/admin/invites`, `/admin/access`, `/admin/platform` | Manage organization, team, permissions, and platform context. |
 
