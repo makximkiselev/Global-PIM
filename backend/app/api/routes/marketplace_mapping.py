@@ -2619,6 +2619,12 @@ def _build_competitor_states(catalog_nodes: List[Dict[str, Any]], catalog_items:
             "configured": _competitor_is_configured_row(effective_row),
             "template_id": template_id or None,
             "source_category_id": source_category_id or None,
+            "inherited": bool(source_category_id and source_category_id != cid),
+            "links": dict(effective_row.get("links") or {}),
+            "mapping_counts": {
+                "restore": len((effective_row.get("mapping_by_site") or {}).get("restore") or {}),
+                "store77": len((effective_row.get("mapping_by_site") or {}).get("store77") or {}),
+            },
         }
     return out
 

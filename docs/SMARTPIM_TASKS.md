@@ -425,6 +425,10 @@ Rules:
 7. category mapping status must use `/api/marketplaces/mapping/issues` as an overlay; if a provider has `category_needs_reselect`, UI shows `Требует перевыбора`, not `Связано`.
 8. dashboard alert links must open the exact problematic category and visually highlight the affected category/provider.
 9. decorative header badges/labels without action are removed from mapping pages.
+10. category source mapping must show marketplace channels and competitor source readiness in one selected-category workspace:
+    marketplace channels decide where products are exported;
+    competitor sources (`re-store`, `store77`) decide where values are parsed from for enrichment;
+    competitor setup opens the category-level competitor mapping screen, not a separate hidden mental model.
 
 Next tasks:
 
@@ -433,7 +437,8 @@ Next tasks:
 3. verify competitor evidence from re-store/store77;
 4. remove duplicate counters/tabs in parameter mapping. Status: first pass done for `/sources?tab=params`;
 5. make binding edit action obvious. Status: first pass done for stale Ozon mapping on `/sources-mapping?tab=sources`;
-6. inspect and simplify value mapping.
+6. add visible competitor readiness/actions to `/sources-mapping?tab=sources`. Status: done 2026-05-07;
+7. inspect and simplify value mapping.
 
 ## P0 - Database Ownership Audit
 

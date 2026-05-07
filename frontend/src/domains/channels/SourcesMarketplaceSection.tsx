@@ -147,6 +147,9 @@ type CategoriesResp = {
     configured: boolean;
     template_id?: string | null;
     source_category_id?: string | null;
+    inherited?: boolean;
+    links?: Partial<Record<CompetitorSiteKey, string>>;
+    mapping_counts?: Partial<Record<CompetitorSiteKey, number>>;
   }>;
 };
 
@@ -1918,6 +1921,28 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     };
   }
 
+  function competitorSourceMeta(nodeId: string) {
+    const state = competitorStates?.[nodeId] || null;
+    const links = state?.links || {};
+    const counts = state?.mapping_counts || {};
+    const hasRestore = !!String(links.restore || "").trim();
+    const hasStore77 = !!String(links.store77 || "").trim();
+    const mappedRestore = Number(counts.restore || 0);
+    const mappedStore77 = Number(counts.store77 || 0);
+    const configured = !!state?.configured;
+    const inheritedFrom = state?.inherited && state.source_category_id ? String(state.source_category_id) : "";
+    return {
+      configured,
+      inheritedFrom,
+      statusLabel: configured ? "Готово" : hasRestore || hasStore77 ? "Нужно сопоставить поля" : "Нужно подобрать",
+      statusClass: configured ? "isOwn" : hasRestore || hasStore77 ? "isInherit" : "isEmpty",
+      sites: [
+        { code: "restore" as CompetitorSiteKey, title: "re-store", hasLink: hasRestore, mappedCount: mappedRestore },
+        { code: "store77" as CompetitorSiteKey, title: "store77", hasLink: hasStore77, mappedCount: mappedStore77 },
+      ],
+    };
+  }
+
   function descendantDirectBindings(nodeId: string, providerCode: string): Array<{
     providerCategoryId: string;
     providerCategory: ProviderCategory | null;
@@ -2869,6 +2894,55 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   </div>
                                 );
                               })}
+                              {(() => {
+                                const competitorMeta = competitorSourceMeta(selectedCatalogNode.id);
+                                const competitorHref = `/competitor-mapping/category/${encodeURIComponent(selectedCatalogNode.id)}`;
+                                return (
+                                  <div className={`mm-providerDetailCard mm-competitorSourceCard ${competitorMeta.configured ? "is-ready" : "is-missing"}`}>
+                                    <div className="mm-providerDetailHead">
+                                      <div className="mm-providerLead">
+                                        <div className="mm-lineProvider">Конкуренты для насыщения</div>
+                                        <div className={`mm-providerState ${competitorMeta.statusClass}`}>
+                                          {competitorMeta.statusLabel}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="mm-lineContent">
+                                      <div className="mm-competitorSourceGrid">
+                                        {competitorMeta.sites.map((site) => (
+                                          <div key={site.code} className={`mm-competitorSourceItem ${site.hasLink ? "is-linked" : "is-empty"}`}>
+                                            <div>
+                                              <div className="mm-competitorSourceName">{site.title}</div>
+                                              <div className="mm-competitorSourceMeta">
+                                                {site.hasLink ? `${site.mappedCount} полей сопоставлено` : "Ссылка на источник не задана"}
+                                              </div>
+                                            </div>
+                                            <span>{site.hasLink ? "Есть ссылка" : "Нет ссылки"}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="mm-competitorSourceHint">
+                                        Эти ссылки нужны для парсинга значений конкурентов и дальнейшего насыщения товаров в выбранной категории.
+                                      </div>
+                                      {competitorMeta.inheritedFrom ? (
+                                        <button type="button" className="mm-aggLink" onClick={() => revealCatalogNode(competitorMeta.inheritedFrom)}>
+                                          Наследуется от категории: {splitPath(pathById.get(competitorMeta.inheritedFrom) || competitorMeta.inheritedFrom).node}
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                    <div className="mm-providerActionsBar">
+                                      <div className="mm-providerActionBtns">
+                                        <Link className="btn mm-miniBtn mm-actBtn" to={competitorHref}>
+                                          Настроить конкурентов
+                                        </Link>
+                                        <Link className="btn mm-miniBtn mm-ghostBtn" to={`${competitorHref}?view=links`}>
+                                          Добавить ссылки
+                                        </Link>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
 
