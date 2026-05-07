@@ -67,7 +67,7 @@ export default function SourcesMappingFeature() {
   const tabDescription = useMemo(
     () =>
       tab === "sources"
-        ? "Выберите PIM-категорию, сопоставьте каналы выгрузки и подтвердите ветки конкурентов для насыщения товаров."
+        ? "Выберите PIM-категорию, сопоставьте площадки и подтвердите конкурентные карточки для насыщения товаров."
         : tab === "params"
           ? "Свяжите параметры инфо-модели с полями каналов и проверьте обязательные поля для выгрузки."
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
@@ -166,7 +166,7 @@ export default function SourcesMappingFeature() {
   return (
     <div className="page-shell sourcesMappingPage">
       <PageHeader
-        title="Каналы"
+        title="Сопоставления"
         subtitle={tabDescription}
         actions={selectedCategoryName ? <Badge tone="active">{selectedCategoryName}</Badge> : null}
       />
