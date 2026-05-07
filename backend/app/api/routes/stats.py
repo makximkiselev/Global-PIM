@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import APIRouter
+from app.api.routes import marketplace_mapping
 from app.core.json_store import read_doc
 from app.storage.relational_pim_store import (
     load_catalog_nodes,
@@ -71,7 +72,14 @@ def _build_stats_summary() -> Dict[str, Any]:
         "templates": int(templates_count),
         "connectors_configured": int(comp_configured),
         "connectors_total": int(comp_total),
+        "mapping_issues": marketplace_mapping.audit_category_mapping_issues(limit=8),
     }
+
+
+def _with_operational_alerts(payload: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(payload or {})
+    out["mapping_issues"] = marketplace_mapping.audit_category_mapping_issues(limit=8)
+    return out
 
 
 def _store_stats_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -105,15 +113,15 @@ def get_stats_summary_cached() -> Dict[str, Any]:
         payload = _SUMMARY_CACHE.get("payload")
         expires_at = float(_SUMMARY_CACHE.get("expires_at") or 0.0)
     if payload and expires_at > now:
-        return payload
+        return _with_operational_alerts(payload)
     if payload:
         _refresh_stats_summary_in_background()
-        return payload
+        return _with_operational_alerts(payload)
     persisted = load_dashboard_stats_summary()
     if persisted:
         _store_stats_summary(persisted)
         _refresh_stats_summary_in_background()
-        return persisted
+        return _with_operational_alerts(persisted)
     return warm_stats_summary()
 
 

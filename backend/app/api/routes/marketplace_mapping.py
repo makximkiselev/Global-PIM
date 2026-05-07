@@ -63,6 +63,7 @@ ATTR_VALUES_DICT_PATH = MARKETPLACES_DIR / "attribute_value_dictionary.json"
 CATALOG_NODES_PATH = DATA_DIR / "catalog_nodes.json"
 YANDEX_CATEGORY_PARAMS_PATH = MARKETPLACES_DIR / "yandex_market" / "category_parameters.json"
 OZON_CATEGORY_ATTRS_PATH = MARKETPLACES_DIR / "ozon" / "category_attributes.json"
+MAPPING_ISSUES_PATH = MARKETPLACES_DIR / "category_mapping_issues.json"
 ATTR_FEEDBACK_PATH = MARKETPLACES_DIR / "attribute_match_feedback.json"
 ATTR_DETAILS_CACHE_DIR = CACHE_DIR / "attr_details"
 
@@ -805,6 +806,206 @@ def _load_ozon_params(provider_category_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _param_signature(params: List[Dict[str, Any]]) -> set[str]:
+    out: set[str] = set()
+    for row in params:
+        if not isinstance(row, dict):
+            continue
+        pid = str(row.get("id") or "").strip().lower()
+        name = re.sub(r"\s+", " ", str(row.get("name") or "").strip().lower())
+        kind = str(row.get("kind") or "").strip().lower()
+        key = pid or name
+        if key:
+            out.add(f"{key}|{kind}")
+    return out
+
+
+def _load_mapping_review_issues() -> Dict[str, Any]:
+    doc = read_doc(MAPPING_ISSUES_PATH, default={"version": 1, "items": {}})
+    if not isinstance(doc, dict):
+        return {"version": 1, "items": {}}
+    if not isinstance(doc.get("items"), dict):
+        doc["items"] = {}
+    return doc
+
+
+def _save_mapping_review_issues(doc: Dict[str, Any]) -> None:
+    doc["version"] = 1
+    doc["updated_at"] = _now_iso()
+    write_doc(MAPPING_ISSUES_PATH, doc)
+
+
+def _issue_key(catalog_category_id: str, provider: str, issue_type: str) -> str:
+    safe_category = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(catalog_category_id or "").strip()) or "unknown"
+    safe_provider = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(provider or "").strip()) or "provider"
+    safe_type = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(issue_type or "").strip()) or "issue"
+    return f"{safe_category}:{safe_provider}:{safe_type}"
+
+
+def _record_mapping_review_issue(
+    *,
+    catalog_category_id: str,
+    provider: str,
+    issue_type: str,
+    title: str,
+    text: str,
+    old_provider_category_id: str = "",
+    new_provider_category_id: str = "",
+    changed_count: int = 0,
+) -> None:
+    doc = _load_mapping_review_issues()
+    items = doc["items"]
+    key = _issue_key(catalog_category_id, provider, issue_type)
+    items[key] = {
+        "id": key,
+        "type": issue_type,
+        "status": "open",
+        "provider": provider,
+        "provider_title": PROVIDER_TITLES.get(provider, provider),
+        "catalog_category_id": catalog_category_id,
+        "old_provider_category_id": old_provider_category_id or None,
+        "new_provider_category_id": new_provider_category_id or None,
+        "changed_count": int(changed_count or 0),
+        "title": title,
+        "text": text,
+        "to": f"/sources-mapping?tab=params&category={catalog_category_id}",
+        "updated_at": _now_iso(),
+    }
+    _save_mapping_review_issues(doc)
+
+
+def _close_mapping_review_issue(catalog_category_id: str, provider: str, issue_type: str) -> None:
+    doc = _load_mapping_review_issues()
+    key = _issue_key(catalog_category_id, provider, issue_type)
+    row = doc["items"].get(key)
+    if isinstance(row, dict):
+        row["status"] = "closed"
+        row["closed_at"] = _now_iso()
+        row["updated_at"] = _now_iso()
+        _save_mapping_review_issues(doc)
+
+
+def _audit_ozon_category_binding(catalog_category_id: str, provider_category_id: str) -> Optional[Dict[str, Any]]:
+    cid = str(catalog_category_id or "").strip()
+    provider_id = str(provider_category_id or "").strip()
+    if not cid or not provider_id or provider_id.startswith("type:"):
+        return None
+    try:
+        from app.api.routes import ozon_market
+
+        resolved_type_ids = ozon_market._resolve_type_ids(provider_id)  # noqa: SLF001 - local route utility
+    except Exception:
+        resolved_type_ids = []
+    if resolved_type_ids:
+        return None
+    return {
+        "id": _issue_key(cid, "ozon", "category_needs_reselect"),
+        "type": "category_needs_reselect",
+        "status": "open",
+        "provider": "ozon",
+        "provider_title": PROVIDER_TITLES["ozon"],
+        "catalog_category_id": cid,
+        "provider_category_id": provider_id,
+        "title": "Ozon-категория требует перевыбора",
+        "text": "В привязке сохранена старая категория без типа Ozon. Нужно выбрать категорию Ozon заново, чтобы загрузить характеристики.",
+        "to": f"/sources-mapping?tab=sources&category={cid}",
+    }
+
+
+def _load_provider_params_for_review(provider: str, provider_category_id: str) -> List[Dict[str, Any]]:
+    if provider == "ozon":
+        return _load_ozon_params(provider_category_id)
+    if provider == "yandex_market":
+        return _load_yandex_params(provider_category_id)
+    return []
+
+
+def _record_category_relink_param_review(
+    *,
+    catalog_category_id: str,
+    provider: str,
+    old_provider_category_id: str,
+    new_provider_category_id: str,
+) -> None:
+    if not old_provider_category_id or not new_provider_category_id or old_provider_category_id == new_provider_category_id:
+        return
+    old_params = _load_provider_params_for_review(provider, old_provider_category_id)
+    new_params = _load_provider_params_for_review(provider, new_provider_category_id)
+    if not old_params and not new_params:
+        _record_mapping_review_issue(
+            catalog_category_id=catalog_category_id,
+            provider=provider,
+            issue_type="category_params_not_loaded",
+            title=f"{PROVIDER_TITLES.get(provider, provider)}: нужно загрузить параметры",
+            text="Категория перевыбрана, но параметры старой и новой категории еще не загружены. Запустите импорт характеристик и вернитесь к проверке.",
+            old_provider_category_id=old_provider_category_id,
+            new_provider_category_id=new_provider_category_id,
+        )
+        return
+    if not new_params:
+        _record_mapping_review_issue(
+            catalog_category_id=catalog_category_id,
+            provider=provider,
+            issue_type="category_params_not_loaded",
+            title=f"{PROVIDER_TITLES.get(provider, provider)}: параметры новой категории не загружены",
+            text="Категория перевыбрана, но по новой категории еще нет параметров. После загрузки параметров система проверит, нужно ли пересопоставление.",
+            old_provider_category_id=old_provider_category_id,
+            new_provider_category_id=new_provider_category_id,
+        )
+        return
+
+    old_sig = _param_signature(old_params)
+    new_sig = _param_signature(new_params)
+    diff_count = len(old_sig.symmetric_difference(new_sig))
+    if diff_count <= 0:
+        _close_mapping_review_issue(catalog_category_id, provider, "category_params_changed")
+        _close_mapping_review_issue(catalog_category_id, provider, "category_params_not_loaded")
+        return
+
+    _record_mapping_review_issue(
+        catalog_category_id=catalog_category_id,
+        provider=provider,
+        issue_type="category_params_changed",
+        title=f"{PROVIDER_TITLES.get(provider, provider)}: изменился набор параметров",
+        text="После перевыбора категории набор параметров отличается. Нужно проверить сопоставление параметров и значений перед выгрузкой.",
+        old_provider_category_id=old_provider_category_id,
+        new_provider_category_id=new_provider_category_id,
+        changed_count=diff_count,
+    )
+
+
+def audit_category_mapping_issues(limit: int = 20) -> Dict[str, Any]:
+    catalog_rows = _catalog_rows(_load_catalog_nodes())
+    category_by_id = {str(row.get("id") or ""): row for row in catalog_rows}
+    mappings = _load_mappings()
+    issues: List[Dict[str, Any]] = []
+    for catalog_id, row in mappings.items():
+        if not isinstance(row, dict):
+            continue
+        ozon_issue = _audit_ozon_category_binding(catalog_id, str(row.get("ozon") or ""))
+        if ozon_issue:
+            cat = category_by_id.get(str(catalog_id))
+            if isinstance(cat, dict):
+                ozon_issue["category_name"] = str(cat.get("name") or "")
+                ozon_issue["category_path"] = str(cat.get("path") or cat.get("name") or "")
+            issues.append(ozon_issue)
+
+    review_doc = _load_mapping_review_issues()
+    for row in (review_doc.get("items") or {}).values():
+        if not isinstance(row, dict) or str(row.get("status") or "open") != "open":
+            continue
+        cat = category_by_id.get(str(row.get("catalog_category_id") or ""))
+        item = dict(row)
+        if isinstance(cat, dict):
+            item["category_name"] = str(cat.get("name") or "")
+            item["category_path"] = str(cat.get("path") or cat.get("name") or "")
+        issues.append(item)
+
+    issues.sort(key=lambda item: (str(item.get("type") or ""), str(item.get("category_path") or item.get("title") or "")))
+    max_items = max(0, int(limit or 0))
+    return {"count": len(issues), "items": issues[:max_items]}
+
+
 def _has_ozon_params_cached(provider_category_id: str) -> bool:
     lookup_id = _normalize_provider_category_lookup_id("ozon", provider_category_id)
     if not lookup_id:
@@ -1530,6 +1731,11 @@ def mapping_import_categories() -> Dict[str, Any]:
     cache_entry["payload"] = payload
     _persistent_cache_write(_import_categories_cache_path(), payload)
     return payload
+
+
+@router.get("/issues")
+def mapping_issues() -> Dict[str, Any]:
+    return {"ok": True, **audit_category_mapping_issues(limit=100)}
 
 
 @router.get("/import/attributes/bootstrap")
@@ -2446,6 +2652,7 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
         row = items.get(catalog_id, {})
         if not isinstance(row, dict):
             row = {}
+        previous_provider_category_id = str(row.get(provider) or "").strip()
 
         if provider_category_id:
             row[provider] = provider_category_id
@@ -2500,6 +2707,15 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
         _persistent_cache_clear(_attr_categories_cache_path())
         _persistent_cache_clear(_attr_bootstrap_cache_path())
         _persistent_attr_details_cache_clear_all()
+        if provider in MAPPING_PROVIDERS and previous_provider_category_id and previous_provider_category_id != provider_category_id:
+            _record_category_relink_param_review(
+                catalog_category_id=catalog_id,
+                provider=provider,
+                old_provider_category_id=previous_provider_category_id,
+                new_provider_category_id=provider_category_id,
+            )
+        if provider == "ozon" and provider_category_id:
+            _close_mapping_review_issue(catalog_id, provider, "category_needs_reselect")
     finally:
         lock.release()
 

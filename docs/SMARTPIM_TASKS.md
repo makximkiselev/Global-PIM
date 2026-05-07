@@ -85,7 +85,8 @@ Rule:
    - stores tab now owns import stores, masked credentials, access checks, and store editing;
    - competitor queue copy was cleaned from English technical labels to Russian product workflow labels;
    - Ozon category-attribute sync must prefer Api-Key auth, require a valid Ozon `type_id`, and not fail the whole provider because of one outdated category binding;
-   - ComfyUI must not try production localhost by default: if `COMFYUI_BASE_URL` is absent, show it as not configured instead of a critical connection failure.
+   - ComfyUI must not try production localhost by default: if `COMFYUI_BASE_URL` is absent, show it as not configured instead of a critical connection failure;
+   - stale marketplace category mappings must create dashboard notifications: if a provider category is invalid/missing, the user reselects it; after reselect the system compares old/new parameter sets and creates a follow-up task only when parameter/value remapping is required.
 1. Auth/admin rights polish
    - rights page now shows user-facing Russian role names even when legacy DB rows had stale English role names;
    - system role names/descriptions are normalized back into relational `roles` on auth bootstrap;

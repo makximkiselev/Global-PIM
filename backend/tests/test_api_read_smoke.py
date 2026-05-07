@@ -192,6 +192,21 @@ class ApiReadSmokeTests(unittest.TestCase):
         with patch.object(ozon_market_routes, "read_doc", return_value=doc):
             self.assertEqual(ozon_market_routes._resolve_type_ids("17028644"), [91477, 91478])
 
+    def test_mapping_issues_report_ozon_category_without_type(self) -> None:
+        with (
+            patch.object(marketplace_mapping_routes, "_load_catalog_nodes", return_value=[{"id": "cat-1", "name": "Смартфоны", "parent_id": None}]),
+            patch.object(marketplace_mapping_routes, "_load_mappings", return_value={"cat-1": {"ozon": "17028924"}}),
+            patch.object(marketplace_mapping_routes, "_load_mapping_review_issues", return_value={"version": 1, "items": {}}),
+            patch("app.api.routes.ozon_market._resolve_type_ids", return_value=[]),
+        ):
+            response = self.client.get("/api/marketplaces/mapping/issues")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["items"][0]["type"], "category_needs_reselect")
+        self.assertEqual(body["items"][0]["to"], "/sources-mapping?tab=sources&category=cat-1")
+
     def test_comfyui_status_without_url_is_not_connection_failure(self) -> None:
         with (
             patch.dict(os.environ, {"COMFYUI_BASE_URL": "", "COMFYUI_API_KEY": ""}, clear=False),

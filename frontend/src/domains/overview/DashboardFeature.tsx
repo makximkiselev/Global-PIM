@@ -14,6 +14,10 @@ type StatsSummary = {
   templates: number;
   connectors_configured: number;
   connectors_total: number;
+  mapping_issues?: {
+    count: number;
+    items: MappingIssue[];
+  };
 };
 
 type QueueItem = {
@@ -28,6 +32,18 @@ type QuickAction = {
   text: string;
   to: string;
   label: string;
+};
+
+type MappingIssue = {
+  id: string;
+  type: string;
+  title: string;
+  text: string;
+  to: string;
+  provider_title?: string;
+  category_name?: string;
+  category_path?: string;
+  changed_count?: number;
 };
 
 function QueueCard({ item }: { item: QueueItem }) {
@@ -153,6 +169,8 @@ export default function DashboardFeature() {
       : stats && stats.connectors_total === 0
         ? "Площадки еще не подключены"
         : "Площадки готовы к обмену";
+  const mappingIssues = stats?.mapping_issues?.items || [];
+  const mappingIssuesCount = Number(stats?.mapping_issues?.count || 0);
 
   const readinessItems = [
     {
@@ -247,6 +265,22 @@ export default function DashboardFeature() {
             </Badge>
           </div>
           <div className="controlCenterIssueStack">
+            {mappingIssues.length ? (
+              <div className="controlCenterIssueCard controlCenterIssueCardAccent">
+                <div className="controlCenterIssueTitle">Сопоставления требуют действия</div>
+                <div className="controlCenterIssueText">
+                  {mappingIssuesCount} {mappingIssuesCount === 1 ? "задача" : "задач"} по категориям и параметрам перед выгрузкой.
+                </div>
+                <div className="controlCenterIssueLinks">
+                  {mappingIssues.slice(0, 3).map((issue) => (
+                    <Link key={issue.id} className="controlCenterIssueLink" to={issue.to}>
+                      <span>{issue.title}</span>
+                      <small>{issue.category_name || issue.category_path || "Открыть категорию"}</small>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="controlCenterIssueCard">
               <div className="controlCenterIssueTitle">Состояние площадок</div>
               <div className="controlCenterIssueText">{connectorIssue}</div>
