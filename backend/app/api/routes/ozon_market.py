@@ -390,13 +390,30 @@ def _tree_roots(raw_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _resolve_type_ids(description_category_id: str) -> List[int]:
     doc = read_doc(CATEGORIES_TREE_PATH, default={})
+    target = str(description_category_id or "").strip()
+    if not target:
+        return []
+
+    flat = doc.get("flat") if isinstance(doc, dict) else []
+    if isinstance(flat, list):
+        flat_type_ids: List[int] = []
+        for row in flat:
+            if not isinstance(row, dict):
+                continue
+            row_category_id = _to_str_id(row.get("category_id"))
+            if row_category_id != target:
+                continue
+            tid = row.get("type_id")
+            if isinstance(tid, int) and tid > 0:
+                flat_type_ids.append(tid)
+            elif isinstance(tid, str) and tid.strip().isdigit():
+                flat_type_ids.append(int(tid.strip()))
+        if flat_type_ids:
+            return sorted(set(flat_type_ids))
+
     raw = doc.get("raw") if isinstance(doc, dict) else {}
     roots = _tree_roots(raw if isinstance(raw, dict) else {})
     if not roots:
-        return []
-
-    target = str(description_category_id or "").strip()
-    if not target:
         return []
 
     type_ids: List[int] = []
@@ -499,7 +516,7 @@ def _auth_headers_for_mode(mode: str, token: str, client_id: str, errors: List[s
 
 async def _post_with_auth_modes(path: str, payload: Dict[str, Any], token: str, client_id: str) -> httpx.Response:
     auth_mode = _env_auth_mode()
-    modes = [auth_mode] if auth_mode in {"api-key", "bearer"} else ["bearer", "api-key"]
+    modes = [auth_mode] if auth_mode in {"api-key", "bearer"} else (["api-key", "bearer"] if client_id else ["bearer", "api-key"])
     errors: List[str] = []
     res: Optional[httpx.Response] = None
     for mode in modes:
@@ -695,10 +712,11 @@ async def import_category_attributes(req: ImportCategoryAttrsReq) -> Dict[str, A
         "language": language,
     }
     payloads: List[Dict[str, Any]] = []
+    if not resolved_type_ids:
+        raise HTTPException(status_code=400, detail="OZON_TYPE_ID_NOT_RESOLVED")
+
     for tid in resolved_type_ids:
         payloads.append({**payload_base, "type_id": int(tid)})
-    if not payloads:
-        payloads = [dict(payload_base)]
 
     attrs_by_id: Dict[str, Dict[str, Any]] = {}
     value_targets: Set[Tuple[int, int]] = set()

@@ -10,9 +10,11 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core import auth as auth_core
 from app.api.routes import catalog as catalog_routes
+from app.api.routes import comfyui as comfyui_routes
 from app.api.routes import connectors_status as connectors_status_routes
 from app.api.routes import info_models as info_models_routes
 from app.api.routes import marketplace_mapping as marketplace_mapping_routes
+from app.api.routes import ozon_market as ozon_market_routes
 from app.api.routes import templates as templates_routes
 
 
@@ -177,6 +179,28 @@ class ApiReadSmokeTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["ok"], True)
         self.assertIn("providers", body)
+
+    def test_ozon_type_ids_resolve_from_flat_category_tree(self) -> None:
+        doc = {
+            "flat": [
+                {"id": "17028644", "node_kind": "category", "category_id": "17028644", "type_id": None},
+                {"id": "type:17028644:91477", "node_kind": "type", "category_id": "17028644", "type_id": "91477"},
+                {"id": "type:17028644:91478", "node_kind": "type", "category_id": "17028644", "type_id": 91478},
+            ],
+            "raw": {},
+        }
+        with patch.object(ozon_market_routes, "read_doc", return_value=doc):
+            self.assertEqual(ozon_market_routes._resolve_type_ids("17028644"), [91477, 91478])
+
+    def test_comfyui_status_without_url_is_not_connection_failure(self) -> None:
+        with (
+            patch.dict(os.environ, {"COMFYUI_BASE_URL": "", "COMFYUI_API_KEY": ""}, clear=False),
+            patch.object(comfyui_routes, "ENV_PATH", self.test_root / "missing.env"),
+        ):
+            response = self.client.get("/api/ai/comfyui/status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": False, "configured": False, "status": "not_configured"})
 
     def test_marketplace_mapping_attribute_bootstrap_endpoint(self) -> None:
         payload = {

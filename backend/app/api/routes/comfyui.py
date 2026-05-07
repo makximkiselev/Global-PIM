@@ -47,7 +47,6 @@ def _comfyui_base_url() -> str:
     return (
         os.getenv("COMFYUI_BASE_URL", "").strip()
         or _env_file_value("COMFYUI_BASE_URL")
-        or "http://127.0.0.1:8188"
     ).rstrip("/")
 
 
@@ -71,22 +70,32 @@ class ComfyPromptReq(BaseModel):
 @router.get("/status")
 async def comfyui_status() -> Dict[str, Any]:
     base = _comfyui_base_url()
+    if not base:
+        return {"ok": False, "configured": False, "status": "not_configured"}
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             res = await client.get(f"{base}/system_stats", headers=_http_headers())
         if not res.is_success:
             raise HTTPException(status_code=502, detail=f"COMFYUI_HTTP_FAILED {res.status_code}: {res.text[:300]}")
         body = res.json() if res.content else {}
-        return {"ok": True, "base_url": base, "system_stats": body}
+        return {"ok": True, "configured": True, "base_url": base, "system_stats": body}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"COMFYUI_UNREACHABLE:{e}")
+        return {
+            "ok": False,
+            "configured": True,
+            "base_url": base,
+            "status": "unreachable",
+            "error": f"COMFYUI_UNREACHABLE:{e}",
+        }
 
 
 @router.post("/generate")
 async def comfyui_generate(req: ComfyPromptReq) -> Dict[str, Any]:
     base = _comfyui_base_url()
+    if not base:
+        raise HTTPException(status_code=400, detail="COMFYUI_NOT_CONFIGURED")
     payload: Dict[str, Any] = {"prompt": req.prompt}
     if req.client_id:
         payload["client_id"] = req.client_id
@@ -127,6 +136,8 @@ async def comfyui_generate(req: ComfyPromptReq) -> Dict[str, Any]:
 @router.get("/history/{prompt_id}")
 async def comfyui_history(prompt_id: str = ApiPath(..., min_length=1)) -> Dict[str, Any]:
     base = _comfyui_base_url()
+    if not base:
+        raise HTTPException(status_code=400, detail="COMFYUI_NOT_CONFIGURED")
     pid = str(prompt_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="PROMPT_ID_REQUIRED")

@@ -76,6 +76,10 @@ _scheduler_process_lock = with_lock("connectors_scheduler_runner")
 _scheduler_is_owner = False
 
 
+class ConnectorSoftWarning(Exception):
+    """Connector completed useful work but still has non-blocking issues."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -348,14 +352,28 @@ async def _run_ozon_categories_tree(organization_id: Optional[str] = None) -> No
 async def _run_ozon_category_attributes(organization_id: Optional[str] = None) -> None:
     ids = _mapped_provider_category_ids("ozon")
     store = _first_enabled_ozon_store(organization_id)
+    successes = 0
+    errors: List[str] = []
     for cid in ids:
         req = ozon_market.ImportCategoryAttrsReq(
             category_id=cid,
             language="DEFAULT",
+            import_values=False,
             token=str(store.get("api_key") or "").strip() or None,
             client_id=str(store.get("client_id") or "").strip() or None,
         )
-        await ozon_market.import_category_attributes(req)
+        try:
+            await ozon_market.import_category_attributes(req)
+            successes += 1
+        except Exception as e:
+            errors.append(f"{cid}: {e}")
+            continue
+    if ids and successes == 0 and errors:
+        tail = " | ".join(errors[-5:])
+        raise HTTPException(status_code=502, detail=f"OZON_CATEGORY_ATTRIBUTES_FAILED {tail}")
+    if errors:
+        tail = " | ".join(errors[-5:])
+        raise ConnectorSoftWarning(f"OZON_CATEGORY_ATTRIBUTES_PARTIAL {successes}/{len(ids)} imported; {tail}")
 
 
 async def _run_ozon_product_content_status(organization_id: Optional[str] = None) -> None:
@@ -378,7 +396,10 @@ async def _run_ozon_product_content_status(organization_id: Optional[str] = None
 
 
 async def _run_comfyui_healthcheck(organization_id: Optional[str] = None) -> None:
-    await comfyui.comfyui_status()
+    status = await comfyui.comfyui_status()
+    if isinstance(status, dict) and not bool(status.get("ok")):
+        message = str(status.get("error") or status.get("status") or "COMFYUI_NOT_READY")
+        raise ConnectorSoftWarning(message)
 
 
 METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[Optional[str]], Awaitable[None]]] = {
@@ -415,6 +436,12 @@ async def _run_method(provider: str, method: str, organization_id: Optional[str]
         mrow["last_error"] = ""
         mrow["fail_count"] = 0
         mrow["status"] = "ok"
+    except ConnectorSoftWarning as e:
+        mrow["last_success_at"] = _now_iso()
+        mrow["last_error_at"] = _now_iso()
+        mrow["last_error"] = str(e)
+        mrow["fail_count"] = 1
+        mrow["status"] = "warn"
     except Exception as e:
         mrow["last_error_at"] = _now_iso()
         mrow["last_error"] = str(e)
