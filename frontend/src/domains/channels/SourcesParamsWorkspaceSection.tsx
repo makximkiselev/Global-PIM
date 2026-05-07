@@ -285,7 +285,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
   const categoryName = details?.category?.name || "Выберите категорию";
   const categoryPath = details?.category?.path || "Категория не выбрана";
-  const readinessText = stats.total ? `${stats.ready}/${stats.total} готово` : "нет параметров";
+  const readinessText = stats.total ? `${stats.ready}/${stats.total} полей инфо-модели готово` : "нет полей инфо-модели";
   const competitorTotals = useMemo(() => {
     const sources = competitors?.sources || [];
     return sources.reduce(
@@ -486,7 +486,10 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             <div className="paramsSectionHead">
               <div>
                 <h3>Параметры инфо-модели</h3>
-                <p>Выберите поле, свяжите его с площадками справа и подтвердите результат.</p>
+                <p>
+                  Здесь показаны только рабочие поля PIM для товаров этой категории. Поля площадок и конкурентов используются справа как источники
+                  и не превращаются в параметры автоматически без подтверждения.
+                </p>
               </div>
             </div>
 

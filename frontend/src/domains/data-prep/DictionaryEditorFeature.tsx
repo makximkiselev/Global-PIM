@@ -190,6 +190,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
   const [valueFilter, setValueFilter] = useState<ValueViewFilter>("all");
   const [savedToast, setSavedToast] = useState(false);
   const [activeProvider, setActiveProvider] = useState("");
+  const [providerAllowedQuery, setProviderAllowedQuery] = useState("");
   const [exportMapDraft, setExportMapDraft] = useState<Record<string, Record<string, string>>>({});
   const toastTimerRef = useRef<number | null>(null);
 
@@ -378,6 +379,14 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
   const activeProviderAllowedValues = useMemo(() => {
     return Array.isArray(activeProviderRef?.allowed_values) ? activeProviderRef.allowed_values : [];
   }, [activeProviderRef]);
+
+  const visibleProviderAllowedValues = useMemo(() => {
+    const query = providerAllowedQuery.trim().toLowerCase();
+    const source = !query
+      ? activeProviderAllowedValues
+      : activeProviderAllowedValues.filter((value) => value.toLowerCase().includes(query));
+    return source.slice(0, 18);
+  }, [activeProviderAllowedValues, providerAllowedQuery]);
 
   const activeProviderMappedCount = useMemo(() => {
     if (!activeProvider) return 0;
@@ -576,6 +585,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       )}
 
       {requiredFlag ? (
+        !embedded ? (
         <DataToolbar
           compact
           className="dictionaryEditorToolbar"
@@ -595,9 +605,10 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
             </span>
           }
         />
+        ) : null
       ) : null}
 
-      <div className="dictionaryEditorTop">
+      {!embedded ? <div className="dictionaryEditorTop">
         <Card title="Метаданные">
           <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(2, minmax(220px, 1fr))" }}>
             <Field label="Тип данных" className="dictionaryEditorField">
@@ -701,7 +712,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
             { label: "Последнее обновление", value: stats.updatedAt ? new Date(stats.updatedAt).toLocaleString() : "—" },
           ]}
         />
-      </div>
+      </div> : null}
 
       {providerCodes.length ? (
         <Card style={{ marginBottom: 14 }}>
@@ -724,7 +735,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
           />
 
           {activeProviderRef ? (
-            <div className="dictionaryEditorProviderGrid">
+            <div className="dictionaryEditorProviderGrid isCompact">
               <Card className="dictionaryEditorProviderCard">
                 <div style={{ fontSize: 12, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>
                   {PROVIDER_LABEL[activeProvider] || activeProvider}
@@ -741,25 +752,43 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
               </Card>
 
               <Card className="dictionaryEditorProviderCard">
-                <div style={{ fontWeight: 800, marginBottom: 10 }}>Допустимые значения площадки</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                  <div style={{ fontWeight: 800 }}>Справочник площадки</div>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    показано {visibleProviderAllowedValues.length} из {activeProviderAllowedValues.length}
+                  </span>
+                </div>
                 {activeProviderAllowedValues.length ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 172, overflow: "auto" }}>
-                    {activeProviderAllowedValues.map((value) => (
-                      <span
-                        key={value}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(11,18,32,.10)",
-                          background: "rgba(11,18,32,.04)",
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {value}
-                      </span>
-                    ))}
-                  </div>
+                  <>
+                    <TextInput
+                      value={providerAllowedQuery}
+                      onChange={(event) => setProviderAllowedQuery(event.target.value)}
+                      placeholder="Найти значение площадки..."
+                      style={{ marginBottom: 10 }}
+                    />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 112, overflow: "hidden" }}>
+                      {visibleProviderAllowedValues.map((value) => (
+                        <span
+                          key={value}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(11,18,32,.10)",
+                            background: "rgba(11,18,32,.04)",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {value}
+                        </span>
+                      ))}
+                    </div>
+                    {activeProviderAllowedValues.length > visibleProviderAllowedValues.length ? (
+                      <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                        Полный список не выводится простыней. Используйте поиск или поле сопоставления ниже.
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <div className="muted" style={{ fontSize: 13 }}>
                     У площадки нет справочника значений для этого параметра.

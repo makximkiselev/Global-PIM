@@ -450,7 +450,11 @@ Next tasks:
 10. align `/sources` tabs to one compact mapping layout: one shared header, no duplicated category/channel summary, category tab owns marketplace cards plus competitor SKU flow. Status: done 2026-05-07;
 11. remove legacy `/competitor-mapping/category/:id` UI and keep competitor actions inside `/sources?tab=sources`. Status: done 2026-05-07;
 12. redesign `/sources?tab=sources` competitor card as SKU enrichment workflow: sources, selected SKU, competitor card candidates, confirm/manual-link actions. Status: done 2026-05-07;
-13. inspect and simplify value mapping.
+13. inspect and simplify value mapping. Status: active 2026-05-07;
+14. compact `/sources?tab=sources` competitor card: one SKU selector, one primary search action, compact re-store/store77 state, no step-cards/counter clutter. Status: done 2026-05-07;
+15. clarify `/sources?tab=params` count as PIM info-model fields, not all marketplace fields. Status: done 2026-05-07;
+16. compact `/sources?tab=values` dictionary editor in embedded mode: hide metadata duplication and collapse marketplace allowed values into searchable preview. Status: done 2026-05-07;
+17. verify competitor SKU search button in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: next.
 
 Import/source settings check on 2026-05-07:
 
