@@ -546,13 +546,12 @@
 .sourcesMappingPage .mm-detailContent,
 .sourcesMappingPage .mm-detailContent.hasExtra {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+  gap: 10px;
   align-items: start;
 }
 
-.sourcesMappingPage .mm-detailContent.hasExtra .mm-detailMain,
-.sourcesMappingPage .mm-detailContent.hasExtra .mm-providerStack {
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-detailMain {
   display: flex !important;
   flex-direction: column;
 }
@@ -564,7 +563,18 @@
   min-width: 0;
 }
 
-.sourcesMappingPage .mm-providerStack,
+.sourcesMappingPage .mm-providerStack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sourcesMappingPage .mm-detailContent.hasExtra .mm-providerStack {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .sourcesMappingPage .mm-detailSide {
   display: flex;
   flex-direction: column;
@@ -597,6 +607,42 @@
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   border-radius: 18px;
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-content: start;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerDetailHead,
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerActionsBar {
+  margin: 0;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-lineContent {
+  grid-column: 1 / -1;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerActionsBar {
+  justify-content: flex-end;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerActionBtns {
+  justify-content: flex-end;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerPath {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-lineEmpty,
+.sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-breadcrumbs {
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .sourcesMappingPage .mm-providerDetailCard.has-mapping-issue {
@@ -702,6 +748,10 @@
 
 .sourcesMappingPage .mm-competitorSourceCard {
   border-color: color-mix(in srgb, var(--brand) 22%, var(--line));
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
 }
 
 .sourcesMappingPage .mm-competitorSourceCard.is-missing {
@@ -710,10 +760,25 @@
     color-mix(in srgb, var(--panel) 96%, var(--surface));
 }
 
-.sourcesMappingPage .mm-competitorSourceGrid {
+.sourcesMappingPage .mm-competitorSourceCard .mm-lineContent {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.26fr);
   gap: 10px;
+  align-items: stretch;
+}
+
+.sourcesMappingPage .mm-competitorSourceCard .mm-providerActionsBar {
+  align-self: start;
+}
+
+.sourcesMappingPage .mm-competitorSourceGrid {
+  grid-column: 1;
+  grid-row: 1 / span 4;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-content: start;
 }
 
 .sourcesMappingPage .mm-competitorSourceItem {
@@ -765,16 +830,17 @@
 }
 
 .sourcesMappingPage .mm-competitorFlow {
+  grid-column: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.65fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   align-items: stretch;
   border: 1px solid color-mix(in srgb, var(--brand) 16%, var(--line));
   border-radius: 14px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--brand) 8%, transparent), transparent 62%),
     color-mix(in srgb, var(--panel) 90%, var(--surface));
-  padding: 10px;
+  padding: 9px;
 }
 
 .sourcesMappingPage .mm-competitorFlow span,
@@ -823,16 +889,17 @@
 }
 
 .sourcesMappingPage .mm-competitorProductReadiness {
+  grid-column: 2;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .sourcesMappingPage .mm-competitorProductReadiness > div {
   border: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
-  border-radius: 14px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--panel) 82%, var(--surface));
-  padding: 10px;
+  padding: 8px;
 }
 
 .sourcesMappingPage .mm-competitorProductReadiness span {
@@ -855,11 +922,12 @@
 }
 
 .sourcesMappingPage .mm-competitorSuggestionsHead {
+  grid-column: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .sourcesMappingPage .mm-competitorSuggestionsHead strong {
@@ -870,9 +938,10 @@
 }
 
 .sourcesMappingPage .mm-competitorSuggestionList {
+  grid-column: 2;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .sourcesMappingPage .mm-competitorSuggestion {
