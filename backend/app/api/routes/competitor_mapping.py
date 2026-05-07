@@ -1715,8 +1715,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
             suggestions,
             key=lambda row: (-int(row.get("products_count") or 0), -float(row.get("confidence") or 0.0), str(row.get("label") or "")),
         )[:5]
-        if not suggestions:
-            suggestions = [_fallback_search_suggestion(source, category_name)]
+        fallback_search = None if suggestions else _fallback_search_suggestion(source, category_name)
 
         source_rows.append(
             {
@@ -1729,6 +1728,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                 "candidates_count": len(source_candidates),
                 "needs_review_count": sum(1 for item in source_candidates if item.get("status") == "needs_review"),
                 "suggestions": suggestions,
+                "fallback_search": fallback_search,
             }
         )
 
@@ -1739,6 +1739,15 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
             "name": category_name,
             "products_count": len(products),
             "scanned_product_ids": sorted(product_ids),
+            "sample_products": [
+                {
+                    "id": str(item.get("id") or "").strip(),
+                    "title": str(item.get("title") or item.get("name") or "").strip(),
+                    "sku_gt": str(item.get("sku_gt") or item.get("sku_pim") or "").strip(),
+                }
+                for item in products[:8]
+                if str(item.get("id") or "").strip()
+            ],
         },
         "sources": source_rows,
     }

@@ -430,7 +430,10 @@ Rules:
     competitor sources (`re-store`, `store77`) decide where values are parsed from for enrichment;
     competitor setup opens the category-level competitor mapping screen, not a separate hidden mental model.
 11. competitor category matching must be suggestion-first:
-    the system scans competitor catalogs/search pages, normalizes branch labels against the selected PIM category, and shows candidates with confidence;
+    the system may scan competitor catalogs/search pages, but search pages are only discovery input and must not be shown as a ready binding;
+    category-level competitor binding confirms the competitor branch/category context;
+    product parameters are extracted only from confirmed competitor product-card links attached to specific SKU;
+    if SKU candidates are missing or all rejected, the user must add the exact competitor product URL manually in the product/SKU context;
     manual links remain a fallback, not the primary path.
 
 Next tasks:
@@ -442,7 +445,21 @@ Next tasks:
 5. make binding edit action obvious. Status: first pass done for stale Ozon mapping on `/sources-mapping?tab=sources`;
 6. add visible competitor readiness/actions to `/sources-mapping?tab=sources`. Status: done 2026-05-07;
 7. add competitor branch suggestions to `/sources-mapping?tab=sources`. Status: first pass done 2026-05-07;
-8. inspect and simplify value mapping.
+8. separate competitor branch context from SKU-level competitor product cards in `/sources-mapping?tab=sources`. Status: done 2026-05-07;
+9. add selected-SKU competitor discovery to `/sources-mapping?tab=sources`: choose a product from the category, find exact competitor product cards, then use those cards for parameter extraction. Status: done 2026-05-07;
+10. inspect and simplify value mapping.
+
+Import/source settings check on 2026-05-07:
+
+1. frontend route `/connectors/status?tab=stores` loads in Browser Use with no console errors;
+2. store setup UI exposes marketplace store access, add/edit/delete/check actions, and `SKU GT` as export article;
+3. backend contracts are `GET /connectors/status`, `POST/PUT/DELETE /connectors/status/import-stores`, and `POST /connectors/status/import-stores/{provider}/{store_id}/check`;
+4. production DB currently uses connector tables:
+   - `connector_method_state_tenant_rel`: 7 rows;
+   - `connector_provider_settings_tenant_rel`: 1 row;
+   - `connector_import_stores_tenant_rel`: 4 rows;
+   - legacy global `connector_import_stores_rel`: 4 rows kept as bootstrap compatibility until DB cleanup phase;
+5. remaining task: simplify wording and layout of store settings after category/competitor mapping is stable; do not remove marketplace IDs because they are required credentials/configuration.
 
 ## P0 - Database Ownership Audit
 
