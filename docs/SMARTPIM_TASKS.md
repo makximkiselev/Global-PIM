@@ -449,7 +449,8 @@ Next tasks:
 9. add selected-SKU competitor discovery to `/sources-mapping?tab=sources`: choose a product from the category, find exact competitor product cards, then use those cards for parameter extraction. Status: done 2026-05-07;
 10. align `/sources` tabs to one compact mapping layout: one shared header, no duplicated category/channel summary, category tab owns marketplace cards plus competitor SKU flow. Status: done 2026-05-07;
 11. remove legacy `/competitor-mapping/category/:id` UI and keep competitor actions inside `/sources?tab=sources`. Status: done 2026-05-07;
-12. inspect and simplify value mapping.
+12. redesign `/sources?tab=sources` competitor card as SKU enrichment workflow: sources, selected SKU, competitor card candidates, confirm/manual-link actions. Status: done 2026-05-07;
+13. inspect and simplify value mapping.
 
 Import/source settings check on 2026-05-07:
 

@@ -3009,10 +3009,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               {(() => {
                                 const competitorMeta = competitorSourceMeta(selectedCatalogNode.id);
                                 const discoverySources = competitorDiscovery?.sources || [];
-                                const categorySuggestions = discoverySources.flatMap((source) =>
+                                const competitorCardCandidates = discoverySources.flatMap((source) =>
                                   (source.suggestions || [])
                                     .filter((suggestion) => suggestion.type !== "search")
-                                    .slice(0, 2)
+                                    .slice(0, 3)
                                     .map((suggestion) => ({ source, suggestion })),
                                 );
                                 const competitorCandidatesTotal = discoverySources.reduce((sum, source) => sum + Number(source.candidates_count || 0), 0);
@@ -3020,84 +3020,93 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const competitorNeedsReviewTotal = discoverySources.reduce((sum, source) => sum + Number(source.needs_review_count || 0), 0);
                                 const sampleProducts = competitorDiscovery?.category?.sample_products || [];
                                 const selectedSampleProduct = sampleProducts.find((item) => item.id === competitorSampleProductId) || sampleProducts[0] || null;
+                                const selectedSampleLabel = selectedSampleProduct
+                                  ? `${selectedSampleProduct.sku_gt ? `${selectedSampleProduct.sku_gt} · ` : ""}${selectedSampleProduct.title || selectedSampleProduct.id}`
+                                  : "В категории пока нет товаров";
                                 return (
                                   <div className={`mm-providerDetailCard mm-competitorSourceCard ${competitorMeta.configured ? "is-ready" : "is-missing"}`}>
                                     <div className="mm-providerDetailHead">
                                       <div className="mm-providerLead">
-                                        <div className="mm-lineProvider">Категории конкурентов</div>
+                                        <div className="mm-lineProvider">Карточки конкурентов для обогащения</div>
+                                        <div className="mm-providerHint">
+                                          Найдите карточки re-store и store77 для выбранного SKU. После подтверждения из них будут взяты параметры и значения.
+                                        </div>
                                         <div className={`mm-providerState ${competitorMeta.statusClass}`}>
                                           {competitorMeta.statusLabel}
                                         </div>
                                       </div>
                                     </div>
                                     <div className="mm-lineContent">
-                                      <div className="mm-competitorSourceGrid">
-                                        {competitorMeta.sites.map((site) => (
-                                          <div key={site.code} className={`mm-competitorSourceItem ${site.hasLink ? "is-linked" : "is-empty"}`}>
-                                            <div>
-                                              <div className="mm-competitorSourceName">{site.title}</div>
-                                              <div className="mm-competitorSourceMeta">
-                                                {site.hasLink ? `${site.mappedCount} полей сопоставлено` : "Ссылка на источник не задана"}
+                                      <div className="mm-competitorEnrichmentGrid">
+                                        <div className="mm-competitorStepCard">
+                                          <span>1. Источники</span>
+                                          <div className="mm-competitorSourceGrid">
+                                            {competitorMeta.sites.map((site) => (
+                                              <div key={site.code} className={`mm-competitorSourceItem ${site.hasLink ? "is-linked" : "is-empty"}`}>
+                                                <div>
+                                                  <div className="mm-competitorSourceName">{site.title}</div>
+                                                  <div className="mm-competitorSourceMeta">
+                                                    {site.hasLink ? `${site.mappedCount} полей уже связано` : "Карточки еще не подтверждены"}
+                                                  </div>
+                                                </div>
+                                                <span>{site.hasLink ? "Есть данные" : "Нужен поиск"}</span>
                                               </div>
-                                            </div>
-                                            <span>{site.hasLink ? "Есть ссылка" : "Нет ссылки"}</span>
+                                            ))}
                                           </div>
-                                        ))}
-                                      </div>
-                                      <div className="mm-competitorFlow">
-                                        <div>
-                                          <span>Работа с конкурентами</span>
-                                          <strong>Подтвердите ветку, затем карточку SKU.</strong>
-                                          <p>Ветка нужна для ограничения поиска. Параметры берутся только из подтвержденной карточки конкурента для конкретного товара.</p>
                                         </div>
-                                        <div className="mm-competitorSkuPicker">
-                                          <label htmlFor={`competitor-sku-${selectedCatalogNode.id}`}>Товар для проверки</label>
-                                          <select
-                                            id={`competitor-sku-${selectedCatalogNode.id}`}
-                                            value={selectedSampleProduct?.id || ""}
-                                            onChange={(event) => setCompetitorSampleProductId(event.target.value)}
-                                            disabled={!sampleProducts.length || competitorDiscoveryRunning}
-                                          >
-                                            {sampleProducts.length ? sampleProducts.map((product) => (
-                                              <option key={product.id} value={product.id}>
-                                                {product.sku_gt ? `${product.sku_gt} · ` : ""}{product.title || product.id}
-                                              </option>
-                                            )) : (
-                                              <option value="">В категории пока нет товаров</option>
-                                            )}
-                                          </select>
+                                        <div className="mm-competitorStepCard">
+                                          <span>2. SKU для проверки</span>
+                                          <strong>{selectedSampleLabel}</strong>
+                                          <p>Выберите товар из этой категории, чтобы найти похожие карточки у конкурентов.</p>
+                                          <div className="mm-competitorSkuPicker">
+                                            <label htmlFor={`competitor-sku-${selectedCatalogNode.id}`}>Товар</label>
+                                            <select
+                                              id={`competitor-sku-${selectedCatalogNode.id}`}
+                                              value={selectedSampleProduct?.id || ""}
+                                              onChange={(event) => setCompetitorSampleProductId(event.target.value)}
+                                              disabled={!sampleProducts.length || competitorDiscoveryRunning}
+                                            >
+                                              {sampleProducts.length ? sampleProducts.map((product) => (
+                                                <option key={product.id} value={product.id}>
+                                                  {product.sku_gt ? `${product.sku_gt} · ` : ""}{product.title || product.id}
+                                                </option>
+                                              )) : (
+                                                <option value="">В категории пока нет товаров</option>
+                                              )}
+                                            </select>
+                                          </div>
                                         </div>
                                       </div>
                                       <div className="mm-competitorProductReadiness">
                                         <div>
-                                          <span>Карточки товаров для параметров</span>
+                                          <span>Подтверждено</span>
                                           <strong>{competitorConfirmedTotal} подтверждено</strong>
                                         </div>
                                         <div>
-                                          <span>На проверке</span>
+                                          <span>Нужно проверить</span>
                                           <strong>{competitorNeedsReviewTotal || competitorCandidatesTotal}</strong>
                                         </div>
                                         <div>
-                                          <span>SKU в ветке</span>
+                                          <span>Товаров в категории</span>
                                           <strong>{competitorDiscovery?.category?.products_count ?? "—"}</strong>
                                         </div>
                                       </div>
                                       <div className="mm-competitorSuggestionsHead">
-                                        <strong>Ветки конкурентов</strong>
+                                        <strong>3. Найденные карточки</strong>
                                         <button
                                           type="button"
                                           className="btn mm-miniBtn mm-ghostBtn"
                                           onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
-                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading}
+                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
                                         >
-                                          {competitorDiscoveryRunning ? "Ищем карточку..." : "Найти карточки для выбранного SKU"}
+                                          {competitorDiscoveryRunning ? "Ищем..." : "Найти карточки конкурентов"}
                                         </button>
                                       </div>
-                                      {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Проверяем ветку и карточки товаров у конкурентов...</div> : null}
+                                      {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Ищем карточки конкурентов для выбранного SKU...</div> : null}
                                       {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
                                       {!competitorDiscoveryLoading && !competitorDiscoveryError ? (
                                         <div className="mm-competitorSuggestionList">
-                                          {categorySuggestions.map(({ source, suggestion }) => (
+                                          {competitorCardCandidates.map(({ source, suggestion }) => (
                                               <a
                                                 key={`${source.id}-${suggestion.id}`}
                                                 className="mm-competitorSuggestion"
@@ -3110,17 +3119,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                   <strong>{suggestion.label}</strong>
                                                   <em>
                                                     {suggestion.type === "catalog_scan"
-                                                      ? "найдено в каталоге"
-                                                      : "найдено по карточкам SKU"}
+                                                      ? "кандидат из каталога"
+                                                      : "кандидат по SKU"}
                                                   </em>
                                                 </div>
                                                 <b>{Math.round(Number(suggestion.confidence || 0) * 100)}%</b>
                                               </a>
                                             ))
                                           }
-                                          {categorySuggestions.length === 0 ? (
+                                          {competitorCardCandidates.length === 0 ? (
                                             <div className="mm-lineEmpty">
-                                              Нет подтвержденной ветки конкурента. Поисковая страница не считается привязкой: выберите товар выше и найдите конкретную карточку конкурента либо добавьте точную ссылку в карточке товара.
+                                              Пока нет карточек конкурентов для выбранного SKU. Запустите поиск или откройте товар и добавьте точную ссылку вручную.
                                             </div>
                                           ) : null}
                                         </div>
@@ -3133,17 +3142,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     </div>
                                     <div className="mm-providerActionsBar">
                                       <div className="mm-providerActionBtns">
-                                        <button
-                                          type="button"
-                                          className="btn mm-miniBtn mm-actBtn"
-                                          onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
-                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
-                                        >
-                                          {competitorDiscoveryRunning ? "Ищем..." : "Подобрать карточки"}
-                                        </button>
                                         {selectedSampleProduct ? (
                                           <Link className="btn mm-miniBtn mm-ghostBtn" to={`/products/${encodeURIComponent(selectedSampleProduct.id)}`}>
-                                            Открыть товар
+                                            Добавить ссылку вручную
                                           </Link>
                                         ) : null}
                                       </div>

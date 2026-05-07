@@ -844,7 +844,7 @@
 .sourcesMappingPage .mm-competitorSourceCard .mm-lineContent {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.26fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-items: stretch;
 }
@@ -853,13 +853,71 @@
   align-self: start;
 }
 
+.sourcesMappingPage .mm-providerHint {
+  max-width: 760px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.sourcesMappingPage .mm-competitorEnrichmentGrid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 10px;
+}
+
+.sourcesMappingPage .mm-competitorStepCard {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--brand) 14%, var(--line));
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand) 6%, transparent), transparent 66%),
+    color-mix(in srgb, var(--panel) 92%, var(--surface));
+  padding: 10px;
+}
+
+.sourcesMappingPage .mm-competitorStepCard > span,
+.sourcesMappingPage .mm-competitorSkuPicker label {
+  display: block;
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sourcesMappingPage .mm-competitorStepCard > strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcesMappingPage .mm-competitorStepCard > p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
 .sourcesMappingPage .mm-competitorSourceGrid {
-  grid-column: 1;
-  grid-row: 1 / span 4;
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
   align-content: start;
+}
+
+.sourcesMappingPage .mm-competitorStepCard .mm-competitorSourceGrid {
+  margin-top: 8px;
 }
 
 .sourcesMappingPage .mm-competitorSourceItem {
@@ -911,7 +969,7 @@
 }
 
 .sourcesMappingPage .mm-competitorFlow {
-  grid-column: 2;
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
@@ -970,7 +1028,7 @@
 }
 
 .sourcesMappingPage .mm-competitorProductReadiness {
-  grid-column: 2;
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
@@ -1003,7 +1061,7 @@
 }
 
 .sourcesMappingPage .mm-competitorSuggestionsHead {
-  grid-column: 2;
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1019,9 +1077,9 @@
 }
 
 .sourcesMappingPage .mm-competitorSuggestionList {
-  grid-column: 2;
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -1543,8 +1601,13 @@
   .sourcesMappingPage .mm-kpis,
   .sourcesMappingPage .mm-workspace,
   .sourcesMappingPage .mm-attrWorkbenchGrid,
+  .sourcesMappingPage .mm-competitorEnrichmentGrid,
   .sourcesMappingPage .mm-detailSide,
   .sourcesMappingPage .mm-categoryExtraSide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourcesMappingPage .mm-competitorSuggestionList {
     grid-template-columns: minmax(0, 1fr);
   }
 
