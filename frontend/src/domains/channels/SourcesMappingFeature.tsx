@@ -67,7 +67,7 @@ export default function SourcesMappingFeature() {
   const tabDescription = useMemo(
     () =>
       tab === "sources"
-        ? "Свяжите ветку PIM с категориями Я.Маркета и Ozon. Здесь только каналы выгрузки, без конкурентных источников."
+        ? "Выберите PIM-категорию, сопоставьте каналы выгрузки и подтвердите ветки конкурентов для насыщения товаров."
         : tab === "params"
           ? "Свяжите параметры инфо-модели с полями каналов и проверьте обязательные поля для выгрузки."
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
@@ -176,7 +176,7 @@ export default function SourcesMappingFeature() {
         activeKey={tab}
         onChange={(key) => setTab(key as SourcesTab)}
         items={[
-          { key: "sources", label: "Категории площадок" },
+          { key: "sources", label: "Источники категории" },
           { key: "params", label: "Сопоставление параметров" },
           { key: "values", label: "Значения" },
         ]}

@@ -429,6 +429,9 @@ Rules:
     marketplace channels decide where products are exported;
     competitor sources (`re-store`, `store77`) decide where values are parsed from for enrichment;
     competitor setup opens the category-level competitor mapping screen, not a separate hidden mental model.
+11. competitor category matching must be suggestion-first:
+    the system scans competitor catalogs/search pages, normalizes branch labels against the selected PIM category, and shows candidates with confidence;
+    manual links remain a fallback, not the primary path.
 
 Next tasks:
 
@@ -438,7 +441,8 @@ Next tasks:
 4. remove duplicate counters/tabs in parameter mapping. Status: first pass done for `/sources?tab=params`;
 5. make binding edit action obvious. Status: first pass done for stale Ozon mapping on `/sources-mapping?tab=sources`;
 6. add visible competitor readiness/actions to `/sources-mapping?tab=sources`. Status: done 2026-05-07;
-7. inspect and simplify value mapping.
+7. add competitor branch suggestions to `/sources-mapping?tab=sources`. Status: first pass done 2026-05-07;
+8. inspect and simplify value mapping.
 
 ## P0 - Database Ownership Audit
 

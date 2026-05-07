@@ -998,6 +998,93 @@ def _fallback_search_suggestion(source: Dict[str, Any], category_name: str) -> D
     }
 
 
+def _category_query_tokens(category_name: str) -> set[str]:
+    raw = re.sub(r"[^0-9a-zа-яё]+", " ", str(category_name or "").lower())
+    tokens = {part for part in raw.split() if len(part) >= 3}
+    synonym_map = {
+        "смартфоны": {"smartfon", "smartfony", "smartphone", "iphone", "телефон", "телефоны", "telefony"},
+        "телефоны": {"smartfon", "smartfony", "smartphone", "iphone", "телефон", "telefony"},
+        "планшеты": {"planshet", "planshety", "ipad", "tablet"},
+        "ноутбуки": {"noutbuk", "noutbuki", "macbook", "laptop"},
+        "наушники": {"naushniki", "airpods", "headphones"},
+        "часы": {"watch", "applewatch", "apple-watch", "smartwatch"},
+        "аксессуары": {"accessories", "aksessuary", "case", "cable", "charger"},
+    }
+    for token in list(tokens):
+        tokens.update(synonym_map.get(token, set()))
+    return tokens
+
+
+def _category_candidate_score(label: str, href: str, tokens: set[str]) -> float:
+    haystack = re.sub(r"[^0-9a-zа-яё]+", " ", f"{label} {href}".lower())
+    if not tokens:
+        return 0.0
+    hits = sum(1 for token in tokens if token and token in haystack)
+    if hits <= 0:
+        return 0.0
+    return min(0.94, 0.45 + hits * 0.16)
+
+
+async def _scan_competitor_catalog_suggestions(source: Dict[str, Any], category_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+    source_id = str(source.get("id") or "").strip()
+    base_url = str(source.get("base_url") or "").rstrip("/")
+    if not source_id or not base_url:
+        return []
+
+    tokens = _category_query_tokens(category_name)
+    query = quote_plus(category_name or "")
+    scan_urls = [base_url]
+    if source_id == "restore" and query:
+        scan_urls.append(f"{base_url}/search/?q={query}")
+    if source_id == "store77" and query:
+        scan_urls.append(f"{base_url}/search/?q={query}")
+
+    found: Dict[str, Dict[str, Any]] = {}
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(9.0, connect=5.0),
+        follow_redirects=True,
+        headers={"User-Agent": "Mozilla/5.0 SmartPIM category discovery"},
+    ) as client:
+        for scan_url in scan_urls:
+            try:
+                resp = await client.get(scan_url)
+                html = resp.text or ""
+            except Exception:
+                continue
+            if not html:
+                continue
+            for match in re.finditer(r"(?is)<a\\b[^>]*href=[\"'](?P<href>[^\"']+)[\"'][^>]*>(?P<body>.*?)</a>", html):
+                href = html_lib.unescape(match.group("href") or "").strip()
+                label = re.sub(r"<[^>]+>", " ", match.group("body") or "")
+                label = html_lib.unescape(re.sub(r"\\s+", " ", label)).strip()
+                if not href or not label or len(label) > 120:
+                    continue
+                absolute_url = urljoin(base_url + "/", href)
+                if detect_site(absolute_url) != source_id:
+                    continue
+                parsed = urlparse(absolute_url)
+                if not parsed.path or parsed.path in {"/", "/search/"}:
+                    continue
+                score = _category_candidate_score(label, absolute_url, tokens)
+                if score <= 0:
+                    continue
+                key = f"{source_id}:{parsed.scheme}://{parsed.netloc}{parsed.path}"
+                current = found.get(key)
+                if current and float(current.get("confidence") or 0) >= score:
+                    continue
+                found[key] = {
+                    "id": key,
+                    "type": "catalog_scan",
+                    "label": label,
+                    "url": f"{parsed.scheme}://{parsed.netloc}{parsed.path}",
+                    "confidence": round(score, 2),
+                    "products_count": 0,
+                    "evidence": "catalog_scan: найдено при сканировании каталога конкурента",
+                    "examples": [],
+                }
+    return sorted(found.values(), key=lambda row: (-float(row.get("confidence") or 0), str(row.get("label") or "")))[:limit]
+
+
 def _templates_by_category() -> Dict[str, List[str]]:
     db = load_templates_db()
     templates = db.get("templates") or {}
@@ -1553,7 +1640,7 @@ def discovery_sources() -> Dict[str, Any]:
 
 
 @router.get("/discovery/categories/{category_id}")
-def discovery_category_context(category_id: str) -> Dict[str, Any]:
+async def discovery_category_context(category_id: str) -> Dict[str, Any]:
     normalized_category_id = str(category_id or "").strip()
     if not normalized_category_id:
         raise HTTPException(status_code=400, detail="category_id is required")
@@ -1616,6 +1703,16 @@ def discovery_category_context(category_id: str) -> Dict[str, Any]:
 
         suggestions = sorted(
             grouped.values(),
+            key=lambda row: (-int(row.get("products_count") or 0), -float(row.get("confidence") or 0.0), str(row.get("label") or "")),
+        )[:5]
+        catalog_suggestions = await _scan_competitor_catalog_suggestions(source, category_name)
+        known_urls = {str(item.get("url") or "").rstrip("/") for item in suggestions}
+        for item in catalog_suggestions:
+            if str(item.get("url") or "").rstrip("/") not in known_urls:
+                suggestions.append(item)
+                known_urls.add(str(item.get("url") or "").rstrip("/"))
+        suggestions = sorted(
+            suggestions,
             key=lambda row: (-int(row.get("products_count") or 0), -float(row.get("confidence") or 0.0), str(row.get("label") or "")),
         )[:5]
         if not suggestions:

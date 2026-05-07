@@ -171,6 +171,37 @@ type MappingIssuesResp = {
   items?: MappingIssue[];
 };
 
+type CompetitorCategorySuggestion = {
+  id: string;
+  type: "observed" | "catalog_scan" | "search" | string;
+  label: string;
+  url: string;
+  confidence?: number;
+  products_count?: number;
+  evidence?: string;
+  examples?: string[];
+};
+
+type CompetitorCategoryDiscoveryResp = {
+  ok: boolean;
+  category: {
+    id: string;
+    name: string;
+    products_count: number;
+    scanned_product_ids?: string[];
+  };
+  sources: Array<{
+    id: CompetitorSiteKey | string;
+    name: string;
+    domain: string;
+    products_count: number;
+    confirmed_count: number;
+    candidates_count: number;
+    needs_review_count: number;
+    suggestions: CompetitorCategorySuggestion[];
+  }>;
+};
+
 type AttrParam = {
   id: string;
   name: string;
@@ -979,6 +1010,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
   const [bindingStates, setBindingStates] = useState<CategoriesResp["binding_states"]>({});
   const [competitorStates, setCompetitorStates] = useState<CategoriesResp["competitor_states"]>({});
+  const [competitorDiscovery, setCompetitorDiscovery] = useState<CompetitorCategoryDiscoveryResp | null>(null);
+  const [competitorDiscoveryLoading, setCompetitorDiscoveryLoading] = useState(false);
+  const [competitorDiscoveryRunning, setCompetitorDiscoveryRunning] = useState(false);
+  const [competitorDiscoveryError, setCompetitorDiscoveryError] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [attrCacheHydratedFor, setAttrCacheHydratedFor] = useState("");
@@ -2387,6 +2422,74 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return catalogNodes.find((node) => node.id === selectedCatalogId) || null;
   }, [catalogNodes, selectedCatalogId]);
 
+  async function loadCompetitorDiscovery(categoryId: string) {
+    const cid = String(categoryId || "").trim();
+    if (!cid) return null;
+    setCompetitorDiscoveryLoading(true);
+    setCompetitorDiscoveryError("");
+    try {
+      const data = await api<CompetitorCategoryDiscoveryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(cid)}`);
+      setCompetitorDiscovery(data);
+      return data;
+    } catch (e) {
+      setCompetitorDiscovery(null);
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось подобрать категории конкурентов");
+      return null;
+    } finally {
+      setCompetitorDiscoveryLoading(false);
+    }
+  }
+
+  async function runCompetitorCategoryDiscovery(categoryId: string) {
+    const current = competitorDiscovery || await loadCompetitorDiscovery(categoryId);
+    const productIds = (current?.category?.scanned_product_ids || []).slice(0, 30);
+    setCompetitorDiscoveryRunning(true);
+    setCompetitorDiscoveryError("");
+    try {
+      await api("/competitor-mapping/discovery/run", {
+        method: "POST",
+        body: JSON.stringify({
+          background: true,
+          sources: ["restore", "store77"],
+          product_ids: productIds,
+          limit: Math.max(1, productIds.length || 30),
+        }),
+      });
+      await loadCompetitorDiscovery(categoryId);
+    } catch (e) {
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось запустить поиск конкурентов");
+    } finally {
+      setCompetitorDiscoveryRunning(false);
+    }
+  }
+
+  useEffect(() => {
+    const categoryId = selectedCatalogNode?.id || "";
+    if (!categoryId || mainTab !== "import" || importTab !== "categories") {
+      setCompetitorDiscovery(null);
+      setCompetitorDiscoveryError("");
+      return;
+    }
+    let cancelled = false;
+    setCompetitorDiscoveryLoading(true);
+    setCompetitorDiscoveryError("");
+    api<CompetitorCategoryDiscoveryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(categoryId)}`)
+      .then((data) => {
+        if (!cancelled) setCompetitorDiscovery(data);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setCompetitorDiscovery(null);
+        setCompetitorDiscoveryError((e as Error).message || "Не удалось подобрать категории конкурентов");
+      })
+      .finally(() => {
+        if (!cancelled) setCompetitorDiscoveryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCatalogNode?.id, mainTab, importTab]);
+
   const selectedCatalogMappedDescendants = useMemo(() => {
     if (!selectedCatalogNode) return [];
     return descendantCatalogIds(selectedCatalogNode.id)
@@ -2897,11 +3000,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               {(() => {
                                 const competitorMeta = competitorSourceMeta(selectedCatalogNode.id);
                                 const competitorHref = `/competitor-mapping/category/${encodeURIComponent(selectedCatalogNode.id)}`;
+                                const discoverySources = competitorDiscovery?.sources || [];
                                 return (
                                   <div className={`mm-providerDetailCard mm-competitorSourceCard ${competitorMeta.configured ? "is-ready" : "is-missing"}`}>
                                     <div className="mm-providerDetailHead">
                                       <div className="mm-providerLead">
-                                        <div className="mm-lineProvider">Конкуренты для насыщения</div>
+                                        <div className="mm-lineProvider">Категории конкурентов</div>
                                         <div className={`mm-providerState ${competitorMeta.statusClass}`}>
                                           {competitorMeta.statusLabel}
                                         </div>
@@ -2922,8 +3026,52 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         ))}
                                       </div>
                                       <div className="mm-competitorSourceHint">
-                                        Эти ссылки нужны для парсинга значений конкурентов и дальнейшего насыщения товаров в выбранной категории.
+                                        Система подбирает ветки re-store и store77 по товарам и названию PIM-категории. Подтвержденные ветки станут источниками для насыщения карточек.
                                       </div>
+                                      <div className="mm-competitorSuggestionsHead">
+                                        <strong>Предложения системы</strong>
+                                        <button
+                                          type="button"
+                                          className="btn mm-miniBtn mm-ghostBtn"
+                                          onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id)}
+                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading}
+                                        >
+                                          {competitorDiscoveryRunning ? "Ищем..." : "Найти ветки"}
+                                        </button>
+                                      </div>
+                                      {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Сканируем источники конкурентов...</div> : null}
+                                      {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
+                                      {!competitorDiscoveryLoading && !competitorDiscoveryError ? (
+                                        <div className="mm-competitorSuggestionList">
+                                          {discoverySources.flatMap((source) =>
+                                            (source.suggestions || []).slice(0, 2).map((suggestion) => (
+                                              <a
+                                                key={`${source.id}-${suggestion.id}`}
+                                                className="mm-competitorSuggestion"
+                                                href={suggestion.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                              >
+                                                <div>
+                                                  <span>{source.name}</span>
+                                                  <strong>{suggestion.label}</strong>
+                                                  <em>
+                                                    {suggestion.type === "catalog_scan"
+                                                      ? "найдено в каталоге"
+                                                      : suggestion.type === "observed"
+                                                        ? "найдено по товарам"
+                                                        : "поиск по сайту"}
+                                                  </em>
+                                                </div>
+                                                <b>{Math.round(Number(suggestion.confidence || 0) * 100)}%</b>
+                                              </a>
+                                            ))
+                                          )}
+                                          {!discoverySources.some((source) => (source.suggestions || []).length > 0) ? (
+                                            <div className="mm-lineEmpty">Пока нет предложений. Запустите поиск веток конкурентов.</div>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                       {competitorMeta.inheritedFrom ? (
                                         <button type="button" className="mm-aggLink" onClick={() => revealCatalogNode(competitorMeta.inheritedFrom)}>
                                           Наследуется от категории: {splitPath(pathById.get(competitorMeta.inheritedFrom) || competitorMeta.inheritedFrom).node}
