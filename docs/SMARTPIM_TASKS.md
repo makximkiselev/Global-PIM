@@ -447,7 +447,8 @@ Next tasks:
 7. add competitor branch suggestions to `/sources-mapping?tab=sources`. Status: first pass done 2026-05-07;
 8. separate competitor branch context from SKU-level competitor product cards in `/sources-mapping?tab=sources`. Status: done 2026-05-07;
 9. add selected-SKU competitor discovery to `/sources-mapping?tab=sources`: choose a product from the category, find exact competitor product cards, then use those cards for parameter extraction. Status: done 2026-05-07;
-10. inspect and simplify value mapping.
+10. align `/sources` tabs to one compact mapping layout: one shared header, no duplicated category/channel summary, category tab owns marketplace cards plus competitor SKU flow. Status: done 2026-05-07;
+11. inspect and simplify value mapping.
 
 Import/source settings check on 2026-05-07:
 

@@ -3,9 +3,6 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
-import PageTabs from "../../components/ui/PageTabs";
-import Badge from "../../components/ui/Badge";
-import PageHeader from "../../components/ui/PageHeader";
 import { api } from "../../lib/api";
 import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
@@ -20,6 +17,12 @@ type MappingBootstrapResp = {
 };
 const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v1";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
+
+const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
+  { key: "sources", label: "Категории", hint: "Площадки и конкурентные источники" },
+  { key: "params", label: "Параметры", hint: "Поля PIM и поля площадок" },
+  { key: "values", label: "Значения", hint: "Написания для выгрузки" },
+];
 
 function normalizeTab(value: string | null): SourcesTab {
   if (value === "mp_categories" || value === "marketplace_categories") return "sources";
@@ -165,22 +168,29 @@ export default function SourcesMappingFeature() {
 
   return (
     <div className="page-shell sourcesMappingPage">
-      <PageHeader
-        title="Сопоставления"
-        subtitle={tabDescription}
-        actions={selectedCategoryName ? <Badge tone="active">{selectedCategoryName}</Badge> : null}
-      />
-
-      <PageTabs
-        className="sourcesMappingTabs"
-        activeKey={tab}
-        onChange={(key) => setTab(key as SourcesTab)}
-        items={[
-          { key: "sources", label: "Источники категории" },
-          { key: "params", label: "Сопоставление параметров" },
-          { key: "values", label: "Значения" },
-        ]}
-      />
+      <div className="sourcesMappingHero">
+        <div className="sourcesMappingHeroText">
+          <div className="sourcesMappingEyebrow">Инфо-модели</div>
+          <div className="sourcesMappingTitleRow">
+            <h1 className="sourcesMappingTitle">Сопоставления</h1>
+            {selectedCategoryName ? <span className="sourcesMappingCategoryChip">{selectedCategoryName}</span> : null}
+          </div>
+          <p className="sourcesMappingSubtitle">{tabDescription}</p>
+        </div>
+        <div className="sourcesMappingSegmentTabs" aria-label="Раздел сопоставлений">
+          {TAB_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`sourcesMappingSegmentTab ${tab === item.key ? "isActive" : ""}`}
+              onClick={() => setTab(item.key)}
+            >
+              <strong>{item.label}</strong>
+              <span>{item.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="sourcesMappingCanvas">
         {tab === "params" && categoryResolving ? (

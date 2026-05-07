@@ -2780,19 +2780,23 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               </div> : null}
 
               <div className="mm-workbenchBlock">
-              <div className="mm-head mm-headWorkspace">
-                <div>
-                  <div className="mm-title">Сопоставление категорий маркетплейсов</div>
-                  <div className="muted">Добавляйте сопоставления на любом уровне дерева. Наследование применяется только вниз.</div>
-                </div>
-                <div className="mm-tools">
-                  <input className="pn-input" placeholder="Поиск по каталогу..." value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} />
-                </div>
-              </div>
+              {!embedded ? (
+                <>
+                  <div className="mm-head mm-headWorkspace">
+                    <div>
+                      <div className="mm-title">Сопоставление категорий маркетплейсов</div>
+                      <div className="muted">Добавляйте сопоставления на любом уровне дерева. Наследование применяется только вниз.</div>
+                    </div>
+                    <div className="mm-tools">
+                      <input className="pn-input" placeholder="Поиск по каталогу..." value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} />
+                    </div>
+                  </div>
 
-              <div className="muted mm-note">
-                Выберите категорию слева, затем сопоставляйте категории Я.Маркета и Ozon справа.
-              </div>
+                  <div className="muted mm-note">
+                    Выберите категорию слева, затем сопоставляйте категории Я.Маркета и Ozon справа.
+                  </div>
+                </>
+              ) : null}
 
               {!displayProviders.length ? (
                 <div className="empty-state">Нет площадок для сопоставления.</div>
@@ -2826,7 +2830,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     <div className="mm-paneHead">
                       <div>
                         <div className="mm-paneTitle">{selectedCatalogNode ? selectedCatalogNode.name : "Категория"}</div>
-                        {selectedCatalogNode ? (
+                        {selectedCatalogNode && !embedded ? (
                           <div className="mm-catBindingStrip">
                             {displayProviders.map((prov) => {
                               const binding = categoryBindingMeta(selectedCatalogNode.id, prov.code);
@@ -3043,9 +3047,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       </div>
                                       <div className="mm-competitorFlow">
                                         <div>
-                                          <span>Как это работает</span>
-                                          <strong>1. Ветка конкурента дает контекст. 2. Карточка SKU дает параметры.</strong>
-                                          <p>Для насыщения выберите любой товар из этой категории: система найдет похожие карточки re-store/store77, а параметры пойдут дальше в сопоставление.</p>
+                                          <span>Работа с конкурентами</span>
+                                          <strong>Подтвердите ветку, затем карточку SKU.</strong>
+                                          <p>Ветка нужна для ограничения поиска. Параметры берутся только из подтвержденной карточки конкурента для конкретного товара.</p>
                                         </div>
                                         <div className="mm-competitorSkuPicker">
                                           <label htmlFor={`competitor-sku-${selectedCatalogNode.id}`}>Товар для проверки</label>
@@ -3087,7 +3091,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
                                           disabled={competitorDiscoveryRunning || competitorDiscoveryLoading}
                                         >
-                                          {competitorDiscoveryRunning ? "Ищем карточку..." : "Найти карточку конкурента"}
+                                          {competitorDiscoveryRunning ? "Ищем карточку..." : "Найти карточки для выбранного SKU"}
                                         </button>
                                       </div>
                                       {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Проверяем ветку и карточки товаров у конкурентов...</div> : null}
@@ -3131,10 +3135,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     <div className="mm-providerActionsBar">
                                       <div className="mm-providerActionBtns">
                                         <Link className="btn mm-miniBtn mm-actBtn" to={competitorHref}>
-                                          Настроить конкурентов
+                                          Подтвердить ветки
                                         </Link>
                                         <Link className="btn mm-miniBtn mm-ghostBtn" to={`${competitorHref}?view=links`}>
-                                          Карточки SKU
+                                          Проверить карточки SKU
                                         </Link>
                                         {selectedSampleProduct ? (
                                           <Link className="btn mm-miniBtn mm-ghostBtn" to={`/products/${encodeURIComponent(selectedSampleProduct.id)}`}>
