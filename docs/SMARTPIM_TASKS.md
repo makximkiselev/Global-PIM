@@ -422,6 +422,9 @@ Rules:
 4. competitor evidence from re-store/store77 must be visible where it helps;
 5. SKU GT and other required service fields must not be removed if needed for marketplace export;
 6. every screen does one task only.
+7. category mapping status must use `/api/marketplaces/mapping/issues` as an overlay; if a provider has `category_needs_reselect`, UI shows `Требует перевыбора`, not `Связано`.
+8. dashboard alert links must open the exact problematic category and visually highlight the affected category/provider.
+9. decorative header badges/labels without action are removed from mapping pages.
 
 Next tasks:
 
@@ -429,7 +432,7 @@ Next tasks:
 2. verify marketplace field import for Ozon and Yandex;
 3. verify competitor evidence from re-store/store77;
 4. remove duplicate counters/tabs in parameter mapping. Status: first pass done for `/sources?tab=params`;
-5. make binding edit action obvious;
+5. make binding edit action obvious. Status: first pass done for stale Ozon mapping on `/sources-mapping?tab=sources`;
 6. inspect and simplify value mapping.
 
 ## P0 - Database Ownership Audit

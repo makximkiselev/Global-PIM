@@ -410,6 +410,12 @@
   background:rgba(59,130,246,.08);
 }
 
+.mm-catBindingPill.is-issue{
+  border-color:rgba(217,45,32,.32);
+  background:linear-gradient(135deg, rgba(255,107,61,.14), rgba(217,45,32,.08));
+  color:#9f1f16;
+}
+
 .mm-catBindingProvider{
   color:var(--muted);
   font-weight:900;
@@ -434,6 +440,10 @@
 
 .mm-treeMappingCount.is-warn{
   color:#2563eb;
+}
+
+.mm-treeMappingCount.is-issue{
+  color:#b42318;
 }
 
 .mm-emptyWorkspace{
@@ -800,6 +810,36 @@
   color:var(--muted);
   background:rgba(11,18,32,.04);
   border-color:rgba(11,18,32,.08);
+}
+
+.mm-providerState.isIssue{
+  color:#9f1f16;
+  background:rgba(217,45,32,.10);
+  border-color:rgba(217,45,32,.24);
+}
+
+.mm-providerDetailCard.has-mapping-issue{
+  border-color:rgba(217,45,32,.28);
+  background:
+    linear-gradient(135deg, rgba(255,107,61,.10), rgba(255,255,255,.72) 42%),
+    var(--panel);
+}
+
+.mm-mappingIssueNotice{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  border:1px solid rgba(217,45,32,.22);
+  border-radius:14px;
+  background:rgba(255,107,61,.08);
+  color:#9f1f16;
+  padding:10px 12px;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.mm-mappingIssueNotice strong{
+  font-size:13px;
 }
 
 .mm-lineContent{

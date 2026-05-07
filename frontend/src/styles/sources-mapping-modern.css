@@ -469,6 +469,13 @@
   border-radius: 12px;
 }
 
+.sourcesMappingPage .csb-treeNode.has-mapping-issue {
+  border-color: rgba(217, 45, 32, 0.26);
+  background:
+    linear-gradient(135deg, rgba(255, 107, 61, 0.14), rgba(255, 244, 237, 0.74));
+  box-shadow: inset 3px 0 0 rgba(255, 107, 61, 0.9);
+}
+
 .sourcesMappingPage .csb-treeSelectBtn {
   flex: 1 1 auto;
   min-width: 0;
@@ -580,6 +587,13 @@
   border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   border-radius: 18px;
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
+}
+
+.sourcesMappingPage .mm-providerDetailCard.has-mapping-issue {
+  border-color: color-mix(in srgb, #d92d20 34%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(255, 107, 61, 0.13), rgba(255, 255, 255, 0.70) 46%),
+    color-mix(in srgb, var(--panel) 96%, var(--surface));
 }
 
 .sourcesCategoryCompetitors {
@@ -828,7 +842,8 @@
   border-radius: 24px;
   border: 1px solid var(--line);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel) 97%, transparent), color-mix(in srgb, var(--surface) 95%, transparent));
+    radial-gradient(circle at top left, rgba(255, 107, 61, 0.12), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 99%, transparent), color-mix(in srgb, var(--surface) 97%, transparent));
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.22);
   overflow: hidden;
 }
@@ -859,6 +874,7 @@
   max-height: min(72vh, 920px);
   overflow: auto;
   padding: 18px 20px 20px;
+  color: var(--text);
 }
 
 .sourcesMappingPage .pg-modalBody .muted,
@@ -868,11 +884,37 @@
 
 .sourcesMappingPage .pg-modalBody .pg-addActions {
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel) 88%, var(--surface));
+  background:
+    linear-gradient(135deg, rgba(255, 107, 61, 0.07), transparent 44%),
+    color-mix(in srgb, var(--panel) 92%, var(--surface));
+  color: var(--text);
 }
 
 .sourcesMappingPage .pg-modalBody .pg-addList {
   padding-bottom: 120px;
+  border-color: color-mix(in srgb, var(--line) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 94%, var(--panel));
+}
+
+.sourcesMappingPage .pg-modalBody .pg-itemRow {
+  border-color: color-mix(in srgb, var(--line) 84%, transparent);
+  background: color-mix(in srgb, var(--panel) 96%, var(--surface));
+  color: var(--text);
+}
+
+.sourcesMappingPage .pg-modalBody .pg-itemRowSelectable:hover {
+  border-color: rgba(255, 107, 61, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 107, 61, 0.08), rgba(255, 255, 255, 0.36)),
+    color-mix(in srgb, var(--panel) 96%, var(--surface));
+}
+
+.sourcesMappingPage .pg-modalBody .pg-itemRowSelectable.active {
+  border-color: rgba(255, 107, 61, 0.42);
+  background:
+    linear-gradient(135deg, rgba(255, 107, 61, 0.18), rgba(255, 183, 77, 0.10)),
+    color-mix(in srgb, var(--panel) 96%, var(--surface));
+  box-shadow: inset 3px 0 0 rgba(255, 107, 61, 0.90);
 }
 
 .sourcesMappingPage .pg-modalActions,

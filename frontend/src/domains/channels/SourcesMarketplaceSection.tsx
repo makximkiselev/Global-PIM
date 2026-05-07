@@ -150,6 +150,24 @@ type CategoriesResp = {
   }>;
 };
 
+type MappingIssue = {
+  id?: string;
+  type?: string;
+  status?: string;
+  provider?: string;
+  provider_title?: string;
+  catalog_category_id?: string;
+  provider_category_id?: string;
+  title?: string;
+  text?: string;
+};
+
+type MappingIssuesResp = {
+  ok: boolean;
+  count?: number;
+  items?: MappingIssue[];
+};
+
 type AttrParam = {
   id: string;
   name: string;
@@ -958,6 +976,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
   const [bindingStates, setBindingStates] = useState<CategoriesResp["binding_states"]>({});
   const [competitorStates, setCompetitorStates] = useState<CategoriesResp["competitor_states"]>({});
+  const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [attrCacheHydratedFor, setAttrCacheHydratedFor] = useState("");
   const [attrDraftAutoBuilt, setAttrDraftAutoBuilt] = useState(false);
@@ -1045,8 +1064,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
+  async function loadMappingIssues() {
+    try {
+      const data = await api<MappingIssuesResp>("/marketplaces/mapping/issues");
+      setMappingIssues((data.items || []).filter((item) => String(item.status || "open") === "open"));
+    } catch {
+      setMappingIssues([]);
+    }
+  }
+
   async function loadInitialReadModel() {
-    const data = await loadCategoriesMapping();
+    const [data] = await Promise.all([loadCategoriesMapping(), loadMappingIssues()]);
     if (data) {
       setSyncMsg("");
     }
@@ -1269,7 +1297,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setSyncMsg("Обновление локального кэша...");
     try {
       invalidateSourcesReadCaches();
-      await loadCategoriesMapping();
+      await Promise.all([loadCategoriesMapping(), loadMappingIssues()]);
       if (mainTab === "import" && importTab === "features") {
         await loadAttrBootstrap();
       }
@@ -1398,15 +1426,35 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return m;
   }, [catalogNodes]);
 
+  const mappingIssuesByCategoryProvider = useMemo(() => {
+    const out = new Map<string, MappingIssue>();
+    for (const issue of mappingIssues || []) {
+      const categoryId = String(issue.catalog_category_id || "").trim();
+      const providerCode = String(issue.provider || "").trim();
+      if (!categoryId || !providerCode) continue;
+      out.set(`${categoryId}:${providerCode}`, issue);
+    }
+    return out;
+  }, [mappingIssues]);
+
+  const categoryHasMappingIssue = useMemo(() => {
+    const out = new Set<string>();
+    for (const issue of mappingIssues || []) {
+      const categoryId = String(issue.catalog_category_id || "").trim();
+      if (categoryId) out.add(categoryId);
+    }
+    return out;
+  }, [mappingIssues]);
+
   const categorySuccessById = useMemo(() => {
     const out = new Map<string, boolean>();
     for (const node of catalogNodes || []) {
       const marketplaceConfigured = displayProviders.some((prov) => categoryBindingMeta(node.id, prov.code).state !== "empty");
       const competitorConfigured = !!competitorStates?.[node.id]?.configured;
-      out.set(node.id, marketplaceConfigured && competitorConfigured);
+      out.set(node.id, marketplaceConfigured && competitorConfigured && !categoryHasMappingIssue.has(node.id));
     }
     return out;
-  }, [catalogNodes, displayProviders, competitorStates, bindingStates, mappings, childrenByParent, parentById]);
+  }, [catalogNodes, displayProviders, competitorStates, bindingStates, mappings, childrenByParent, parentById, categoryHasMappingIssue, mappingIssuesByCategoryProvider]);
 
   const subtreeSuccessById = useMemo(() => {
     const cache = new Map<string, boolean>();
@@ -1766,6 +1814,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const hasChildren = children.length > 0;
     const expanded = qnorm(catalogQuery) ? true : !!treeExpanded[node.id];
     const isSelected = selectedCatalogId === node.id;
+    const hasMappingIssue = categoryHasMappingIssue.has(node.id);
     const isFullNode = !!categorySuccessById.get(node.id);
     const successChildrenCount = children.filter((child) => !!subtreeSuccessById.get(child.id)).length;
     const totalCount = hasChildren ? children.length : 1;
@@ -1774,7 +1823,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return (
       <div key={node.id}>
         <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
-          <div className={`csb-treeNode ${isSelected ? "is-active" : ""}`}>
+          <div className={`csb-treeNode ${isSelected ? "is-active" : ""} ${hasMappingIssue ? "has-mapping-issue" : ""}`}>
             {hasChildren ? (
               <button
                 type="button"
@@ -1795,7 +1844,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             >
               <span className="csb-treeName">{node.name}</span>
             </button>
-            <span className={`csb-treeCount mm-treeMappingCount ${mappedProvidersCount > 0 ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""}`}>
+            <span className={`csb-treeCount mm-treeMappingCount ${mappedProvidersCount > 0 ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""}`}>
               {mappedProvidersCount}/{totalCount}
             </span>
           </div>
@@ -1824,6 +1873,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }
 
   function categoryBindingMeta(nodeId: string, providerCode: string) {
+    const issue = mappingIssuesByCategoryProvider.get(`${nodeId}:${providerCode}`);
     const stateInfo = bindingStates?.[nodeId]?.[providerCode];
     const directId = String(stateInfo?.direct_id || mappings[nodeId]?.[providerCode] || "").trim();
     const inheritedFrom = String(
@@ -1855,13 +1905,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       aggregatedFromChildren,
       effectiveId,
       label: directId
-        ? pathInfo.node || "Выбрано"
+        ? issue
+          ? "Требует перевыбора"
+          : pathInfo.node || "Выбрано"
         : aggregatedFromChildren
           ? `Из дочерних: ${childBindings.length}`
           : inheritedOnly
             ? pathInfo.node || "Наследуется"
             : "Не сопоставлено",
-      state: directId ? "direct" : aggregatedFromChildren ? "aggregated" : inheritedOnly ? "inherited" : "empty",
+      state: issue ? "issue" : directId ? "direct" : aggregatedFromChildren ? "aggregated" : inheritedOnly ? "inherited" : "empty",
+      issue,
     };
   }
 
@@ -1954,6 +2007,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       });
       invalidateSourcesReadCaches(catalogCategoryId);
       setMappings(res.mappings || {});
+      await loadMappingIssues();
       if (importTab === "features") {
         await loadAttrBootstrap().catch(() => null);
       }
@@ -1994,6 +2048,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       });
       invalidateSourcesReadCaches(clearModalCategoryId);
       setMappings(res.mappings || {});
+      await loadMappingIssues();
       setClearModalOpen(false);
       const preservedCount = Number((res.preserved_template_category_ids || []).length || 0);
       setSavedToastText(
@@ -2692,23 +2747,26 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const canDelete = !!directId;
                                 const aggregatedFromChildren = bindingMeta.aggregatedFromChildren;
                                 const inheritedOnly = !directId && !aggregatedFromChildren && !!inheritedFrom;
-                                const mainLabel = canEdit ? "Изменить" : inheritedOnly ? "Задать свою" : "Сопоставить";
+                                const hasIssue = !!bindingMeta.issue;
+                                const mainLabel = hasIssue ? "Перевыбрать" : canEdit ? "Изменить" : inheritedOnly ? "Задать свою" : "Сопоставить";
                                 const mainDisabled = !canOpen;
                                 const mappedCat = effectiveId ? providerCategoryById[prov.code]?.[effectiveId] : null;
                                 const mp = splitPath(mappedCat?.path || mappedCat?.name || "");
                                 const statusLabel = directId
-                                  ? "Связано"
+                                  ? hasIssue
+                                    ? "Требует перевыбора"
+                                    : "Связано"
                                   : aggregatedFromChildren
                                     ? "Из дочерних категорий"
                                     : inheritedOnly
                                       ? "Наследуется"
                                       : "Не сопоставлено";
                                 return (
-                                  <div key={`${selectedCatalogNode.id}-${prov.code}-detail`} className="mm-providerDetailCard">
+                                  <div key={`${selectedCatalogNode.id}-${prov.code}-detail`} className={`mm-providerDetailCard ${hasIssue ? "has-mapping-issue" : ""}`}>
                                     <div className="mm-providerDetailHead">
                                       <div className="mm-providerLead">
                                         <div className="mm-lineProvider">{prov.title}</div>
-                                        <div className={`mm-providerState ${directId ? "isOwn" : aggregatedFromChildren || inheritedOnly ? "isInherit" : "isEmpty"}`}>
+                                        <div className={`mm-providerState ${hasIssue ? "isIssue" : directId ? "isOwn" : aggregatedFromChildren || inheritedOnly ? "isInherit" : "isEmpty"}`}>
                                           {statusLabel}
                                         </div>
                                       </div>
@@ -2754,6 +2812,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       </div>
                                     </div>
                                     <div className="mm-lineContent">
+                                      {hasIssue ? (
+                                        <div className="mm-mappingIssueNotice">
+                                          <strong>{bindingMeta.issue?.title || "Категорию нужно проверить"}</strong>
+                                          <span>{bindingMeta.issue?.text || "Текущая привязка не подходит для загрузки параметров. Выберите категорию площадки заново."}</span>
+                                        </div>
+                                      ) : null}
                                       {aggregatedFromChildren ? (
                                         <div className="mm-aggList">
                                           {inheritedOnly && mappedCat ? (
@@ -3511,6 +3575,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                 <div className="card-title">
                   Выбор категории площадки - {displayProviders.find((x) => x.code === modalProvider)?.title || modalProvider}
                 </div>
+                {!!modalCatalogPath ? (
+                  <div className="muted" style={{ marginTop: 4 }}>
+                    Для ветки PIM: {splitPath(modalCatalogPath).node}
+                  </div>
+                ) : null}
               </div>
               <button className="btn" type="button" onClick={() => setModalOpen(false)}>Закрыть</button>
             </div>

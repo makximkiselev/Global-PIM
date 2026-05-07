@@ -64,15 +64,6 @@ export default function SourcesMappingFeature() {
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
   const [categoryResolving, setCategoryResolving] = useState(initialTab === "params" && !initialCategoryId);
-  const tabLabel =
-    tab === "sources"
-      ? "Категории и источники"
-      : tab === "params"
-        ? "Сопоставление параметров"
-        : tab === "values"
-          ? "Значения параметров"
-          : "Значения параметров";
-
   const tabDescription = useMemo(
     () =>
       tab === "sources"
@@ -177,12 +168,7 @@ export default function SourcesMappingFeature() {
       <PageHeader
         title="Каналы"
         subtitle={tabDescription}
-        actions={
-          <div className="sourcesMappingHeaderActions">
-            <Badge tone="active">{tabLabel}</Badge>
-            <span>{selectedCategoryName || "Категория не выбрана"}</span>
-          </div>
-        }
+        actions={selectedCategoryName ? <Badge tone="active">{selectedCategoryName}</Badge> : null}
       />
 
       <PageTabs
@@ -202,15 +188,6 @@ export default function SourcesMappingFeature() {
             <div className="sourcesMappingCanvasTitle">Подбираем рабочую категорию</div>
             <div className="sourcesMappingCanvasSub">
               Для сопоставления параметров открываем ближайшую дочернюю категорию, где уже есть привязка к каналам.
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "sources" ? (
-          <div className="sourcesMappingCanvasIntro">
-            <div className="sourcesMappingCanvasTitle">Категории и источники</div>
-            <div className="sourcesMappingCanvasSub">
-              Слева дерево PIM, в центре категории Я.Маркета/Ozon. Конкурентные источники вынесены в подготовку данных.
             </div>
           </div>
         ) : null}
