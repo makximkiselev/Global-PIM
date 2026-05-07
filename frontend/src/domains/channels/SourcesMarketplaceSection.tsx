@@ -3569,7 +3569,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
       {modalOpen && (
         <div className="pg-modalBackdrop" onClick={() => setModalOpen(false)}>
-          <div className="pg-modal pg-modalWide" onClick={(e) => e.stopPropagation()}>
+          <div className="pg-modal pg-modalWide mm-categoryPickerModal" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
                 <div className="card-title">
@@ -3586,17 +3586,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
             <div className="pg-modalBody">
               {!!modalCatalogPath && (
-                <div className="pg-addActions" style={{ marginBottom: 10 }}>
+                <div className="pg-addActions mm-categoryPickerContext">
                   <div>
-                    <div className="muted">
-                      Категория каталога: {splitPath(modalCatalogPath).crumbs || "Корень"}
-                    </div>
-                    <div style={{ fontWeight: 700 }}>{splitPath(modalCatalogPath).node}</div>
+                    <div className="mm-categoryPickerLabel">Категория PIM</div>
+                    <div className="mm-categoryPickerTitle">{splitPath(modalCatalogPath).node}</div>
+                    <div className="mm-categoryPickerPath">{splitPath(modalCatalogPath).crumbs || "Корень каталога"}</div>
                   </div>
                 </div>
               )}
 
-              <input className="pn-input" placeholder="Поиск по категориям площадки..." value={modalQuery} onChange={(e) => setModalQuery(e.target.value)} />
+              <div className="mm-categoryPickerSearch">
+                <input className="pn-input" placeholder="Поиск по категориям площадки..." value={modalQuery} onChange={(e) => setModalQuery(e.target.value)} />
+                <span>{modalItems.length} найдено</span>
+              </div>
 
               {modalProvider && !(providerCategories[modalProvider] || []).length ? (
                 <div className="mm-emptyMap" style={{ marginTop: 10 }}>
@@ -3605,23 +3607,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                 </div>
               ) : null}
 
-              <div className="pg-addActions" style={{ marginTop: 10 }}>
-                <div className="muted">Найдено: {modalItems.length}</div>
-              </div>
-              <div className="muted" style={{ marginTop: 8 }}>
+              <div className="mm-categoryPickerHint">
                 Связь, заданная на категории, наследуется вниз. Если у дочерних категорий уже есть собственные привязки, сначала очистите их отдельной операцией из правого блока.
               </div>
 
-              <div className="pg-addList" style={{ maxHeight: "55vh", marginTop: 10 }}>
+              <div className="pg-addList mm-categoryPickerList">
                 <button
                   type="button"
                   className={`pg-itemRow pg-itemRowSelectable ${!modalSelectedProviderCategoryId ? "active" : ""}`}
-                  style={{ width: "100%", textAlign: "left" }}
                   onClick={() => setModalSelectedProviderCategoryId("")}
                   disabled={saving}
                 >
                   <div>
-                    <div style={{ fontWeight: 700 }}>Не сопоставлять</div>
+                    <div className="mm-categoryPickerItemTitle">Не сопоставлять</div>
                   </div>
                 </button>
                 {modalItemsOrdered.map((it) => (
@@ -3629,12 +3627,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     key={it.id}
                     type="button"
                     className={`pg-itemRow pg-itemRowSelectable ${modalSelectedProviderCategoryId === it.id ? "active" : ""}`}
-                    style={{ width: "100%", textAlign: "left" }}
                     onClick={() => setModalSelectedProviderCategoryId(it.id)}
                     disabled={saving}
                   >
                     <div>
-                      <div style={{ fontWeight: 700 }}>{splitPath(it.path || it.name).node}</div>
+                      <div className="mm-categoryPickerItemTitle">{splitPath(it.path || it.name).node}</div>
                       {splitPath(it.path || it.name).crumbs ? <div className="mm-breadcrumbs">{splitPath(it.path || it.name).crumbs}</div> : null}
                     </div>
                   </button>

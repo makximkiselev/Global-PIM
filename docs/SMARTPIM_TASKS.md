@@ -459,6 +459,18 @@ Production snapshot on 2026-04-30:
 9. `product_variants_rel`: 1 row;
 10. `json_documents`: 85 rows.
 
+Production cleanup on 2026-05-07:
+
+1. runtime tables: 50;
+2. expected runtime tables: 50;
+3. backup tables: 0;
+4. unexpected tables: 0;
+5. missing runtime tables: 0;
+6. organizations: 1 active (`org_default / Global Trade`);
+7. orphan tenant read-model rows removed: 24 460;
+8. tenant read-model rows remain only for `org_default`;
+9. empty tables remain intentionally where they support future/active value workflow: dictionary aliases, dictionary values, dictionary value sources, dictionary provider refs, dictionary export maps, and organization invites.
+
 Canonical source-of-truth tables:
 
 1. catalog: `catalog_nodes_rel`;
