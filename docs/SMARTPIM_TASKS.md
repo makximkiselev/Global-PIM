@@ -428,7 +428,7 @@ Rules:
 10. category source mapping must show marketplace channels and competitor source readiness in one selected-category workspace:
     marketplace channels decide where products are exported;
     competitor sources (`re-store`, `store77`) decide where values are parsed from for enrichment;
-    competitor setup opens the category-level competitor mapping screen, not a separate hidden mental model.
+    competitor setup stays inside `/sources?tab=sources`; legacy category-level competitor page is removed from the user path.
 11. competitor category matching must be suggestion-first:
     the system may scan competitor catalogs/search pages, but search pages are only discovery input and must not be shown as a ready binding;
     category-level competitor binding confirms the competitor branch/category context;
@@ -448,7 +448,8 @@ Next tasks:
 8. separate competitor branch context from SKU-level competitor product cards in `/sources-mapping?tab=sources`. Status: done 2026-05-07;
 9. add selected-SKU competitor discovery to `/sources-mapping?tab=sources`: choose a product from the category, find exact competitor product cards, then use those cards for parameter extraction. Status: done 2026-05-07;
 10. align `/sources` tabs to one compact mapping layout: one shared header, no duplicated category/channel summary, category tab owns marketplace cards plus competitor SKU flow. Status: done 2026-05-07;
-11. inspect and simplify value mapping.
+11. remove legacy `/competitor-mapping/category/:id` UI and keep competitor actions inside `/sources?tab=sources`. Status: done 2026-05-07;
+12. inspect and simplify value mapping.
 
 Import/source settings check on 2026-05-07:
 

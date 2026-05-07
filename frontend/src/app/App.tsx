@@ -1,4 +1,4 @@
-import { Navigate, Routes, Route, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, Routes, Route, useParams } from "react-router-dom";
 import { useEffect } from "react";
 import Shell from "./layout/Shell";
 import { useAuth } from "./auth/AuthContext";
@@ -14,7 +14,6 @@ import Infographics from "../domains/data-prep/InfographicsFeature";
 import CatalogExchangeFeature from "../domains/products/CatalogExchangeFeature";
 import DataSourcesFeature from "../domains/data-prep/DataSourcesFeature";
 import ProfileFeature from "../domains/admin/ProfileFeature";
-import CompetitorMappingFeature from "../domains/data-prep/CompetitorMappingFeature";
 
 // ✅ mapping
 import Placeholder from "../shared/placeholders/Placeholder";
@@ -59,10 +58,8 @@ function RequireAnyPage({ pages, children }: { pages: string[]; children: JSX.El
 
 function CompetitorCategoryRoute() {
   const params = useParams();
-  const [searchParams] = useSearchParams();
-  const rawView = searchParams.get("view");
-  const view = rawView === "links" || rawView === "mapping" || rawView === "pool" ? rawView : "all";
-  return <CompetitorMappingFeature categoryId={params.categoryId || ""} view={view} />;
+  const category = encodeURIComponent(params.categoryId || "");
+  return <Navigate to={`/sources?tab=sources&category=${category}`} replace />;
 }
 
 function ProtectedApp() {

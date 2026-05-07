@@ -3008,7 +3008,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               })}
                               {(() => {
                                 const competitorMeta = competitorSourceMeta(selectedCatalogNode.id);
-                                const competitorHref = `/competitor-mapping/category/${encodeURIComponent(selectedCatalogNode.id)}`;
                                 const discoverySources = competitorDiscovery?.sources || [];
                                 const categorySuggestions = discoverySources.flatMap((source) =>
                                   (source.suggestions || [])
@@ -3134,12 +3133,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     </div>
                                     <div className="mm-providerActionsBar">
                                       <div className="mm-providerActionBtns">
-                                        <Link className="btn mm-miniBtn mm-actBtn" to={competitorHref}>
-                                          Подтвердить ветки
-                                        </Link>
-                                        <Link className="btn mm-miniBtn mm-ghostBtn" to={`${competitorHref}?view=links`}>
-                                          Проверить карточки SKU
-                                        </Link>
+                                        <button
+                                          type="button"
+                                          className="btn mm-miniBtn mm-actBtn"
+                                          onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
+                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
+                                        >
+                                          {competitorDiscoveryRunning ? "Ищем..." : "Подобрать карточки"}
+                                        </button>
                                         {selectedSampleProduct ? (
                                           <Link className="btn mm-miniBtn mm-ghostBtn" to={`/products/${encodeURIComponent(selectedSampleProduct.id)}`}>
                                             Открыть товар
