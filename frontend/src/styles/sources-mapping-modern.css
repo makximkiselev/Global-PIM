@@ -307,10 +307,13 @@
 }
 
 .sourcesMappingPage .mm-workspace {
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) !important;
   gap: 12px;
-  align-items: stretch;
+  align-items: start;
   min-height: min(720px, calc(100vh - 240px));
+  width: 100%;
+  min-width: 0;
 }
 
 .sourcesMappingPage .mm-treePane,
@@ -327,6 +330,10 @@
 .sourcesMappingPage .mm-treePaneShared.csb-shell {
   padding: 12px;
   background: transparent;
+  position: sticky;
+  top: 14px;
+  max-height: min(760px, calc(100vh - 190px));
+  overflow: hidden;
 }
 
 .sourcesMappingPage .mm-treePaneShared .csb-head {
@@ -360,7 +367,7 @@
 }
 
 .sourcesMappingPage .csb-body {
-  max-height: min(690px, calc(100vh - 330px));
+  max-height: min(610px, calc(100vh - 340px));
   overflow: auto;
   padding-right: 4px;
 }
@@ -595,10 +602,11 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  min-height: min(620px, calc(100vh - 210px));
 }
 
 .sourcesMappingPage .mm-paneHead {
-  padding: 0;
+  display: none;
 }
 
 .sourcesMappingPage .mm-paneTitle {
@@ -624,7 +632,13 @@
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
 }
 
-.sourcesMappingPage .mm-detailContent,
+.sourcesMappingPage .mm-detailContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
 .sourcesMappingPage .mm-detailContent.hasExtra {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
@@ -692,9 +706,9 @@
 }
 
 .sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   align-content: start;
 }
 
@@ -704,15 +718,16 @@
 }
 
 .sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-lineContent {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerActionsBar {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerActionBtns {
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .sourcesMappingPage .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-providerPath {
@@ -829,8 +844,10 @@
 
 .sourcesMappingPage .mm-competitorSourceCard {
   border-color: color-mix(in srgb, var(--brand) 22%, var(--line));
-  grid-column: 1 / -1;
+  grid-column: 1 / -1 !important;
   display: block;
+  width: 100%;
+  min-width: 0;
 }
 
 .sourcesMappingPage .mm-competitorSourceCard.is-missing {
@@ -849,7 +866,10 @@
 }
 
 .sourcesMappingPage .mm-competitorSourceCard .mm-providerDetailHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
+  gap: 12px;
 }
 
 .sourcesMappingPage .mm-competitorActions {
@@ -857,6 +877,7 @@
   flex: 0 0 auto;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .sourcesMappingPage .mm-competitorSourceCard .mm-lineContent {
@@ -874,9 +895,13 @@
     color-mix(in srgb, var(--panel) 92%, var(--surface));
   padding: 10px;
   display: grid;
-  grid-template-columns: minmax(260px, 1.15fr) minmax(220px, 0.85fr) auto;
+  grid-template-columns: minmax(0, 1.2fr) minmax(210px, 0.8fr);
   gap: 10px;
   align-items: stretch;
+}
+
+.sourcesMappingPage .mm-competitorMiniStats {
+  grid-column: 1 / -1;
 }
 
 .sourcesMappingPage .mm-competitorSkuPicker label {
@@ -929,7 +954,7 @@
 
 .sourcesMappingPage .mm-competitorSourceItem > span,
 .sourcesMappingPage .mm-competitorMiniStats span {
-  white-space: nowrap;
+  white-space: normal;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
@@ -946,7 +971,8 @@
 }
 
 .sourcesMappingPage .mm-competitorMiniStats {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-content: start;
 }
@@ -1520,7 +1546,6 @@
   }
 
   .sourcesMappingPage .mm-kpis,
-  .sourcesMappingPage .mm-workspace,
   .sourcesMappingPage .mm-attrWorkbenchGrid,
   .sourcesMappingPage .mm-competitorEnrichmentGrid,
   .sourcesMappingPage .mm-detailSide,
@@ -1533,7 +1558,6 @@
   }
 
   .sourcesMappingPage .mm-treePaneShared.csb-shell,
-  .sourcesMappingPage .mm-detailPane,
   .sourcesMappingPage .mm-attrLeftHead,
   .sourcesMappingPage .mm-treePaneFeatures.csb-shell,
   .sourcesMappingPage .mm-attrRight,
