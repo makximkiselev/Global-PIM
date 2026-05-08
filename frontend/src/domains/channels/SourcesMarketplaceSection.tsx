@@ -2484,8 +2484,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       const response = await api<CompetitorDiscoveryRunResp>("/competitor-mapping/discovery/run", {
         method: "POST",
         body: JSON.stringify({
-          background: true,
-          sources: ["restore", "store77"],
+          background: false,
+          category_id: categoryId,
+          sources: ["store77"],
           product_ids: productIds,
           limit: Math.max(1, productIds.length || 30),
         }),

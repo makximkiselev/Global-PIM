@@ -43,8 +43,10 @@ router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
 
 _BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
 _DISCOVERY_SOURCE_TIMEOUT_SECONDS = 32.0
+_STORE77_CATEGORY_HTML_CACHE_TTL_SECONDS = 180.0
 _bootstrap_cache: Dict[str, Dict[str, Any]] = {}
 _discovery_run_cache: Dict[str, Dict[str, Any]] = {}
+_store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
 
 
 # =========================
@@ -509,6 +511,10 @@ def _apple_line_conflict(product_tokens: set[str], candidate_tokens: set[str]) -
         for tier in ("pro", "max"):
             if _has_token(product_tokens, tier) != _has_token(candidate_tokens, tier):
                 return f"конфликт линейки AirPods: PIM={tier in product_tokens and tier or 'base'}, candidate={tier in candidate_tokens and tier or 'base'}"
+        product_has_anc = "anc" in product_tokens
+        candidate_has_anc = "anc" in candidate_tokens or "шумоподавлением" in candidate_tokens or "шумоподавление" in candidate_tokens
+        if product_has_anc != candidate_has_anc:
+            return "конфликт линейки AirPods: ANC"
     return None
 
 
@@ -735,10 +741,9 @@ async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str
 
 
 async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if os.getenv("ENABLE_BROWSER_COMPETITOR_DISCOVERY", "").strip().lower() not in {"1", "true", "yes"}:
-        # Browser-backed crawling must run in a dedicated worker, not inside the
-        # web API process. Keeping it disabled by default prevents Chromium from
-        # killing uvicorn workers and returning random 502 responses.
+    if os.getenv("ENABLE_BROWSER_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
+        # Store77 renders product grids in the browser. Keep a hard kill switch
+        # for production incidents, but discovery must work by default.
         return []
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
@@ -755,10 +760,9 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
         # per SKU. For category scans we must not block the whole worker when no
         # deterministic category route is known yet.
         return []
-    for term in _query_terms_for_product(product):
-        url = f"https://store77.net/search/?q={quote_plus(term)}"
+    for url in category_urls:
         try:
-            html = await fetch_browser_html(url, timeout_ms=7000)
+            html = await _fetch_store77_category_html(url)
         except Exception:
             continue
         for candidate in _extract_store77_search_candidates(html, product):
@@ -769,7 +773,8 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
             out.append(candidate)
             if len(out) >= 5:
                 return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
-    for url in category_urls:
+    for term in _query_terms_for_product(product):
+        url = f"https://store77.net/search/?q={quote_plus(term)}"
         try:
             html = await fetch_browser_html(url, timeout_ms=7000)
         except Exception:
@@ -785,6 +790,22 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
     return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
 
 
+async def _fetch_store77_category_html(url: str) -> str:
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return ""
+    now = monotonic()
+    cached = _store77_category_html_cache.get(normalized_url)
+    if cached and now - float(cached[0] or 0.0) <= _STORE77_CATEGORY_HTML_CACHE_TTL_SECONDS:
+        return cached[1]
+    html = await fetch_browser_html(normalized_url, timeout_ms=10000)
+    if len(_store77_category_html_cache) > 12:
+        oldest_key = min(_store77_category_html_cache, key=lambda key: _store77_category_html_cache[key][0])
+        _store77_category_html_cache.pop(oldest_key, None)
+    _store77_category_html_cache[normalized_url] = (now, html)
+    return html
+
+
 def _store77_category_urls_for_product(product: Dict[str, Any]) -> List[str]:
     title = _norm_match_text(product.get("title"))
     urls: List[str] = []
@@ -797,6 +818,13 @@ def _store77_category_urls_for_product(product: Dict[str, Any]) -> List[str]:
         for url in variants:
             if url not in urls:
                 urls.append(url)
+    if "airpods" in title:
+        if "pro" in title and re.search(r"\b3\b", title):
+            urls.append("https://store77.net/apple_airpods_pro_3/")
+        elif "max" in title and re.search(r"\b2\b", title):
+            urls.append("https://store77.net/apple_airpods_max_2/")
+        elif re.search(r"\b4\b", title):
+            urls.append("https://store77.net/apple_airpods_4/")
     return urls
 
 
@@ -899,7 +927,9 @@ def _extract_store77_search_candidates(html: str, product: Dict[str, Any]) -> Li
         url = urljoin("https://store77.net", href)
         if detect_site(url) != "store77" or url in seen:
             continue
-        if not re.search(r"/(catalog/|product/|tovar/|goods?/|telefony_|apple_iphone_)", url, re.I):
+        if not re.search(r"/(catalog/|product/|tovar/|goods?/|telefony_|apple_iphone_|apple_airpods_)", url, re.I):
+            continue
+        if not _store77_likely_product_link(href, text):
             continue
         confidence_score, reasons = _confidence_for_candidate(product, text, "")
         if confidence_score < 0.78:
@@ -916,6 +946,23 @@ def _extract_store77_search_candidates(html: str, product: Dict[str, Any]) -> Li
         if len(candidates) >= 5:
             break
     return candidates
+
+
+def _store77_likely_product_link(href: str, text: str) -> bool:
+    parsed = urlparse(urljoin("https://store77.net", href))
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if len(path_parts) >= 2:
+        return True
+    normalized_text = _norm_match_text(text)
+    tokens = [token for token in normalized_text.split() if token]
+    if len(path_parts) == 1 and len(tokens) >= 5:
+        return bool(
+            re.search(r"\b\d+\s*(gb|гб|tb|тб)\b", normalized_text)
+            or "телефон" in tokens
+            or "naushniki" in tokens
+            or "наушники" in tokens
+        )
+    return False
 
 
 def _get_template_or_404(template_id: str) -> Dict[str, Any]:
@@ -1898,6 +1945,21 @@ def _parse_discovery_run_request(payload: Dict[str, Any]) -> Tuple[List[Dict[str
     return sources, product_ids, limit
 
 
+def _resolve_discovery_product_ids(
+    product_ids: Optional[List[str]],
+    category_id: Optional[str],
+    limit: int,
+) -> Optional[List[str]]:
+    safe_ids = [str(item or "").strip() for item in (product_ids or []) if str(item or "").strip()]
+    normalized_category_id = str(category_id or "").strip()
+    if normalized_category_id:
+        _, category_product_ids = _product_ids_for_category_scope(normalized_category_id, limit=max(1, int(limit or 50)))
+        for item in sorted(category_product_ids):
+            if item and item not in safe_ids:
+                safe_ids.append(item)
+    return safe_ids or None
+
+
 async def _execute_discovery_run(
     run_id: str,
     sources: List[Dict[str, Any]],
@@ -2044,25 +2106,31 @@ async def _execute_discovery_run_safe(
 @router.post("/discovery/run")
 async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     sources, product_ids, limit = _parse_discovery_run_request(payload)
+    product_ids = _resolve_discovery_product_ids(product_ids, payload.get("category_id"), limit)
     run_id = _run_id()
-    organization_id = current_tenant_organization_id()
+    current_org_id = str(current_tenant_organization_id() or "").strip()
+    organization_id = current_org_id or "org_default"
+    tenant_token = None if current_org_id else set_current_tenant_organization_id(organization_id)
+    try:
+        if bool(payload.get("background", False)):
+            db = load_competitor_mapping_db()
+            discovery = _ensure_discovery_doc(db)
+            run = _run_payload(
+                run_id,
+                status="queued",
+                sources=sources,
+                product_ids=product_ids,
+                limit=limit,
+            )
+            discovery["runs"][run_id] = _remember_discovery_run(run)
+            save_competitor_mapping_db(db)
+            _start_discovery_worker_process(run_id, organization_id)
+            return {"ok": True, "run": run, "created_count": 0, "updated_count": 0, "errors_count": 0}
 
-    if bool(payload.get("background", False)):
-        db = load_competitor_mapping_db()
-        discovery = _ensure_discovery_doc(db)
-        run = _run_payload(
-            run_id,
-            status="queued",
-            sources=sources,
-            product_ids=product_ids,
-            limit=limit,
-        )
-        discovery["runs"][run_id] = _remember_discovery_run(run)
-        save_competitor_mapping_db(db)
-        _start_discovery_worker_process(run_id, organization_id)
-        return {"ok": True, "run": run, "created_count": 0, "updated_count": 0, "errors_count": 0}
-
-    run = await _execute_discovery_run(run_id, sources, product_ids, limit, organization_id)
+        run = await _execute_discovery_run(run_id, sources, product_ids, limit, organization_id)
+    finally:
+        if tenant_token is not None:
+            reset_current_tenant_organization_id(tenant_token)
 
     return {
         "ok": True,

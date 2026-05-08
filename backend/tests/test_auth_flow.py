@@ -2114,6 +2114,44 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(status.json()["run"]["id"], run_id)
         self.assertEqual(status.json()["run"]["status"], "queued")
 
+    def test_competitor_discovery_run_expands_category_product_ids_on_backend(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        store = {"version": 2, "categories": {}, "templates": {}}
+        launched: list[tuple[str, str | None]] = []
+
+        def save_doc(doc):
+            next_doc = deepcopy(doc)
+            store.clear()
+            store.update(next_doc)
+
+        with (
+            patch.object(competitor_mapping_routes, "load_competitor_mapping_db", side_effect=lambda: store),
+            patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=save_doc),
+            patch.object(competitor_mapping_routes, "_product_ids_for_category_scope", return_value=([], {"product_4", "product_5"})),
+            patch.object(
+                competitor_mapping_routes,
+                "_start_discovery_worker_process",
+                side_effect=lambda run_id, organization_id: launched.append((run_id, organization_id)),
+            ),
+        ):
+            response = self.client.post(
+                "/api/competitor-mapping/discovery/run",
+                json={
+                    "background": True,
+                    "category_id": "cat_airpods",
+                    "sources": ["store77"],
+                    "product_ids": ["product_3"],
+                    "limit": 30,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        run = response.json()["run"]
+        self.assertEqual(run["requested_product_ids"], ["product_3", "product_4", "product_5"])
+        self.assertEqual(launched, [(run["id"], "org_default")])
+
     def test_store77_search_html_candidates_extract_product_links(self) -> None:
         html = """
           <a class="product-card" href="/catalog/smartfony/apple-iphone-16-128gb-black/">
@@ -2160,6 +2198,60 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["url"], "https://store77.net/apple_iphone_16_pro_2/")
         self.assertIn("Natural Titanium", candidates[0]["title"])
+
+    def test_store77_airpods_category_urls_are_derived_from_title(self) -> None:
+        pro = {"id": "p1", "title": "Беспроводные наушники Apple AirPods Pro (3-го поколения)"}
+        airpods4 = {"id": "p2", "title": "Беспроводные наушники Apple AirPods 4 ANC"}
+        max2 = {"id": "p3", "title": "Беспроводные наушники Apple AirPods Max Gen 2 Blue"}
+
+        self.assertEqual(competitor_mapping_routes._store77_category_urls_for_product(pro), ["https://store77.net/apple_airpods_pro_3/"])
+        self.assertEqual(competitor_mapping_routes._store77_category_urls_for_product(airpods4), ["https://store77.net/apple_airpods_4/"])
+        self.assertEqual(competitor_mapping_routes._store77_category_urls_for_product(max2), ["https://store77.net/apple_airpods_max_2/"])
+
+    def test_store77_airpods_category_html_extracts_product_cards_not_category_root(self) -> None:
+        html = """
+          <a href="/apple_airpods_4/">Apple AirPods 4</a>
+          <a href="/apple_airpods_4/besprovodnye_naushniki_apple_airpods_4_mxp63/">
+            Беспроводные наушники Apple AirPods 4 MXP63
+          </a>
+        """
+        product = {"id": "product_1", "title": "Беспроводные наушники Apple AirPods 4", "sku_gt": "51001"}
+
+        candidates = competitor_mapping_routes._extract_store77_search_candidates(html, product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0]["url"],
+            "https://store77.net/apple_airpods_4/besprovodnye_naushniki_apple_airpods_4_mxp63/",
+        )
+
+    def test_airpods_anc_product_rejects_base_airpods_candidate(self) -> None:
+        product = {"id": "product_1", "title": "Беспроводные наушники Apple AirPods 4 ANC", "sku_gt": "51001"}
+
+        score, reasons = competitor_mapping_routes._confidence_for_candidate(
+            product,
+            "Беспроводные наушники Apple AirPods 4 MXP63",
+            "",
+            "Apple",
+        )
+
+        self.assertEqual(score, 0.0)
+        self.assertIn("ANC", reasons[0])
+
+    def test_store77_category_html_fetch_is_cached(self) -> None:
+        calls: list[str] = []
+
+        async def fake_fetch(url: str, timeout_ms: int = 0):
+            calls.append(url)
+            return f"<html>{url}</html>"
+
+        competitor_mapping_routes._store77_category_html_cache.clear()
+        with patch.object(competitor_mapping_routes, "fetch_browser_html", side_effect=fake_fetch):
+            first = asyncio.run(competitor_mapping_routes._fetch_store77_category_html("https://store77.net/apple_airpods_4/"))
+            second = asyncio.run(competitor_mapping_routes._fetch_store77_category_html("https://store77.net/apple_airpods_4/"))
+
+        self.assertEqual(first, second)
+        self.assertEqual(calls, ["https://store77.net/apple_airpods_4/"])
 
     def test_store77_category_urls_are_derived_from_iphone_title(self) -> None:
         product = {
