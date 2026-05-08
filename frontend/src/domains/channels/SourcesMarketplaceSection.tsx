@@ -3071,14 +3071,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const runHasErrors = Number(competitorDiscoveryRun?.errors_count || 0) > 0;
                                 return (
                                   <div className={`mm-providerDetailCard mm-competitorSourceCard ${competitorMeta.configured ? "is-ready" : "is-missing"}`}>
-                                    <div className="mm-providerDetailHead">
-                                      <div className="mm-providerLead">
-                                        <div className="mm-lineProvider">Конкурентные карточки</div>
-                                        <div className="mm-providerHint">
-                                          Сначала выбирается SKU из этой PIM-категории. Затем worker сканирует re-store/store77, создает кандидатов и отправляет их на подтверждение.
+                                    <div className="mm-competitorHeader">
+                                      <div className="mm-competitorHeaderMain">
+                                        <div className="mm-competitorTitleRow">
+                                          <div className="mm-lineProvider">Конкурентные карточки</div>
+                                          <div className={`mm-providerState ${competitorMeta.statusClass}`}>
+                                            {competitorMeta.statusLabel}
+                                          </div>
                                         </div>
-                                        <div className={`mm-providerState ${competitorMeta.statusClass}`}>
-                                          {competitorMeta.statusLabel}
+                                        <div className="mm-providerHint">
+                                          Система сканирует карточки re-store/store77 по выбранному SKU. Подтверждение кандидатов выполняется в карточке товара.
                                         </div>
                                       </div>
                                       <div className="mm-competitorActions">
@@ -3098,33 +3100,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       </div>
                                     </div>
                                     <div className="mm-lineContent">
-                                      <div className="mm-competitorFlow">
-                                        <div className="mm-competitorFlowStep isActive">
-                                          <span>1</span>
-                                          <strong>Выберите SKU</strong>
-                                          <em>{selectedSampleProduct ? "SKU выбран" : "нет товаров в категории"}</em>
-                                        </div>
-                                        <div className={`mm-competitorFlowStep ${competitorDiscoveryRunning ? "isActive" : runFinished ? "isDone" : ""}`}>
-                                          <span>2</span>
-                                          <strong>Скан каталога</strong>
-                                          <em>
-                                            {competitorDiscoveryRunning
-                                              ? "worker ищет карточки"
-                                              : runFinished
-                                                ? `${runCreated} кандидатов`
-                                                : "еще не запускали"}
-                                          </em>
-                                        </div>
-                                        <div className={`mm-competitorFlowStep ${competitorNeedsReviewTotal ? "isActive" : competitorConfirmedTotal ? "isDone" : ""}`}>
-                                          <span>3</span>
-                                          <strong>Модерация</strong>
-                                          <em>{competitorStatusText}</em>
-                                        </div>
-                                      </div>
-
                                       <div className="mm-competitorCompactPanel">
                                         <div className="mm-competitorSkuPicker">
-                                          <label htmlFor={`competitor-sku-${selectedCatalogNode.id}`}>Запрос для скана</label>
+                                          <label htmlFor={`competitor-sku-${selectedCatalogNode.id}`}>SKU для скана</label>
                                           <select
                                             id={`competitor-sku-${selectedCatalogNode.id}`}
                                             value={selectedSampleProduct?.id || ""}
@@ -3140,6 +3118,29 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                             )}
                                           </select>
                                           <span>{selectedSampleLabel}</span>
+                                        </div>
+                                        <div className="mm-competitorFlow">
+                                          <div className="mm-competitorFlowStep isActive">
+                                            <span>1</span>
+                                            <strong>SKU</strong>
+                                            <em>{selectedSampleProduct ? "выбран" : "нет товаров"}</em>
+                                          </div>
+                                          <div className={`mm-competitorFlowStep ${competitorDiscoveryRunning ? "isActive" : runFinished ? "isDone" : ""}`}>
+                                            <span>2</span>
+                                            <strong>Скан</strong>
+                                            <em>
+                                              {competitorDiscoveryRunning
+                                                ? "идет"
+                                                : runFinished
+                                                  ? `${runCreated} кандидатов`
+                                                  : "не запускали"}
+                                            </em>
+                                          </div>
+                                          <div className={`mm-competitorFlowStep ${competitorNeedsReviewTotal ? "isActive" : competitorConfirmedTotal ? "isDone" : ""}`}>
+                                            <span>3</span>
+                                            <strong>Модерация</strong>
+                                            <em>{competitorNeedsReviewTotal ? `${competitorNeedsReviewTotal} на проверке` : competitorConfirmedTotal ? "готово" : "пусто"}</em>
+                                          </div>
                                         </div>
                                         <div className="mm-competitorSourceStrip">
                                           {competitorMeta.sites.map((site) => (

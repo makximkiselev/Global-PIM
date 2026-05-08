@@ -848,6 +848,7 @@
   display: block;
   width: 100%;
   min-width: 0;
+  padding: 14px;
 }
 
 .sourcesMappingPage .mm-competitorSourceCard.is-missing {
@@ -865,11 +866,22 @@
   line-height: 1.35;
 }
 
-.sourcesMappingPage .mm-competitorSourceCard .mm-providerDetailHead {
+.sourcesMappingPage .mm-competitorHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
+}
+
+.sourcesMappingPage .mm-competitorHeaderMain {
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-competitorTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .sourcesMappingPage .mm-competitorActions {
@@ -882,31 +894,31 @@
 
 .sourcesMappingPage .mm-competitorSourceCard .mm-lineContent {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .sourcesMappingPage .mm-competitorFlow {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .sourcesMappingPage .mm-competitorFlowStep {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 2px 8px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 1px 7px;
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
-  padding: 9px 10px;
+  padding: 7px 8px;
 }
 
 .sourcesMappingPage .mm-competitorFlowStep span {
   grid-row: 1 / 3;
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -919,14 +931,14 @@
 
 .sourcesMappingPage .mm-competitorFlowStep strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 950;
   line-height: 1.15;
 }
 
 .sourcesMappingPage .mm-competitorFlowStep em {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 750;
   line-height: 1.2;
@@ -955,13 +967,13 @@
     color-mix(in srgb, var(--panel) 92%, var(--surface));
   padding: 10px;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(210px, 0.8fr);
-  gap: 10px;
-  align-items: stretch;
+  grid-template-columns: minmax(260px, 1.08fr) minmax(280px, 1fr);
+  gap: 8px;
+  align-items: center;
 }
 
 .sourcesMappingPage .mm-competitorMiniStats {
-  grid-column: 1 / -1;
+  grid-column: 2;
 }
 
 .sourcesMappingPage .mm-competitorRunNotice {
@@ -1016,8 +1028,9 @@
 .sourcesMappingPage .mm-competitorSourceStrip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   align-content: start;
+  grid-column: 1;
 }
 
 .sourcesMappingPage .mm-competitorSourceItem {
@@ -1025,10 +1038,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(var(--bg-rgb), 0.32);
-  padding: 9px 10px;
+  padding: 7px 8px;
 }
 
 .sourcesMappingPage .mm-competitorSourceItem.is-linked {
@@ -1039,9 +1053,12 @@
 .sourcesMappingPage .mm-competitorSourceItem strong,
 .sourcesMappingPage .mm-competitorSourceName {
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sourcesMappingPage .mm-competitorSourceMeta,
@@ -1054,13 +1071,13 @@
 
 .sourcesMappingPage .mm-competitorSourceItem > span,
 .sourcesMappingPage .mm-competitorMiniStats span {
-  white-space: normal;
+  white-space: nowrap;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   color: var(--muted);
-  padding: 5px 8px;
-  font-size: 10px;
+  padding: 4px 7px;
+  font-size: 9px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -1073,8 +1090,9 @@
 .sourcesMappingPage .mm-competitorMiniStats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-content: start;
+  justify-content: flex-end;
 }
 
 .sourcesMappingPage .mm-competitorSkuPicker {
@@ -1083,8 +1101,8 @@
 
 .sourcesMappingPage .mm-competitorSkuPicker select {
   width: 100%;
-  min-height: 38px;
-  margin-top: 6px;
+  min-height: 36px;
+  margin-top: 5px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
@@ -1096,7 +1114,7 @@
 }
 
 .sourcesMappingPage .mm-competitorSkuPicker > span {
-  display: block;
+  display: none;
   color: var(--muted);
   font-size: 11px;
   font-weight: 750;
@@ -1113,7 +1131,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 0;
+  margin-top: 2px;
 }
 
 .sourcesMappingPage .mm-competitorSuggestionsHead strong {
