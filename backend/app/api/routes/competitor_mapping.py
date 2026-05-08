@@ -301,7 +301,10 @@ def _discovery_products(product_ids: Optional[List[str]] = None, limit: int = 50
     items = [item for item in products if isinstance(item, dict)]
     # Synchronous discovery is intentionally small to avoid gateway timeouts.
     # Larger crawls must run as background jobs.
-    return items[: max(1, min(int(limit or 3), 3))]
+    requested_limit = max(1, int(limit or 3))
+    if ids:
+        return items[: min(requested_limit, 50)]
+    return items[: min(requested_limit, 3)]
 
 
 async def _discover_product_candidates_for_source(product: Dict[str, Any], source: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -653,10 +656,12 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
     candidates: List[Dict[str, Any]] = []
     seen: set[str] = set()
     pattern = re.compile(
-        r'\\"name\\"\s*:\s*\\"(?P<title>.*?)(?<!\\)\\".*?'
-        r'(?:\\"price\\"\s*:\s*\\"(?P<price>.*?)\\".*?)?'
-        r'(?:\\"brand\\"\s*:\s*\\"(?P<brand>.*?)\\".*?)?'
-        r'(?:\\"skuCode\\"\s*:\s*\\"(?P<sku>.*?)\\".*?)?'
+        r'\\"categoryName\\"\s*:\s*\\"(?P<category>[^\\"]*)\\".*?'
+        r'\\"sectionName\\"\s*:\s*\\"(?P<section>[^\\"]*)\\".*?'
+        r'\\"skuCode\\"\s*:\s*\\"(?P<sku>[^\\"]*)\\".*?'
+        r'\\"brandName\\"\s*:\s*\\"(?P<brand>[^\\"]*)\\".*?'
+        r'(?:\\"price\\"\s*:\s*(?P<price>\d+(?:\.\d+)?)\s*,.*?)?'
+        r'\\"name\\"\s*:\s*\\"(?P<title>[^\\"]*)\\".*?'
         r'\\"link\\"\s*:\s*\\"(?P<link>/catalog/[^"\\]+/?)\\"',
         re.IGNORECASE | re.DOTALL,
     )
@@ -744,10 +749,16 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
             out.append(candidate)
     if out:
         return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    category_urls = _store77_category_urls_for_product(product)
+    if not category_urls:
+        # store77 search page is browser/ajax-backed and can consume one timeout
+        # per SKU. For category scans we must not block the whole worker when no
+        # deterministic category route is known yet.
+        return []
     for term in _query_terms_for_product(product):
         url = f"https://store77.net/search/?q={quote_plus(term)}"
         try:
-            html = await fetch_browser_html(url, timeout_ms=20000)
+            html = await fetch_browser_html(url, timeout_ms=7000)
         except Exception:
             continue
         for candidate in _extract_store77_search_candidates(html, product):
@@ -758,9 +769,9 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
             out.append(candidate)
             if len(out) >= 5:
                 return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
-    for url in _store77_category_urls_for_product(product):
+    for url in category_urls:
         try:
-            html = await fetch_browser_html(url, timeout_ms=20000)
+            html = await fetch_browser_html(url, timeout_ms=7000)
         except Exception:
             continue
         for candidate in _extract_store77_search_candidates(html, product):

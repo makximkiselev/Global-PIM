@@ -2472,7 +2472,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const current = competitorDiscovery || await loadCompetitorDiscovery(categoryId);
     const sampleProducts = current?.category?.sample_products || [];
     const selectedProductId = String(productId || competitorSampleProductId || sampleProducts[0]?.id || "").trim();
-    const productIds = selectedProductId ? [selectedProductId] : (current?.category?.scanned_product_ids || []).slice(0, 30);
+    const categoryProductIds = (current?.category?.scanned_product_ids || []).slice(0, 30);
+    const productIds = [
+      selectedProductId,
+      ...categoryProductIds,
+    ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
     setCompetitorDiscoveryRunning(true);
     setCompetitorDiscoveryError("");
     setCompetitorDiscoveryRun(null);

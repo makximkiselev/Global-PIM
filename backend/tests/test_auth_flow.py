@@ -1708,6 +1708,61 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(payload["run"]["status"], "completed")
         self.assertEqual(len(saved_docs[-1]["discovery"]["candidates"]), 2)
 
+    def test_restore_search_parser_extracts_large_escaped_catalog_fast(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Беспроводные наушники Apple AirPods Pro (3-го поколения)",
+            "sku_gt": "10001",
+            "category_id": "headphones",
+        }
+        product_fragment = (
+            r'\"categoryName\":\"Наушники\",\"sectionName\":\"AirPods Pro\",'
+            r'\"skuCode\":\"MFHP4\",\"brandName\":\"Apple\",'
+            r'\"status\":{\"current\":\"available\"},'
+            r'\"name\":\"Беспроводные наушники Apple AirPods Pro (3-го поколения)\",'
+            r'\"type\":\"undefined\",\"link\":\"/catalog/MFHP4/\"'
+        )
+        html = "x" * 250_000 + product_fragment + "y" * 250_000
+
+        started = time.monotonic()
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+        elapsed = time.monotonic() - started
+
+        self.assertLess(elapsed, 0.25)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/MFHP4/")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
+
+    def test_discovery_products_does_not_truncate_explicit_category_ids_to_three(self) -> None:
+        products = [{"id": f"product_{idx}", "title": f"Product {idx}"} for idx in range(10)]
+
+        with patch.object(competitor_mapping_routes, "query_products_full", return_value=products) as query_mock:
+            selected = competitor_mapping_routes._discovery_products(
+                product_ids=[item["id"] for item in products],
+                limit=10,
+            )
+
+        self.assertEqual(len(selected), 10)
+        query_mock.assert_called_once_with(ids=[item["id"] for item in products])
+
+    def test_store77_discovery_skips_browser_when_category_route_is_unknown(self) -> None:
+        async def fail_browser_fetch(*args, **kwargs):
+            raise AssertionError("store77 browser fetch should not run without deterministic category route")
+
+        product = {
+            "id": "product_airpods",
+            "title": "Беспроводные наушники Apple AirPods 3 MagSafe Charging Case",
+            "category_id": "headphones",
+        }
+
+        with (
+            patch.dict(os.environ, {"ENABLE_BROWSER_COMPETITOR_DISCOVERY": "1"}, clear=False),
+            patch.object(competitor_mapping_routes, "fetch_browser_html", side_effect=fail_browser_fetch),
+        ):
+            result = asyncio.run(competitor_mapping_routes._discover_store77_candidates(product))
+
+        self.assertEqual(result, [])
+
     def test_competitor_discovery_run_marks_missing_review_candidates_stale(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
