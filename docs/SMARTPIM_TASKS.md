@@ -456,6 +456,20 @@ Next tasks:
 16. compact `/sources?tab=values` dictionary editor in embedded mode: hide metadata duplication and collapse marketplace allowed values into searchable preview. Status: done 2026-05-07;
 17. verify competitor SKU search button in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: next.
 
+DB readiness check on 2026-05-08:
+
+1. Production schema health is clean at the table level: 50 total tables, 50 expected runtime tables, 0 backup tables, 0 unexpected tables, 0 missing tables.
+2. Relational tables exist and are populated for marketplace/category/model/value work:
+   `category_mappings_tenant_rel` 69 rows, `attribute_mappings_tenant_rel` 260 rows, `attribute_value_refs_tenant_rel` 260 rows,
+   `templates_tenant_rel` 6 rows, `template_attributes_tenant_rel` 274 rows, `dictionaries_tenant_rel` 159 rows,
+   `dictionary_values_tenant_rel` 3671 rows, `dictionary_provider_refs_tenant_rel` 153 rows, `dictionary_export_maps_tenant_rel` 203 rows.
+3. Product/catalog relational state exists: `catalog_nodes_rel` 272 rows, `products_rel` 1090 rows, `catalog_product_page_tenant_rel` 1090 rows.
+4. Current consolidated target tables (`pim_products`, `pim_model_fields`, `pim_channel_links`, etc.) do not exist yet; the accepted consolidation plan is still pending implementation.
+5. Marketplace raw snapshots and heavy external payloads still live in `json_documents`, which is acceptable as cache/backlog but must not become the final source of truth.
+6. Competitor source workflow is not DB-complete yet: `competitor_mapping_org_default.json` exists in `json_documents`, but `categories` is empty and competitor category/product links are not in a relational `pim_channel_links`-style table.
+7. Opened category `Наушники` (`b2f026d9-a3e2-4821-9034-d17ac1b65065`) has marketplace mappings and info-model rows, but has 0 direct product rows in `products_rel` / `catalog_product_page_tenant_rel`; SKU-based competitor search must therefore either use descendant products or show a clear "нет товаров в ветке" state.
+8. Before deeper competitor enrichment UI work, add/read-adapt a single channel-link store for marketplace category links, competitor category links, competitor SKU URLs, candidate/review status, and source evidence.
+
 Import/source settings check on 2026-05-07:
 
 1. frontend route `/connectors/status?tab=stores` loads in Browser Use with no console errors;
