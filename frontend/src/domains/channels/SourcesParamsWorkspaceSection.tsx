@@ -427,9 +427,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       <section className="paramsWorkspaceMain">
         <div className="paramsCommand">
           <div>
-            <div className="paramsEyebrow">Категория · параметры · выгрузка</div>
+            <div className="paramsEyebrow">Параметры инфо-модели</div>
             <h2>{categoryName}</h2>
-            <p>{categoryPath}</p>
             <div className="paramsCommandBadges" aria-label="Готовность параметров">
               <span>{Object.keys(details?.mapping || {}).length ? "категории связаны" : "нужна связка категорий"}</span>
               <span>{codes.length} площадки</span>
@@ -487,8 +486,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               <div>
                 <h3>Параметры инфо-модели</h3>
                 <p>
-                  Здесь показаны только рабочие поля PIM для товаров этой категории. Поля площадок и конкурентов используются справа как источники
-                  и не превращаются в параметры автоматически без подтверждения.
+                  Рабочие поля PIM для товаров этой категории. Справа выберите поля площадок и подтвердите результат.
                 </p>
               </div>
             </div>
