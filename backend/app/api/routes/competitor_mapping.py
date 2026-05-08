@@ -215,7 +215,7 @@ def _start_discovery_worker_process(run_id: str, organization_id: Optional[str])
     backend_root = str(_backend_root())
     existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
     env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-    env.setdefault("ENABLE_HTTP_COMPETITOR_DISCOVERY", "0")
+    env.setdefault("ENABLE_HTTP_COMPETITOR_DISCOVERY", "1")
     env.setdefault("ENABLE_BROWSER_COMPETITOR_DISCOVERY", "1")
 
     command = [
@@ -343,6 +343,7 @@ def _norm_match_text(value: Any) -> str:
 
 _KNOWN_BRAND_TOKENS = {
     "apple",
+    "airpods",
     "iphone",
     "ipad",
     "macbook",
@@ -359,6 +360,7 @@ _KNOWN_BRAND_TOKENS = {
 
 _MATCH_REQUIRED_TOKENS = {
     "apple",
+    "airpods",
     "iphone",
     "ipad",
     "macbook",
@@ -377,6 +379,7 @@ _MATCH_REQUIRED_TOKENS = {
     "ultra",
     "mini",
     "air",
+    "magsafe",
     "esim",
     "sim",
     "2sim",
@@ -488,7 +491,22 @@ def _required_match_tokens(product: Dict[str, Any]) -> set[str]:
         required.discard("sim")
     if "iphone" in tokens:
         required.update(token for token in tokens if re.fullmatch(r"\d{1,2}", token))
+    if "airpods" in tokens:
+        required.add("airpods")
+        required.update(token for token in tokens if re.fullmatch(r"\d{1,2}", token))
     return required
+
+
+def _has_token(tokens: set[str], token: str) -> bool:
+    return token in tokens
+
+
+def _apple_line_conflict(product_tokens: set[str], candidate_tokens: set[str]) -> Optional[str]:
+    if "airpods" in product_tokens and "airpods" in candidate_tokens:
+        for tier in ("pro", "max"):
+            if _has_token(product_tokens, tier) != _has_token(candidate_tokens, tier):
+                return f"конфликт линейки AirPods: PIM={tier in product_tokens and tier or 'base'}, candidate={tier in candidate_tokens and tier or 'base'}"
+    return None
 
 
 def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, brand: str = "") -> Tuple[float, List[str]]:
@@ -504,12 +522,17 @@ def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, bra
         reasons.append("SKU совпал")
     product_title = _norm_match_text(product.get("title"))
     candidate_title = _norm_match_text(title)
+    product_tokens_for_line = _match_tokens(product_title)
+    candidate_tokens_for_line = _match_tokens(f"{brand} {title}")
+    line_conflict = _apple_line_conflict(product_tokens_for_line, candidate_tokens_for_line)
+    if line_conflict:
+        return 0.0, [line_conflict]
     product_brand_tokens = _brand_tokens(product.get("title"))
     candidate_brand_tokens = _brand_tokens(brand) | _brand_tokens(title)
     if product_brand_tokens and candidate_brand_tokens and product_brand_tokens.isdisjoint(candidate_brand_tokens):
         return 0.0, ["конфликт бренда"]
     required_tokens = _required_match_tokens(product)
-    candidate_tokens = _match_tokens(f"{brand} {title}")
+    candidate_tokens = candidate_tokens_for_line
     missing_required = sorted(required_tokens - candidate_tokens)
     if missing_required:
         return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
@@ -1650,6 +1673,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="CATEGORY_NOT_FOUND")
 
     products, product_ids = _product_ids_for_category_scope(normalized_category_id)
+    product_by_id = {str(item.get("id") or "").strip(): item for item in products if isinstance(item, dict)}
     db = load_competitor_mapping_db()
     discovery = _ensure_discovery_doc(db)
     candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
@@ -1673,9 +1697,19 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
             and str(item.get("source_id") or "").strip() == source_id
             and str(item.get("product_id") or "").strip() in product_ids
         ]
+        review_candidates: List[Dict[str, Any]] = []
+        for item in source_candidates:
+            if item.get("status") != "needs_review":
+                continue
+            product = product_by_id.get(str(item.get("product_id") or "").strip())
+            if product:
+                score, _ = _confidence_for_candidate(product, str(item.get("title") or ""), str(item.get("sku") or ""))
+                if score < 0.78:
+                    continue
+            review_candidates.append(item)
 
         grouped: Dict[str, Dict[str, Any]] = {}
-        for item in [*source_candidates, *source_links]:
+        for item in [*review_candidates, *source_links]:
             url = str(item.get("url") or "").strip()
             if not url:
                 continue
@@ -1725,8 +1759,15 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                 "status": source.get("status"),
                 "products_count": len(products),
                 "confirmed_count": len(source_links),
-                "candidates_count": len(source_candidates),
-                "needs_review_count": sum(1 for item in source_candidates if item.get("status") == "needs_review"),
+                "candidates_count": len(review_candidates),
+                "needs_review_count": len(review_candidates),
+                "candidate_items": sorted(
+                    review_candidates,
+                    key=lambda row: (
+                        -float(row.get("confidence_score") or 0),
+                        str(row.get("title") or row.get("url") or ""),
+                    ),
+                )[:6],
                 "suggestions": suggestions,
                 "fallback_search": fallback_search,
             }

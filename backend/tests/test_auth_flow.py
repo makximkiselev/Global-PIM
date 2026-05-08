@@ -1893,7 +1893,7 @@ class AuthFlowTests(unittest.TestCase):
                         "product_id": "product_1",
                         "source_id": "restore",
                         "url": "https://re-store.ru/catalog/apple/iphone/product-1/",
-                        "title": "iPhone competitor",
+                        "title": "Apple iPhone 16 Pro competitor",
                         "status": "needs_review",
                         "confidence_score": 0.91,
                     },
@@ -2002,6 +2002,22 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.8)
         self.assertIn("обязательные токены совпали", candidates[0]["confidence_reasons"])
+
+    def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
+        html = r'''
+          <script>
+          window.__payload = {\"name\":\"Беспроводные наушники Apple AirPods Pro (3-го поколения)\",\"price\":\"24990\",\"brand\":\"Apple\",\"skuCode\":\"MFHP4\",\"link\":\"/catalog/MFHP4/\"};
+          </script>
+        '''
+        product = {
+            "id": "product_646",
+            "title": "Беспроводные наушники Apple AirPods 3 MagSafe Charging Case",
+            "sku_gt": "50996",
+        }
+
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+
+        self.assertEqual(candidates, [])
 
     def test_competitor_discovery_background_run_is_queued_and_pollable(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
