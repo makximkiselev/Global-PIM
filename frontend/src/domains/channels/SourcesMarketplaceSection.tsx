@@ -591,6 +591,23 @@ function competitorFieldLabel(fieldKey: string, meta: CompetitorFieldMeta[]): st
   return String(hit?.name || key);
 }
 
+function compactCompetitorUrl(urlRaw: string): string {
+  const raw = String(urlRaw || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const path = parsed.pathname.replace(/^\/+|\/+$/g, "");
+    if (!path) return host;
+    const parts = path.split("/").filter(Boolean);
+    const last = parts[parts.length - 1] || "";
+    const readable = last.replace(/[-_]+/g, " ");
+    return `${host} / ${readable.length > 42 ? `${readable.slice(0, 42)}...` : readable}`;
+  } catch {
+    return raw.length > 56 ? `${raw.slice(0, 56)}...` : raw;
+  }
+}
+
 function sourceProviderLabel(providerCode: string): string {
   return PROVIDER_SLOTS[providerCode] || COMPETITOR_PROVIDER_SLOTS[providerCode as CompetitorSiteKey] || providerCode;
 }
@@ -2500,7 +2517,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         body: JSON.stringify({
           background: false,
           category_id: categoryId,
-          sources: ["store77"],
+          sources: ["restore", "store77"],
           product_ids: productIds,
           limit: Math.max(1, productIds.length || 30),
         }),
@@ -3145,7 +3162,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         </button>
                                         {selectedSampleProduct ? (
                                           <Link className="btn mm-miniBtn mm-ghostBtn" to={`/products/${encodeURIComponent(selectedSampleProduct.id)}`}>
-                                            Добавить ссылку
+                                            Открыть SKU
                                           </Link>
                                         ) : null}
                                       </div>
@@ -3263,6 +3280,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
                                       <div className="mm-competitorSuggestionsHead">
                                         <strong>Карточки выбранного SKU на модерации</strong>
+                                        <span>Подтвердите одну карточку в товаре. Остальные кандидаты будут отклонены автоматически.</span>
                                       </div>
                                       <div className="mm-competitorCandidateList">
                                         {productCandidates.map(({ source, candidate }) => (
@@ -3274,9 +3292,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                             <span>
                                               <b>{source.name}</b>
                                               <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
-                                              <em>{candidate.url}</em>
+                                              <em>{compactCompetitorUrl(candidate.url || "")}</em>
                                             </span>
-                                            <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}% · {candidate.status || "needs_review"}</small>
+                                            <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}% · открыть товар</small>
                                           </Link>
                                         ))}
                                         {productCandidates.length === 0 ? (
