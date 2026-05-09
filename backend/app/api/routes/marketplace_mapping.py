@@ -2245,6 +2245,120 @@ def _merge_ai_rows_into_target_rows(
     return _normalize_attr_rows(merged)
 
 
+def _attr_row_provider_coverage(row: Dict[str, Any], providers: Optional[List[str]] = None) -> int:
+    provider_codes = providers or MAPPING_PROVIDERS
+    row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+    covered = 0
+    for provider in provider_codes:
+        payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else {}
+        if str(payload.get("id") or payload.get("name") or "").strip():
+            covered += 1
+    return covered
+
+
+def _attr_row_signature(row: Dict[str, Any], providers: Optional[List[str]] = None) -> Dict[str, Any]:
+    provider_codes = providers or MAPPING_PROVIDERS
+    row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+    return {
+        "confirmed": bool(row.get("confirmed") or False),
+        "providers": {
+            provider: str(
+                (
+                    row_map.get(provider)
+                    if isinstance(row_map.get(provider), dict)
+                    else {}
+                ).get("id")
+                or ""
+            ).strip()
+            for provider in provider_codes
+        },
+    }
+
+
+def _is_service_attr_row(row: Dict[str, Any]) -> bool:
+    rid = str(row.get("id") or "").strip()
+    if rid.startswith("svc:"):
+        return True
+    name = _norm_name(str(row.get("catalog_name") or ""))
+    if name in {"sku gt", "sku", "название"}:
+        return True
+    return (
+        "sku" in name
+        or "штрихкод" in name
+        or "barcode" in name
+        or "наименование" in name
+        or "бренд" in name
+        or "описание" in name
+        or "фото" in name
+        or "картин" in name
+    )
+
+
+def _attr_mapping_snapshot(rows: List[Dict[str, Any]], providers: Optional[List[str]] = None) -> Dict[str, Any]:
+    normalized = [row for row in _normalize_attr_rows(rows) if not _is_service_attr_row(row)]
+    total = len(normalized)
+    ready = 0
+    unmapped = 0
+    provider_counts = {provider: 0 for provider in (providers or MAPPING_PROVIDERS)}
+    sample_unmapped: List[str] = []
+    for row in normalized:
+        coverage = _attr_row_provider_coverage(row, providers)
+        if coverage == 0:
+            unmapped += 1
+            if len(sample_unmapped) < 8:
+                sample_unmapped.append(str(row.get("catalog_name") or row.get("id") or "").strip())
+        if coverage > 0 and bool(row.get("confirmed") or False):
+            ready += 1
+        row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        for provider in provider_counts:
+            payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else {}
+            if str(payload.get("id") or payload.get("name") or "").strip():
+                provider_counts[provider] += 1
+    return {
+        "total": total,
+        "ready": ready,
+        "attention": total - ready,
+        "unmapped": unmapped,
+        "providers": provider_counts,
+        "sample_unmapped": [item for item in sample_unmapped if item],
+    }
+
+
+def _attr_ai_run_summary(before_rows: List[Dict[str, Any]], after_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    before = [row for row in _normalize_attr_rows(before_rows) if not _is_service_attr_row(row)]
+    after = [row for row in _normalize_attr_rows(after_rows) if not _is_service_attr_row(row)]
+    before_by_key = {
+        str(row.get("id") or _norm_name(str(row.get("catalog_name") or ""))).strip(): row
+        for row in before
+    }
+    changed_rows = 0
+    improved_rows = 0
+    provider_added = {provider: 0 for provider in MAPPING_PROVIDERS}
+
+    for row in after:
+        key = str(row.get("id") or _norm_name(str(row.get("catalog_name") or ""))).strip()
+        prev = before_by_key.get(key) or {}
+        prev_sig = _attr_row_signature(prev)
+        next_sig = _attr_row_signature(row)
+        if prev_sig != next_sig:
+            changed_rows += 1
+        prev_coverage = _attr_row_provider_coverage(prev)
+        next_coverage = _attr_row_provider_coverage(row)
+        if next_coverage > prev_coverage or (not bool(prev.get("confirmed") or False) and bool(row.get("confirmed") or False) and next_coverage > 0):
+            improved_rows += 1
+        for provider in MAPPING_PROVIDERS:
+            if next_sig["providers"].get(provider) and not prev_sig["providers"].get(provider):
+                provider_added[provider] += 1
+
+    return {
+        "changed_rows": changed_rows,
+        "improved_rows": improved_rows,
+        "provider_added": provider_added,
+        "before": _attr_mapping_snapshot(before),
+        "after": _attr_mapping_snapshot(after),
+    }
+
+
 async def _ollama_suggest_rows(
     category_name: str,
     yandex_params: List[Dict[str, Any]],
@@ -3252,6 +3366,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         feedback_doc=feedback_doc,
     )
     rows_final = _apply_group_locks(rows_final)
+    run_summary = _attr_ai_run_summary(seed_rows, rows_final)
 
     if req.apply:
         _cache_entry(_attr_categories_cache)["ts"] = 0.0
@@ -3297,4 +3412,5 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         "applied": bool(req.apply),
         "rows": rows_final,
         "rows_count": len(rows_final),
+        "summary": run_summary,
     }

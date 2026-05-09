@@ -44,6 +44,13 @@ type AttrAiMatchResp = {
   applied: boolean;
   rows: AttrRow[];
   rows_count: number;
+  summary?: {
+    changed_rows?: number;
+    improved_rows?: number;
+    provider_added?: Record<string, number>;
+    before?: { total?: number; ready?: number; attention?: number; unmapped?: number; sample_unmapped?: string[] };
+    after?: { total?: number; ready?: number; attention?: number; unmapped?: number; sample_unmapped?: string[] };
+  };
 };
 
 type CompetitorSourceSuggestion = {
@@ -153,6 +160,30 @@ function rowStatusLabel(row: AttrRow, codes: string[]) {
   if (rowProviderCoverage(row, codes) === 0) return "без связки";
   if (!row.confirmed) return "нужна проверка";
   return "подтвержден";
+}
+
+function aiEngineLabel(engine: string) {
+  return engine === "ollama" ? "Ollama" : "локальные правила";
+}
+
+function formatAiMatchNotice(resp: AttrAiMatchResp) {
+  const summary = resp.summary || {};
+  const after = summary.after || {};
+  const improved = Number(summary.improved_rows || 0);
+  const changed = Number(summary.changed_rows || 0);
+  const ready = Number(after.ready || 0);
+  const total = Number(after.total || resp.rows_count || 0);
+  const unmapped = Number(after.unmapped || 0);
+  const attention = Number(after.attention || 0);
+  const providerAdded = summary.provider_added || {};
+  const providerParts = Object.entries(providerAdded)
+    .filter(([, count]) => Number(count || 0) > 0)
+    .map(([provider, count]) => `${provider === "yandex_market" ? "Я.Маркет" : provider === "ozon" ? "Ozon" : provider}: +${count}`);
+  const providerText = providerParts.length ? ` Источники: ${providerParts.join(", ")}.` : "";
+  if (improved > 0) {
+    return `AI-сопоставление (${aiEngineLabel(resp.engine)}) улучшило ${improved} полей, изменено ${changed}. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.${providerText}`;
+  }
+  return `AI-сопоставление (${aiEngineLabel(resp.engine)}) проверило ${total} полей, но новых уверенных связок не нашло. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.`;
 }
 
 export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
@@ -330,7 +361,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         body: JSON.stringify({ apply: true }),
       });
       await loadDetails(selectedCategoryId);
-      setNotice(`AI-сопоставление применено (${resp.engine === "ollama" ? "Ollama" : "fallback"}), строк: ${resp.rows_count}`);
+      setNotice(formatAiMatchNotice(resp));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка AI-сопоставления");
     } finally {
