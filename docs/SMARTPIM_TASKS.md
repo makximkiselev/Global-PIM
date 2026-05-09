@@ -438,23 +438,34 @@ Rules:
 
 Next tasks:
 
-1. run full user path for `Смартфоны`;
-2. verify marketplace field import for Ozon and Yandex;
-3. verify competitor evidence from re-store/store77;
-4. remove duplicate counters/tabs in parameter mapping. Status: first pass done for `/sources?tab=params`;
-5. make binding edit action obvious. Status: first pass done for stale Ozon mapping on `/sources-mapping?tab=sources`;
-6. add visible competitor readiness/actions to `/sources-mapping?tab=sources`. Status: done 2026-05-07;
-7. add competitor branch suggestions to `/sources-mapping?tab=sources`. Status: first pass done 2026-05-07;
-8. separate competitor branch context from SKU-level competitor product cards in `/sources-mapping?tab=sources`. Status: done 2026-05-07;
-9. add selected-SKU competitor discovery to `/sources-mapping?tab=sources`: choose a product from the category, find exact competitor product cards, then use those cards for parameter extraction. Status: done 2026-05-07;
-10. align `/sources` tabs to one compact mapping layout: one shared header, no duplicated category/channel summary, category tab owns marketplace cards plus competitor SKU flow. Status: done 2026-05-07;
-11. remove legacy `/competitor-mapping/category/:id` UI and keep competitor actions inside `/sources?tab=sources`. Status: done 2026-05-07;
-12. redesign `/sources?tab=sources` competitor card as SKU enrichment workflow: sources, selected SKU, competitor card candidates, confirm/manual-link actions. Status: done 2026-05-07;
-13. inspect and simplify value mapping. Status: active 2026-05-07;
-14. compact `/sources?tab=sources` competitor card: one SKU selector, one primary search action, compact re-store/store77 state, no step-cards/counter clutter. Status: done 2026-05-07;
-15. clarify `/sources?tab=params` count as PIM info-model fields, not all marketplace fields. Status: done 2026-05-07;
-16. compact `/sources?tab=values` dictionary editor in embedded mode: hide metadata duplication and collapse marketplace allowed values into searchable preview. Status: done 2026-05-07;
-17. verify competitor SKU search button in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: next.
+1. fix QA findings from 2026-05-09 full pipeline pass for `Смартфоны` and `Наушники`:
+   - `/catalog?category=<id>` must select the requested category instead of opening the default first category;
+   - `/products?category=<id>` must apply the category filter instead of showing all SKU;
+   - `/catalog/export?category=<id>` must preserve the category scope after redirect to `/catalog/exchange?tab=export`;
+   - `/sources?tab=params&category=<id>` must not show `Выберите категорию` when the category is already provided in the URL;
+   - `Смартфоны` category is not empty in DB: 1 direct SKU and 431 SKU in the branch; UI copy must distinguish direct SKU from branch SKU;
+   - `Наушники` has 0 direct SKU and 17 branch SKU; SKU-based competitor flow must say `в ветке`, not imply direct products;
+   - AI mapping on `Наушники` runs and writes/applies fallback rows, but visible readiness stays `Внимание 14`, `Без связки 10`, `Готово 1`; the UI must explain what changed or show that nothing improved;
+   - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present; investigate attribute import/mapping source;
+   - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`; remove this contradiction;
+   - competitor data still lives in `json_documents` (`competitor_mapping_org_default.json`) and must move to/through the accepted channel-link store before final enrichment UX is considered stable.
+2. run full user path for `Смартфоны`;
+3. verify marketplace field import for Ozon and Yandex;
+4. verify competitor evidence from re-store/store77;
+5. remove duplicate counters/tabs in parameter mapping. Status: first pass done for `/sources?tab=params`;
+6. make binding edit action obvious. Status: first pass done for stale Ozon mapping on `/sources-mapping?tab=sources`;
+7. add visible competitor readiness/actions to `/sources-mapping?tab=sources`. Status: done 2026-05-07;
+8. add competitor branch suggestions to `/sources-mapping?tab=sources`. Status: first pass done 2026-05-07;
+9. separate competitor branch context from SKU-level competitor product cards in `/sources-mapping?tab=sources`. Status: done 2026-05-07;
+10. add selected-SKU competitor discovery to `/sources-mapping?tab=sources`: choose a product from the category, find exact competitor product cards, then use those cards for parameter extraction. Status: done 2026-05-07;
+11. align `/sources` tabs to one compact mapping layout: one shared header, no duplicated category/channel summary, category tab owns marketplace cards plus competitor SKU flow. Status: done 2026-05-07;
+12. remove legacy `/competitor-mapping/category/:id` UI and keep competitor actions inside `/sources?tab=sources`. Status: done 2026-05-07;
+13. redesign `/sources?tab=sources` competitor card as SKU enrichment workflow: sources, selected SKU, competitor card candidates, confirm/manual-link actions. Status: done 2026-05-07;
+14. inspect and simplify value mapping. Status: active 2026-05-07;
+15. compact `/sources?tab=sources` competitor card: one SKU selector, one primary search action, compact re-store/store77 state, no step-cards/counter clutter. Status: done 2026-05-07;
+16. clarify `/sources?tab=params` count as PIM info-model fields, not all marketplace fields. Status: done 2026-05-07;
+17. compact `/sources?tab=values` dictionary editor in embedded mode: hide metadata duplication and collapse marketplace allowed values into searchable preview. Status: done 2026-05-07;
+18. verify competitor SKU search button in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: done 2026-05-09 for visible UI; matching quality still needs iteration.
 
 DB readiness check on 2026-05-08:
 
