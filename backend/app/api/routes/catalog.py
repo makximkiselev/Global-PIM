@@ -136,7 +136,15 @@ def _products_page_meta() -> Dict[str, Any]:
     if cached_payload and now - cached_ts < _PRODUCTS_PAGE_CACHE_TTL_SECONDS:
         return cached_payload
 
-    nodes = _load_nodes()
+    direct_counts = load_category_product_counts()
+    nodes = [
+        {
+            **node,
+            "products_count": int(direct_counts.get(str(node.get("id") or ""), node.get("products_count") or 0) or 0),
+        }
+        for node in _load_nodes()
+        if isinstance(node, dict)
+    ]
     groups_doc = load_product_groups_doc()
     group_items = groups_doc.get("items") if isinstance(groups_doc, dict) else []
     groups = group_items if isinstance(group_items, list) else []

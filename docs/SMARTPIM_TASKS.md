@@ -443,8 +443,8 @@ Next tasks:
    - `/products?category=<id>` must apply the category filter instead of showing all SKU. Status: fixed and Browser-verified 2026-05-09 for `Смартфоны`;
    - `/catalog/export?category=<id>` must preserve the category scope after redirect to `/catalog/exchange?tab=export`. Status: fixed and Browser-verified 2026-05-09 for `Смартфоны`;
    - `/sources?tab=params&category=<id>` must not show `Выберите категорию` when the category is already provided in the URL. Status: Browser-verified 2026-05-09 for `Смартфоны`;
-   - `Смартфоны` category is not empty in DB: 1 direct SKU and 431 SKU in the branch; UI copy must distinguish direct SKU from branch SKU;
-   - `Наушники` has 0 direct SKU and 17 branch SKU; SKU-based competitor flow must say `в ветке`, not imply direct products;
+   - `Смартфоны` category is not empty in DB: 1 direct SKU and 431 SKU in the branch; UI copy must distinguish direct SKU from branch SKU. Status: fixed and Browser-verified 2026-05-09 on product list;
+   - `Наушники` has 0 direct SKU and 17 branch SKU; SKU-based competitor flow must say `в ветке`, not imply direct products. Status: fixed and Browser-verified 2026-05-09 on product list;
    - AI mapping on `Наушники` runs and writes/applies fallback rows, but visible readiness stays `Внимание 14`, `Без связки 10`, `Готово 1`; the UI must explain what changed or show that nothing improved;
    - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present; investigate attribute import/mapping source;
    - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`; remove this contradiction;

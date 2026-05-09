@@ -38,6 +38,7 @@ type CatalogNode = {
   parent_id: string | null;
   name: string;
   position: number;
+  products_count?: number;
 };
 
 type GroupItem = {
@@ -160,20 +161,28 @@ function ProductListEntryBar({
   queueMode,
   selectedCount,
   categoryId,
+  categoryName,
+  directCount,
 }: {
   total: number;
   visibleCount: number;
   queueMode: QueueMode;
   selectedCount: number;
   categoryId?: string;
+  categoryName?: string;
+  directCount?: number;
 }) {
+  const hasCategoryScope = Boolean(categoryId && categoryName);
+  const branchLabel = hasCategoryScope ? `${total} SKU в выбранной ветке` : `${total} SKU в каталоге`;
+
   return (
     <div className="productListEntryBar">
       <div className="productListEntryTitleBlock">
         <div className="productListEntryEyebrow">Каталог товаров</div>
-        <h1>Товары</h1>
+        <h1>{hasCategoryScope ? `Товары: ${categoryName}` : "Товары"}</h1>
         <div className="productListEntryMeta">
-          <span>{total} SKU в каталоге</span>
+          <span>{branchLabel}</span>
+          {hasCategoryScope ? <span>{Math.max(0, Number(directCount || 0))} прямо здесь</span> : null}
           <span>{visibleCount} на экране</span>
           <span>{queueModeLabel(queueMode)}</span>
           {selectedCount ? <span>{selectedCount} выбрано</span> : null}
@@ -786,6 +795,8 @@ export default function ProductListFeature() {
     for (const node of nodes) map.set(String(node.id || ""), node);
     return map;
   }, [nodes]);
+  const activeCategoryId = subCategoryId || parentCategoryId;
+  const activeCategory = activeCategoryId ? nodeById.get(activeCategoryId) || null : null;
 
   const rootCategories = useMemo(
     () => (childrenByParent.get("") || []).map((node) => ({ id: node.id, name: node.name })),
@@ -854,7 +865,9 @@ export default function ProductListFeature() {
         visibleCount={products.length}
         queueMode={queueMode}
         selectedCount={selectedIds.length}
-        categoryId={subCategoryId || parentCategoryId}
+        categoryId={activeCategoryId}
+        categoryName={activeCategory?.name || ""}
+        directCount={activeCategory?.products_count || 0}
       />
 
       {loadError ? <Alert tone="error">{loadError}</Alert> : null}
@@ -1033,7 +1046,7 @@ export default function ProductListFeature() {
 
               <ProductBulkActionBar
                 selectedIds={selectedIds}
-                categoryId={subCategoryId || parentCategoryId}
+                categoryId={activeCategoryId}
                 onClear={() => setSelectedIds([])}
               />
             </div>
