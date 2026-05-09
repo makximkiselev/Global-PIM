@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   DndContext,
   DragOverlay,
@@ -310,6 +310,7 @@ function CatalogProductPreview({
 }
 
 export default function CatalogFeature() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [refreshError, setRefreshError] = useState("");
   const [nodes, setNodes] = useState<NodeT[]>([]);
@@ -352,6 +353,7 @@ export default function CatalogFeature() {
   );
 
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const requestedCategoryId = String(searchParams.get("category") || "").trim();
   const childrenMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const aggCounts = useMemo(() => computeAggregatedCounts(nodes), [nodes]);
   const roots = childrenMap.get(null) || [];
@@ -444,6 +446,7 @@ export default function CatalogFeature() {
       setNodes(nextNodes);
 
       setSelectedId((current) => {
+        if (requestedCategoryId && nextNodes.some((node) => node.id === requestedCategoryId)) return requestedCategoryId;
         if (current && nextNodes.some((node) => node.id === current)) return current;
         return nextNodes.find((node) => !node.parent_id)?.id || null;
       });
@@ -456,7 +459,20 @@ export default function CatalogFeature() {
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [requestedCategoryId]);
+
+  useEffect(() => {
+    if (!requestedCategoryId || !nodesById.has(requestedCategoryId)) return;
+    expandTo(requestedCategoryId);
+  }, [requestedCategoryId, nodesById]);
+
+  function selectCategory(id: string) {
+    setSelectedId(id);
+    expandTo(id);
+    const next = new URLSearchParams(searchParams);
+    next.set("category", id);
+    setSearchParams(next, { replace: true });
+  }
 
   useEffect(() => {
     if (!bulkOpen) return;
@@ -638,10 +654,7 @@ export default function CatalogFeature() {
           isExpanded={isExpanded}
           hasKids={hasKids}
           sortMode={sortMode}
-          onSelect={() => {
-            setSelectedId(node.id);
-            expandTo(node.id);
-          }}
+          onSelect={() => selectCategory(node.id)}
           onToggle={() => toggle(node.id)}
         />
         {hasKids && isExpanded ? (

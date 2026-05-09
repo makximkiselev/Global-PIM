@@ -439,10 +439,10 @@ Rules:
 Next tasks:
 
 1. fix QA findings from 2026-05-09 full pipeline pass for `Смартфоны` and `Наушники`:
-   - `/catalog?category=<id>` must select the requested category instead of opening the default first category;
-   - `/products?category=<id>` must apply the category filter instead of showing all SKU;
-   - `/catalog/export?category=<id>` must preserve the category scope after redirect to `/catalog/exchange?tab=export`;
-   - `/sources?tab=params&category=<id>` must not show `Выберите категорию` when the category is already provided in the URL;
+   - `/catalog?category=<id>` must select the requested category instead of opening the default first category. Status: fixed and Browser-verified 2026-05-09 for `Смартфоны`;
+   - `/products?category=<id>` must apply the category filter instead of showing all SKU. Status: fixed and Browser-verified 2026-05-09 for `Смартфоны`;
+   - `/catalog/export?category=<id>` must preserve the category scope after redirect to `/catalog/exchange?tab=export`. Status: fixed and Browser-verified 2026-05-09 for `Смартфоны`;
+   - `/sources?tab=params&category=<id>` must not show `Выберите категорию` when the category is already provided in the URL. Status: Browser-verified 2026-05-09 for `Смартфоны`;
    - `Смартфоны` category is not empty in DB: 1 direct SKU and 431 SKU in the branch; UI copy must distinguish direct SKU from branch SKU;
    - `Наушники` has 0 direct SKU and 17 branch SKU; SKU-based competitor flow must say `в ветке`, not imply direct products;
    - AI mapping on `Наушники` runs and writes/applies fallback rows, but visible readiness stays `Внимание 14`, `Без связки 10`, `Готово 1`; the UI must explain what changed or show that nothing improved;
@@ -773,7 +773,7 @@ Status: first pass done, still active.
 Rules:
 
 1. import/export are operational tools, not dashboards;
-2. category context must persist from source page to export;
+2. category context must persist from source page to export. Status: Browser-verified 2026-05-09 for `/sources?tab=params` to `/catalog/export`;
 3. import runs and export batches need clear state;
 4. category picker should use shared components;
 5. long tables need sticky headers.
@@ -782,7 +782,7 @@ Next tasks:
 
 1. verify `/catalog/import`;
 2. verify `/catalog/export`;
-3. verify category query parameter is preserved;
+3. verify category query parameter is preserved. Status: fixed and Browser-verified 2026-05-09 for `/catalog/export?category=<id>` and product-list import/export/create actions;
 4. verify Excel import path;
 5. verify export readiness per marketplace;
 6. reduce remaining summary clutter.

@@ -1,4 +1,4 @@
-import { Navigate, Routes, Route, useParams } from "react-router-dom";
+import { Navigate, Routes, Route, useLocation, useParams } from "react-router-dom";
 import { useEffect } from "react";
 import Shell from "./layout/Shell";
 import { useAuth } from "./auth/AuthContext";
@@ -62,6 +62,13 @@ function CompetitorCategoryRoute() {
   return <Navigate to={`/sources?tab=sources&category=${category}`} replace />;
 }
 
+function CatalogExchangeRedirect({ tab }: { tab: "import" | "export" }) {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  searchParams.set("tab", tab);
+  return <Navigate to={`/catalog/exchange?${searchParams.toString()}`} replace />;
+}
+
 function ProtectedApp() {
   return (
     <Shell>
@@ -74,8 +81,8 @@ function ProtectedApp() {
         <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
         <Route path="/products" element={<RequirePage page="products"><ProductListRoute /></RequirePage>} />
         <Route path="/catalog/exchange" element={<RequireAnyPage pages={["catalog_import", "catalog_export"]}><CatalogExchangeFeature /></RequireAnyPage>} />
-        <Route path="/catalog/import" element={<Navigate to="/catalog/exchange?tab=import" replace />} />
-        <Route path="/catalog/export" element={<Navigate to="/catalog/exchange?tab=export" replace />} />
+        <Route path="/catalog/import" element={<CatalogExchangeRedirect tab="import" />} />
+        <Route path="/catalog/export" element={<CatalogExchangeRedirect tab="export" />} />
         <Route path="/profile" element={<ProfileFeature />} />
 
         <Route path="/templates" element={<RequirePage page="templates"><TemplatesRoute /></RequirePage>} />

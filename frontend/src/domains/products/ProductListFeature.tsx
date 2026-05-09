@@ -118,6 +118,11 @@ function queueModeLabel(mode: QueueMode): string {
   }
 }
 
+function withCategoryHref(path: string, categoryId?: string | null, param = "category") {
+  const id = String(categoryId || "").trim();
+  return id ? `${path}?${param}=${encodeURIComponent(id)}` : path;
+}
+
 function ProductQueueSwitch({
   mode,
   onChange,
@@ -154,11 +159,13 @@ function ProductListEntryBar({
   visibleCount,
   queueMode,
   selectedCount,
+  categoryId,
 }: {
   total: number;
   visibleCount: number;
   queueMode: QueueMode;
   selectedCount: number;
+  categoryId?: string;
 }) {
   return (
     <div className="productListEntryBar">
@@ -173,13 +180,13 @@ function ProductListEntryBar({
         </div>
       </div>
       <div className="productListEntryActions">
-        <Link className="btn" to="/catalog/import">
+        <Link className="btn" to={withCategoryHref("/catalog/import", categoryId)}>
           Импорт
         </Link>
-        <Link className="btn" to="/catalog/export">
+        <Link className="btn" to={withCategoryHref("/catalog/export", categoryId)}>
           Экспорт
         </Link>
-        <Link className="btn primary" to="/products/new">
+        <Link className="btn primary" to={withCategoryHref("/products/new", categoryId, "category_id")}>
           Создать товар
         </Link>
       </div>
@@ -333,7 +340,7 @@ function ProductListInspector({
           <Link className="btn" to="/sources-mapping">
             Открыть mapping
           </Link>
-          <Link className="btn" to="/catalog/export">
+          <Link className="btn" to={withCategoryHref("/catalog/export", product.category_id)}>
             Перейти к экспорту
           </Link>
         </div>
@@ -469,9 +476,11 @@ function ProductListTable({
 
 function ProductBulkActionBar({
   selectedIds,
+  categoryId,
   onClear,
 }: {
   selectedIds: string[];
+  categoryId?: string;
   onClear: () => void;
 }) {
   if (!selectedIds.length) return null;
@@ -487,7 +496,7 @@ function ProductBulkActionBar({
         <Link className="btn" to={`/products/${encodeURIComponent(first)}`}>
           Открыть первый
         </Link>
-        <Link className="btn" to="/catalog/export">
+        <Link className="btn" to={withCategoryHref("/catalog/export", categoryId)}>
           К экспорту
         </Link>
         <Link className="btn" to="/sources-mapping">
@@ -516,7 +525,8 @@ export default function ProductListFeature() {
 
   const query = searchParams.get("q") || "";
   const deferredSearchDraft = useDeferredValue(searchDraft);
-  const parentCategoryId = searchParams.get("parent") || "";
+  const categoryParam = searchParams.get("category") || "";
+  const parentCategoryId = searchParams.get("parent") || categoryParam;
   const subCategoryId = searchParams.get("sub") || "";
   const groupFilter = searchParams.get("group") || "";
   const templateFilter = searchParams.get("template") || "";
@@ -552,7 +562,10 @@ export default function ProductListFeature() {
       };
 
       if (patch.q !== undefined) apply("q", patch.q);
-      if (patch.parent !== undefined) apply("parent", patch.parent);
+      if (patch.parent !== undefined) {
+        apply("parent", patch.parent);
+        next.delete("category");
+      }
       if (patch.sub !== undefined) apply("sub", patch.sub);
       if (patch.group !== undefined) apply("group", patch.group);
       if (patch.template !== undefined) apply("template", patch.template);
@@ -841,6 +854,7 @@ export default function ProductListFeature() {
         visibleCount={products.length}
         queueMode={queueMode}
         selectedCount={selectedIds.length}
+        categoryId={subCategoryId || parentCategoryId}
       />
 
       {loadError ? <Alert tone="error">{loadError}</Alert> : null}
@@ -1019,6 +1033,7 @@ export default function ProductListFeature() {
 
               <ProductBulkActionBar
                 selectedIds={selectedIds}
+                categoryId={subCategoryId || parentCategoryId}
                 onClear={() => setSelectedIds([])}
               />
             </div>
