@@ -1046,9 +1046,9 @@ def _competitor_category_label(source_id: str, url: str) -> Tuple[str, str]:
         return "Поиск по сайту", f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else url
     if source_id == "store77":
         if len(path_parts) == 1:
-            slug = path_parts[0].replace("_2", "").replace("-", " ")
-            return slug.strip().title() or "Раздел Store77", f"{parsed.scheme}://{parsed.netloc}/{path_parts[0]}/"
-        return " / ".join(path_parts[:-1]) or path_parts[0], f"{parsed.scheme}://{parsed.netloc}/{'/'.join(path_parts[:-1])}/"
+            label = _humanize_competitor_slug(path_parts[0])
+            return label or "Раздел Store77", f"{parsed.scheme}://{parsed.netloc}/{path_parts[0]}/"
+        return " / ".join(_humanize_competitor_slug(part) for part in path_parts[:-1]) or path_parts[0], f"{parsed.scheme}://{parsed.netloc}/{'/'.join(path_parts[:-1])}/"
     if source_id == "restore":
         # re-store product URLs can be deep. For category-level context we keep
         # the stable path prefix and explicitly mark it as observed from products.
@@ -1057,6 +1057,30 @@ def _competitor_category_label(source_id: str, url: str) -> Tuple[str, str]:
         href = f"{parsed.scheme}://{parsed.netloc}/{'/'.join(prefix_parts)}/" if prefix_parts else f"{parsed.scheme}://{parsed.netloc}/"
         return label or "Раздел re-store", href
     return " / ".join(path_parts[:-1] or path_parts), f"{parsed.scheme}://{parsed.netloc}/{'/'.join(path_parts[:-1] or path_parts)}/"
+
+
+def _humanize_competitor_slug(slug: str) -> str:
+    raw = str(slug or "").strip()
+    known_labels = {
+        "apple_airpods_4": "AirPods 4",
+        "apple_airpods_pro_3": "AirPods Pro 3",
+        "apple_airpods_max": "AirPods Max",
+        "apple_airpods_max_2": "AirPods Max 2",
+        "apple_iphone": "iPhone",
+        "apple_iphone_16": "iPhone 16",
+        "apple_iphone_16_pro": "iPhone 16 Pro",
+        "apple_iphone_16_pro_max": "iPhone 16 Pro Max",
+    }
+    if raw in known_labels:
+        return known_labels[raw]
+    cleaned = re.sub(r"_2$", "", raw)
+    if cleaned in known_labels:
+        return known_labels[cleaned]
+    parts = [part for part in re.split(r"[_\\-]+", cleaned) if part]
+    if not parts:
+        return ""
+    acronyms = {"tv": "TV", "usb": "USB", "wi": "Wi", "fi": "Fi", "gps": "GPS", "sim": "SIM", "esim": "eSIM"}
+    return " ".join(acronyms.get(part.lower(), part.capitalize()) for part in parts)
 
 
 def _fallback_search_suggestion(source: Dict[str, Any], category_name: str) -> Dict[str, Any]:
@@ -1737,6 +1761,14 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
     candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
     links = discovery.get("links") if isinstance(discovery.get("links"), dict) else {}
     category_name = str(node.get("name") or "").strip()
+    product_has_competitor_context = {
+        str(item.get("product_id") or "").strip()
+        for item in [*list(candidates.values()), *list(links.values())]
+        if isinstance(item, dict)
+        and str(item.get("product_id") or "").strip() in product_ids
+        and str(item.get("source_id") or "").strip() in ALLOWED_SITES
+        and (item.get("status") in {"needs_review", "approved"} or str(item.get("url") or "").strip())
+    }
 
     source_rows: List[Dict[str, Any]] = []
     for source in DISCOVERY_SOURCES:
@@ -1844,7 +1876,13 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                     "title": str(item.get("title") or item.get("name") or "").strip(),
                     "sku_gt": str(item.get("sku_gt") or item.get("sku_pim") or "").strip(),
                 }
-                for item in products[:8]
+                for item in sorted(
+                    products,
+                    key=lambda row: (
+                        str(row.get("id") or "").strip() not in product_has_competitor_context,
+                        str(row.get("title") or row.get("name") or ""),
+                    ),
+                )[:8]
                 if str(item.get("id") or "").strip()
             ],
         },

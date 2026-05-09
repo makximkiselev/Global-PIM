@@ -1050,6 +1050,13 @@
   background: color-mix(in srgb, #ecfdf3 58%, var(--panel));
 }
 
+.sourcesMappingPage .mm-competitorSourceItem.is-review {
+  border-color: color-mix(in srgb, var(--brand) 32%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand) 10%, transparent), transparent 72%),
+    color-mix(in srgb, var(--panel) 94%, var(--surface));
+}
+
 .sourcesMappingPage .mm-competitorSourceItem strong,
 .sourcesMappingPage .mm-competitorSourceName {
   color: var(--text);
@@ -1085,6 +1092,11 @@
 .sourcesMappingPage .mm-competitorSourceItem.is-linked > span {
   border-color: color-mix(in srgb, #16a34a 30%, var(--line));
   color: #14783e;
+}
+
+.sourcesMappingPage .mm-competitorSourceItem.is-review > span {
+  border-color: color-mix(in srgb, var(--brand) 28%, var(--line));
+  color: var(--brand);
 }
 
 .sourcesMappingPage .mm-competitorMiniStats {

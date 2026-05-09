@@ -2458,6 +2458,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     try {
       const data = await api<CompetitorCategoryDiscoveryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(cid)}`);
       setCompetitorDiscovery(data);
+      syncCompetitorSampleProduct(data);
       return data;
     } catch (e) {
       setCompetitorDiscovery(null);
@@ -2466,6 +2467,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     } finally {
       setCompetitorDiscoveryLoading(false);
     }
+  }
+
+  function syncCompetitorSampleProduct(data: CompetitorCategoryDiscoveryResp | null) {
+    const currentId = String(competitorSampleProductId || "").trim();
+    const sampleProducts = data?.category?.sample_products || [];
+    const sampleIds = new Set(sampleProducts.map((item) => String(item.id || "").trim()).filter(Boolean));
+    const candidateProductIds = (data?.sources || [])
+      .flatMap((source) => source.candidate_items || [])
+      .map((candidate) => String(candidate.product_id || "").trim())
+      .filter(Boolean);
+    if (currentId && sampleIds.has(currentId) && candidateProductIds.includes(currentId)) return;
+    const nextId = candidateProductIds.find((id) => sampleIds.has(id)) || sampleProducts[0]?.id || "";
+    if (nextId && nextId !== currentId) setCompetitorSampleProductId(nextId);
   }
 
   async function runCompetitorCategoryDiscovery(categoryId: string, productId?: string) {
@@ -2518,7 +2532,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setCompetitorDiscoveryError("");
     api<CompetitorCategoryDiscoveryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(categoryId)}`)
       .then((data) => {
-        if (!cancelled) setCompetitorDiscovery(data);
+        if (!cancelled) {
+          setCompetitorDiscovery(data);
+          syncCompetitorSampleProduct(data);
+        }
       })
       .catch((e) => {
         if (cancelled) return;
@@ -3053,16 +3070,45 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     .slice(0, 2)
                                     .map((suggestion) => ({ source, suggestion })),
                                 );
-                                const productCandidates = discoverySources.flatMap((source) =>
-                                  (source.candidate_items || [])
-                                    .slice(0, 3)
-                                    .map((candidate) => ({ source, candidate })),
-                                );
                                 const competitorCandidatesTotal = discoverySources.reduce((sum, source) => sum + Number(source.candidates_count || 0), 0);
                                 const competitorConfirmedTotal = discoverySources.reduce((sum, source) => sum + Number(source.confirmed_count || 0), 0);
                                 const competitorNeedsReviewTotal = discoverySources.reduce((sum, source) => sum + Number(source.needs_review_count || 0), 0);
                                 const sampleProducts = competitorDiscovery?.category?.sample_products || [];
                                 const selectedSampleProduct = sampleProducts.find((item) => item.id === competitorSampleProductId) || sampleProducts[0] || null;
+                                const selectedSampleProductId = String(selectedSampleProduct?.id || "").trim();
+                                const productCandidates = discoverySources.flatMap((source) =>
+                                  (source.candidate_items || [])
+                                    .filter((candidate) => !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId)
+                                    .slice(0, 3)
+                                    .map((candidate) => ({ source, candidate })),
+                                );
+                                const selectedCandidateCount = discoverySources.reduce((sum, source) => (
+                                  sum + (source.candidate_items || []).filter((candidate) => (
+                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
+                                  )).length
+                                ), 0);
+                                const competitorSourceRows = competitorMeta.sites.map((site) => {
+                                  const discoverySource = discoverySources.find((source) => String(source.id) === site.code);
+                                  const confirmedCount = Number(discoverySource?.confirmed_count || 0);
+                                  const needsReviewCount = Number(discoverySource?.needs_review_count || 0);
+                                  const candidatesCount = Number(discoverySource?.candidates_count || 0);
+                                  const selectedCount = (discoverySource?.candidate_items || []).filter((candidate) => (
+                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
+                                  )).length;
+                                  const isLinked = site.hasLink || confirmedCount > 0;
+                                  const hasCandidates = candidatesCount > 0 || needsReviewCount > 0;
+                                  return {
+                                    ...site,
+                                    isLinked,
+                                    hasCandidates,
+                                    className: isLinked ? "is-linked" : hasCandidates ? "is-review" : "is-empty",
+                                    label: isLinked
+                                      ? `${Math.max(site.mappedCount, confirmedCount)} подтверждено`
+                                      : hasCandidates
+                                        ? `${selectedCount ? `${selectedCount} для SKU · ` : ""}${needsReviewCount || candidatesCount} на проверке`
+                                        : "нет кандидатов",
+                                  };
+                                });
                                 const selectedSampleLabel = selectedSampleProduct
                                   ? `${selectedSampleProduct.sku_gt ? `${selectedSampleProduct.sku_gt} · ` : ""}${selectedSampleProduct.title || selectedSampleProduct.id}`
                                   : "В категории пока нет товаров";
@@ -3141,17 +3187,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                   : "не запускали"}
                                             </em>
                                           </div>
-                                          <div className={`mm-competitorFlowStep ${competitorNeedsReviewTotal ? "isActive" : competitorConfirmedTotal ? "isDone" : ""}`}>
+                                          <div className={`mm-competitorFlowStep ${selectedCandidateCount || competitorNeedsReviewTotal ? "isActive" : competitorConfirmedTotal ? "isDone" : ""}`}>
                                             <span>3</span>
                                             <strong>Модерация</strong>
-                                            <em>{competitorNeedsReviewTotal ? `${competitorNeedsReviewTotal} на проверке` : competitorConfirmedTotal ? "готово" : "пусто"}</em>
+                                            <em>{selectedCandidateCount ? `${selectedCandidateCount} для SKU` : competitorNeedsReviewTotal ? `0 для SKU · ${competitorNeedsReviewTotal} всего` : competitorConfirmedTotal ? "готово" : "пусто"}</em>
                                           </div>
                                         </div>
                                         <div className="mm-competitorSourceStrip">
-                                          {competitorMeta.sites.map((site) => (
-                                            <div key={site.code} className={`mm-competitorSourceItem ${site.hasLink ? "is-linked" : "is-empty"}`}>
+                                          {competitorSourceRows.map((site) => (
+                                            <div key={site.code} className={`mm-competitorSourceItem ${site.className}`}>
                                               <strong>{site.title}</strong>
-                                              <span>{site.hasLink ? `${site.mappedCount} полей` : "нет карточки"}</span>
+                                              <span>{site.label}</span>
                                             </div>
                                           ))}
                                         </div>
@@ -3216,7 +3262,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       ) : null}
 
                                       <div className="mm-competitorSuggestionsHead">
-                                        <strong>Карточки SKU на модерации</strong>
+                                        <strong>Карточки выбранного SKU на модерации</strong>
                                       </div>
                                       <div className="mm-competitorCandidateList">
                                         {productCandidates.map(({ source, candidate }) => (
