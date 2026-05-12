@@ -30,7 +30,12 @@ from app.storage.json_store import (
     save_competitor_mapping_db,
     load_templates_db,
 )
-from app.storage.relational_pim_store import query_products_full, upsert_product_item
+from app.storage.relational_pim_store import (
+    list_pim_channel_links,
+    query_products_full,
+    upsert_pim_channel_link,
+    upsert_product_item,
+)
 from app.core.value_mapping import canonicalize_dictionary_value
 
 # ✅ Реальный извлекатель полей конкурента (Playwright + restore/store77 парсеры)
@@ -570,13 +575,223 @@ def _confirmed_links_for_product(discovery: Dict[str, Any], product_id: str) -> 
             continue
         if str(link.get("product_id") or "").strip() != normalized_product_id:
             continue
-        if str(link.get("status") or "").strip() != "confirmed":
+        if str(link.get("status") or "").strip() not in {"confirmed", "approved"}:
             continue
         source_id = str(link.get("source_id") or "").strip()
         url = str(link.get("url") or "").strip()
         if source_id in ALLOWED_SITES and url and detect_site(url) == source_id:
             out.append({**link, "source_id": source_id, "url": url})
+    try:
+        for link in list_pim_channel_links(
+            scope="competitor_product",
+            entity_type="product",
+            entity_id=normalized_product_id,
+            status="confirmed",
+        ):
+            provider = str(link.get("provider") or "").strip()
+            url = str(link.get("url") or "").strip()
+            if provider not in ALLOWED_SITES or not url or detect_site(url) != provider:
+                continue
+            key = f"{normalized_product_id}:{provider}"
+            if any(str(item.get("id") or "") == key or str(item.get("source_id") or "") == provider for item in out):
+                continue
+            payload = link.get("payload") if isinstance(link.get("payload"), dict) else {}
+            out.append(
+                {
+                    "id": key,
+                    "product_id": normalized_product_id,
+                    "source_id": provider,
+                    "candidate_id": payload.get("candidate_id") or link.get("link_id"),
+                    "url": url,
+                    "status": "confirmed",
+                    "confirmed_at": link.get("updated_at") or payload.get("confirmed_at"),
+                    "last_checked_at": payload.get("last_checked_at") or link.get("updated_at"),
+                    "source": link.get("source") or payload.get("source") or "channel_link",
+                }
+            )
+    except Exception:
+        # JSON discovery remains the compatibility source when relational storage
+        # is unavailable in isolated tests or during partial migrations.
+        pass
     return out
+
+
+def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    provider = str(row.get("provider") or "").strip()
+    product_id = str(row.get("entity_id") or "").strip()
+    if provider not in ALLOWED_SITES or not product_id:
+        return None
+    source_name = next((str(item.get("name") or "") for item in DISCOVERY_SOURCES if item.get("id") == provider), provider)
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    status = {
+        "candidate": "needs_review",
+        "confirmed": "approved",
+        "rejected": "rejected",
+        "stale": "stale",
+    }.get(str(row.get("status") or "").strip(), str(payload.get("raw_status") or row.get("status") or "needs_review"))
+    url = str(row.get("url") or "").strip()
+    return {
+        "id": str(payload.get("candidate_id") or row.get("link_id") or "").strip(),
+        "product_id": product_id,
+        "source_id": provider,
+        "source_name": source_name,
+        "url": url,
+        "title": str(row.get("title") or "").strip(),
+        "status": status,
+        "confidence_score": row.get("score"),
+        "confidence_reasons": payload.get("confidence_reasons") if isinstance(payload.get("confidence_reasons"), list) else [],
+        "category_id": str(payload.get("category_id") or "").strip(),
+        "product_title": str(payload.get("product_title") or "").strip(),
+        "product_sku": str(payload.get("product_sku") or "").strip(),
+        "match_group_key": str(payload.get("match_group_key") or "").strip(),
+        "last_seen_at": payload.get("last_seen_at") or row.get("updated_at"),
+        "reviewed_at": payload.get("reviewed_at"),
+        "rejection_reason": payload.get("rejection_reason"),
+        "source": str(row.get("source") or "channel_link"),
+    }
+
+
+def _link_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    provider = str(row.get("provider") or "").strip()
+    product_id = str(row.get("entity_id") or "").strip()
+    url = str(row.get("url") or "").strip()
+    if provider not in ALLOWED_SITES or not product_id or not url or detect_site(url) != provider:
+        return None
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    return {
+        "id": f"{product_id}:{provider}",
+        "product_id": product_id,
+        "source_id": provider,
+        "candidate_id": payload.get("candidate_id") or row.get("link_id"),
+        "url": url,
+        "status": "confirmed",
+        "confirmed_at": payload.get("confirmed_at") or row.get("updated_at"),
+        "last_checked_at": payload.get("last_checked_at") or row.get("updated_at"),
+        "source": row.get("source") or payload.get("source") or "channel_link",
+    }
+
+
+def _merge_relational_discovery_items(
+    candidates: Dict[str, Any],
+    links: Dict[str, Any],
+    *,
+    product_ids: Optional[set[str]] = None,
+) -> None:
+    try:
+        rows = list_pim_channel_links(
+            scope="competitor_product",
+            entity_type="product",
+            entity_ids=sorted(product_ids) if product_ids else None,
+        )
+    except Exception:
+        return
+    for row in rows:
+        status = str(row.get("status") or "").strip()
+        if status == "confirmed":
+            link = _link_from_channel_link(row)
+            if link and str(link.get("id") or "") not in links:
+                links[str(link["id"])] = link
+        candidate = _candidate_from_channel_link(row)
+        if candidate and str(candidate.get("id") or "").strip() and str(candidate["id"]) not in candidates:
+            candidates[str(candidate["id"])] = candidate
+
+
+def _relational_candidate_by_id(candidate_id: str) -> Optional[Dict[str, Any]]:
+    normalized_candidate_id = str(candidate_id or "").strip()
+    if not normalized_candidate_id:
+        return None
+    try:
+        rows = list_pim_channel_links(
+            link_id=normalized_candidate_id,
+            scope="competitor_product",
+            entity_type="product",
+        )
+    except Exception:
+        return None
+    for row in rows:
+        candidate = _candidate_from_channel_link(row)
+        if candidate and str(candidate.get("id") or "").strip() == normalized_candidate_id:
+            return candidate
+    return None
+
+
+def _persist_competitor_channel_candidate(candidate: Dict[str, Any]) -> None:
+    product_id = str(candidate.get("product_id") or "").strip()
+    source_id = str(candidate.get("source_id") or "").strip()
+    if not product_id or source_id not in ALLOWED_SITES:
+        return
+    status = str(candidate.get("status") or "needs_review").strip()
+    channel_status = {
+        "needs_review": "candidate",
+        "approved": "confirmed",
+        "rejected": "rejected",
+        "stale": "stale",
+    }.get(status, status or "candidate")
+    try:
+        upsert_pim_channel_link(
+            {
+                "link_id": str(candidate.get("id") or ""),
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": product_id,
+                "provider": source_id,
+                "url": str(candidate.get("url") or ""),
+                "external_id": str(candidate.get("sku") or candidate.get("gtin") or ""),
+                "title": str(candidate.get("title") or ""),
+                "status": channel_status,
+                "score": candidate.get("confidence_score"),
+                "source": "discovery",
+                "payload": {
+                    "candidate_id": candidate.get("id"),
+                    "category_id": candidate.get("category_id"),
+                    "product_title": candidate.get("product_title"),
+                    "product_sku": candidate.get("product_sku"),
+                    "match_group_key": candidate.get("match_group_key"),
+                    "confidence_reasons": candidate.get("confidence_reasons") if isinstance(candidate.get("confidence_reasons"), list) else [],
+                    "raw_status": status,
+                    "reviewed_at": candidate.get("reviewed_at"),
+                    "rejection_reason": candidate.get("rejection_reason"),
+                    "last_seen_at": candidate.get("last_seen_at"),
+                },
+            }
+        )
+    except Exception:
+        pass
+
+
+def _persist_competitor_channel_link(link: Dict[str, Any], candidate: Optional[Dict[str, Any]] = None) -> None:
+    product_id = str(link.get("product_id") or (candidate or {}).get("product_id") or "").strip()
+    source_id = str(link.get("source_id") or (candidate or {}).get("source_id") or "").strip()
+    url = str(link.get("url") or (candidate or {}).get("url") or "").strip()
+    if not product_id or source_id not in ALLOWED_SITES or not url:
+        return
+    try:
+        upsert_pim_channel_link(
+            {
+                "link_id": str(link.get("id") or f"{product_id}:{source_id}"),
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": product_id,
+                "provider": source_id,
+                "url": url,
+                "external_id": str((candidate or {}).get("sku") or (candidate or {}).get("gtin") or ""),
+                "title": str((candidate or {}).get("title") or link.get("title") or ""),
+                "status": "confirmed",
+                "score": (candidate or {}).get("confidence_score"),
+                "source": str(link.get("source") or "moderation"),
+                "payload": {
+                    "candidate_id": link.get("candidate_id") or (candidate or {}).get("id"),
+                    "category_id": (candidate or {}).get("category_id"),
+                    "product_title": (candidate or {}).get("product_title"),
+                    "product_sku": (candidate or {}).get("product_sku"),
+                    "confirmed_at": link.get("confirmed_at"),
+                    "last_checked_at": link.get("last_checked_at"),
+                    "confidence_reasons": (candidate or {}).get("confidence_reasons") if isinstance((candidate or {}).get("confidence_reasons"), list) else [],
+                },
+            }
+        )
+    except Exception:
+        pass
 
 
 def _merge_competitor_content_into_product(
@@ -1760,6 +1975,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
     discovery = _ensure_discovery_doc(db)
     candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
     links = discovery.get("links") if isinstance(discovery.get("links"), dict) else {}
+    _merge_relational_discovery_items(candidates, links, product_ids=product_ids)
     category_name = str(node.get("name") or "").strip()
     product_has_competitor_context = {
         str(item.get("product_id") or "").strip()
@@ -1898,7 +2114,10 @@ def discovery_candidates(
 ) -> Dict[str, Any]:
     db = load_competitor_mapping_db()
     discovery = _ensure_discovery_doc(db)
-    items = list((discovery.get("candidates") or {}).values())
+    candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
+    links = discovery.get("links") if isinstance(discovery.get("links"), dict) else {}
+    _merge_relational_discovery_items(candidates, links)
+    items = list(candidates.values())
     out: List[Dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -1929,6 +2148,7 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
     discovery = _ensure_discovery_doc(db)
     candidates_map = discovery.get("candidates") or {}
     links_map = discovery.get("links") or {}
+    _merge_relational_discovery_items(candidates_map, links_map, product_ids={normalized_product_id})
 
     items: List[Dict[str, Any]] = []
     for item in candidates_map.values():
@@ -2074,9 +2294,11 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                     if existed.get("status") in {"approved", "rejected"}:
                         candidate["status"] = existed.get("status")
                     candidates[candidate["id"]] = {**existed, **candidate, "last_seen_at": now_iso()}
+                    _persist_competitor_channel_candidate(candidates[candidate["id"]])
                     updated_count += 1
                 else:
                     candidates[candidate["id"]] = candidate
+                    _persist_competitor_channel_candidate(candidate)
                     created_count += 1
             for existing_id, existing in list(candidates.items()):
                 if not isinstance(existing, dict):
@@ -2093,6 +2315,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                 existing["last_seen_at"] = now_iso()
                 existing["confidence_reasons"] = list(existing.get("confidence_reasons") or []) + ["не найдено при повторном discovery"]
                 candidates[existing_id] = existing
+                _persist_competitor_channel_candidate(existing)
                 updated_count += 1
 
     run = _run_payload(
@@ -2219,7 +2442,10 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
     candidates = discovery["candidates"]
     candidate = candidates.get(candidate_id)
     if not isinstance(candidate, dict):
-        raise HTTPException(status_code=404, detail="Candidate not found")
+        candidate = _relational_candidate_by_id(candidate_id)
+        if not isinstance(candidate, dict):
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        candidates[candidate_id] = candidate
 
     reviewed_at = now_iso()
     if action == "approve":
@@ -2236,6 +2462,7 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
             "confirmed_at": reviewed_at,
             "last_checked_at": candidate.get("last_seen_at") or reviewed_at,
         }
+        _persist_competitor_channel_link(discovery["links"][link_key], candidate)
         match_group_key = str(candidate.get("match_group_key") or "").strip()
         product_id = str(candidate.get("product_id") or "").strip()
         source_id = str(candidate.get("source_id") or "").strip()
@@ -2256,12 +2483,14 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
                 sibling["rejection_reason"] = "sibling_not_selected"
                 sibling["confidence_reasons"] = list(sibling.get("confidence_reasons") or []) + ["отклонено автоматически: выбран другой вариант группы"]
                 candidates[sibling_id] = sibling
+                _persist_competitor_channel_candidate(sibling)
     else:
         candidate["status"] = "rejected"
         candidate["reviewed_at"] = reviewed_at
         candidate["rejection_reason"] = str(payload.get("reason") or "").strip()
 
     candidates[candidate_id] = candidate
+    _persist_competitor_channel_candidate(candidate)
     save_competitor_mapping_db(db)
     return {"ok": True, "candidate": candidate, "links": discovery.get("links") or {}}
 
@@ -2295,6 +2524,7 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict
         "last_checked_at": reviewed_at,
         "source": "manual",
     }
+    _persist_competitor_channel_link(discovery["links"][link_key])
     for candidate_id, candidate in list((discovery.get("candidates") or {}).items()):
         if not isinstance(candidate, dict):
             continue
@@ -2309,6 +2539,7 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict
         candidate["rejection_reason"] = "manual_link_selected"
         candidate["confidence_reasons"] = list(candidate.get("confidence_reasons") or []) + ["отклонено автоматически: пользователь добавил ссылку вручную"]
         discovery["candidates"][candidate_id] = candidate
+        _persist_competitor_channel_candidate(candidate)
     save_competitor_mapping_db(db)
     return {"ok": True, "link": discovery["links"][link_key], "links": discovery.get("links") or {}}
 

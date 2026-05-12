@@ -249,7 +249,7 @@ DB/API findings:
 3. `Наушники` has 21 attribute mapping rows, 5 Yandex mappings, 0 Ozon mappings, 1 confirmed row, and 17 products in the branch.
 4. `Приставки для TV` has category mappings but 0 attribute rows; Ozon category binding is stale because `type_id` cannot be resolved.
 5. competitor DB document currently has `categories=0`, `products=0`, and `candidate_batches=0`; competitor enrichment UI cannot be considered production-ready until scan results and moderation links are persisted.
-6. current consolidated target tables (`pim_products`, `pim_model_fields`, `pim_channel_links`, `pim_external_payloads`) still do not exist; the current schema is working but split across legacy/tenant/read-model tables.
+6. consolidated target tables are still partial: `pim_channel_links` is now introduced for competitor SKU evidence, while `pim_products`, `pim_model_fields`, `pim_workflow_runs`, and `pim_external_payloads` remain pending; the current schema is still split across legacy/tenant/read-model tables.
 
 Immediate project priorities from this audit:
 
@@ -497,7 +497,7 @@ Next tasks:
    - AI mapping on `Наушники` runs and writes/applies fallback rows, but visible readiness stays `Внимание 14`, `Без связки 10`, `Готово 1`; the UI must explain what changed or show that nothing improved. Status: fixed and Browser-verified 2026-05-09; message now says `локальные правила`, `проверило 15 полей`, `Готово 1/15`, `без связки 10`, `требует внимания 14`;
    - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present. Status: fixed, applied to production data, deployed, and Browser-verified 2026-05-12; current DB/UI counts are `Смартфоны: 49 Ozon mappings`, `Наушники: 7 Ozon mappings`;
    - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`. Status: fixed, deployed, and Browser-verified 2026-05-12; editor now shows `Найдено полей 84`, `В модели 84`, `Источники Ozon 49 · Я.Маркет 69`;
-   - competitor data still lives in `json_documents` (`competitor_mapping_org_default.json`) and must move to/through the accepted channel-link store before final enrichment UX is considered stable. Status: DB-confirmed 2026-05-12 as `categories=0`, `products=0`, `candidate_batches=0`.
+   - competitor data still had an active JSON discovery path in `json_documents` (`competitor_mapping_org_default.json`). Status: in progress 2026-05-12; `pim_channel_links` was added as the relational store for competitor SKU candidates, confirmed links, rejected links, stale candidates, and moderation evidence. API reads now merge relational rows first/alongside JSON compatibility fallback. Remaining JSON work: migrate old discovery runs/candidates/links, move category/template competitor mappings, then remove JSON from active routes.
 2. run full user path for `Смартфоны`;
 3. verify marketplace field import for Ozon and Yandex;
 4. verify competitor evidence from re-store/store77;
@@ -514,7 +514,8 @@ Next tasks:
 15. compact `/sources?tab=sources` competitor card: one SKU selector, one primary search action, compact re-store/store77 state, no step-cards/counter clutter. Status: done 2026-05-07;
 16. clarify `/sources?tab=params` count as PIM info-model fields, not all marketplace fields. Status: done 2026-05-07;
 17. compact `/sources?tab=values` dictionary editor in embedded mode: hide metadata duplication and collapse marketplace allowed values into searchable preview. Status: done 2026-05-07;
-18. verify competitor SKU search/review in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: updated 2026-05-12: category workspace now shows direct candidate cards with `Открыть`, `Подтвердить`, and `Отклонить`; matching quality and relational persistence still need iteration.
+18. verify competitor SKU search/review in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: updated 2026-05-12: category workspace now shows direct candidate cards with `Открыть`, `Подтвердить`, and `Отклонить`; matching quality still needs iteration.
+19. remove JSON as an active source of truth for competitor workflow. Status: active 2026-05-12; candidate/link writes now upsert into `pim_channel_links`, product/category/candidates API reads merge `pim_channel_links`, moderation can approve/reject candidates that exist only in `pim_channel_links`, backend tests cover moderation/manual-link/product-context paths, and `backend/scripts/migrate_competitor_discovery_to_channel_links.py` can backfill legacy discovery candidates/links. Production backfill completed 2026-05-12 with `87` competitor product rows (`candidate=68`, `stale=16`, `rejected=2`, `confirmed=1`; `restore=55`, `store77=32`). Next: stop worker/routes from writing discovery candidates/links to JSON, then keep JSON only for run logs/migration fallback until parity is verified.
 
 DB readiness check on 2026-05-08:
 
@@ -524,11 +525,11 @@ DB readiness check on 2026-05-08:
    `templates_tenant_rel` 6 rows, `template_attributes_tenant_rel` 274 rows, `dictionaries_tenant_rel` 159 rows,
    `dictionary_values_tenant_rel` 3671 rows, `dictionary_provider_refs_tenant_rel` 153 rows, `dictionary_export_maps_tenant_rel` 203 rows.
 3. Product/catalog relational state exists: `catalog_nodes_rel` 272 rows, `products_rel` 1090 rows, `catalog_product_page_tenant_rel` 1090 rows.
-4. Current consolidated target tables (`pim_products`, `pim_model_fields`, `pim_channel_links`, etc.) do not exist yet; the accepted consolidation plan is still pending implementation.
+4. Current consolidated target tables are partially implemented: `pim_channel_links` is now introduced in code for competitor product evidence; `pim_products`, `pim_model_fields`, `pim_workflow_runs`, and `pim_external_payloads` remain pending.
 5. Marketplace raw snapshots and heavy external payloads still live in `json_documents`, which is acceptable as cache/backlog but must not become the final source of truth.
-6. Competitor source workflow is not DB-complete yet: `competitor_mapping_org_default.json` exists in `json_documents`, but `categories` is empty and competitor category/product links are not in a relational `pim_channel_links`-style table.
+6. Competitor source workflow is not DB-complete yet: `competitor_mapping_org_default.json` still exists in `json_documents`, but product-level competitor candidates/links now have a relational target in `pim_channel_links`; category-level competitor bindings and legacy run logs still need migration.
 7. Opened category `Наушники` (`b2f026d9-a3e2-4821-9034-d17ac1b65065`) has marketplace mappings and info-model rows, but has 0 direct product rows in `products_rel` / `catalog_product_page_tenant_rel`; SKU-based competitor search must therefore either use descendant products or show a clear "нет товаров в ветке" state.
-8. Before deeper competitor enrichment UI work, add/read-adapt a single channel-link store for marketplace category links, competitor category links, competitor SKU URLs, candidate/review status, and source evidence.
+8. Before deeper competitor enrichment UI work, finish the channel-link store migration: product competitor SKU URLs and candidate/review state are started; marketplace category links and competitor category links must also move/read through the same store.
 
 Import/source settings check on 2026-05-07:
 
@@ -739,8 +740,9 @@ Required read adapters before write switching:
    - one source for catalog product list/search/page data;
    - replace mixed `load_catalog_product_items`, `query_catalog_product_items`, `query_products_full` usage where page shape matters.
 4. `CompetitorMappingReadAdapter`
-   - read-only facade over current competitor JSON first;
-   - later backed by `pim_channel_links`.
+   - must use `pim_channel_links` as the primary source for competitor SKU candidates/links;
+   - JSON may remain only as migration fallback until production parity is verified;
+   - category/template competitor mapping still needs a relational shape before JSON deletion.
 5. `TemplateReadAdapter`
    - typed methods for `get_template`, `list_by_category`, `resolve_for_category`, `editor_payload`;
    - API should stop depending on legacy whole-doc `category_to_template/category_to_templates`.

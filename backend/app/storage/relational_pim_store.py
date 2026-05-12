@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -977,6 +978,41 @@ def _ensure_tables_impl() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS pim_channel_links (
+                  organization_id TEXT NOT NULL,
+                  link_id TEXT NOT NULL,
+                  scope TEXT NOT NULL,
+                  entity_type TEXT NOT NULL,
+                  entity_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  url TEXT NULL,
+                  external_id TEXT NULL,
+                  title TEXT NULL,
+                  status TEXT NOT NULL DEFAULT 'candidate',
+                  score DOUBLE PRECISION NULL,
+                  source TEXT NULL,
+                  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, link_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pim_channel_links_entity
+                  ON pim_channel_links(organization_id, scope, entity_type, entity_id, provider, status)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pim_channel_links_provider_url
+                  ON pim_channel_links(organization_id, provider, url)
+                  WHERE COALESCE(url, '') <> ''
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_connector_import_stores_rel_provider
                   ON connector_import_stores_rel(provider, enabled)
                 """
@@ -1008,6 +1044,41 @@ def _ensure_lightweight_schema_migrations() -> None:
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE templates_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
             cur.execute("ALTER TABLE templates_tenant_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pim_channel_links (
+                  organization_id TEXT NOT NULL,
+                  link_id TEXT NOT NULL,
+                  scope TEXT NOT NULL,
+                  entity_type TEXT NOT NULL,
+                  entity_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  url TEXT NULL,
+                  external_id TEXT NULL,
+                  title TEXT NULL,
+                  status TEXT NOT NULL DEFAULT 'candidate',
+                  score DOUBLE PRECISION NULL,
+                  source TEXT NULL,
+                  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, link_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pim_channel_links_entity
+                  ON pim_channel_links(organization_id, scope, entity_type, entity_id, provider, status)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pim_channel_links_provider_url
+                  ON pim_channel_links(organization_id, provider, url)
+                  WHERE COALESCE(url, '') <> ''
+                """
+            )
 
     _with_pg_retry(_run)
 
@@ -1036,6 +1107,185 @@ def _table_count(table_name: str) -> int:
         return int((row or [0])[0] or 0)
 
     return int(_with_pg_retry(_run) or 0)
+
+
+def _normalize_channel_link_id(row: Dict[str, Any]) -> str:
+    explicit = str(row.get("link_id") or row.get("id") or "").strip()
+    if explicit:
+        return explicit
+    raw = "|".join(
+        [
+            str(row.get("scope") or ""),
+            str(row.get("entity_type") or ""),
+            str(row.get("entity_id") or ""),
+            str(row.get("provider") or ""),
+            str(row.get("url") or ""),
+            str(row.get("external_id") or ""),
+        ]
+    )
+    return "chl_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _normalize_channel_link(row: Dict[str, Any], organization_id: Optional[str] = None) -> Dict[str, Any]:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else row.get("payload_json")
+    if not isinstance(payload, dict):
+        payload = {}
+    score_raw = row.get("score")
+    try:
+        score = float(score_raw) if score_raw is not None and str(score_raw) != "" else None
+    except Exception:
+        score = None
+    out = {
+        "organization_id": _resolve_organization_id(organization_id or str(row.get("organization_id") or "")),
+        "link_id": _normalize_channel_link_id(row),
+        "scope": str(row.get("scope") or "").strip() or "competitor_product",
+        "entity_type": str(row.get("entity_type") or "").strip() or "product",
+        "entity_id": str(row.get("entity_id") or "").strip(),
+        "provider": str(row.get("provider") or "").strip(),
+        "url": str(row.get("url") or "").strip(),
+        "external_id": str(row.get("external_id") or "").strip(),
+        "title": str(row.get("title") or "").strip(),
+        "status": str(row.get("status") or "candidate").strip() or "candidate",
+        "score": score,
+        "source": str(row.get("source") or "").strip(),
+        "payload": payload,
+    }
+    if not out["entity_id"]:
+        raise ValueError("channel link entity_id is required")
+    if not out["provider"]:
+        raise ValueError("channel link provider is required")
+    return out
+
+
+def upsert_pim_channel_link(row: Dict[str, Any], *, organization_id: Optional[str] = None) -> Dict[str, Any]:
+    _ensure_tables()
+    normalized = _normalize_channel_link(row, organization_id=organization_id)
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO pim_channel_links (
+                  organization_id, link_id, scope, entity_type, entity_id, provider,
+                  url, external_id, title, status, score, source, payload_json,
+                  created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW(), NOW())
+                ON CONFLICT (organization_id, link_id) DO UPDATE SET
+                  scope = EXCLUDED.scope,
+                  entity_type = EXCLUDED.entity_type,
+                  entity_id = EXCLUDED.entity_id,
+                  provider = EXCLUDED.provider,
+                  url = EXCLUDED.url,
+                  external_id = EXCLUDED.external_id,
+                  title = EXCLUDED.title,
+                  status = EXCLUDED.status,
+                  score = EXCLUDED.score,
+                  source = EXCLUDED.source,
+                  payload_json = EXCLUDED.payload_json,
+                  updated_at = NOW()
+                """,
+                [
+                    normalized["organization_id"],
+                    normalized["link_id"],
+                    normalized["scope"],
+                    normalized["entity_type"],
+                    normalized["entity_id"],
+                    normalized["provider"],
+                    normalized["url"] or None,
+                    normalized["external_id"] or None,
+                    normalized["title"] or None,
+                    normalized["status"],
+                    normalized["score"],
+                    normalized["source"] or None,
+                    json.dumps(normalized["payload"], ensure_ascii=False),
+                ],
+            )
+
+    _with_pg_retry(_run)
+    return normalized
+
+
+def list_pim_channel_links(
+    *,
+    link_id: Optional[str] = None,
+    scope: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    entity_ids: Optional[List[str]] = None,
+    provider: Optional[str] = None,
+    status: Optional[str] = None,
+    organization_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        sql = """
+            SELECT
+              organization_id, link_id, scope, entity_type, entity_id, provider,
+              url, external_id, title, status, score, source, payload_json,
+              created_at, updated_at
+            FROM pim_channel_links
+            WHERE organization_id = %s
+        """
+        params: List[Any] = [org_id]
+        if link_id:
+            sql += " AND link_id = %s"
+            params.append(str(link_id))
+        if scope:
+            sql += " AND scope = %s"
+            params.append(str(scope))
+        if entity_type:
+            sql += " AND entity_type = %s"
+            params.append(str(entity_type))
+        if entity_id:
+            sql += " AND entity_id = %s"
+            params.append(str(entity_id))
+        elif entity_ids:
+            normalized_entity_ids = [str(item).strip() for item in entity_ids if str(item).strip()]
+            if normalized_entity_ids:
+                placeholders = ", ".join(["%s"] * len(normalized_entity_ids))
+                sql += f" AND entity_id IN ({placeholders})"
+                params.extend(normalized_entity_ids)
+        if provider:
+            sql += " AND provider = %s"
+            params.append(str(provider))
+        if status:
+            sql += " AND status = %s"
+            params.append(str(status))
+        sql += " ORDER BY updated_at DESC, link_id"
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall() or []
+        out: List[Dict[str, Any]] = []
+        for raw in rows:
+            payload = raw[12] if isinstance(raw[12], dict) else {}
+            out.append(
+                {
+                    "organization_id": str(raw[0] or ""),
+                    "link_id": str(raw[1] or ""),
+                    "id": str(raw[1] or ""),
+                    "scope": str(raw[2] or ""),
+                    "entity_type": str(raw[3] or ""),
+                    "entity_id": str(raw[4] or ""),
+                    "provider": str(raw[5] or ""),
+                    "url": str(raw[6] or ""),
+                    "external_id": str(raw[7] or ""),
+                    "title": str(raw[8] or ""),
+                    "status": str(raw[9] or ""),
+                    "score": raw[10],
+                    "source": str(raw[11] or ""),
+                    "payload": payload,
+                    "created_at": str(raw[13] or ""),
+                    "updated_at": str(raw[14] or ""),
+                }
+            )
+        return out
+
+    return _with_pg_retry(_run)
 
 
 def _replace_catalog_nodes_table(nodes: List[Dict[str, Any]]) -> None:
