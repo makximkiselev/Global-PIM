@@ -95,6 +95,9 @@ DISCOVERY_SOURCES: List[Dict[str, Any]] = [
     },
 ]
 
+_COMPETITOR_MAPPING_SCOPE = "competitor_mapping"
+_COMPETITOR_MAPPING_META_PROVIDER = "__meta"
+
 
 def detect_site(url: str) -> Optional[str]:
     try:
@@ -146,6 +149,124 @@ def _validate_links_keep_keys(links: Any) -> Dict[str, str]:
         out[k] = url
 
     return out
+
+
+def _mapping_link_id(entity_type: str, entity_id: str, provider: str) -> str:
+    return f"competitor_mapping:{entity_type}:{entity_id}:{provider}"
+
+
+def _empty_mapping_row() -> Dict[str, Any]:
+    return {
+        "priority_site": None,
+        "links": {k: "" for k in ALLOWED_SITES.keys()},
+        "mapping_by_site": {k: {} for k in ALLOWED_SITES.keys()},
+        "updated_at": None,
+    }
+
+
+def _mapping_row_has_content(row: Dict[str, Any]) -> bool:
+    links = row.get("links") if isinstance(row.get("links"), dict) else {}
+    maps = row.get("mapping_by_site") if isinstance(row.get("mapping_by_site"), dict) else {}
+    return bool(
+        row.get("priority_site")
+        or any(str(value or "").strip() for value in links.values())
+        or any(isinstance(maps.get(site), dict) and bool(maps.get(site)) for site in ALLOWED_SITES.keys())
+    )
+
+
+def _relational_competitor_mapping_row(entity_type: str, entity_id: str) -> Optional[Dict[str, Any]]:
+    normalized_entity_type = str(entity_type or "").strip()
+    normalized_entity_id = str(entity_id or "").strip()
+    if not normalized_entity_type or not normalized_entity_id:
+        return None
+    try:
+        rows = list_pim_channel_links(
+            scope=_COMPETITOR_MAPPING_SCOPE,
+            entity_type=normalized_entity_type,
+            entity_id=normalized_entity_id,
+        )
+    except Exception:
+        return None
+    if not rows:
+        return None
+    out = _empty_mapping_row()
+    for item in rows:
+        provider = str(item.get("provider") or "").strip()
+        payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+        updated_at = item.get("updated_at") or payload.get("updated_at")
+        if updated_at:
+            out["updated_at"] = updated_at
+        if provider == _COMPETITOR_MAPPING_META_PROVIDER:
+            priority_site = payload.get("priority_site")
+            out["priority_site"] = priority_site if priority_site in ALLOWED_SITES else None
+            continue
+        if provider not in ALLOWED_SITES:
+            continue
+        out["links"][provider] = str(item.get("url") or "").strip()
+        mapping = payload.get("mapping") if isinstance(payload.get("mapping"), dict) else {}
+        out["mapping_by_site"][provider] = {str(k): str(v) for k, v in mapping.items() if str(k).strip() and str(v).strip()}
+        priority_site = payload.get("priority_site")
+        if priority_site in ALLOWED_SITES:
+            out["priority_site"] = priority_site
+    return out if _mapping_row_has_content(out) else None
+
+
+def _persist_competitor_mapping_row(entity_type: str, entity_id: str, row: Dict[str, Any]) -> None:
+    normalized_entity_type = str(entity_type or "").strip()
+    normalized_entity_id = str(entity_id or "").strip()
+    if normalized_entity_type not in {"template", "category"} or not normalized_entity_id:
+        return
+    shaped = _ensure_row_shape(row)
+    priority_site = shaped.get("priority_site") if shaped.get("priority_site") in ALLOWED_SITES else None
+    updated_at = shaped.get("updated_at") or now_iso()
+    upsert_pim_channel_link(
+        {
+            "link_id": _mapping_link_id(normalized_entity_type, normalized_entity_id, _COMPETITOR_MAPPING_META_PROVIDER),
+            "scope": _COMPETITOR_MAPPING_SCOPE,
+            "entity_type": normalized_entity_type,
+            "entity_id": normalized_entity_id,
+            "provider": _COMPETITOR_MAPPING_META_PROVIDER,
+            "status": "configured" if _mapping_row_has_content(shaped) else "empty",
+            "source": "competitor_mapping",
+            "payload": {
+                "priority_site": priority_site,
+                "updated_at": updated_at,
+            },
+        }
+    )
+    links = shaped.get("links") if isinstance(shaped.get("links"), dict) else {}
+    mapping_by_site = shaped.get("mapping_by_site") if isinstance(shaped.get("mapping_by_site"), dict) else {}
+    for provider in ALLOWED_SITES.keys():
+        mapping = mapping_by_site.get(provider) if isinstance(mapping_by_site.get(provider), dict) else {}
+        url = str(links.get(provider) or "").strip()
+        status = "configured" if url or mapping else "empty"
+        upsert_pim_channel_link(
+            {
+                "link_id": _mapping_link_id(normalized_entity_type, normalized_entity_id, provider),
+                "scope": _COMPETITOR_MAPPING_SCOPE,
+                "entity_type": normalized_entity_type,
+                "entity_id": normalized_entity_id,
+                "provider": provider,
+                "url": url,
+                "status": status,
+                "source": "competitor_mapping",
+                "payload": {
+                    "priority_site": priority_site,
+                    "mapping": mapping,
+                    "updated_at": updated_at,
+                },
+            }
+        )
+
+
+def _remove_legacy_competitor_mapping_row(entity_type: str, entity_id: str) -> None:
+    db = load_competitor_mapping_db()
+    key = "templates" if entity_type == "template" else "categories"
+    rows = db.get(key) if isinstance(db.get(key), dict) else {}
+    if str(entity_id) in rows:
+        rows.pop(str(entity_id), None)
+        db[key] = rows
+        save_competitor_mapping_db(db)
 
 
 def _source_by_id(source_id: str) -> Dict[str, Any]:
@@ -1598,6 +1719,16 @@ def _template_flags_payload() -> Dict[str, bool]:
     for template_id, row in items.items():
         if isinstance(row, dict) and _is_configured(row):
             flags[str(template_id)] = True
+    try:
+        for row in list_pim_channel_links(scope=_COMPETITOR_MAPPING_SCOPE, entity_type="template"):
+            entity_id = str(row.get("entity_id") or "").strip()
+            if not entity_id:
+                continue
+            rel_row = _relational_competitor_mapping_row("template", entity_id)
+            if rel_row and _is_configured(rel_row):
+                flags[entity_id] = True
+    except Exception:
+        pass
     return flags
 
 
@@ -1775,13 +1906,19 @@ def _ensure_row_shape(row: Any) -> Dict[str, Any]:
 
 
 def _get_category_row_with_fallback(category_id: str) -> Tuple[Dict[str, Any], Optional[str], Optional[str]]:
+    relational_row = _relational_competitor_mapping_row("category", category_id)
     db = load_competitor_mapping_db()
     category_rows = db.get("categories") if isinstance(db.get("categories"), dict) else {}
     row = _ensure_row_shape((category_rows or {}).get(category_id) or {})
     template_id, source_category_id = _resolve_template_for_category(category_id)
+    if relational_row:
+        return relational_row, template_id, source_category_id
     if any((row.get("links") or {}).values()) or any((row.get("mapping_by_site") or {}).get(site) for site in ("restore", "store77")):
         return row, template_id, source_category_id
     if template_id:
+        relational_template_row = _relational_competitor_mapping_row("template", template_id)
+        if relational_template_row:
+            return relational_template_row, template_id, source_category_id
         template_rows = db.get("templates") if isinstance(db.get("templates"), dict) else {}
         legacy_row = _ensure_row_shape((template_rows or {}).get(template_id) or {})
         return legacy_row, template_id, source_category_id
@@ -1797,7 +1934,7 @@ def get_template_mapping(template_id: str) -> Dict[str, Any]:
 
     db = load_competitor_mapping_db()
     row = (db.get("templates", {}) or {}).get(template_id) or {}
-    row = _ensure_row_shape(row)
+    row = _relational_competitor_mapping_row("template", template_id) or _ensure_row_shape(row)
 
     return {
         "ok": True,
@@ -1850,9 +1987,9 @@ def save_template_mapping(template_id: str, payload: Dict[str, Any]) -> Dict[str
     _ = _get_template_or_404(template_id)  # ✅ проверяем что шаблон существует
 
     db = load_competitor_mapping_db()
-    tpl_rows = db.setdefault("templates", {})
+    tpl_rows = db.get("templates") if isinstance(db.get("templates"), dict) else {}
     current_raw = tpl_rows.get(template_id) or {}
-    current = _ensure_row_shape(current_raw)
+    current = _relational_competitor_mapping_row("template", template_id) or _ensure_row_shape(current_raw)
 
     # priority_site (optional)
     if "priority_site" in payload:
@@ -1882,8 +2019,8 @@ def save_template_mapping(template_id: str, payload: Dict[str, Any]) -> Dict[str
 
     current["updated_at"] = now_iso()
 
-    tpl_rows[template_id] = current
-    save_competitor_mapping_db(db)
+    _persist_competitor_mapping_row("template", template_id, current)
+    _remove_legacy_competitor_mapping_row("template", template_id)
     cache_entry = _bootstrap_cache_entry()
     cache_entry["payload"] = None
     cache_entry["at"] = 0.0
@@ -1924,10 +2061,8 @@ def save_category_mapping(category_id: str, payload: Dict[str, Any]) -> Dict[str
         current["mapping_by_site"] = {"restore": merged, "store77": dict(merged)}
     current["updated_at"] = now_iso()
 
-    db = load_competitor_mapping_db()
-    db.setdefault("categories", {})
-    db["categories"][category_id] = current
-    save_competitor_mapping_db(db)
+    _persist_competitor_mapping_row("category", category_id, current)
+    _remove_legacy_competitor_mapping_row("category", category_id)
     cache_entry = _bootstrap_cache_entry()
     cache_entry["payload"] = None
     cache_entry["at"] = 0.0

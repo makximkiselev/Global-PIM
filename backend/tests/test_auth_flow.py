@@ -953,6 +953,35 @@ class AuthFlowTests(unittest.TestCase):
             org_id = tenant_context_core.current_tenant_organization_id()
             per_org_competitor_db[org_id] = deepcopy(db if isinstance(db, dict) else {"version": 2, "categories": {}, "templates": {}})
 
+        per_org_channel_links: dict[str, dict[str, dict[str, object]]] = {}
+
+        def fake_upsert_channel_link(row, *, organization_id=None):
+            org_id = organization_id or tenant_context_core.current_tenant_organization_id() or "org_default"
+            normalized = deepcopy(row)
+            normalized.setdefault("id", normalized.get("link_id"))
+            normalized.setdefault("payload", {})
+            normalized.setdefault("updated_at", "2026-05-12T00:00:00+00:00")
+            per_org_channel_links.setdefault(str(org_id), {})[str(normalized.get("link_id"))] = normalized
+            return normalized
+
+        def fake_list_channel_links(**filters):
+            org_id = filters.get("organization_id") or tenant_context_core.current_tenant_organization_id() or "org_default"
+            rows = list(per_org_channel_links.get(str(org_id), {}).values())
+            out = []
+            for row in rows:
+                if filters.get("scope") and row.get("scope") != filters.get("scope"):
+                    continue
+                if filters.get("entity_type") and row.get("entity_type") != filters.get("entity_type"):
+                    continue
+                if filters.get("entity_id") and row.get("entity_id") != filters.get("entity_id"):
+                    continue
+                if filters.get("provider") and row.get("provider") != filters.get("provider"):
+                    continue
+                if filters.get("status") and row.get("status") != filters.get("status"):
+                    continue
+                out.append(deepcopy(row))
+            return out
+
         competitor_mapping_routes._bootstrap_cache.clear()
 
         with ExitStack() as stack:
@@ -961,6 +990,8 @@ class AuthFlowTests(unittest.TestCase):
             stack.enter_context(patch.object(tenant_context_core, "get_organization_provisioning_status", side_effect=fake_org_status))
             stack.enter_context(patch.object(competitor_mapping_routes, "load_competitor_mapping_db", side_effect=fake_load_competitor_mapping_db))
             stack.enter_context(patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=fake_save_competitor_mapping_db))
+            stack.enter_context(patch.object(competitor_mapping_routes, "upsert_pim_channel_link", side_effect=fake_upsert_channel_link))
+            stack.enter_context(patch.object(competitor_mapping_routes, "list_pim_channel_links", side_effect=fake_list_channel_links))
             stack.enter_context(patch.object(competitor_mapping_routes, "_resolve_template_for_category", return_value=("tpl1", "cat1")))
             stack.enter_context(patch.object(competitor_mapping_routes, "load_templates_db", return_value={"templates": {"tpl1": {"id": "tpl1", "name": "Template 1", "category_id": "cat1"}}, "attributes": {}}))
             stack.enter_context(patch.object(competitor_mapping_routes, "_invalidate_marketplace_mapping_caches", return_value=None))
