@@ -65,6 +65,30 @@ class AuthFlowTests(unittest.TestCase):
 
         self.client = TestClient(app)
 
+    def _channel_link_reader(self, rows: list[dict]):
+        def _read(**filters):
+            result = []
+            entity_ids = set(str(item) for item in (filters.get("entity_ids") or []))
+            for row in rows:
+                if filters.get("link_id") and row.get("link_id") != filters.get("link_id"):
+                    continue
+                if filters.get("scope") and row.get("scope") != filters.get("scope"):
+                    continue
+                if filters.get("entity_type") and row.get("entity_type") != filters.get("entity_type"):
+                    continue
+                if filters.get("entity_id") and row.get("entity_id") != filters.get("entity_id"):
+                    continue
+                if entity_ids and str(row.get("entity_id") or "") not in entity_ids:
+                    continue
+                if filters.get("provider") and row.get("provider") != filters.get("provider"):
+                    continue
+                if filters.get("status") and row.get("status") != filters.get("status"):
+                    continue
+                result.append(deepcopy(row))
+            return result
+
+        return _read
+
     def test_auth_session_is_public_and_unauthenticated_by_default(self) -> None:
         response = self.client.get("/api/auth/session")
 
@@ -1706,6 +1730,7 @@ class AuthFlowTests(unittest.TestCase):
 
         store = {"version": 2, "categories": {}, "templates": {}}
         saved_docs: list[dict] = []
+        channel_links: list[dict] = []
 
         async def fake_discover(product, source):
             return [
@@ -1720,6 +1745,8 @@ class AuthFlowTests(unittest.TestCase):
         with (
             patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
             patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=lambda doc: saved_docs.append(deepcopy(doc))),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", return_value=[]),
+            patch.object(competitor_mapping_routes, "upsert_pim_channel_link", side_effect=lambda row: channel_links.append(deepcopy(row)) or row),
             patch.object(
                 competitor_mapping_routes,
                 "_discovery_products",
@@ -1738,7 +1765,8 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(payload["ok"], True)
         self.assertEqual(payload["created_count"], 2)
         self.assertEqual(payload["run"]["status"], "completed")
-        self.assertEqual(len(saved_docs[-1]["discovery"]["candidates"]), 2)
+        self.assertEqual(saved_docs[-1]["discovery"]["candidates"], {})
+        self.assertEqual(sum(1 for row in channel_links if row.get("status") == "candidate"), 2)
 
     def test_restore_search_parser_extracts_large_escaped_catalog_fast(self) -> None:
         product = {
@@ -1819,7 +1847,6 @@ class AuthFlowTests(unittest.TestCase):
         }
         saved_docs: list[dict] = []
         channel_links: list[dict] = []
-        channel_links: list[dict] = []
 
         def save_doc(doc):
             saved_docs.append(deepcopy(doc))
@@ -1830,6 +1857,8 @@ class AuthFlowTests(unittest.TestCase):
         with (
             patch.object(competitor_mapping_routes, "load_competitor_mapping_db", side_effect=lambda: store),
             patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=save_doc),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", return_value=[]),
+            patch.object(competitor_mapping_routes, "upsert_pim_channel_link", side_effect=lambda row: channel_links.append(deepcopy(row)) or row),
             patch.object(
                 competitor_mapping_routes,
                 "_discovery_products",
@@ -1844,7 +1873,8 @@ class AuthFlowTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(saved_docs[-1]["discovery"]["candidates"]["cand_old"]["status"], "stale")
+        self.assertEqual(saved_docs[-1]["discovery"]["candidates"], {})
+        self.assertTrue(any(row.get("link_id") == "cand_old" and row.get("status") == "stale" for row in channel_links))
 
     def test_competitor_candidate_moderation_approves_and_rejects_candidates(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
@@ -1889,6 +1919,7 @@ class AuthFlowTests(unittest.TestCase):
         with (
             patch.object(competitor_mapping_routes, "load_competitor_mapping_db", side_effect=lambda: store),
             patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=save_doc),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", side_effect=self._channel_link_reader(channel_links)),
             patch.object(competitor_mapping_routes, "upsert_pim_channel_link", side_effect=lambda row: channel_links.append(deepcopy(row)) or row),
         ):
             approve = self.client.post(
@@ -1902,11 +1933,11 @@ class AuthFlowTests(unittest.TestCase):
 
         self.assertEqual(approve.status_code, 200)
         self.assertEqual(reject.status_code, 200)
-        discovery = saved_docs[-1]["discovery"]
-        self.assertEqual(discovery["candidates"]["cand_restore"]["status"], "approved")
-        self.assertEqual(discovery["candidates"]["cand_store77"]["status"], "rejected")
-        self.assertEqual(discovery["links"]["product_1:restore"]["candidate_id"], "cand_restore")
-        self.assertEqual(discovery["links"]["product_1:restore"]["url"], "https://re-store.ru/product/iphone")
+        self.assertEqual(saved_docs[-1]["discovery"]["candidates"], {})
+        self.assertEqual(approve.json()["candidate"]["status"], "approved")
+        self.assertEqual(reject.json()["candidate"]["status"], "rejected")
+        self.assertEqual(approve.json()["links"]["product_1:restore"]["candidate_id"], "cand_restore")
+        self.assertEqual(approve.json()["links"]["product_1:restore"]["url"], "https://re-store.ru/product/iphone")
         self.assertTrue(any(row.get("link_id") == "product_1:restore" and row.get("status") == "confirmed" for row in channel_links))
         self.assertTrue(any(row.get("link_id") == "cand_store77" and row.get("status") == "rejected" for row in channel_links))
 
@@ -2029,9 +2060,9 @@ class AuthFlowTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        discovery = saved_docs[-1]["discovery"]
-        self.assertEqual(discovery["candidates"]["cand_rel_restore"]["status"], "approved")
-        self.assertEqual(discovery["links"]["product_1:restore"]["status"], "confirmed")
+        self.assertEqual(saved_docs[-1]["discovery"]["candidates"], {})
+        self.assertEqual(response.json()["candidate"]["status"], "approved")
+        self.assertEqual(response.json()["links"]["product_1:restore"]["status"], "confirmed")
         self.assertTrue(any(row.get("link_id") == "product_1:restore" and row.get("status") == "confirmed" for row in channel_links))
 
     def test_competitor_category_discovery_endpoint_summarizes_sources(self) -> None:
@@ -2462,6 +2493,7 @@ class AuthFlowTests(unittest.TestCase):
         with (
             patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
             patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=lambda doc: saved_docs.append(deepcopy(doc))),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", side_effect=self._channel_link_reader(channel_links)),
             patch.object(competitor_mapping_routes, "upsert_pim_channel_link", side_effect=lambda row: channel_links.append(deepcopy(row)) or row),
         ):
             response = self.client.post(
@@ -2515,11 +2547,9 @@ class AuthFlowTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        discovery = saved_docs[-1]["discovery"]
-        self.assertEqual(discovery["links"]["product_113:store77"]["status"], "confirmed")
-        self.assertEqual(discovery["links"]["product_113:store77"]["source"], "manual")
-        self.assertEqual(discovery["candidates"]["cand_pending"]["status"], "rejected")
-        self.assertEqual(discovery["candidates"]["cand_pending"]["rejection_reason"], "manual_link_selected")
+        self.assertEqual(saved_docs[-1]["discovery"]["links"], {})
+        self.assertEqual(response.json()["link"]["status"], "confirmed")
+        self.assertEqual(response.json()["link"]["source"], "manual")
         self.assertTrue(any(row.get("link_id") == "product_113:store77" and row.get("status") == "confirmed" for row in channel_links))
         self.assertTrue(any(row.get("link_id") == "cand_pending" and row.get("status") == "rejected" for row in channel_links))
 

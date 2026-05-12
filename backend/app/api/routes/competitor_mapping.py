@@ -169,6 +169,29 @@ def _ensure_discovery_doc(db: Dict[str, Any]) -> Dict[str, Any]:
     return discovery
 
 
+def _save_competitor_mapping_runs_only(db: Dict[str, Any]) -> None:
+    discovery = _ensure_discovery_doc(db)
+    candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
+    links = discovery.get("links") if isinstance(discovery.get("links"), dict) else {}
+    candidate_by_id = {
+        str(key): value
+        for key, value in candidates.items()
+        if isinstance(value, dict)
+    }
+    for candidate in candidate_by_id.values():
+        _persist_competitor_channel_candidate(candidate)
+    for link in links.values():
+        if not isinstance(link, dict):
+            continue
+        _persist_competitor_channel_link(link, candidate_by_id.get(str(link.get("candidate_id") or "")))
+    # Competitor candidates and product links are relational in
+    # pim_channel_links. JSON remains only for run polling/state until a
+    # dedicated workflow-runs table replaces it.
+    discovery["candidates"] = {}
+    discovery["links"] = {}
+    save_competitor_mapping_db(db)
+
+
 def _candidate_id(product_id: str, source_id: str, url: str) -> str:
     raw = f"{product_id}|{source_id}|{url}".encode("utf-8")
     return "cand_" + hashlib.sha1(raw).hexdigest()[:16]
@@ -2239,6 +2262,9 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
     db = load_competitor_mapping_db()
     discovery = _ensure_discovery_doc(db)
     candidates = discovery["candidates"]
+    links = discovery["links"]
+    product_scope_ids = {str(item.get("id") or "").strip() for item in products if str(item.get("id") or "").strip()}
+    _merge_relational_discovery_items(candidates, links, product_ids=product_scope_ids)
     started_at = now_iso()
     created_count = 0
     updated_count = 0
@@ -2251,7 +2277,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         limit=limit,
         started_at=started_at,
     ))
-    save_competitor_mapping_db(db)
+    _save_competitor_mapping_runs_only(db)
 
     for product in products:
         for source in sources:
@@ -2332,7 +2358,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         scanned_products_count=len(products),
     )
     discovery["runs"][run_id] = _remember_discovery_run(run)
-    save_competitor_mapping_db(db)
+    _save_competitor_mapping_runs_only(db)
     return run
 
 
@@ -2358,7 +2384,7 @@ async def _execute_discovery_run_safe(
             finished_at=now_iso(),
             errors=[{"error": str(exc) or "DISCOVERY_FAILED"}],
         ))
-        save_competitor_mapping_db(db)
+        _save_competitor_mapping_runs_only(db)
     finally:
         if tenant_token is not None:
             reset_current_tenant_organization_id(tenant_token)
@@ -2384,7 +2410,7 @@ async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 limit=limit,
             )
             discovery["runs"][run_id] = _remember_discovery_run(run)
-            save_competitor_mapping_db(db)
+            _save_competitor_mapping_runs_only(db)
             _start_discovery_worker_process(run_id, organization_id)
             return {"ok": True, "run": run, "created_count": 0, "updated_count": 0, "errors_count": 0}
 
@@ -2440,19 +2466,24 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
     db = load_competitor_mapping_db()
     discovery = _ensure_discovery_doc(db)
     candidates = discovery["candidates"]
+    links = discovery["links"]
     candidate = candidates.get(candidate_id)
     if not isinstance(candidate, dict):
         candidate = _relational_candidate_by_id(candidate_id)
         if not isinstance(candidate, dict):
             raise HTTPException(status_code=404, detail="Candidate not found")
         candidates[candidate_id] = candidate
+    product_id_for_merge = str(candidate.get("product_id") or "").strip()
+    if product_id_for_merge:
+        _merge_relational_discovery_items(candidates, links, product_ids={product_id_for_merge})
+        candidate = candidates.get(candidate_id, candidate)
 
     reviewed_at = now_iso()
     if action == "approve":
         candidate["status"] = "approved"
         candidate["reviewed_at"] = reviewed_at
         link_key = f"{candidate.get('product_id')}:{candidate.get('source_id')}"
-        discovery["links"][link_key] = {
+        confirmed_link = {
             "id": link_key,
             "product_id": candidate.get("product_id"),
             "source_id": candidate.get("source_id"),
@@ -2462,7 +2493,8 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
             "confirmed_at": reviewed_at,
             "last_checked_at": candidate.get("last_seen_at") or reviewed_at,
         }
-        _persist_competitor_channel_link(discovery["links"][link_key], candidate)
+        links[link_key] = confirmed_link
+        _persist_competitor_channel_link(confirmed_link, candidate)
         match_group_key = str(candidate.get("match_group_key") or "").strip()
         product_id = str(candidate.get("product_id") or "").strip()
         source_id = str(candidate.get("source_id") or "").strip()
@@ -2491,8 +2523,8 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
 
     candidates[candidate_id] = candidate
     _persist_competitor_channel_candidate(candidate)
-    save_competitor_mapping_db(db)
-    return {"ok": True, "candidate": candidate, "links": discovery.get("links") or {}}
+    _save_competitor_mapping_runs_only(db)
+    return {"ok": True, "candidate": candidate, "links": links}
 
 
 @router.post("/discovery/products/{product_id}/links")
@@ -2511,9 +2543,12 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict
 
     db = load_competitor_mapping_db()
     discovery = _ensure_discovery_doc(db)
+    candidates = discovery["candidates"]
+    links = discovery["links"]
+    _merge_relational_discovery_items(candidates, links, product_ids={normalized_product_id})
     reviewed_at = now_iso()
     link_key = f"{normalized_product_id}:{source_id}"
-    discovery["links"][link_key] = {
+    confirmed_link = {
         "id": link_key,
         "product_id": normalized_product_id,
         "source_id": source_id,
@@ -2524,8 +2559,9 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict
         "last_checked_at": reviewed_at,
         "source": "manual",
     }
-    _persist_competitor_channel_link(discovery["links"][link_key])
-    for candidate_id, candidate in list((discovery.get("candidates") or {}).items()):
+    links[link_key] = confirmed_link
+    _persist_competitor_channel_link(confirmed_link)
+    for candidate_id, candidate in list(candidates.items()):
         if not isinstance(candidate, dict):
             continue
         if str(candidate.get("product_id") or "").strip() != normalized_product_id:
@@ -2538,10 +2574,10 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict
         candidate["reviewed_at"] = reviewed_at
         candidate["rejection_reason"] = "manual_link_selected"
         candidate["confidence_reasons"] = list(candidate.get("confidence_reasons") or []) + ["отклонено автоматически: пользователь добавил ссылку вручную"]
-        discovery["candidates"][candidate_id] = candidate
+        candidates[candidate_id] = candidate
         _persist_competitor_channel_candidate(candidate)
-    save_competitor_mapping_db(db)
-    return {"ok": True, "link": discovery["links"][link_key], "links": discovery.get("links") or {}}
+    _save_competitor_mapping_runs_only(db)
+    return {"ok": True, "link": confirmed_link, "links": links}
 
 
 @router.post("/discovery/products/{product_id}/enrich")
@@ -2607,12 +2643,12 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
     saved = upsert_product_item(merged["product"])
     for source_id in successful.keys():
         link_key = f"{normalized_product_id}:{source_id}"
-        link = discovery.get("links", {}).get(link_key)
+        link = link_by_source.get(source_id)
         if isinstance(link, dict):
             link["last_checked_at"] = now_iso()
             link["last_enriched_at"] = now_iso()
-            discovery["links"][link_key] = link
-    save_competitor_mapping_db(db)
+            _persist_competitor_channel_link(link)
+    _save_competitor_mapping_runs_only(db)
     return {
         "ok": True,
         "product_id": normalized_product_id,

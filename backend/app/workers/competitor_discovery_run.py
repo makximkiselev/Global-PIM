@@ -9,7 +9,7 @@ from app.core.tenant_context import (
     reset_current_tenant_organization_id,
     set_current_tenant_organization_id,
 )
-from app.storage.json_store import load_competitor_mapping_db, save_competitor_mapping_db
+from app.storage.json_store import load_competitor_mapping_db
 
 
 def _load_run(run_id: str) -> Dict[str, Any]:
@@ -47,7 +47,7 @@ def _mark_failed(run_id: str, error: str) -> None:
             errors=[{"error": error or "DISCOVERY_WORKER_FAILED"}],
         )
     )
-    save_competitor_mapping_db(db)
+    competitor_mapping._save_competitor_mapping_runs_only(db)
 
 
 async def run_once(run_id: str, organization_id: Optional[str] = None) -> Dict[str, Any]:
