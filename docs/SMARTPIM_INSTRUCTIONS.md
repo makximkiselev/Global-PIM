@@ -511,9 +511,10 @@ Target data direction:
 9. channel categories: marketplace/competitor category links;
 10. channel field mappings: external fields to canonical fields;
 11. value mappings: canonical value to channel output value;
-12. competitor links: accepted/rejected evidence URLs;
-13. connector accounts and runs: credentials/config and sync history;
-14. derived tables must be named, documented, rebuildable, and never manually edited.
+12. competitor links: accepted/rejected evidence URLs in `pim_channel_links`;
+13. workflow runs: operational run polling/state in `pim_workflow_runs`, not JSON documents;
+14. connector accounts and runs: credentials/config and sync history;
+15. derived tables must be named, documented, rebuildable, and never manually edited.
 
 ## Work Protocol
 

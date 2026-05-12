@@ -9,22 +9,15 @@ from app.core.tenant_context import (
     reset_current_tenant_organization_id,
     set_current_tenant_organization_id,
 )
-from app.storage.json_store import load_competitor_mapping_db
-
-
 def _load_run(run_id: str) -> Dict[str, Any]:
-    db = load_competitor_mapping_db()
-    discovery = competitor_mapping._ensure_discovery_doc(db)
-    run = (discovery.get("runs") or {}).get(run_id)
+    run = competitor_mapping._get_discovery_run(run_id)
     if not isinstance(run, dict):
         raise RuntimeError(f"Discovery run not found: {run_id}")
     return dict(run)
 
 
 def _mark_failed(run_id: str, error: str) -> None:
-    db = load_competitor_mapping_db()
-    discovery = competitor_mapping._ensure_discovery_doc(db)
-    existing = (discovery.get("runs") or {}).get(run_id)
+    existing = competitor_mapping._get_discovery_run(run_id)
     sources: List[Dict[str, Any]] = []
     product_ids: Optional[List[str]] = None
     limit = 1
@@ -36,7 +29,7 @@ def _mark_failed(run_id: str, error: str) -> None:
         ]
         product_ids = existing.get("requested_product_ids") if isinstance(existing.get("requested_product_ids"), list) else None
         limit = int(existing.get("limit") or 1)
-    discovery["runs"][run_id] = competitor_mapping._remember_discovery_run(
+    competitor_mapping._persist_discovery_run(
         competitor_mapping._run_payload(
             run_id,
             status="failed",
@@ -47,7 +40,6 @@ def _mark_failed(run_id: str, error: str) -> None:
             errors=[{"error": error or "DISCOVERY_WORKER_FAILED"}],
         )
     )
-    competitor_mapping._save_competitor_mapping_runs_only(db)
 
 
 async def run_once(run_id: str, organization_id: Optional[str] = None) -> Dict[str, Any]:

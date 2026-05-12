@@ -1013,6 +1013,28 @@ def _ensure_tables_impl() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS pim_workflow_runs (
+                  organization_id TEXT NOT NULL,
+                  workflow TEXT NOT NULL,
+                  run_id TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  started_at TIMESTAMPTZ NULL,
+                  finished_at TIMESTAMPTZ NULL,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, workflow, run_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pim_workflow_runs_status
+                  ON pim_workflow_runs(organization_id, workflow, status, updated_at DESC)
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_connector_import_stores_rel_provider
                   ON connector_import_stores_rel(provider, enabled)
                 """
@@ -1077,6 +1099,28 @@ def _ensure_lightweight_schema_migrations() -> None:
                 CREATE INDEX IF NOT EXISTS idx_pim_channel_links_provider_url
                   ON pim_channel_links(organization_id, provider, url)
                   WHERE COALESCE(url, '') <> ''
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pim_workflow_runs (
+                  organization_id TEXT NOT NULL,
+                  workflow TEXT NOT NULL,
+                  run_id TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                  started_at TIMESTAMPTZ NULL,
+                  finished_at TIMESTAMPTZ NULL,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, workflow, run_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pim_workflow_runs_status
+                  ON pim_workflow_runs(organization_id, workflow, status, updated_at DESC)
                 """
             )
 
@@ -1284,6 +1328,89 @@ def list_pim_channel_links(
                 }
             )
         return out
+
+    return _with_pg_retry(_run)
+
+
+def upsert_pim_workflow_run(
+    run: Dict[str, Any],
+    *,
+    workflow: str,
+    organization_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    workflow_id = str(workflow or "").strip()
+    run_id = str(run.get("id") or run.get("run_id") or "").strip()
+    if not workflow_id:
+        raise ValueError("workflow is required")
+    if not run_id:
+        raise ValueError("run id is required")
+    status = str(run.get("status") or "").strip() or "unknown"
+    started_at = str(run.get("started_at") or "").strip() or None
+    finished_at = str(run.get("finished_at") or "").strip() or None
+
+    def _run() -> None:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO pim_workflow_runs (
+                  organization_id, workflow, run_id, status, payload_json,
+                  started_at, finished_at, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, NOW(), NOW())
+                ON CONFLICT (organization_id, workflow, run_id) DO UPDATE SET
+                  status = EXCLUDED.status,
+                  payload_json = EXCLUDED.payload_json,
+                  started_at = COALESCE(EXCLUDED.started_at, pim_workflow_runs.started_at),
+                  finished_at = EXCLUDED.finished_at,
+                  updated_at = NOW()
+                """,
+                [
+                    org_id,
+                    workflow_id,
+                    run_id,
+                    status,
+                    json.dumps(run, ensure_ascii=False),
+                    started_at,
+                    finished_at,
+                ],
+            )
+
+    _with_pg_retry(_run)
+    return dict(run)
+
+
+def get_pim_workflow_run(
+    run_id: str,
+    *,
+    workflow: str,
+    organization_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    workflow_id = str(workflow or "").strip()
+    normalized_run_id = str(run_id or "").strip()
+    if not workflow_id or not normalized_run_id:
+        return None
+
+    def _run() -> Optional[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT payload_json
+                FROM pim_workflow_runs
+                WHERE organization_id = %s AND workflow = %s AND run_id = %s
+                """,
+                [org_id, workflow_id, normalized_run_id],
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        payload = row[0] if isinstance(row[0], dict) else {}
+        return dict(payload) if isinstance(payload, dict) else None
 
     return _with_pg_retry(_run)
 

@@ -31,9 +31,11 @@ from app.storage.json_store import (
     load_templates_db,
 )
 from app.storage.relational_pim_store import (
+    get_pim_workflow_run,
     list_pim_channel_links,
     query_products_full,
     upsert_pim_channel_link,
+    upsert_pim_workflow_run,
     upsert_product_item,
 )
 from app.core.value_mapping import canonicalize_dictionary_value
@@ -97,6 +99,7 @@ DISCOVERY_SOURCES: List[Dict[str, Any]] = [
 
 _COMPETITOR_MAPPING_SCOPE = "competitor_mapping"
 _COMPETITOR_MAPPING_META_PROVIDER = "__meta"
+_COMPETITOR_DISCOVERY_WORKFLOW = "competitor_discovery"
 
 
 def detect_site(url: str) -> Optional[str]:
@@ -305,11 +308,15 @@ def _save_competitor_mapping_runs_only(db: Dict[str, Any]) -> None:
         if not isinstance(link, dict):
             continue
         _persist_competitor_channel_link(link, candidate_by_id.get(str(link.get("candidate_id") or "")))
+    for run in (discovery.get("runs") or {}).values():
+        if isinstance(run, dict):
+            _persist_discovery_run(run)
     # Competitor candidates and product links are relational in
-    # pim_channel_links. JSON remains only for run polling/state until a
-    # dedicated workflow-runs table replaces it.
+    # pim_channel_links. Runs are relational in pim_workflow_runs. JSON remains
+    # only as migration fallback for older deployments.
     discovery["candidates"] = {}
     discovery["links"] = {}
+    discovery["runs"] = {}
     save_competitor_mapping_db(db)
 
 
@@ -351,6 +358,31 @@ def _run_payload(
         "errors_count": len(errors),
         "errors": errors,
     }
+
+
+def _persist_discovery_run(run: Dict[str, Any]) -> Dict[str, Any]:
+    remembered = _remember_discovery_run(run)
+    try:
+        upsert_pim_workflow_run(remembered, workflow=_COMPETITOR_DISCOVERY_WORKFLOW)
+    except Exception:
+        pass
+    return remembered
+
+
+def _get_discovery_run(run_id: str) -> Optional[Dict[str, Any]]:
+    normalized_run_id = str(run_id or "").strip()
+    if not normalized_run_id:
+        return None
+    try:
+        run = get_pim_workflow_run(normalized_run_id, workflow=_COMPETITOR_DISCOVERY_WORKFLOW)
+        if isinstance(run, dict):
+            return run
+    except Exception:
+        pass
+    db = load_competitor_mapping_db()
+    discovery = _ensure_discovery_doc(db)
+    run = (discovery.get("runs") or {}).get(normalized_run_id)
+    return dict(run) if isinstance(run, dict) else None
 
 
 def _backend_root() -> Path:
@@ -2404,7 +2436,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
     created_count = 0
     updated_count = 0
     errors: List[Dict[str, Any]] = []
-    discovery["runs"][run_id] = _remember_discovery_run(_run_payload(
+    _persist_discovery_run(_run_payload(
         run_id,
         status="running",
         sources=sources,
@@ -2412,7 +2444,6 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         limit=limit,
         started_at=started_at,
     ))
-    _save_competitor_mapping_runs_only(db)
 
     for product in products:
         for source in sources:
@@ -2492,8 +2523,8 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         errors=errors,
         scanned_products_count=len(products),
     )
-    discovery["runs"][run_id] = _remember_discovery_run(run)
     _save_competitor_mapping_runs_only(db)
+    _persist_discovery_run(run)
     return run
 
 
@@ -2508,9 +2539,7 @@ async def _execute_discovery_run_safe(
     try:
         await _execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit)
     except Exception as exc:
-        db = load_competitor_mapping_db()
-        discovery = _ensure_discovery_doc(db)
-        discovery["runs"][run_id] = _remember_discovery_run(_run_payload(
+        _persist_discovery_run(_run_payload(
             run_id,
             status="failed",
             sources=sources,
@@ -2519,7 +2548,6 @@ async def _execute_discovery_run_safe(
             finished_at=now_iso(),
             errors=[{"error": str(exc) or "DISCOVERY_FAILED"}],
         ))
-        _save_competitor_mapping_runs_only(db)
     finally:
         if tenant_token is not None:
             reset_current_tenant_organization_id(tenant_token)
@@ -2535,8 +2563,6 @@ async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     tenant_token = None if current_org_id else set_current_tenant_organization_id(organization_id)
     try:
         if bool(payload.get("background", False)):
-            db = load_competitor_mapping_db()
-            discovery = _ensure_discovery_doc(db)
             run = _run_payload(
                 run_id,
                 status="queued",
@@ -2544,8 +2570,7 @@ async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 product_ids=product_ids,
                 limit=limit,
             )
-            discovery["runs"][run_id] = _remember_discovery_run(run)
-            _save_competitor_mapping_runs_only(db)
+            _persist_discovery_run(run)
             _start_discovery_worker_process(run_id, organization_id)
             return {"ok": True, "run": run, "created_count": 0, "updated_count": 0, "errors_count": 0}
 
@@ -2566,9 +2591,7 @@ async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("/discovery/runs/{run_id}")
 def discovery_run_status(run_id: str) -> Dict[str, Any]:
     normalized_run_id = str(run_id or "").strip()
-    db = load_competitor_mapping_db()
-    discovery = _ensure_discovery_doc(db)
-    run = (discovery.get("runs") or {}).get(normalized_run_id)
+    run = _get_discovery_run(normalized_run_id)
     if not isinstance(run, dict):
         cached = _discovery_run_cache.get(normalized_run_id)
         if isinstance(cached, dict):

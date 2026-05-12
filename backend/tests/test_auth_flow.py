@@ -1797,7 +1797,9 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(payload["created_count"], 2)
         self.assertEqual(payload["run"]["status"], "completed")
         self.assertEqual(saved_docs[-1]["discovery"]["candidates"], {})
-        self.assertEqual(sum(1 for row in channel_links if row.get("status") == "candidate"), 2)
+        candidate_ids = {row.get("link_id") for row in channel_links if row.get("status") == "candidate"}
+        self.assertEqual(len(candidate_ids), 2)
+        self.assertTrue(all(str(item).startswith("cand_") for item in candidate_ids))
 
     def test_restore_search_parser_extracts_large_escaped_catalog_fast(self) -> None:
         product = {
@@ -2243,6 +2245,7 @@ class AuthFlowTests(unittest.TestCase):
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
 
         store = {"version": 2, "categories": {}, "templates": {}}
+        workflow_runs: dict[str, dict] = {}
 
         def save_doc(doc):
             next_doc = deepcopy(doc)
@@ -2254,6 +2257,16 @@ class AuthFlowTests(unittest.TestCase):
         with (
             patch.object(competitor_mapping_routes, "load_competitor_mapping_db", side_effect=lambda: store),
             patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=save_doc),
+            patch.object(
+                competitor_mapping_routes,
+                "upsert_pim_workflow_run",
+                side_effect=lambda run, **kwargs: workflow_runs.setdefault(run["id"], deepcopy(run)),
+            ),
+            patch.object(
+                competitor_mapping_routes,
+                "get_pim_workflow_run",
+                side_effect=lambda run_id, **kwargs: deepcopy(workflow_runs.get(run_id)),
+            ),
             patch.object(
                 competitor_mapping_routes,
                 "_start_discovery_worker_process",
@@ -2271,6 +2284,7 @@ class AuthFlowTests(unittest.TestCase):
             self.assertEqual(payload["run"]["status"], "queued")
             run_id = payload["run"]["id"]
             self.assertEqual(launched, [(run_id, "org_default")])
+            self.assertEqual(workflow_runs[run_id]["status"], "queued")
 
             status = self.client.get(f"/api/competitor-mapping/discovery/runs/{run_id}")
 
