@@ -221,6 +221,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   }, [bootstrappedFromUrl, nodes, searchParams]);
 
   useEffect(() => {
+    if (!bootstrappedFromUrl) return;
     const next = new URLSearchParams(searchParams);
     if (selectedNodeIds[0]) next.set("category", selectedNodeIds[0]);
     else next.delete("category");
@@ -230,7 +231,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
     if (serialized !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [selectedNodeIds, selectedProductIds, searchParams, setSearchParams]);
+  }, [bootstrappedFromUrl, selectedNodeIds, selectedProductIds, searchParams, setSearchParams]);
 
   useEffect(() => {
     let cancelled = false;

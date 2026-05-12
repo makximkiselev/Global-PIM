@@ -211,6 +211,50 @@ Current note:
 
 1. this phase is done; keep the section as a standing rule.
 
+## Current Project Audit - 2026-05-12
+
+Status: active / checked in browser and DB.
+
+Summary:
+
+1. the project is usable as a prototype, but it is not ready for real catalog filling and reliable export yet;
+2. the strongest blockers are not isolated visual issues anymore: they are source readiness, Ozon parameter import/mapping, competitor evidence storage, and end-to-end workflow clarity;
+3. pages now mostly open without 500 errors, but several screens still mix too many tasks and show contradictory readiness states.
+
+Browser QA findings:
+
+1. `/` loads without console errors and shows the working queue, but marketplace/source readiness is still incomplete.
+2. `/connectors/status` loads without console errors, but Ozon parameters show `OZON_CATEGORY_ATTRIBUTES_PARTIAL 28/29 imported; 17028924: OZON_TYPE_ID_NOT_RESOLVED`; ComfyUI is shown as not configured.
+3. `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251` loads and selects `Смартфоны`; visual density is acceptable but still needs final shared-tree polish.
+4. `/products?category=bb40de87-254b-4170-84d7-8e5d3925b251` loads and correctly shows `431 SKU в выбранной ветке`.
+5. `/products/product_70` loads and media is visible; the product card is much better, but the workflow navigation still has too many sections for everyday content work.
+6. `/templates` loads but still starts with too much category/model state before the user gets to the working model task.
+7. `/templates/bb40de87-254b-4170-84d7-8e5d3925b251` shows a contradiction: `84` fields found, but `В модели 0`; this must be fixed before real model approval.
+8. `/sources?tab=sources&category=bb40de87-254b-4170-84d7-8e5d3925b251` loads, but the category/competitor workspace still needs clearer actions and less explanatory clutter.
+9. `/sources?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251` loads and keeps category context; readiness says `68/78` fields ready while DB has 84 model rows, so counters must be reconciled.
+10. `/sources?tab=values&category=bb40de87-254b-4170-84d7-8e5d3925b251` loads, but the value mapping queue remains dense: `58 из 84` fields require value mapping and `33` are not ready.
+11. `/catalog/import?category=bb40de87-254b-4170-84d7-8e5d3925b251` lost the category query during redirect to `/catalog/exchange`; local fix added in `CatalogImportFeature`, deployment/browser production recheck still required.
+12. `/catalog/export?category=bb40de87-254b-4170-84d7-8e5d3925b251` preserves category context.
+13. `/admin/organizations` and `/admin/access` load without errors; admin works, but `/admin/access` still exposes technical/security metadata too prominently for normal UX.
+
+DB/API findings:
+
+1. production has 50 public tables; 7 are empty dictionary/invite tables and 43 are non-empty runtime tables.
+2. `Смартфоны` has 84 attribute mapping rows, 69 Yandex mappings, 0 Ozon mappings, 83 confirmed rows, and 431 products in the branch.
+3. `Наушники` has 21 attribute mapping rows, 5 Yandex mappings, 0 Ozon mappings, 1 confirmed row, and 17 products in the branch.
+4. `Приставки для TV` has category mappings but 0 attribute rows; Ozon category binding is stale because `type_id` cannot be resolved.
+5. competitor DB document currently has `categories=0`, `products=0`, and `candidate_batches=0`; competitor enrichment UI cannot be considered production-ready until scan results and moderation links are persisted.
+6. current consolidated target tables (`pim_products`, `pim_model_fields`, `pim_channel_links`, `pim_external_payloads`) still do not exist; the current schema is working but split across legacy/tenant/read-model tables.
+
+Immediate project priorities from this audit:
+
+1. fix Ozon category/type resolution and populate Ozon parameter mappings for real mapped categories;
+2. make competitor discovery persist category links, SKU candidates, accepted/rejected decisions, and evidence into a proper channel-link store instead of an empty JSON document;
+3. reconcile info-model counters and state so `Найдено полей`, `В модели`, `готово`, and table row counts cannot contradict each other;
+4. complete import/export path QA after deploying the local import category-context fix;
+5. finish shared category workspace so `/catalog`, `/templates`, `/sources`, and `/catalog/exchange` use the same tree density, counters, expand/collapse behavior, and selected state;
+6. simplify value mapping and product-card workflow only after Ozon and competitor data are real enough to validate.
+
 ## P0 - Product Navigation, Module Ownership, And DB Maps
 
 Status: active / product structure accepted on 2026-05-05, menu-vs-tabs contract updated on 2026-05-06.
@@ -446,9 +490,9 @@ Next tasks:
    - `Смартфоны` category is not empty in DB: 1 direct SKU and 431 SKU in the branch; UI copy must distinguish direct SKU from branch SKU. Status: fixed and Browser-verified 2026-05-09 on product list;
    - `Наушники` has 0 direct SKU and 17 branch SKU; SKU-based competitor flow must say `в ветке`, not imply direct products. Status: fixed and Browser-verified 2026-05-09 on product list;
    - AI mapping on `Наушники` runs and writes/applies fallback rows, but visible readiness stays `Внимание 14`, `Без связки 10`, `Готово 1`; the UI must explain what changed or show that nothing improved. Status: fixed and Browser-verified 2026-05-09; message now says `локальные правила`, `проверило 15 полей`, `Готово 1/15`, `без связки 10`, `требует внимания 14`;
-   - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present; investigate attribute import/mapping source;
-   - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`; remove this contradiction;
-   - competitor data still lives in `json_documents` (`competitor_mapping_org_default.json`) and must move to/through the accepted channel-link store before final enrichment UX is considered stable.
+   - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present. Status: DB-confirmed again 2026-05-12; investigate Ozon attribute import, type-id resolution, and AI mapping source;
+   - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`. Status: Browser-confirmed again 2026-05-12; remove this contradiction before model approval can be trusted;
+   - competitor data still lives in `json_documents` (`competitor_mapping_org_default.json`) and must move to/through the accepted channel-link store before final enrichment UX is considered stable. Status: DB-confirmed 2026-05-12 as `categories=0`, `products=0`, `candidate_batches=0`.
 2. run full user path for `Смартфоны`;
 3. verify marketplace field import for Ozon and Yandex;
 4. verify competitor evidence from re-store/store77;
@@ -782,7 +826,7 @@ Next tasks:
 
 1. verify `/catalog/import`;
 2. verify `/catalog/export`;
-3. verify category query parameter is preserved. Status: fixed and Browser-verified 2026-05-09 for `/catalog/export?category=<id>` and product-list import/export/create actions;
+3. verify category query parameter is preserved. Status: fixed and Browser-verified 2026-05-09 for `/catalog/export?category=<id>` and product-list export/create actions; `/catalog/import?category=<id>` lost category during redirect in Browser QA 2026-05-12, local fix added by delaying URL sync until initial category bootstrap, production deploy/recheck pending;
 4. verify Excel import path;
 5. verify export readiness per marketplace;
 6. reduce remaining summary clutter.
