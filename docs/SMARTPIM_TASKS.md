@@ -87,6 +87,11 @@ Rule:
    - Ozon category-attribute sync must prefer Api-Key auth, require a valid Ozon `type_id`, and not fail the whole provider because of one outdated category binding;
    - ComfyUI must not try production localhost by default: if `COMFYUI_BASE_URL` is absent, show it as not configured instead of a critical connection failure;
    - stale marketplace category mappings must create dashboard notifications: if a provider category is invalid/missing, the user reselects it; after reselect the system compares old/new parameter sets and creates a follow-up task only when parameter/value remapping is required.
+1. Competitor source workflow cleanup
+   - `/sources?tab=sources` competitor block now follows one direct action flow: choose SKU, scan re-store/store77, review candidate product cards, confirm or reject from the same category workspace;
+   - removed the visible category-suggestion list from the primary action area because enrichment needs exact competitor product-card links, not search/category links;
+   - confirmed candidates are written through the existing moderation API into `discovery.links`, so they become usable by SKU enrichment;
+   - Browser/Playwright QA on production verified that direct `Подтвердить`/`Отклонить` actions render, the old "confirm in product card" copy is gone, and the compact source state no longer truncates `store77`.
 1. Auth/admin rights polish
    - rights page now shows user-facing Russian role names even when legacy DB rows had stale English role names;
    - system role names/descriptions are normalized back into relational `roles` on auth bootstrap;
@@ -509,7 +514,7 @@ Next tasks:
 15. compact `/sources?tab=sources` competitor card: one SKU selector, one primary search action, compact re-store/store77 state, no step-cards/counter clutter. Status: done 2026-05-07;
 16. clarify `/sources?tab=params` count as PIM info-model fields, not all marketplace fields. Status: done 2026-05-07;
 17. compact `/sources?tab=values` dictionary editor in embedded mode: hide metadata duplication and collapse marketplace allowed values into searchable preview. Status: done 2026-05-07;
-18. verify competitor SKU search button in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: done 2026-05-09 for visible UI; matching quality still needs iteration.
+18. verify competitor SKU search/review in Browser Use and handle API errors with a readable inline state instead of broken layout. Status: updated 2026-05-12: category workspace now shows direct candidate cards with `Открыть`, `Подтвердить`, and `Отклонить`; matching quality and relational persistence still need iteration.
 
 DB readiness check on 2026-05-08:
 

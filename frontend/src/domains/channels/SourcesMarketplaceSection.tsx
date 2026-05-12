@@ -1059,6 +1059,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorDiscoveryError, setCompetitorDiscoveryError] = useState("");
   const [competitorDiscoveryRun, setCompetitorDiscoveryRun] = useState<CompetitorDiscoveryRun | null>(null);
   const [competitorSampleProductId, setCompetitorSampleProductId] = useState("");
+  const [competitorModeratingId, setCompetitorModeratingId] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [attrCacheHydratedFor, setAttrCacheHydratedFor] = useState("");
@@ -2537,6 +2538,25 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
+  async function moderateCompetitorCandidate(categoryId: string, candidateId: string, action: "approve" | "reject") {
+    const cid = String(categoryId || "").trim();
+    const id = String(candidateId || "").trim();
+    if (!cid || !id) return;
+    setCompetitorModeratingId(id);
+    setCompetitorDiscoveryError("");
+    try {
+      await api(`/competitor-mapping/discovery/candidates/${encodeURIComponent(id)}/moderate`, {
+        method: "POST",
+        body: JSON.stringify(action === "approve" ? { action } : { action, reason: "Отклонено из сопоставления категории" }),
+      });
+      await loadCompetitorDiscovery(cid);
+    } catch (e) {
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось обновить карточку конкурента");
+    } finally {
+      setCompetitorModeratingId("");
+    }
+  }
+
   useEffect(() => {
     const categoryId = selectedCatalogNode?.id || "";
     if (!categoryId || mainTab !== "import" || importTab !== "categories") {
@@ -3081,12 +3101,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               {(() => {
                                 const competitorMeta = competitorSourceMeta(selectedCatalogNode.id);
                                 const discoverySources = competitorDiscovery?.sources || [];
-                                const categorySuggestions = discoverySources.flatMap((source) =>
-                                  (source.suggestions || [])
-                                    .filter((suggestion) => suggestion.type !== "search")
-                                    .slice(0, 2)
-                                    .map((suggestion) => ({ source, suggestion })),
-                                );
                                 const competitorCandidatesTotal = discoverySources.reduce((sum, source) => sum + Number(source.candidates_count || 0), 0);
                                 const competitorConfirmedTotal = discoverySources.reduce((sum, source) => sum + Number(source.confirmed_count || 0), 0);
                                 const competitorNeedsReviewTotal = discoverySources.reduce((sum, source) => sum + Number(source.needs_review_count || 0), 0);
@@ -3099,11 +3113,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     .slice(0, 3)
                                     .map((candidate) => ({ source, candidate })),
                                 );
-                                const selectedCandidateCount = discoverySources.reduce((sum, source) => (
-                                  sum + (source.candidate_items || []).filter((candidate) => (
-                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
-                                  )).length
-                                ), 0);
                                 const competitorSourceRows = competitorMeta.sites.map((site) => {
                                   const discoverySource = discoverySources.find((source) => String(source.id) === site.code);
                                   const confirmedCount = Number(discoverySource?.confirmed_count || 0);
@@ -3148,7 +3157,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           </div>
                                         </div>
                                         <div className="mm-providerHint">
-                                          Система сканирует карточки re-store/store77 по выбранному SKU. Подтверждение кандидатов выполняется в карточке товара.
+                                          Система сканирует карточки re-store/store77 по выбранному SKU. Подтвердите точную ссылку здесь, чтобы использовать ее для насыщения товара.
                                         </div>
                                       </div>
                                       <div className="mm-competitorActions">
@@ -3168,9 +3177,15 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       </div>
                                     </div>
                                     <div className="mm-lineContent">
-                                      <div className="mm-competitorCompactPanel">
-                                        <div className="mm-competitorSkuPicker">
-                                          <label htmlFor={`competitor-sku-${selectedCatalogNode.id}`}>SKU для скана</label>
+                                      <div className="mm-competitorWorkbench">
+                                        <div className="mm-competitorSkuPanel">
+                                          <div>
+                                            <div className="mm-competitorPanelLabel">Проверяемый SKU</div>
+                                            <strong>{selectedSampleProduct ? selectedSampleLabel : "В категории пока нет товаров"}</strong>
+                                            <p>
+                                              Скан ищет именно карточки товара на re-store/store77. После подтверждения ссылка становится источником для насыщения параметров, описания и медиа.
+                                            </p>
+                                          </div>
                                           <select
                                             id={`competitor-sku-${selectedCatalogNode.id}`}
                                             value={selectedSampleProduct?.id || ""}
@@ -3185,30 +3200,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                               <option value="">В категории пока нет товаров</option>
                                             )}
                                           </select>
-                                          <span>{selectedSampleLabel}</span>
-                                        </div>
-                                        <div className="mm-competitorFlow">
-                                          <div className="mm-competitorFlowStep isActive">
-                                            <span>1</span>
-                                            <strong>SKU</strong>
-                                            <em>{selectedSampleProduct ? "выбран" : "нет товаров"}</em>
-                                          </div>
-                                          <div className={`mm-competitorFlowStep ${competitorDiscoveryRunning ? "isActive" : runFinished ? "isDone" : ""}`}>
-                                            <span>2</span>
-                                            <strong>Скан</strong>
-                                            <em>
-                                              {competitorDiscoveryRunning
-                                                ? "идет"
-                                                : runFinished
-                                                  ? `${runCreated} кандидатов`
-                                                  : "не запускали"}
-                                            </em>
-                                          </div>
-                                          <div className={`mm-competitorFlowStep ${selectedCandidateCount || competitorNeedsReviewTotal ? "isActive" : competitorConfirmedTotal ? "isDone" : ""}`}>
-                                            <span>3</span>
-                                            <strong>Модерация</strong>
-                                            <em>{selectedCandidateCount ? `${selectedCandidateCount} для SKU` : competitorNeedsReviewTotal ? `0 для SKU · ${competitorNeedsReviewTotal} всего` : competitorConfirmedTotal ? "готово" : "пусто"}</em>
-                                          </div>
                                         </div>
                                         <div className="mm-competitorSourceStrip">
                                           {competitorSourceRows.map((site) => (
@@ -3221,6 +3212,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         <div className="mm-competitorMiniStats">
                                           <span>{competitorStatusText}</span>
                                           <span>{competitorDiscovery?.category?.products_count ?? "—"} SKU в категории</span>
+                                          <span>
+                                            {competitorDiscoveryRunning
+                                              ? "скан выполняется"
+                                              : runFinished
+                                                ? `${runCreated} найдено/обновлено`
+                                                : "скан еще не запускали"}
+                                          </span>
                                         </div>
                                       </div>
 
@@ -3242,64 +3240,49 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         </div>
                                       ) : null}
 
-                                      <div className="mm-competitorSuggestionsHead">
-                                        <strong>Категории конкурентов для обхода</strong>
-                                      </div>
                                       {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Ищем карточки конкурентов для выбранного SKU...</div> : null}
                                       {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
-                                      {!competitorDiscoveryLoading && !competitorDiscoveryError ? (
-                                        <div className="mm-competitorSuggestionList">
-                                          {categorySuggestions.map(({ source, suggestion }) => (
-                                              <a
-                                                key={`${source.id}-${suggestion.id}`}
-                                                className="mm-competitorSuggestion"
-                                                href={suggestion.url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                              >
-                                                <div>
-                                                  <span>{source.name}</span>
-                                                  <strong>{suggestion.label}</strong>
-                                                  <em>
-                                                    {suggestion.type === "catalog_scan"
-                                                      ? "найдено при скане каталога"
-                                                      : "по уже найденным карточкам"}
-                                                  </em>
-                                                </div>
-                                                <b>{Math.round(Number(suggestion.confidence || 0) * 100)}%</b>
-                                              </a>
-                                            ))
-                                          }
-                                          {categorySuggestions.length === 0 ? (
-                                            <div className="mm-lineEmpty">
-                                              Категории конкурентов пока не найдены. Запустите скан каталога: система пройдет по re-store/store77 и сохранит кандидатов для SKU.
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      ) : null}
 
                                       <div className="mm-competitorSuggestionsHead">
-                                        <strong>Карточки выбранного SKU на модерации</strong>
-                                        <span>Подтвердите одну карточку в товаре. Остальные кандидаты будут отклонены автоматически.</span>
+                                        <strong>Кандидаты для выбранного SKU</strong>
+                                        <span>Подтвердите точную карточку. Остальные варианты этой группы автоматически уйдут в отклоненные.</span>
                                       </div>
                                       <div className="mm-competitorCandidateList">
                                         {productCandidates.map(({ source, candidate }) => (
-                                          <Link
+                                          <div
                                             key={`${source.id}-${candidate.id}`}
                                             className="mm-competitorCandidate"
-                                            to={`/products/${encodeURIComponent(candidate.product_id || selectedSampleProduct?.id || "")}`}
                                           >
                                             <span>
                                               <b>{source.name}</b>
                                               <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
                                               <em>{compactCompetitorUrl(candidate.url || "")}</em>
                                             </span>
-                                            <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}% · открыть товар</small>
-                                          </Link>
+                                            <div className="mm-competitorCandidateActions">
+                                              <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</small>
+                                              <a href={candidate.url || "#"} target="_blank" rel="noreferrer">Открыть</a>
+                                              <button
+                                                type="button"
+                                                className="btn btn-primary mm-miniBtn"
+                                                onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve")}
+                                                disabled={competitorModeratingId === candidate.id}
+                                              >
+                                                Подтвердить
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="btn mm-miniBtn mm-ghostBtn"
+                                                onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject")}
+                                                disabled={competitorModeratingId === candidate.id}
+                                              >
+                                                Отклонить
+                                              </button>
+                                            </div>
+                                          </div>
                                         ))}
                                         {productCandidates.length === 0 ? (
                                           <div className="mm-lineEmpty">
-                                            Нет карточек SKU для модерации. После скана они появятся здесь; подтверждение и ручная ссылка открываются в карточке товара.
+                                            Для выбранного SKU нет карточек на модерации. Запустите скан или откройте SKU и добавьте точную ссылку вручную.
                                           </div>
                                         ) : null}
                                       </div>

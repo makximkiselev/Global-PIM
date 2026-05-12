@@ -972,8 +972,78 @@
   align-items: center;
 }
 
+.sourcesMappingPage .mm-competitorWorkbench {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(260px, 0.85fr) auto;
+  gap: 10px;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--brand) 16%, var(--line));
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand) 7%, transparent), transparent 68%),
+    color-mix(in srgb, var(--panel) 94%, var(--surface));
+  padding: 10px;
+}
+
+.sourcesMappingPage .mm-competitorSkuPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.sourcesMappingPage .mm-competitorPanelLabel {
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sourcesMappingPage .mm-competitorSkuPanel strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcesMappingPage .mm-competitorSkuPanel p {
+  max-width: 660px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.sourcesMappingPage .mm-competitorSkuPanel select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--panel) 96%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+  outline: 0;
+  padding: 0 10px;
+}
+
 .sourcesMappingPage .mm-competitorMiniStats {
   grid-column: 2;
+}
+
+.sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceStrip,
+.sourcesMappingPage .mm-competitorWorkbench .mm-competitorMiniStats {
+  grid-column: auto;
+}
+
+.sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceStrip {
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
 }
 
 .sourcesMappingPage .mm-competitorRunNotice {
@@ -1059,6 +1129,7 @@
 
 .sourcesMappingPage .mm-competitorSourceItem strong,
 .sourcesMappingPage .mm-competitorSourceName {
+  flex: 0 0 auto;
   color: var(--text);
   font-size: 12px;
   font-weight: 900;
@@ -1241,10 +1312,10 @@
 
 .sourcesMappingPage .mm-competitorCandidate {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   justify-content: space-between;
-  gap: 10px;
+  gap: 9px;
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1290,7 +1361,6 @@
 }
 
 .sourcesMappingPage .mm-competitorCandidate small {
-  flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--line));
   border-radius: 999px;
   background: color-mix(in srgb, var(--brand) 8%, var(--panel));
@@ -1299,6 +1369,25 @@
   font-weight: 900;
   padding: 5px 8px;
   white-space: nowrap;
+}
+
+.sourcesMappingPage .mm-competitorCandidateActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.sourcesMappingPage .mm-competitorCandidateActions a {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--surface));
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  padding: 6px 9px;
+  text-decoration: none;
 }
 
 .sourcesCategoryCompetitorSuggestions {
