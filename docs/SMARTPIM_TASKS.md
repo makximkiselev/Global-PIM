@@ -490,8 +490,8 @@ Next tasks:
    - `Смартфоны` category is not empty in DB: 1 direct SKU and 431 SKU in the branch; UI copy must distinguish direct SKU from branch SKU. Status: fixed and Browser-verified 2026-05-09 on product list;
    - `Наушники` has 0 direct SKU and 17 branch SKU; SKU-based competitor flow must say `в ветке`, not imply direct products. Status: fixed and Browser-verified 2026-05-09 on product list;
    - AI mapping on `Наушники` runs and writes/applies fallback rows, but visible readiness stays `Внимание 14`, `Без связки 10`, `Готово 1`; the UI must explain what changed or show that nothing improved. Status: fixed and Browser-verified 2026-05-09; message now says `локальные правила`, `проверило 15 полей`, `Готово 1/15`, `без связки 10`, `требует внимания 14`;
-   - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present. Status: DB-confirmed again 2026-05-12; investigate Ozon attribute import, type-id resolution, and AI mapping source;
-   - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`. Status: Browser-confirmed again 2026-05-12; remove this contradiction before model approval can be trusted;
+   - Ozon parameter mappings are currently 0 for `Наушники` and 0 for `Смартфоны` despite category mappings being present. Status: fixed, applied to production data, deployed, and Browser-verified 2026-05-12; current DB/UI counts are `Смартфоны: 49 Ozon mappings`, `Наушники: 7 Ozon mappings`;
+   - template editor for `Смартфоны` shows 84 displayed fields while summary says `В модели 0`. Status: fixed, deployed, and Browser-verified 2026-05-12; editor now shows `Найдено полей 84`, `В модели 84`, `Источники Ozon 49 · Я.Маркет 69`;
    - competitor data still lives in `json_documents` (`competitor_mapping_org_default.json`) and must move to/through the accepted channel-link store before final enrichment UX is considered stable. Status: DB-confirmed 2026-05-12 as `categories=0`, `products=0`, `candidate_batches=0`.
 2. run full user path for `Смартфоны`;
 3. verify marketplace field import for Ozon and Yandex;
@@ -826,7 +826,7 @@ Next tasks:
 
 1. verify `/catalog/import`;
 2. verify `/catalog/export`;
-3. verify category query parameter is preserved. Status: fixed and Browser-verified 2026-05-09 for `/catalog/export?category=<id>` and product-list export/create actions; `/catalog/import?category=<id>` lost category during redirect in Browser QA 2026-05-12, local fix added by delaying URL sync until initial category bootstrap, production deploy/recheck pending;
+3. verify category query parameter is preserved. Status: fixed and Browser-verified 2026-05-09 for `/catalog/export?category=<id>` and product-list export/create actions; `/catalog/import?category=<id>` regression fixed, deployed, and Browser-verified 2026-05-12 for `Смартфоны`;
 4. verify Excel import path;
 5. verify export readiness per marketplace;
 6. reduce remaining summary clutter.

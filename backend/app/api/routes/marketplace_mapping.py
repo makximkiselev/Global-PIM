@@ -2035,6 +2035,7 @@ def _deterministic_ai_rows(
     yandex_params: List[Dict[str, Any]],
     existing_rows: List[Dict[str, Any]],
     feedback_doc: Optional[Dict[str, Any]] = None,
+    ozon_params: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     out = [dict(r) for r in _normalize_attr_rows(existing_rows)]
     yz = [x for x in yandex_params if isinstance(x, dict)]
@@ -2085,6 +2086,55 @@ def _deterministic_ai_rows(
         row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
         out[best_idx] = row
         used_yids.add(yid)
+
+    oz = [x for x in (ozon_params or []) if isinstance(x, dict)]
+    used_oids: set[str] = {
+        str((((row.get("provider_map") or {}).get("ozon") or {}).get("id") or "")).strip()
+        for row in out
+        if isinstance(row, dict)
+    }
+
+    for o in oz:
+        oid = str(o.get("id") or "").strip()
+        if not oid or oid in used_oids:
+            continue
+
+        best_idx = -1
+        best_score = 0.0
+        for idx, row in enumerate(out):
+            row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+            oz_map = row_map.get("ozon") if isinstance(row_map.get("ozon"), dict) else {}
+            if str(oz_map.get("id") or "").strip():
+                continue
+            row_name = str(row.get("catalog_name") or "").strip()
+            if not row_name:
+                continue
+            score = _pair_score(
+                {"id": "", "name": row_name, "kind": str(row.get("group") or "")},
+                o,
+                feedback_doc=feedback_doc,
+            )
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+
+        if best_idx < 0 or best_score < 0.34:
+            continue
+
+        row = dict(out[best_idx])
+        provider_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        provider_map["ozon"] = {
+            "id": oid,
+            "name": str(o.get("name") or oid),
+            "kind": str(o.get("kind") or "").strip(),
+            "values": _extract_text_list(o.get("values"))[:120],
+            "required": bool(o.get("required") or False),
+            "export": True,
+        }
+        row["provider_map"] = provider_map
+        row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
+        out[best_idx] = row
+        used_oids.add(oid)
 
     return _normalize_attr_rows(out)
 
@@ -3326,6 +3376,8 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
 
     yandex_cat_id = str(cat_mapping.get("yandex_market") or "").strip()
     yandex_params = _load_yandex_params(yandex_cat_id)
+    ozon_cat_id = str(cat_mapping.get("ozon") or "").strip()
+    ozon_params = _load_ozon_params(ozon_cat_id)
 
     doc = _load_attr_mapping_doc()
     items = doc.get("items") if isinstance(doc.get("items"), dict) else {}
@@ -3335,7 +3387,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
     existing_rows = _prune_rows_for_current_provider_params(
         saved.get("rows") if isinstance(saved, dict) else [],
         yandex_params,
-        [],
+        ozon_params,
     )
     target_rows = _catalog_target_rows(
         _catalog_attr_options_for_category(cid),
@@ -3356,6 +3408,12 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
             )
         if rows_ai:
             rows_ai = _merge_ai_rows_into_target_rows(seed_rows, rows_ai)
+            rows_ai = _deterministic_ai_rows(
+                [],
+                rows_ai,
+                feedback_doc=feedback_doc,
+                ozon_params=ozon_params,
+            )
             engine = "ollama"
     except Exception:
         rows_ai = None
@@ -3364,6 +3422,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         yandex_params,
         seed_rows,
         feedback_doc=feedback_doc,
+        ozon_params=ozon_params,
     )
     rows_final = _apply_group_locks(rows_final)
     run_summary = _attr_ai_run_summary(seed_rows, rows_final)

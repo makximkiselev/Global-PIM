@@ -1656,6 +1656,38 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(response["engine"], "fallback")
         self.assertLess(elapsed, 0.25)
 
+    def test_deterministic_attribute_mapping_fills_ozon_bindings(self) -> None:
+        rows = marketplace_mapping_routes._deterministic_ai_rows(
+            yandex_params=[],
+            existing_rows=[
+                {
+                    "id": "row_memory",
+                    "catalog_name": "Встроенная память",
+                    "group": "О товаре",
+                    "provider_map": {},
+                    "confirmed": False,
+                }
+            ],
+            ozon_params=[
+                {
+                    "id": "oz_memory",
+                    "name": "Встроенная память",
+                    "kind": "String",
+                    "values": ["128 ГБ", "256 ГБ"],
+                    "required": True,
+                }
+            ],
+        )
+
+        self.assertEqual(len(rows), 1)
+        ozon = rows[0]["provider_map"]["ozon"]
+        self.assertEqual(ozon["id"], "oz_memory")
+        self.assertEqual(ozon["name"], "Встроенная память")
+        self.assertEqual(ozon["values"], ["128 ГБ", "256 ГБ"])
+        self.assertTrue(ozon["required"])
+        self.assertTrue(ozon["export"])
+        self.assertTrue(rows[0]["confirmed"])
+
     def test_competitor_discovery_sources_include_restore_and_store77(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})

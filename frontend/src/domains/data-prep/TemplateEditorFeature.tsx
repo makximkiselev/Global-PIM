@@ -475,6 +475,21 @@ export default function TemplateEditor() {
     const row = master?.sources?.yandex_market;
     return row && typeof row === "object" ? (row as TemplateSourceInfo) : null;
   }, [master]);
+  const modelFieldsInWork = infoModel.status === "approved" ? attrs.length : acceptedCandidates;
+  const modelSourcesText = useMemo(() => {
+    if (sourceCoverage.length) {
+      return sourceCoverage.map((source) => `${sourceLabel(source.provider)} ${source.fields}`).join(" · ");
+    }
+    const sources = master?.sources && typeof master.sources === "object" ? master.sources : {};
+    const rows = Object.entries(sources)
+      .map(([provider, raw]) => {
+        const source = raw && typeof raw === "object" ? (raw as TemplateSourceInfo) : null;
+        const count = Number(source?.mapped_rows || source?.params_count || 0);
+        return count > 0 ? `${sourceLabel(provider)} ${count}` : "";
+      })
+      .filter(Boolean);
+    return rows.length ? rows.join(" · ") : "не собраны";
+  }, [master, sourceCoverage]);
 
   async function updateDraftCandidate(candidateId: string, patch: Partial<InfoModelCandidate>) {
     const templateId = ownerTpl?.id || tpl?.id;
@@ -1057,15 +1072,11 @@ export default function TemplateEditor() {
                     </div>
                     <div className="tplModelStatusItem">
                       <span>В модели</span>
-                      <strong>{acceptedCandidates}</strong>
+                      <strong>{modelFieldsInWork}</strong>
                     </div>
                     <div className="tplModelStatusItem is-wide">
                       <span>Источники</span>
-                      <strong>
-                        {sourceCoverage.length
-                          ? sourceCoverage.map((source) => `${sourceLabel(source.provider)} ${source.fields}`).join(" · ")
-                          : "не собраны"}
-                      </strong>
+                      <strong>{modelSourcesText}</strong>
                     </div>
                   </div>
 
