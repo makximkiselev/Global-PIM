@@ -26,7 +26,7 @@ from app.api.routes.yandex_market import (
     _parent_map,
     _preferred_offer_id,
 )
-from app.api.routes.competitor_mapping import _ensure_row_shape, _normalize_mapped_specs
+from app.api.routes.competitor_mapping import _confirmed_links_for_product, _ensure_row_shape, _normalize_mapped_specs
 from app.core.competitors.extract_competitor_fields import extract_competitor_content
 
 router = APIRouter(prefix="/catalog/exchange", tags=["catalog-exchange"])
@@ -232,6 +232,22 @@ def _product_links_by_site(product: Dict[str, Any]) -> Dict[str, str]:
             elif "store77" in label or "77" in label:
                 site = "store77"
         if site in out and not out[site]:
+            out[site] = url
+    return out
+
+
+def _product_partner_links_by_site(product: Dict[str, Any], competitor_db: Dict[str, Any]) -> Dict[str, str]:
+    out = _product_links_by_site(product)
+    product_id = str(product.get("id") or "").strip()
+    if not product_id:
+        return out
+    discovery = competitor_db.get("discovery") if isinstance(competitor_db.get("discovery"), dict) else {}
+    for link in _confirmed_links_for_product(discovery, product_id):
+        if not isinstance(link, dict):
+            continue
+        site = str(link.get("source_id") or "").strip()
+        url = str(link.get("url") or "").strip()
+        if site in out and url:
             out[site] = url
     return out
 
@@ -831,7 +847,7 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
         if not isinstance(product, dict):
             continue
         template_id = _resolve_template_id(str(product.get("category_id") or "").strip(), nodes)
-        links_by_site = _product_links_by_site(product)
+        links_by_site = _product_partner_links_by_site(product, competitor_db)
         product_conflicts: List[Dict[str, Any]] = []
         competitor_results: Dict[str, Any] = {}
         if req.use_competitors and template_id:

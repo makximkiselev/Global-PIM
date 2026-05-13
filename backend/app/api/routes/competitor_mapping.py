@@ -997,6 +997,7 @@ def _persist_competitor_channel_link(link: Dict[str, Any], candidate: Optional[D
                     "product_sku": (candidate or {}).get("product_sku"),
                     "confirmed_at": link.get("confirmed_at"),
                     "last_checked_at": link.get("last_checked_at"),
+                    "last_enriched_at": link.get("last_enriched_at"),
                     "confidence_reasons": (candidate or {}).get("confidence_reasons") if isinstance((candidate or {}).get("confidence_reasons"), list) else [],
                 },
             }
@@ -1028,6 +1029,12 @@ def _merge_competitor_content_into_product(
     matched_count = 0
     unmatched_count = 0
     enriched_sources: List[str] = []
+    source_values = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
+    existing_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+    if not existing_images:
+        legacy_media = content.get("media") if isinstance(content.get("media"), list) else []
+        existing_images = [item for item in legacy_media if isinstance(item, dict)]
+    image_urls = {str(item.get("url") or "").strip() for item in existing_images if isinstance(item, dict) and str(item.get("url") or "").strip()}
 
     for source_id, result in extracted.items():
         if not isinstance(result, dict) or not result.get("ok"):
@@ -1048,17 +1055,57 @@ def _merge_competitor_content_into_product(
                 unmatched_count += 1
                 continue
 
-            source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
-            competitor_values = source_values.get("competitor") if isinstance(source_values.get("competitor"), dict) else {}
+            feature_source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
+            competitor_values = feature_source_values.get("competitor") if isinstance(feature_source_values.get("competitor"), dict) else {}
             competitor_values[source_id] = {
                 "raw_value": raw_text,
                 "resolved_value": raw_text,
                 "canonical_value": str(feature.get("value") or "").strip(),
             }
-            source_values["competitor"] = competitor_values
-            feature["source_values"] = source_values
+            feature_source_values["competitor"] = competitor_values
+            feature["source_values"] = feature_source_values
             matched_specs[str(spec_name)] = raw_text
             matched_count += 1
+
+        description = str(result.get("description") or "").strip()
+        if description:
+            descriptions = source_values.get("descriptions") if isinstance(source_values.get("descriptions"), dict) else {}
+            descriptions[source_id] = {
+                "site": source_id,
+                "url": str((links.get(source_id) or {}).get("url") or "").strip(),
+                "value": description,
+                "updated_at": now_iso(),
+            }
+            source_values["descriptions"] = descriptions
+            if not str(content.get("description") or "").strip():
+                content["description"] = description
+
+        images = result.get("images") if isinstance(result.get("images"), list) else []
+        appended_images = 0
+        for image in images:
+            if isinstance(image, dict):
+                image_url = str(image.get("url") or "").strip()
+                next_image = dict(image)
+            else:
+                image_url = str(image or "").strip()
+                next_image = {"url": image_url}
+            if not image_url or image_url in image_urls:
+                continue
+            next_image["url"] = image_url
+            next_image.setdefault("source", source_id)
+            next_image.setdefault("source_url", str((links.get(source_id) or {}).get("url") or "").strip())
+            existing_images.append(next_image)
+            image_urls.add(image_url)
+            appended_images += 1
+        if appended_images:
+            media_sources = source_values.get("media_images") if isinstance(source_values.get("media_images"), dict) else {}
+            media_sources[source_id] = {
+                "site": source_id,
+                "url": str((links.get(source_id) or {}).get("url") or "").strip(),
+                "count": appended_images,
+                "updated_at": now_iso(),
+            }
+            source_values["media_images"] = media_sources
 
         competitors_evidence[source_id] = {
             "source_id": source_id,
@@ -1071,6 +1118,11 @@ def _merge_competitor_content_into_product(
         }
 
     content["features"] = features
+    if existing_images:
+        content["media_images"] = existing_images
+        content["media"] = existing_images
+    if source_values:
+        content["source_values"] = source_values
     source_evidence["competitors"] = competitors_evidence
     content["source_evidence"] = source_evidence
     product["content"] = content

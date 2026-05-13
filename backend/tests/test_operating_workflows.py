@@ -9,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.routes import catalog_exchange, competitor_mapping, templates, yandex_market
-from app.api.routes.catalog_exchange import CatalogExportRunReq
+from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.products import service as products_service
 
 
@@ -118,6 +118,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             },
         }
         saved: dict[str, object] = {}
+        saved_channel_links: list[dict[str, object]] = []
 
         def save(next_db):
             saved.clear()
@@ -126,16 +127,19 @@ class OperatingWorkflowTests(unittest.TestCase):
         with (
             patch.object(competitor_mapping, "load_competitor_mapping_db", return_value=deepcopy(db)),
             patch.object(competitor_mapping, "save_competitor_mapping_db", side_effect=save),
+            patch.object(competitor_mapping, "upsert_pim_channel_link", side_effect=lambda row: saved_channel_links.append(deepcopy(row)) or row),
             patch.object(competitor_mapping, "now_iso", return_value="2026-04-27T12:00:00+00:00"),
         ):
             response = competitor_mapping.moderate_candidate("candidate-a", {"action": "approve"})
 
         candidates = saved["discovery"]["candidates"]
         self.assertEqual(response["candidate"]["status"], "approved")
-        self.assertEqual(candidates["candidate-a"]["status"], "approved")
-        self.assertEqual(candidates["candidate-b"]["status"], "rejected")
-        self.assertEqual(candidates["candidate-b"]["rejection_reason"], "sibling_not_selected")
-        self.assertEqual(saved["discovery"]["links"]["product_1:store77"]["url"], "https://store77.net/a")
+        self.assertEqual(candidates, {})
+        by_id = {row["link_id"]: row for row in saved_channel_links}
+        self.assertEqual(by_id["candidate-a"]["status"], "confirmed")
+        self.assertEqual(by_id["candidate-b"]["status"], "rejected")
+        self.assertEqual(by_id["candidate-b"]["payload"]["rejection_reason"], "sibling_not_selected")
+        self.assertEqual(by_id["product_1:store77"]["url"], "https://store77.net/a")
 
     def test_existing_catalog_enrichment_uses_confirmed_competitor_links(self) -> None:
         db = {
@@ -162,6 +166,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             "content": {"features": [], "description": "", "links": []},
         }
         saved_db: dict[str, object] = {}
+        saved_channel_links: list[dict[str, object]] = []
 
         async def fake_extract(url):
             self.assertEqual(url, "https://store77.net/meta-quest-3-128")
@@ -170,6 +175,7 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "source_id": "store77",
                 "title": "Meta Quest 3 128GB",
                 "description": "VR headset with 128GB storage",
+                "images": ["https://store77.net/images/meta-quest-3-128.jpg"],
                 "specs": {"memory": "128GB", "brand": "Meta"},
             }
 
@@ -182,6 +188,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(competitor_mapping, "save_competitor_mapping_db", side_effect=save),
             patch.object(competitor_mapping, "query_products_full", return_value=[deepcopy(product)]),
             patch.object(competitor_mapping, "upsert_product_item", side_effect=lambda p: deepcopy(p)),
+            patch.object(competitor_mapping, "upsert_pim_channel_link", side_effect=lambda row: saved_channel_links.append(deepcopy(row)) or row),
             patch.object(competitor_mapping, "extract_competitor_content", side_effect=fake_extract),
             patch.object(competitor_mapping, "now_iso", return_value="2026-04-27T12:00:00+00:00"),
         ):
@@ -190,7 +197,76 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["ok"], True)
         self.assertEqual(response["enriched_sources"], ["store77"])
         self.assertIn("product", response)
-        self.assertEqual(saved_db["discovery"]["links"]["product_1:store77"]["last_enriched_at"], "2026-04-27T12:00:00+00:00")
+        content = response["product"]["content"]
+        self.assertEqual(content["description"], "VR headset with 128GB storage")
+        self.assertEqual(content["media_images"][0]["url"], "https://store77.net/images/meta-quest-3-128.jpg")
+        self.assertEqual(content["source_values"]["media_images"]["store77"]["count"], 1)
+        self.assertTrue(
+            any((row.get("payload") or {}).get("last_enriched_at") == "2026-04-27T12:00:00+00:00" for row in saved_channel_links)
+        )
+        self.assertEqual(saved_db["discovery"]["links"], {})
+
+    def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
+        req = CatalogImportRunReq.model_validate(
+            {
+                "selection": {"node_ids": [], "product_ids": ["product_1"], "include_descendants": False},
+                "use_yandex_market": False,
+                "use_competitors": True,
+                "limit": 10,
+            }
+        )
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "category_id": "cat-vr",
+            "content": {"features": [], "description": "", "links": []},
+        }
+        competitor_db = {
+            "version": 2,
+            "templates": {},
+            "categories": {},
+            "discovery": {
+                "candidates": {},
+                "links": {
+                    "product_1:store77": {
+                        "id": "product_1:store77",
+                        "product_id": "product_1",
+                        "source_id": "store77",
+                        "url": "https://store77.net/meta-quest-3-128",
+                        "status": "confirmed",
+                    }
+                },
+                "runs": {},
+            },
+        }
+        saved_products: list[dict[str, object]] = []
+
+        async def fake_extract(url):
+            self.assertEqual(url, "https://store77.net/meta-quest-3-128")
+            return {
+                "description": "Partner description",
+                "images": ["https://store77.net/images/meta-quest-3-128.jpg"],
+                "specs": {},
+            }
+
+        with (
+            patch.object(catalog_exchange, "_resolve_products", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_products", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[]),
+            patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-vr"),
+            patch.object(catalog_exchange, "load_competitor_mapping_db", return_value=deepcopy(competitor_db)),
+            patch.object(catalog_exchange, "extract_competitor_content", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_save_products", side_effect=lambda items: saved_products.extend(deepcopy(items))),
+            patch.object(catalog_exchange, "_load_runs", return_value={"runs": {}}),
+            patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, _doc: None),
+            patch.object(catalog_exchange, "_now_iso", return_value="2026-04-27T12:00:00+00:00"),
+        ):
+            response = asyncio.run(catalog_exchange.run_catalog_import(req))
+
+        self.assertEqual(response["ok"], True)
+        self.assertEqual(response["import_overview"]["images_ready"], 1)
+        self.assertEqual(response["import_overview"]["with_competitor_media"], 1)
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["url"], "https://store77.net/images/meta-quest-3-128.jpg")
 
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}

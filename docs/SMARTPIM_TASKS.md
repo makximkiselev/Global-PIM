@@ -55,7 +55,7 @@ Target path:
 12. Pick SKU in `Смартфоны`.
 13. Scan competitor product cards.
 14. Confirm/reject competitor candidates.
-15. Enrich SKU parameters/media/evidence from confirmed sources.
+15. Enrich SKU parameters/media/evidence from confirmed partner/competitor product cards.
 16. Open product card and verify the content-manager view is readable.
 17. Open export.
 18. Validate readiness for `Я.Маркет` and `Ozon`.
@@ -185,16 +185,18 @@ PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "competi
 
 Status: active.
 
-Goal: verify imported products and export readiness use the same category/model/value state as the UI.
+Goal: verify imported products, partner enrichment, and export readiness use the same category/model/value/media state as the UI.
 
 Required behavior:
 
 1. Import can create/update SKU under selected category.
 2. Import preserves category context.
 3. Created/imported SKU can be enriched with model fields and competitor evidence.
-4. Export shows blockers per marketplace.
-5. Export uses `SKU GT` as article/offer identifier where required.
-6. Export run state must be readable and not hidden in JSON-only operational docs long-term.
+4. Partner/competitor enrichment must run before final export readiness when marketplace media/content is missing.
+5. Confirmed partner product-card links in `pim_channel_links` are the source of truth; import must not depend on legacy/manual `content.links`.
+6. Export shows blockers per marketplace.
+7. Export uses `SKU GT` as article/offer identifier where required.
+8. Export run state must be readable and not hidden in JSON-only operational docs long-term.
 
 Progress:
 
@@ -204,6 +206,10 @@ Progress:
 4. Production timeout found and fixed: export preview now filters selected SKU in SQL, applies SQL `LIMIT` for category batches, caches value-dictionary export lookups, and the UI requests a first 50-SKU readiness batch instead of a full synchronous category run.
 5. Export blockers now carry SKU title/category context and the UI deduplicates repeated store blockers with direct actions: open SKU, open category mapping, open parameter mapping, open value mapping, media, or description.
 6. Я.Маркет export no longer treats product `Описание` and `Медиа` as mandatory manual parameter mappings. These are system content fields: export checks whether product description/images exist and only blocks on missing content.
+7. Partner enrichment contract fixed:
+   - `POST /competitor-mapping/discovery/products/{product_id}/enrich` now writes extracted partner images into `content.media_images` and extracted description into `content.description` when missing;
+   - `POST /catalog/exchange/import/run` now uses confirmed relational partner links from `pim_channel_links`, not only legacy/manual `content.links`;
+   - regression tests cover confirmed partner link enrichment and import-before-export media readiness.
 
 ### P1 DB Consolidation
 
