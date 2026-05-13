@@ -91,6 +91,44 @@
   color:var(--muted);
 }
 
+.cx-exportBlockers{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:12px;
+}
+
+.cx-exportBlocker{
+  padding:14px 16px;
+  border:1px solid rgba(255,107,61,.24);
+  border-radius:18px;
+  background:linear-gradient(180deg,rgba(255,107,61,.08),rgba(255,255,255,.92));
+}
+
+.cx-exportBlockerHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.cx-exportBlockerHead strong{
+  color:var(--text);
+}
+
+.cx-exportBlockerHead span{
+  font-size:12px;
+  font-weight:800;
+  color:var(--muted);
+}
+
+.cx-exportBlocker ul{
+  margin:10px 0 0;
+  padding-left:18px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+}
+
 .cx-head{
   display:flex;
   justify-content:space-between;

@@ -167,7 +167,7 @@ def _template_attr_defs(template_id: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def _resolve_products(node_ids: List[str], product_ids: List[str], include_descendants: bool) -> List[Dict[str, Any]]:
+def _resolve_products(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int = 0) -> List[Dict[str, Any]]:
     nodes = _load_nodes()
     target_product_ids = {str(x or "").strip() for x in product_ids if str(x or "").strip()}
     target_category_ids: Set[str] = set()
@@ -180,12 +180,19 @@ def _resolve_products(node_ids: List[str], product_ids: List[str], include_desce
         else:
             target_category_ids.add(nid)
     if not target_product_ids and not target_category_ids:
-        return _load_products()
+        return query_products_full(limit=limit if limit > 0 else None)
     by_id: Dict[str, Dict[str, Any]] = {}
-    for row in query_products_full(ids=sorted(target_product_ids), category_ids=sorted(target_category_ids)):
-        pid = str(row.get("id") or "").strip()
-        if pid and pid not in by_id:
-            by_id[pid] = row
+    if target_product_ids:
+        for row in query_products_full(ids=sorted(target_product_ids)):
+            pid = str(row.get("id") or "").strip()
+            if pid and pid not in by_id:
+                by_id[pid] = row
+    if target_category_ids and (limit <= 0 or len(by_id) < limit):
+        remaining = max(0, limit - len(by_id)) if limit > 0 else 0
+        for row in query_products_full(category_ids=sorted(target_category_ids), limit=remaining or None):
+            pid = str(row.get("id") or "").strip()
+            if pid and pid not in by_id:
+                by_id[pid] = row
     return list(by_id.values())
 
 
@@ -539,12 +546,12 @@ def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
 
 
 def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
-    products = _load_products()
+    ids_filter = {str(x or "").strip() for x in (product_ids or []) if str(x or "").strip()}
+    products = query_products_full(ids=sorted(ids_filter)) if ids_filter else _load_products()
     nodes = _load_nodes()
     parent_by_id = _parent_map(nodes)
     mappings = _load_category_mapping()
     attr_rows_by_cid = _load_attr_mapping_rows()
-    ids_filter = {str(x or "").strip() for x in (product_ids or []) if str(x or "").strip()}
 
     items: List[Dict[str, Any]] = []
     ready_count = 0
@@ -646,6 +653,47 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
     }
 
 
+def _export_batch_from_preview(
+    *,
+    provider: str,
+    store: Dict[str, Any],
+    preview: Dict[str, Any],
+) -> Dict[str, Any]:
+    items = preview.get("items") if isinstance(preview.get("items"), list) else []
+    count = int(preview.get("count") or len(items) or 0)
+    ready_count = int(preview.get("ready_count") or 0)
+    not_ready_count = int(preview.get("not_ready_count") or max(0, count - ready_count))
+    blockers: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        missing = item.get("missing") if isinstance(item.get("missing"), list) else []
+        missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
+        if not missing_clean:
+            continue
+        payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
+        offer_id = str(payload_item.get("offerId") or payload_item.get("offer_id") or "").strip()
+        blockers.append(
+            {
+                "product_id": str(item.get("product_id") or "").strip(),
+                "offer_id": offer_id,
+                "missing": missing_clean,
+            }
+        )
+    return {
+        "provider": provider,
+        "store_id": str(store.get("id") or "default"),
+        "store_title": str(store.get("title") or "Все магазины"),
+        "status": "ready" if not_ready_count == 0 else "blocked",
+        "ready_count": ready_count,
+        "not_ready_count": not_ready_count,
+        "blockers_count": len(blockers),
+        "blockers": blockers[:20],
+        "count": count,
+        "items": items,
+    }
+
+
 def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
     return "|".join(
         [
@@ -663,7 +711,7 @@ def _build_import_overview_payload(
     include_descendants: bool,
     limit: int,
 ) -> Dict[str, Any]:
-    products = _resolve_products(node_ids, product_ids, include_descendants)
+    products = _resolve_products(node_ids, product_ids, include_descendants, limit=int(limit))
     nodes = _load_nodes()
     product_summaries: List[Dict[str, Any]] = []
     for product in products:
@@ -745,7 +793,7 @@ def get_catalog_import_overview(
 @router.post("/import/run")
 async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
     _import_overview_cache.clear()
-    products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants))
+    products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants), limit=int(req.limit))
     products = products[: int(req.limit)]
     if not products:
         return {"ok": True, "count": 0, "updated_products": 0, "conflicts": [], "run_id": ""}
@@ -977,7 +1025,7 @@ def resolve_catalog_import(req: CatalogImportResolveReq) -> Dict[str, Any]:
 
 @router.post("/export/run")
 def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
-    products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants))
+    products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants), limit=int(req.limit))
     products = products[: int(req.limit)]
     product_ids = [str(p.get("id") or "").strip() for p in products if str(p.get("id") or "").strip()]
     connectors_state = ConnectorsStateReadAdapter()
@@ -992,15 +1040,7 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
             if not selected_stores:
                 selected_stores = [{"id": "default", "title": "Все магазины"}]
             for store in selected_stores:
-                batches.append({
-                    "provider": provider,
-                    "store_id": str(store.get("id") or "default"),
-                    "store_title": str(store.get("title") or "Все магазины"),
-                    "status": "preview_ready",
-                    "ready_count": int(preview.get("ready_count") or 0),
-                    "count": int(preview.get("count") or 0),
-                    "items": preview.get("items") if isinstance(preview.get("items"), list) else [],
-                })
+                batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))
         elif provider == "ozon":
             stores = connectors_state.import_stores("ozon")
             selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
@@ -1009,15 +1049,7 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
                 selected_stores = [{"id": "default", "title": "Все магазины"}]
             preview = _ozon_export_preview(product_ids, len(product_ids) or 1000)
             for store in selected_stores:
-                batches.append({
-                    "provider": provider,
-                    "store_id": str(store.get("id") or "default"),
-                    "store_title": str(store.get("title") or "Все магазины"),
-                    "status": "preview_ready",
-                    "ready_count": int(preview.get("ready_count") or 0),
-                    "count": int(preview.get("count") or 0),
-                    "items": preview.get("items") if isinstance(preview.get("items"), list) else [],
-                })
+                batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))
     run_id = f"export_{uuid4().hex[:10]}"
     runs = _load_runs(EXPORT_RUNS_PATH)
     runs["runs"][run_id] = {

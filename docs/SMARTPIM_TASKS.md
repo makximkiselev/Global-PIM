@@ -183,7 +183,7 @@ PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "competi
 
 ### P0.4 Import / Export Contract Check
 
-Status: pending after mapping/value blockers.
+Status: active.
 
 Goal: verify imported products and export readiness use the same category/model/value state as the UI.
 
@@ -195,6 +195,13 @@ Required behavior:
 4. Export shows blockers per marketplace.
 5. Export uses `SKU GT` as article/offer identifier where required.
 6. Export run state must be readable and not hidden in JSON-only operational docs long-term.
+
+Progress:
+
+1. Export batch API now returns `status=ready|blocked`, `not_ready_count`, `blockers_count`, and first blocker rows with `product_id`, `offer_id`, and missing reasons.
+2. Export UI shows blocked SKU reasons directly on the export screen instead of hiding them inside raw preview JSON.
+3. Contract test added for mixed Я.Маркет/Ozon readiness: Я.Маркет ready, Ozon blocked.
+4. Production timeout found and fixed: export preview now filters selected SKU in SQL, applies SQL `LIMIT` for category batches, caches value-dictionary export lookups, and the UI requests a first 50-SKU readiness batch instead of a full synchronous category run.
 
 ### P1 DB Consolidation
 

@@ -19,7 +19,17 @@ type ExportRunResp = {
   ok: boolean;
   run_id: string;
   count: number;
-  batches: Array<{ provider: string; store_id: string; store_title: string; status: string; ready_count: number; count: number }>;
+  batches: Array<{
+    provider: string;
+    store_id: string;
+    store_title: string;
+    status: "ready" | "blocked" | string;
+    ready_count: number;
+    not_ready_count?: number;
+    blockers_count?: number;
+    count: number;
+    blockers?: Array<{ product_id: string; offer_id?: string; missing: string[] }>;
+  }>;
 };
 
 type MetricItem = {
@@ -95,6 +105,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     () => activeTargets.reduce((sum, item) => sum + Math.max(item.store_ids.length, 1), 0),
     [activeTargets],
   );
+  const totalBlocked = useMemo(
+    () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
+    [run],
+  );
 
   async function startExport() {
     setLoading(true);
@@ -110,6 +124,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             include_descendants: includeDescendants,
           },
           targets: activeTargets,
+          limit: 50,
         }),
       });
       setRun(res);
@@ -267,7 +282,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   items={[
                     { label: "Товаров в batch", value: run.count },
                     { label: "Подготовлено batch rows", value: run.batches.length },
-                    { label: "Целей", value: selectedTargetsCount },
+                    { label: "Блокеров", value: totalBlocked, accent: totalBlocked > 0 },
                   ]}
                 />
 
@@ -286,6 +301,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           <th>Магазин</th>
                           <th>Статус</th>
                           <th>Готово</th>
+                          <th>Блокеры</th>
                           <th>Всего</th>
                         </tr>
                       </thead>
@@ -294,8 +310,13 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           <tr key={`${row.provider}:${row.store_id}:${idx}`}>
                             <td>{row.provider === "yandex_market" ? "Я.Маркет" : row.provider === "ozon" ? "OZON" : row.provider}</td>
                             <td>{row.store_title}</td>
-                            <td>{row.status}</td>
+                            <td>
+                              <Badge tone={row.status === "ready" ? "active" : "pending"}>
+                                {row.status === "ready" ? "Готово" : "Есть блокеры"}
+                              </Badge>
+                            </td>
                             <td>{row.ready_count}</td>
+                            <td>{row.not_ready_count ?? Math.max(0, row.count - row.ready_count)}</td>
                             <td>{row.count}</td>
                           </tr>
                         ))}
@@ -303,6 +324,32 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     </table>
                   </div>
                 </section>
+
+                {run.batches.some((row) => (row.blockers || []).length > 0) ? (
+                  <section className="card cx-pane">
+                    <div className="cx-paneHead">
+                      <div>
+                        <div className="cx-paneTitle">Что мешает выгрузке</div>
+                        <div className="cx-paneSub">Первые SKU с причинами. Исправлять нужно карточку товара, сопоставление категории или параметры.</div>
+                      </div>
+                    </div>
+                    <div className="cx-exportBlockers">
+                      {run.batches.flatMap((batch) =>
+                        (batch.blockers || []).slice(0, 6).map((blocker) => (
+                          <div key={`${batch.provider}:${batch.store_id}:${blocker.product_id}:${blocker.offer_id || ""}`} className="cx-exportBlocker">
+                            <div className="cx-exportBlockerHead">
+                              <strong>{batch.provider === "yandex_market" ? "Я.Маркет" : batch.provider === "ozon" ? "OZON" : batch.provider}</strong>
+                              <span>{blocker.offer_id ? `SKU GT ${blocker.offer_id}` : blocker.product_id}</span>
+                            </div>
+                            <ul>
+                              {blocker.missing.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
+                            </ul>
+                          </div>
+                        )),
+                      )}
+                    </div>
+                  </section>
+                ) : null}
               </>
             ) : (
               <EmptyState

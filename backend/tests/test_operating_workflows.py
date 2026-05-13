@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.api.routes import catalog_exchange, competitor_mapping, templates
+from app.api.routes import catalog_exchange, competitor_mapping, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq
 from app.core.products import service as products_service
 
@@ -228,11 +228,43 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["count"], 1)
         self.assertEqual(len(response["batches"]), 2)
         self.assertEqual(response["batches"][0]["provider"], "yandex_market")
+        self.assertEqual(response["batches"][0]["status"], "ready")
         self.assertEqual(response["batches"][0]["ready_count"], 1)
         self.assertEqual(response["batches"][1]["provider"], "ozon")
+        self.assertEqual(response["batches"][1]["status"], "blocked")
         self.assertEqual(response["batches"][1]["ready_count"], 0)
+        self.assertEqual(response["batches"][1]["not_ready_count"], 1)
+        self.assertEqual(response["batches"][1]["blockers_count"], 1)
         self.assertEqual(response["batches"][1]["items"][0]["missing"], ["description"])
+        self.assertEqual(response["batches"][1]["blockers"][0]["missing"], ["description"])
         self.assertIn("export_abcdef1234", saved_runs["runs"])
+
+    def test_yandex_export_preview_filters_products_in_sql_by_selected_ids(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {"features": [{"code": "brand", "name": "Бренд", "value": "Meta"}]},
+        }
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]) as query_mock,
+            patch.object(yandex_market, "_load_products", side_effect=AssertionError("must not load full product table")),
+            patch.object(yandex_market, "_load_nodes", return_value=[]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={}),
+            patch.object(yandex_market, "_load_attr_value_refs", return_value={}),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        query_mock.assert_called_once_with(ids=["product_1"])
+        self.assertEqual(response["count"], 1)
+        self.assertEqual(response["items"][0]["payload_item"]["offerId"], "GT-1")
 
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service

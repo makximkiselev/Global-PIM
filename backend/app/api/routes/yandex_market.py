@@ -1864,14 +1864,14 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
 
 @router.post("/export/preview")
 def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
-    products = _load_products()
+    ids_filter = {str(x or "").strip() for x in (req.product_ids or []) if str(x or "").strip()}
+    products = query_products_full(ids=sorted(ids_filter)) if ids_filter else _load_products()
     nodes = _load_nodes()
     parent_by_id = _parent_map(nodes)
     mappings = _load_category_mapping()
     attr_rows_by_cid = _load_attr_mapping_rows()
     attr_value_refs_by_cid = _load_attr_value_refs()
 
-    ids_filter = {str(x or "").strip() for x in (req.product_ids or []) if str(x or "").strip()}
     selected: List[Dict[str, Any]] = []
     for p in products:
         pid = str(p.get("id") or "").strip()
@@ -1887,6 +1887,25 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
 
     items: List[Dict[str, Any]] = []
     ready_count = 0
+    dict_id_cache: Dict[Tuple[str, str], str] = {}
+    export_value_cache: Dict[Tuple[str, str, str], str] = {}
+    required_param_ids_cache: Dict[str, Set[str]] = {}
+
+    def dict_id_for(category_id: str, catalog_name: str) -> str:
+        key = (str(category_id or "").strip(), _norm(catalog_name))
+        if key not in dict_id_cache:
+            dict_id_cache[key] = _dict_id_for_catalog_param(category_id, catalog_name, attr_value_refs_by_cid, parent_by_id)
+        return dict_id_cache[key]
+
+    def export_value_for(category_id: str, catalog_name: str, value: Any) -> str:
+        raw_value = str(value or "").strip()
+        dict_id = dict_id_for(category_id, catalog_name)
+        if not dict_id or not raw_value:
+            return raw_value
+        key = (dict_id, "yandex_market", raw_value)
+        if key not in export_value_cache:
+            export_value_cache[key] = provider_export_value(dict_id, "yandex_market", raw_value)
+        return export_value_cache[key]
 
     for p in selected:
         pid = str(p.get("id") or "").strip()
@@ -1905,11 +1924,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         name = _extract_product_value(p, str((name_row or {}).get("catalog_name") or "Наименование товара")) or str(p.get("title") or "").strip()
         description = _extract_product_value(p, str((description_row or {}).get("catalog_name") or "Описание товара"))
         vendor = _extract_product_value(p, str((vendor_row or {}).get("catalog_name") or "Бренд"))
-        vendor = provider_export_value(
-            _dict_id_for_catalog_param(category_id, str((vendor_row or {}).get("catalog_name") or "Бренд"), attr_value_refs_by_cid, parent_by_id),
-            "yandex_market",
-            vendor,
-        )
+        vendor = export_value_for(category_id, str((vendor_row or {}).get("catalog_name") or "Бренд"), vendor)
         barcode = _extract_product_value(p, str((barcode_row or {}).get("catalog_name") or "Штрихкод"))
         content = p.get("content") if isinstance(p.get("content"), dict) else {}
         media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
@@ -1936,11 +1951,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             value = _extract_product_value(p, pname)
             if not value:
                 continue
-            value = provider_export_value(
-                _dict_id_for_catalog_param(category_id, pname, attr_value_refs_by_cid, parent_by_id),
-                "yandex_market",
-                value,
-            )
+            value = export_value_for(category_id, pname, value)
             if not value:
                 continue
             present_param_ids.add(ypid)
@@ -1972,7 +1983,9 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         if description_enabled and not description:
             missing.append("Описание (аннотация) не заполнено")
 
-        required_param_ids = _yandex_required_param_ids(yandex_category_id) if yandex_category_id else set()
+        if yandex_category_id and yandex_category_id not in required_param_ids_cache:
+            required_param_ids_cache[yandex_category_id] = _yandex_required_param_ids(yandex_category_id)
+        required_param_ids = required_param_ids_cache.get(yandex_category_id, set()) if yandex_category_id else set()
         for req_pid in sorted(required_param_ids):
             if req_pid not in present_param_ids:
                 missing.append(f"Обязательный параметр Я.Маркет #{req_pid} не сопоставлен/пуст")

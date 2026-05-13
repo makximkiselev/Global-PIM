@@ -4958,12 +4958,14 @@ def query_products_full(
     ids: List[str] | None = None,
     category_ids: List[str] | None = None,
     group_ids: List[str] | None = None,
+    limit: int | None = None,
 ) -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
     safe_ids = [str(x or "").strip() for x in (ids or []) if str(x or "").strip()]
     safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
     safe_group_ids = [str(x or "").strip() for x in (group_ids or []) if str(x or "").strip()]
+    safe_limit = int(limit or 0)
 
     def _run() -> List[Dict[str, Any]]:
         conn, _, _ = _pg_connect()
@@ -4988,6 +4990,9 @@ def query_products_full(
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY created_at NULLS LAST, id"
+        if safe_limit > 0:
+            sql += " LIMIT %s"
+            params.append(safe_limit)
         with conn.cursor() as cur:
             cur.execute(sql, params)
             db_rows = cur.fetchall() or []
