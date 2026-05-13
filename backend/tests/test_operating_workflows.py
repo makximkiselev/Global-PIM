@@ -270,6 +270,40 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["items"][0]["product_title"], "Meta Quest 3 128GB")
         self.assertEqual(response["items"][0]["category_id"], "cat-vr")
 
+    def test_yandex_export_preview_treats_description_and_media_as_system_content(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {
+                "description": "VR headset",
+                "media_images": [{"url": "https://cdn.example.test/quest.jpg"}],
+                "features": [{"code": "brand", "name": "Бренд", "value": "Meta"}],
+            },
+        }
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-vr": {"yandex_market": "ym-vr"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={}),
+            patch.object(yandex_market, "_load_attr_value_refs", return_value={}),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        missing = response["items"][0]["missing"]
+        self.assertNotIn("Не настроен блок 'Медиа' для Я.Маркет в маппинге", missing)
+        self.assertNotIn("Не настроен блок 'Описание товара' для Я.Маркет в маппинге", missing)
+        self.assertNotIn("Нет изображений (pictures)", missing)
+        self.assertNotIn("Описание (аннотация) не заполнено", missing)
+        self.assertEqual(response["items"][0]["payload_item"]["pictures"], ["https://cdn.example.test/quest.jpg"])
+        self.assertEqual(response["items"][0]["payload_item"]["description"], "VR headset")
+
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
 

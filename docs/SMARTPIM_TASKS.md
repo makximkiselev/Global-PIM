@@ -203,6 +203,7 @@ Progress:
 3. Contract test added for mixed Я.Маркет/Ozon readiness: Я.Маркет ready, Ozon blocked.
 4. Production timeout found and fixed: export preview now filters selected SKU in SQL, applies SQL `LIMIT` for category batches, caches value-dictionary export lookups, and the UI requests a first 50-SKU readiness batch instead of a full synchronous category run.
 5. Export blockers now carry SKU title/category context and the UI deduplicates repeated store blockers with direct actions: open SKU, open category mapping, open parameter mapping, open value mapping, media, or description.
+6. Я.Маркет export no longer treats product `Описание` and `Медиа` as mandatory manual parameter mappings. These are system content fields: export checks whether product description/images exist and only blocks on missing content.
 
 ### P1 DB Consolidation
 

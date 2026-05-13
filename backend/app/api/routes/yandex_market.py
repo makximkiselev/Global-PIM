@@ -999,6 +999,16 @@ def _is_provider_row_enabled(row: Optional[Dict[str, Any]], provider_code: str) 
     return bool(prow.get("export"))
 
 
+def _is_system_content_export_enabled(row: Optional[Dict[str, Any]], provider_code: str) -> bool:
+    if not isinstance(row, dict):
+        return True
+    pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+    prow = pmap.get(provider_code) if isinstance(pmap.get(provider_code), dict) else {}
+    if not isinstance(prow, dict) or not str(prow.get("id") or "").strip():
+        return True
+    return bool(prow.get("export"))
+
+
 def _yandex_required_param_ids(category_id: str) -> Set[str]:
     doc = read_doc(CATEGORY_PARAMS_PATH, default={"items": {}})
     items = doc.get("items") if isinstance(doc, dict) else {}
@@ -1933,8 +1943,8 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         docs = content.get("documents") if isinstance(content.get("documents"), list) else []
         pictures = [str(x.get("url") or "").strip() for x in media if isinstance(x, dict) and str(x.get("url") or "").strip()]
         manuals = [str(x.get("url") or "").strip() for x in docs if isinstance(x, dict) and str(x.get("url") or "").strip()]
-        media_enabled = _is_provider_row_enabled(media_row, "yandex_market")
-        description_enabled = _is_provider_row_enabled(description_row, "yandex_market")
+        media_enabled = _is_system_content_export_enabled(media_row, "yandex_market")
+        description_enabled = _is_system_content_export_enabled(description_row, "yandex_market")
         parameter_values: List[Dict[str, Any]] = []
         present_param_ids: Set[str] = set()
         for row in rows:
@@ -1972,14 +1982,10 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             missing.append("Наименование товара не заполнено")
         if not yandex_category_id:
             missing.append("Нет сопоставления категории с Я.Маркет")
-        if not media_enabled:
-            missing.append("Не настроен блок 'Медиа' для Я.Маркет в маппинге")
         if media_enabled and not pictures:
             missing.append("Нет изображений (pictures)")
         if not vendor:
             missing.append("Бренд обязателен")
-        if not description_enabled:
-            missing.append("Не настроен блок 'Описание товара' для Я.Маркет в маппинге")
         if description_enabled and not description:
             missing.append("Описание (аннотация) не заполнено")
 
