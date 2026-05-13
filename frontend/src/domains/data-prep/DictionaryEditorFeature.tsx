@@ -129,6 +129,16 @@ function providerValueSuggestion(canonicalValue: string, allowedValues: string[]
   return allowedValues.find((value) => parseNumericValue(value) === canonicalNumber) || "";
 }
 
+function chooseBestProvider(sourceReference?: Record<string, DictProviderReference>, currentProvider = "") {
+  const refs = sourceReference || {};
+  const providerCodes = Object.keys(refs);
+  if (!providerCodes.length) return "";
+  if (currentProvider && providerCodes.includes(currentProvider) && (refs[currentProvider]?.allowed_values || []).length > 0) {
+    return currentProvider;
+  }
+  return providerCodes.find((code) => (refs[code]?.allowed_values || []).length > 0) || currentProvider || providerCodes[0] || "";
+}
+
 function parseImportText(text: string): string[] {
   const raw = (text || "").replace(/\r/g, "");
   const lines = raw.split("\n");
@@ -239,8 +249,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       setRequiredFlag(!!raw?.meta?.required || !!raw?.meta?.service);
       setParamGroup(normalizeParamGroup(raw?.meta?.param_group, raw?.title));
       setExportMapDraft((raw?.meta?.export_map || {}) as Record<string, Record<string, string>>);
-      const providerCodes = Object.keys(raw?.meta?.source_reference || {});
-      setActiveProvider((prev) => (prev && providerCodes.includes(prev) ? prev : providerCodes[0] || ""));
+      setActiveProvider((prev) => chooseBestProvider(raw?.meta?.source_reference, prev));
     } finally {
       setLoading(false);
     }
@@ -297,13 +306,15 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
   }, []);
 
   useEffect(() => {
-    const providerCodes = Object.keys(item?.meta?.source_reference || {});
+    const sourceReference = item?.meta?.source_reference || {};
+    const providerCodes = Object.keys(sourceReference);
     if (!providerCodes.length) {
       if (activeProvider) setActiveProvider("");
       return;
     }
-    if (!activeProvider || !providerCodes.includes(activeProvider)) {
-      setActiveProvider(providerCodes[0]);
+    const nextProvider = chooseBestProvider(sourceReference, activeProvider);
+    if (nextProvider !== activeProvider) {
+      setActiveProvider(nextProvider);
     }
   }, [item?.meta?.source_reference, activeProvider]);
 

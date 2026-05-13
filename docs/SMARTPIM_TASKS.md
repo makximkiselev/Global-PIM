@@ -129,13 +129,18 @@ Audit findings to verify/fix:
    - candidate row actions no longer wrap into a tall broken card;
    - remaining issue: category tree and top hero are still visually heavy, but usable.
 4. `/sources?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`
-   - Browser-verified on 2026-05-12;
+   - Browser-verified on 2026-05-13 after provider binding cleanup;
    - no accidental horizontal overflow;
-   - remaining issue: the right-side provider field dropdown/list is too long and should become searchable/sectioned instead of dumping all Ozon/Yandex fields.
+   - right-side provider binding no longer uses a huge native dropdown;
+   - each provider now has search, current state, a short candidate list, and count `shown/total`;
+   - remaining issue: candidate quality still depends on backend AI/category source data, not layout.
 5. `/sources?tab=values&category=bb40de87-254b-4170-84d7-8e5d3925b251`
-   - Browser-verified on 2026-05-12;
+   - Browser-verified on 2026-05-13 after value list cleanup;
    - no accidental horizontal overflow;
-   - remaining issue: value rows are still dense and Ozon shows `0/0` for many fields, so data readiness and empty-state copy need cleanup.
+   - left field list no longer repeats useless provider `0/0` states;
+   - rows show task status: `нужно сопоставить`, `готово`, or `нет справочника`;
+   - dictionary editor now opens the first provider with real allowed values instead of an empty provider tab;
+   - remaining issue: actual value normalization and suggested mappings still need data-quality work for marketplace dictionaries.
 6. Continue audit with screenshots/DOM checks before changing layout again.
 
 ### P0.2 Value Mapping Cleanup

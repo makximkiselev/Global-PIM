@@ -203,6 +203,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const [selectedRowId, setSelectedRowId] = useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [savingRowId, setSavingRowId] = useState("");
+  const [providerSearch, setProviderSearch] = useState<Record<string, string>>({});
 
   async function loadDetails(categoryId: string) {
     const resp = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
@@ -415,6 +416,29 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     await saveRows(nextRows, String(row.id));
   }
 
+  function providerParamOptions(code: string, current?: ProviderParam) {
+    const search = qnorm(providerSearch[code] || "");
+    const params = details?.providers?.[code]?.params || [];
+    const sorted = [...params].sort((a, b) => {
+      const currentId = String(current?.id || "");
+      if (currentId && String(a.id) === currentId) return -1;
+      if (currentId && String(b.id) === currentId) return 1;
+      const aq = qnorm(a.name || "");
+      const bq = qnorm(b.name || "");
+      const aStarts = search ? aq.startsWith(search) : false;
+      const bStarts = search ? bq.startsWith(search) : false;
+      if (aStarts !== bStarts) return aStarts ? -1 : 1;
+      return String(a.name || "").localeCompare(String(b.name || ""), "ru");
+    });
+    const filtered = search
+      ? sorted.filter((param) => {
+          const hay = `${param.name || ""} ${param.kind || ""}`.toLowerCase();
+          return hay.includes(search);
+        })
+      : sorted;
+    return { allCount: params.length, filtered, visible: filtered.slice(0, 8) };
+  }
+
   function renderTree(node: CatalogNode, depth = 0): JSX.Element | null {
     const id = String(node.id || "");
     const children = childrenByParent.get(id) || [];
@@ -604,23 +628,52 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                   {codes.map((code) => {
                     const provider = details?.providers?.[code];
                     const current = selectedRow.provider_map?.[code];
+                    const options = providerParamOptions(code, current);
                     return (
-                      <label className="paramsFieldSelect" key={code}>
-                        <span>{PROVIDER_LABEL[code] || code}</span>
-                        <select
-                          value={String(current?.id || "")}
+                      <div className="paramsFieldSelect" key={code}>
+                        <div className="paramsProviderBindHead">
+                          <span>{PROVIDER_LABEL[code] || code}</span>
+                          <b className={current?.id ? "isOk" : "isWarn"}>{current?.id ? "связано" : "не связано"}</b>
+                        </div>
+                        <div className="paramsProviderCurrent">
+                          <strong>{current?.name || "Поле площадки не выбрано"}</strong>
+                          <em>{current?.values?.length ? `${current.values.length} значений` : current?.kind || "тип не указан"}</em>
+                        </div>
+                        <input
+                          value={providerSearch[code] || ""}
                           disabled={savingRowId === String(selectedRow.id)}
-                          onChange={(event) => void updateProviderParam(selectedRow, code, event.target.value)}
-                        >
-                          <option value="">Не связано</option>
-                          {(provider?.params || []).map((param) => (
-                            <option value={String(param.id)} key={String(param.id)}>
-                              {param.name}
-                            </option>
+                          onChange={(event) => setProviderSearch((prev) => ({ ...prev, [code]: event.target.value }))}
+                          placeholder={`Найти поле ${PROVIDER_LABEL[code] || code}`}
+                        />
+                        <div className="paramsProviderOptionList">
+                          <button
+                            type="button"
+                            className={!current?.id ? "isSelected" : ""}
+                            disabled={savingRowId === String(selectedRow.id)}
+                            onClick={() => void updateProviderParam(selectedRow, code, "")}
+                          >
+                            <strong>Не связывать</strong>
+                            <em>Поле не передается на площадку</em>
+                          </button>
+                          {options.visible.map((param) => (
+                            <button
+                              type="button"
+                              key={String(param.id)}
+                              className={String(current?.id || "") === String(param.id) ? "isSelected" : ""}
+                              disabled={savingRowId === String(selectedRow.id)}
+                              onClick={() => void updateProviderParam(selectedRow, code, String(param.id))}
+                            >
+                              <strong>{param.name}</strong>
+                              <em>{param.values?.length ? `${param.values.length} значений` : param.kind || "тип не указан"}</em>
+                            </button>
                           ))}
-                        </select>
-                        <em>{current?.values?.length ? `${current.values.length} значений` : current?.kind || "тип не указан"}</em>
-                      </label>
+                        </div>
+                        <small>
+                          {options.filtered.length
+                            ? `Показано ${Math.min(options.visible.length, options.filtered.length)} из ${options.filtered.length}`
+                            : `Нет совпадений из ${provider?.count || options.allCount || 0} полей`}
+                        </small>
+                      </div>
                     );
                   })}
                 </div>

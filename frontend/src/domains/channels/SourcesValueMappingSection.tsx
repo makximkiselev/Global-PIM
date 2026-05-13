@@ -73,6 +73,18 @@ function needsValueMapping(item: ValueItem) {
   return hasProviderValues || (isDictionaryLike(item) && hasCanonicalValues);
 }
 
+function usefulProviders(item: ValueItem) {
+  return item.providers.filter((provider) => Number(provider.allowed_count || 0) > 0 || Number(provider.mapped_count || 0) > 0);
+}
+
+function valueItemStatus(item: ValueItem) {
+  const providers = usefulProviders(item);
+  if (!providers.length) return { label: "нет справочника", tone: "muted" };
+  const hasGap = providers.some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0));
+  if (hasGap) return { label: "нужно сопоставить", tone: "warn" };
+  return { label: "готово", tone: "ok" };
+}
+
 function buildChildren(nodes: CatalogNode[]) {
   const map = new Map<string, CatalogNode[]>();
   for (const node of nodes) {
@@ -286,7 +298,11 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   }
 
   const activeItem = filteredItems.find((item) => item.dict_id === activeDictId) || null;
-  const unresolvedCount = filteredItems.filter((item) => item.providers.some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0))).length;
+  const unresolvedCount = filteredItems.filter((item) => usefulProviders(item).some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0))).length;
+  const readyCount = filteredItems.filter((item) => {
+    const providers = usefulProviders(item);
+    return providers.length > 0 && providers.every((provider) => Number(provider.allowed_count || 0) <= Number(provider.mapped_count || 0));
+  }).length;
 
   useEffect(() => {
     if (!data?.category?.id || !data.category.name) return;
@@ -340,7 +356,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
           <div className="sm-valuesSummary">
             <span>{data?.category?.path || "Категория не выбрана"}</span>
             <span>{mappingItemsCount} из {rawItemsCount} полей требуют сопоставления</span>
-            <span>{unresolvedCount} полей не готовы</span>
+            <span>{unresolvedCount} требуют работы</span>
+            <span>{readyCount} готовы</span>
           </div>
 
           <div className="sm-valuesWorkbench">
@@ -378,31 +395,40 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                 ) : filteredItems.length === 0 ? (
                   <div className="sm-valuesEmpty">Для этой категории пока нет полей, где нужно сопоставлять значения площадок.</div>
                 ) : (
-                  filteredItems.map((item) => (
-                    <button
-                      key={item.dict_id}
-                      type="button"
-                      className={`sm-valuesFieldItem ${activeDictId === item.dict_id ? "is-active" : ""}`}
-                      onClick={() => setActiveDictId(item.dict_id)}
-                    >
-                      <div className="sm-valuesFieldTop">
-                        <strong>{item.catalog_name}</strong>
-                        <span className="sm-valuesPill">{item.scope_label}</span>
-                      </div>
-                      <div className="sm-valuesFieldMeta">
-                        <span>{item.group}</span>
-                        <span>{item.value_count} знач.</span>
-                        <span>{item.mapped_total ? `${item.mapped_total} сопоставлено` : "сопоставление не настроено"}</span>
-                      </div>
-                      <div className="sm-valuesProviderRow">
-                        {item.providers.map((provider) => (
-                          <span key={provider.code} className="sm-valuesProviderPill">
-                            {provider.title}: {provider.mapped_count}/{provider.allowed_count}
-                          </span>
-                        ))}
-                      </div>
-                    </button>
-                  ))
+                  filteredItems.map((item) => {
+                    const providers = usefulProviders(item);
+                    const status = valueItemStatus(item);
+                    return (
+                      <button
+                        key={item.dict_id}
+                        type="button"
+                        className={`sm-valuesFieldItem ${activeDictId === item.dict_id ? "is-active" : ""}`}
+                        onClick={() => setActiveDictId(item.dict_id)}
+                      >
+                        <div className="sm-valuesFieldTop">
+                          <strong>{item.catalog_name}</strong>
+                          <span className={`sm-valuesState is-${status.tone}`}>{status.label}</span>
+                        </div>
+                        <div className="sm-valuesFieldMeta">
+                          <span>{item.group || "Без группы"}</span>
+                          <span>{item.scope_label}</span>
+                          <span>{item.value_count} PIM-знач.</span>
+                        </div>
+                        <div className="sm-valuesProviderRow">
+                          {providers.length ? providers.map((provider) => (
+                            <span
+                              key={provider.code}
+                              className={`sm-valuesProviderPill ${Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0) ? "is-gap" : "is-ready"}`}
+                            >
+                              {provider.title}: {provider.mapped_count}/{provider.allowed_count}
+                            </span>
+                          )) : (
+                            <span className="sm-valuesProviderPill is-empty">У площадок нет справочника</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>

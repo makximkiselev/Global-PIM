@@ -2320,7 +2320,7 @@
 
 .paramsFieldSelect {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .paramsFieldSelect span {
@@ -2329,16 +2329,64 @@
   font-weight: 900;
 }
 
-.paramsFieldSelect select {
-  width: 100%;
-  min-height: 42px;
-  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+.paramsProviderBindHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.paramsProviderBindHead b {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.paramsProviderBindHead b.isOk {
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success-strong);
+}
+
+.paramsProviderBindHead b.isWarn {
+  border-color: color-mix(in srgb, var(--brand) 28%, transparent);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  color: var(--brand-strong);
+}
+
+.paramsProviderCurrent {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+}
+
+.paramsProviderCurrent strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsFieldSelect input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 12px;
   background: color-mix(in srgb, var(--panel) 86%, var(--surface));
   color: var(--text);
-  padding: 0 12px;
+  padding: 0 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -2350,6 +2398,53 @@
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
+}
+
+.paramsProviderOptionList {
+  display: grid;
+  gap: 5px;
+  max-height: 258px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.paramsProviderOptionList button {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--line) 66%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 70%, var(--panel));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.paramsProviderOptionList button:hover {
+  border-color: color-mix(in srgb, var(--brand) 34%, var(--line));
+  background: color-mix(in srgb, var(--brand) 7%, var(--panel));
+}
+
+.paramsProviderOptionList button.isSelected {
+  border-color: color-mix(in srgb, var(--brand) 52%, var(--line));
+  background: color-mix(in srgb, var(--brand) 12%, var(--panel));
+}
+
+.paramsProviderOptionList strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsFieldSelect small {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .paramsEvidenceGrid,
