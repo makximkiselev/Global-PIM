@@ -639,30 +639,53 @@ def _sim_profile(value: Any) -> str:
 
 
 def _model_memory_color_group_key(value: Any) -> str:
+    profile = _variant_profile(value)
+    return "|".join(str(profile.get(key) or "") for key in ("model", "memory", "color", "sim") if profile.get(key))
+
+
+def _variant_profile(value: Any) -> Dict[str, str]:
     normalized = _norm_match_text(value)
+    raw_lower = str(value or "").lower()
+    profile: Dict[str, str] = {}
+
     model_match = re.search(r"\biphone\s+(\d{1,2})(?:\s+(pro\s+max|pro|plus|mini))?", normalized)
     memory_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized)
-    model = ""
     if model_match:
         generation = model_match.group(1)
         suffix = re.sub(r"\s+", "_", (model_match.group(2) or "").strip())
-        model = "_".join(part for part in ("iphone", generation, suffix) if part)
-    memory = ""
+        profile["model"] = "_".join(part for part in ("iphone", generation, suffix) if part)
     if memory_match:
-        memory = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
-    color = ""
+        profile["memory"] = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
+
     color_options = [
-        ("natural_titanium", ("natural titanium", "натуральный титан")),
-        ("desert_titanium", ("desert titanium", "пустынный титан")),
-        ("black_titanium", ("black titanium", "черный титан", "чёрный титан")),
-        ("white_titanium", ("white titanium", "белый титан")),
+        ("natural_titanium", ("natural titanium", "натуральный титан", "natural", "натуральн")),
+        ("desert_titanium", ("desert titanium", "пустынный титан", "desert", "пустынн")),
+        ("black_titanium", ("black titanium", "черный титан", "чёрный титан", "black", "черный", "чёрный")),
+        ("white_titanium", ("white titanium", "белый титан", "white", "белый")),
+        ("silver", ("silver", "серебрист", "серебро")),
+        ("blue", ("blue", "синий", "голубой")),
+        ("green", ("green", "зеленый", "зелёный")),
+        ("pink", ("pink", "розовый")),
+        ("yellow", ("yellow", "желтый", "жёлтый")),
     ]
-    raw_lower = str(value or "").lower()
     for slug, aliases in color_options:
         if any(alias in raw_lower or alias in normalized for alias in aliases):
-            color = slug
+            profile["color"] = slug
             break
-    return "|".join(part for part in (model, memory, color) if part)
+
+    sim = _sim_profile(value)
+    if sim != "unknown":
+        profile["sim"] = sim
+
+    if re.search(r"\b(global|глобал|международн)\b", normalized):
+        profile["region"] = "global"
+    elif re.search(r"\b(eac|ростест|ru|русская|россия|рф)\b", normalized):
+        profile["region"] = "ru"
+    elif re.search(r"\b(china|cn|китай)\b", normalized):
+        profile["region"] = "china"
+    elif re.search(r"\b(usa|us|сша|америка)\b", normalized):
+        profile["region"] = "usa"
+    return profile
 
 
 def _required_match_tokens(product: Dict[str, Any]) -> set[str]:
@@ -702,10 +725,22 @@ def _apple_line_conflict(product_tokens: set[str], candidate_tokens: set[str]) -
 def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, brand: str = "") -> Tuple[float, List[str]]:
     reasons: List[str] = []
     score = 0.0
-    product_sim = _sim_profile(product.get("title"))
-    candidate_sim = _sim_profile(title)
+    product_profile = _variant_profile(product.get("title"))
+    candidate_profile = _variant_profile(f"{brand} {title}")
+    product_sim = product_profile.get("sim") or "unknown"
+    candidate_sim = candidate_profile.get("sim") or "unknown"
     if product_sim != "unknown" and candidate_sim != "unknown" and product_sim != candidate_sim:
         return 0.0, [f"конфликт SIM: PIM={product_sim}, candidate={candidate_sim}"]
+    for key, label in (
+        ("model", "модели"),
+        ("memory", "памяти"),
+        ("color", "цвета"),
+        ("region", "региона"),
+    ):
+        product_value = product_profile.get(key)
+        candidate_value = candidate_profile.get(key)
+        if product_value and candidate_value and product_value != candidate_value:
+            return 0.0, [f"конфликт {label}: PIM={product_value}, candidate={candidate_value}"]
     product_sku = str(product.get("sku_gt") or product.get("sku_pim") or "").strip()
     if product_sku and sku and product_sku.lower() == sku.lower():
         score += 0.25
@@ -1052,39 +1087,52 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
         return []
     candidates: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    pattern = re.compile(
-        r'\\"categoryName\\"\s*:\s*\\"(?P<category>[^\\"]*)\\".*?'
-        r'\\"sectionName\\"\s*:\s*\\"(?P<section>[^\\"]*)\\".*?'
-        r'\\"skuCode\\"\s*:\s*\\"(?P<sku>[^\\"]*)\\".*?'
-        r'\\"brandName\\"\s*:\s*\\"(?P<brand>[^\\"]*)\\".*?'
-        r'(?:\\"price\\"\s*:\s*(?P<price>\d+(?:\.\d+)?)\s*,.*?)?'
-        r'\\"name\\"\s*:\s*\\"(?P<title>[^\\"]*)\\".*?'
-        r'\\"link\\"\s*:\s*\\"(?P<link>/catalog/[^"\\]+/?)\\"',
-        re.IGNORECASE | re.DOTALL,
-    )
-    for match in pattern.finditer(html):
-        link = html_lib.unescape(match.group("link") or "").strip()
-        url = urljoin("https://re-store.ru", link)
-        if detect_site(url) != "restore" or url in seen:
-            continue
-        seen.add(url)
-        title = html_lib.unescape(match.group("title") or "").strip()
-        sku = html_lib.unescape(match.group("sku") or "").strip()
-        brand = html_lib.unescape(match.group("brand") or "").strip()
-        confidence_score, reasons = _confidence_for_candidate(product, title, sku, brand)
-        if confidence_score < 0.78:
-            continue
-        candidates.append(
-            {
-                "url": url,
-                "title": title,
-                "brand": brand,
-                "sku": sku,
-                "price": match.group("price"),
-                "confidence_score": confidence_score,
-                "confidence_reasons": reasons,
-            }
-        )
+    patterns = [
+        re.compile(
+            r'\\"categoryName\\"\s*:\s*\\"(?P<category>[^\\"]*)\\".*?'
+            r'\\"sectionName\\"\s*:\s*\\"(?P<section>[^\\"]*)\\".*?'
+            r'\\"skuCode\\"\s*:\s*\\"(?P<sku>[^\\"]*)\\".*?'
+            r'\\"brandName\\"\s*:\s*\\"(?P<brand>[^\\"]*)\\".*?'
+            r'(?:\\"price\\"\s*:\s*(?P<price>\d+(?:\.\d+)?)\s*,.*?)?'
+            r'\\"name\\"\s*:\s*\\"(?P<title>[^\\"]*)\\".*?'
+            r'\\"link\\"\s*:\s*\\"(?P<link>/catalog/[^"\\]+/?)\\"',
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
+            r'\\"name\\"\s*:\s*\\"(?P<title>[^\\"]*)\\".*?'
+            r'(?:\\"price\\"\s*:\s*\\"?(?P<price>\d+(?:\.\d+)?)\\"?\s*,.*?)?'
+            r'(?:\\"brand(?:Name)?\\"\s*:\s*\\"(?P<brand>[^\\"]*)\\".*?)*'
+            r'\\"skuCode\\"\s*:\s*\\"(?P<sku>[^\\"]*)\\".*?'
+            r'\\"link\\"\s*:\s*\\"(?P<link>/catalog/[^"\\]+/?)\\"',
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ]
+    for pattern in patterns:
+        for match in pattern.finditer(html):
+            link = html_lib.unescape(match.group("link") or "").strip()
+            url = urljoin("https://re-store.ru", link)
+            if detect_site(url) != "restore" or url in seen:
+                continue
+            seen.add(url)
+            title = html_lib.unescape(match.group("title") or "").strip()
+            sku = html_lib.unescape(match.group("sku") or "").strip()
+            brand = html_lib.unescape(match.groupdict().get("brand") or "").strip()
+            confidence_score, reasons = _confidence_for_candidate(product, title, sku, brand)
+            if confidence_score < 0.78:
+                continue
+            candidates.append(
+                {
+                    "url": url,
+                    "title": title,
+                    "brand": brand,
+                    "sku": sku,
+                    "price": match.group("price"),
+                    "confidence_score": confidence_score,
+                    "confidence_reasons": reasons,
+                }
+            )
+            if len(candidates) >= 5:
+                break
         if len(candidates) >= 5:
             break
     return candidates

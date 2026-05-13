@@ -159,7 +159,7 @@ Required behavior:
 
 ### P0.3 Competitor Matching Quality
 
-Status: active after pipeline audit.
+Status: active after pipeline audit; backend variant matching tightened on 2026-05-13.
 
 Goal: improve `re-store` and `store77` exact product-card discovery for SKU enrichment.
 
@@ -168,9 +168,18 @@ Required behavior:
 1. Backend scans competitor catalog/search pages and extracts product-card URLs.
 2. Matching must respect exact model, memory, color, SIM/eSIM configuration, region/global differences, and variant names.
 3. `eSIM` and `SIM + eSIM` must not collapse into the same match.
+   - Backend now builds a variant profile from candidate/product title: `model`, `memory`, `color`, `sim`, `region`.
+   - Candidate scoring rejects explicit conflicts by color, region, memory, model, or SIM profile.
+   - `match_group_key` includes SIM profile, so approving one candidate does not auto-reject another SIM variant.
 4. If multiple close candidates exist, UI shows them as selectable variants.
 5. If all candidates are rejected, user can add exact competitor URL manually.
 6. Approved/rejected decisions persist to `pim_channel_links`.
+
+Verified:
+
+```bash
+PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "competitor or store77 or restore or sim_profile or variant"
+```
 
 ### P0.4 Import / Export Contract Check
 

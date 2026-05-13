@@ -2479,6 +2479,38 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(score, 0.0)
         self.assertIn("конфликт SIM", reasons[0])
 
+    def test_iphone_variant_matching_rejects_wrong_color_and_region(self) -> None:
+        product = {
+            "id": "product_113",
+            "title": "Смартфон Apple iPhone 16 Pro 128Gb eSIM Natural Titanium (Global)",
+            "sku_gt": "50046",
+        }
+
+        color_score, color_reasons = competitor_mapping_routes._confidence_for_candidate(
+            product,
+            "Телефон Apple iPhone 16 Pro 128Gb eSIM Black Titanium (Global)",
+            "",
+        )
+        region_score, region_reasons = competitor_mapping_routes._confidence_for_candidate(
+            product,
+            "Телефон Apple iPhone 16 Pro 128Gb eSIM Natural Titanium (Ростест)",
+            "",
+        )
+
+        self.assertEqual(color_score, 0.0)
+        self.assertIn("конфликт цвета", color_reasons[0])
+        self.assertEqual(region_score, 0.0)
+        self.assertIn("конфликт региона", region_reasons[0])
+
+    def test_match_group_key_keeps_sim_variants_separate(self) -> None:
+        esim_only = "Смартфон Apple iPhone 16 Pro 128Gb eSIM Natural Titanium (Global)"
+        nano_esim = "Смартфон Apple iPhone 16 Pro 128Gb nano SIM+eSIM Natural Titanium (Global)"
+
+        self.assertNotEqual(
+            competitor_mapping_routes._model_memory_color_group_key(esim_only),
+            competitor_mapping_routes._model_memory_color_group_key(nano_esim),
+        )
+
     def test_store77_seed_candidate_preserves_nano_esim_slug(self) -> None:
         product = {
             "id": "product_113",
@@ -2547,11 +2579,12 @@ class AuthFlowTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        candidates = saved_docs[-1]["discovery"]["candidates"]
-        self.assertEqual(candidates[candidate_id]["status"], "approved")
-        self.assertEqual(candidates["cand_sibling"]["status"], "rejected")
-        self.assertEqual(candidates["cand_sibling"]["rejection_reason"], "sibling_not_selected")
-        self.assertEqual(candidates["cand_other"]["status"], "needs_review")
+        self.assertEqual(saved_docs[-1]["discovery"]["candidates"], {})
+        channel_by_id = {row.get("link_id"): row for row in channel_links}
+        self.assertEqual(channel_by_id[candidate_id]["status"], "confirmed")
+        self.assertEqual(channel_by_id["cand_sibling"]["status"], "rejected")
+        self.assertEqual(channel_by_id["cand_sibling"]["payload"]["rejection_reason"], "sibling_not_selected")
+        self.assertNotEqual(channel_by_id.get("cand_other", {}).get("status"), "rejected")
 
     def test_manual_competitor_link_confirms_link_and_rejects_pending_source_candidates(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
