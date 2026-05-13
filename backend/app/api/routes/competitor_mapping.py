@@ -1238,13 +1238,6 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
         return []
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    for candidate in _store77_seed_candidates_for_product(product):
-        candidate_url = str(candidate.get("url") or "")
-        if candidate_url and candidate_url not in seen:
-            seen.add(candidate_url)
-            out.append(candidate)
-    if out:
-        return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
     category_urls = _store77_category_urls_for_product(product)
     if not category_urls:
         # store77 search page is browser/ajax-backed and can consume one timeout
@@ -1264,6 +1257,8 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
             out.append(candidate)
             if len(out) >= 5:
                 return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+        if out:
+            return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
     for term in _query_terms_for_product(product):
         url = f"https://store77.net/search/?q={quote_plus(term)}"
         try:
@@ -1273,6 +1268,21 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
         for candidate in _extract_store77_search_candidates(html, product):
             candidate_url = str(candidate.get("url") or "")
             if not candidate_url or candidate_url in seen:
+                continue
+            seen.add(candidate_url)
+            out.append(candidate)
+            if len(out) >= 5:
+                return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    if not out:
+        for candidate in _store77_seed_candidates_for_product(product):
+            candidate_url = str(candidate.get("url") or "")
+            if not candidate_url or candidate_url in seen:
+                continue
+            try:
+                html = await _fetch_store77_category_html(candidate_url)
+            except Exception:
+                continue
+            if not _store77_seed_candidate_matches_page(candidate, html):
                 continue
             seen.add(candidate_url)
             out.append(candidate)
@@ -1305,7 +1315,10 @@ def _store77_category_urls_for_product(product: Dict[str, Any]) -> List[str]:
         generation = match.group(1)
         suffix = re.sub(r"\s+", "_", (match.group(2) or "").strip())
         slug = "_".join(part for part in ("apple", "iphone", generation, suffix) if part)
-        variants = [f"https://store77.net/{slug}_2/", f"https://store77.net/{slug}/"]
+        if int(generation) >= 17:
+            variants = [f"https://store77.net/{slug}_1/", f"https://store77.net/{slug}_2/", f"https://store77.net/{slug}/"]
+        else:
+            variants = [f"https://store77.net/{slug}_2/", f"https://store77.net/{slug}/", f"https://store77.net/{slug}_1/"]
         for url in variants:
             if url not in urls:
                 urls.append(url)
@@ -1391,6 +1404,23 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
             "candidate_sim_profile": sim_profile,
         }
     ]
+
+
+def _store77_seed_candidate_matches_page(candidate: Dict[str, Any], html: str) -> bool:
+    if not html or html.startswith("__ERROR__") or "__STATUS__:" in html[:80]:
+        return False
+    title_tokens = _match_tokens(candidate.get("title"))
+    required = {
+        token
+        for token in title_tokens
+        if token in _MATCH_REQUIRED_TOKENS or re.fullmatch(r"\d+(gb|tb)", token)
+    }
+    if "iphone" in title_tokens:
+        required.update(token for token in title_tokens if re.fullmatch(r"\d{1,2}", token))
+    if not required:
+        return False
+    html_tokens = _match_tokens(html[:250_000])
+    return required.issubset(html_tokens)
 
 
 def _extract_store77_search_candidates(html: str, product: Dict[str, Any]) -> List[Dict[str, Any]]:

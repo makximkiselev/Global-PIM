@@ -159,7 +159,7 @@ Required behavior:
 
 ### P0.3 Competitor Matching Quality
 
-Status: active after pipeline audit; backend variant matching tightened on 2026-05-13.
+Status: active after pipeline audit; backend variant matching tightened on 2026-05-13 and Store77 category scan corrected on 2026-05-14.
 
 Goal: improve `re-store` and `store77` exact product-card discovery for SKU enrichment.
 
@@ -175,10 +175,26 @@ Required behavior:
 5. If all candidates are rejected, user can add exact competitor URL manually.
 6. Approved/rejected decisions persist to `pim_channel_links`.
 
+Progress:
+
+1. Store77 discovery no longer creates unverified synthetic product URLs before scanning the real category.
+2. Store77 category route generation now handles iPhone generation differences:
+   - iPhone 17+ tries `_1`, `_2`, base route;
+   - earlier generations keep `_2`, base, `_1`.
+3. Local real-site check for `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)` finds:
+   - `https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/`
+4. Production cleanup removed old synthetic/test candidates like `/product/product_1` and stale wrong `product_1` restore matches.
+5. Product API recursion blocker fixed: legacy `extra.extra.extra...` payloads are collapsed at `products_rel` normalization, and production `products_rel.extra_json` was cleaned for 1090 affected SKU.
+6. Store77 category scan now returns after the first valid category candidate set instead of continuing into slower fallback routes until the worker timeout.
+
 Verified:
 
 ```bash
 PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "competitor or store77 or restore or sim_profile or variant"
+PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "store77 or competitor or restore"
+PYTHONPATH=backend python3 -m pytest backend/tests/test_operating_workflows.py -k "store77"
+PYTHONPATH=backend python3 -m pytest backend/tests/test_products_service.py backend/tests/test_operating_workflows.py -k "product_normalizer or loads_variants or store77"
+make check-backend
 ```
 
 ### P0.4 Import / Export Contract Check

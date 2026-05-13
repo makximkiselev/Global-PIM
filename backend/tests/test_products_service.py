@@ -3,10 +3,12 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from fastapi.encoders import jsonable_encoder
 
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.core.products import service as products_service
+from app.storage import relational_pim_store
 
 
 class ProductServiceTests(unittest.TestCase):
@@ -32,6 +34,20 @@ class ProductServiceTests(unittest.TestCase):
         load_by_group.assert_called_once_with("group_47")
         self.assertEqual(payload["product"]["id"], "product_70")
         self.assertEqual([item["id"] for item in payload["variants"]], ["product_71", "product_72"])
+
+    def test_product_normalizer_does_not_nest_extra_on_readback(self) -> None:
+        raw = {
+            "id": "product_1",
+            "category_id": "phones",
+            "title": "Apple iPhone",
+            "extra": {"extra": {"extra": {}}},
+        }
+
+        normalized = relational_pim_store._normalize_products_doc({"items": [raw]})
+        item = normalized["items"][0]
+
+        self.assertEqual(item["extra"], {})
+        jsonable_encoder({"product": item})
 
 
 if __name__ == "__main__":

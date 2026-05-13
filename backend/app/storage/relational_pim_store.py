@@ -3964,9 +3964,31 @@ def _normalize_products_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         "feature_params",
         "exports_enabled",
         "content",
+        "extra",
         "created_at",
         "updated_at",
     }
+
+    def _product_extra(raw: Dict[str, Any]) -> Dict[str, Any]:
+        extra: Dict[str, Any] = {}
+        raw_extra = raw.get("extra")
+        if isinstance(raw_extra, dict):
+            extra.update(raw_extra)
+        for key, value in raw.items():
+            if key not in known_keys:
+                extra[key] = value
+
+        # A previous normalizer treated the top-level `extra` key as an unknown
+        # field, so every read/write cycle produced extra.extra.extra...
+        # Collapse that legacy shape at the storage boundary.
+        nested = extra.get("extra")
+        while isinstance(nested, dict) and set(extra.keys()) == {"extra"}:
+            extra = nested
+            nested = extra.get("extra")
+        if isinstance(extra.get("extra"), dict) and not extra.get("extra"):
+            extra.pop("extra", None)
+        return extra
+
     for raw in items:
         if not isinstance(raw, dict):
             continue
@@ -3979,7 +4001,7 @@ def _normalize_products_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         feature_params = raw.get("feature_params") if isinstance(raw.get("feature_params"), list) else []
         exports_enabled = raw.get("exports_enabled") if isinstance(raw.get("exports_enabled"), dict) else {}
         content = raw.get("content") if isinstance(raw.get("content"), dict) else {}
-        extra = {k: v for k, v in raw.items() if k not in known_keys}
+        extra = _product_extra(raw)
         normalized_items.append(
             {
                 "id": pid,

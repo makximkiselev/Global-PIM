@@ -268,6 +268,50 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["import_overview"]["with_competitor_media"], 1)
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["url"], "https://store77.net/images/meta-quest-3-128.jpg")
 
+    def test_store77_discovery_scans_real_category_before_seed_fallback(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            "sku_gt": "52460",
+            "category_id": "phones",
+        }
+        html = """
+        <a href="/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/">
+          Телефон Apple iPhone 17 Pro 256 ГБ, eSim (электронная SIM-карта), цвет: серебристый (Silver)
+        </a>
+        """
+        fetched_urls: list[str] = []
+
+        async def fake_fetch(url):
+            fetched_urls.append(url)
+            return html
+
+        with patch.object(competitor_mapping, "_fetch_store77_category_html", side_effect=fake_fetch):
+            candidates = asyncio.run(competitor_mapping._discover_store77_candidates(product))
+
+        self.assertEqual(candidates[0]["url"], "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/")
+        self.assertIn("apple_iphone_17_pro_1", fetched_urls[0])
+        self.assertEqual(len(fetched_urls), 1)
+        self.assertTrue(all("/product/product_" not in item["url"] for item in candidates))
+
+    def test_store77_seed_candidate_requires_matching_product_page(self) -> None:
+        candidate = {
+            "title": "Телефон Apple iPhone 17 Pro 256Gb eSim (Silver)",
+            "url": "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/",
+        }
+        self.assertTrue(
+            competitor_mapping._store77_seed_candidate_matches_page(
+                candidate,
+                "Телефон Apple iPhone 17 Pro 256 ГБ eSim цвет серебристый Silver",
+            )
+        )
+        self.assertFalse(
+            competitor_mapping._store77_seed_candidate_matches_page(
+                candidate,
+                "Чехол Gurdini Super Slim для iPhone 17 Pro",
+            )
+        )
+
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}
         req = CatalogExportRunReq.model_validate(
