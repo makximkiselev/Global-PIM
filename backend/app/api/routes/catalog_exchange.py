@@ -631,6 +631,8 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         items.append(
             {
                 "product_id": pid,
+                "product_title": str(product.get("title") or pid),
+                "category_id": category_id,
                 "ready": ready,
                 "missing": missing,
                 "payload_item": {
@@ -677,6 +679,8 @@ def _export_batch_from_preview(
             {
                 "product_id": str(item.get("product_id") or "").strip(),
                 "offer_id": offer_id,
+                "product_title": str(item.get("product_title") or "").strip(),
+                "category_id": str(item.get("category_id") or "").strip(),
                 "missing": missing_clean,
             }
         )

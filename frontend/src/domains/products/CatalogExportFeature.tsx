@@ -28,8 +28,18 @@ type ExportRunResp = {
     not_ready_count?: number;
     blockers_count?: number;
     count: number;
-    blockers?: Array<{ product_id: string; offer_id?: string; missing: string[] }>;
+    blockers?: Array<{ product_id: string; offer_id?: string; product_title?: string; category_id?: string; missing: string[] }>;
   }>;
+};
+
+type ExportBlocker = {
+  provider: string;
+  providerTitle: string;
+  product_id: string;
+  offer_id?: string;
+  product_title?: string;
+  category_id?: string;
+  missing: string[];
 };
 
 type MetricItem = {
@@ -49,6 +59,45 @@ function SummaryMetricRow({ items }: { items: MetricItem[] }) {
       ))}
     </section>
   );
+}
+
+function providerTitle(provider: string): string {
+  if (provider === "yandex_market") return "Я.Маркет";
+  if (provider === "ozon") return "OZON";
+  return provider;
+}
+
+function blockerFixHref(blocker: ExportBlocker, reason: string): string {
+  const category = blocker.category_id || "";
+  const product = blocker.product_id || "";
+  const lower = reason.toLowerCase();
+  if (category && (lower.includes("категор") || lower.includes("marketcategoryid"))) {
+    return `/sources?tab=sources&category=${encodeURIComponent(category)}`;
+  }
+  if (category && (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр"))) {
+    return `/sources?tab=params&category=${encodeURIComponent(category)}`;
+  }
+  if (category && (lower.includes("значен") || lower.includes("dictionary"))) {
+    return `/sources?tab=values&category=${encodeURIComponent(category)}`;
+  }
+  if (product && (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа"))) {
+    return `/products/${encodeURIComponent(product)}?tab=media`;
+  }
+  if (product && lower.includes("описание")) {
+    return `/products/${encodeURIComponent(product)}?tab=description`;
+  }
+  if (product) return `/products/${encodeURIComponent(product)}`;
+  return category ? `/sources?tab=params&category=${encodeURIComponent(category)}` : "/catalog/exchange?tab=export";
+}
+
+function blockerFixLabel(reason: string): string {
+  const lower = reason.toLowerCase();
+  if (lower.includes("категор")) return "Открыть категории";
+  if (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр")) return "Открыть параметры";
+  if (lower.includes("значен")) return "Открыть значения";
+  if (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа")) return "Открыть медиа";
+  if (lower.includes("описание")) return "Открыть описание";
+  return "Открыть место исправления";
 }
 
 export default function CatalogExportFeature({ embedded = false }: { embedded?: boolean } = {}) {
@@ -109,6 +158,33 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
     [run],
   );
+  const exportBlockers = useMemo<ExportBlocker[]>(() => {
+    const byKey = new Map<string, ExportBlocker>();
+    for (const batch of run?.batches || []) {
+      for (const blocker of batch.blockers || []) {
+        const missing = (blocker.missing || []).filter(Boolean);
+        if (!missing.length) continue;
+        const key = [
+          batch.provider,
+          blocker.product_id,
+          blocker.offer_id || "",
+          missing.join("|"),
+        ].join("::");
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            provider: batch.provider,
+            providerTitle: providerTitle(batch.provider),
+            product_id: blocker.product_id,
+            offer_id: blocker.offer_id,
+            product_title: blocker.product_title,
+            category_id: blocker.category_id,
+            missing,
+          });
+        }
+      }
+    }
+    return Array.from(byKey.values()).slice(0, 12);
+  }, [run]);
 
   async function startExport() {
     setLoading(true);
@@ -325,28 +401,33 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   </div>
                 </section>
 
-                {run.batches.some((row) => (row.blockers || []).length > 0) ? (
+                {exportBlockers.length > 0 ? (
                   <section className="card cx-pane">
                     <div className="cx-paneHead">
                       <div>
                         <div className="cx-paneTitle">Что мешает выгрузке</div>
-                        <div className="cx-paneSub">Первые SKU с причинами. Исправлять нужно карточку товара, сопоставление категории или параметры.</div>
+                        <div className="cx-paneSub">Уникальные SKU с причинами и прямыми переходами к месту исправления.</div>
                       </div>
                     </div>
                     <div className="cx-exportBlockers">
-                      {run.batches.flatMap((batch) =>
-                        (batch.blockers || []).slice(0, 6).map((blocker) => (
-                          <div key={`${batch.provider}:${batch.store_id}:${blocker.product_id}:${blocker.offer_id || ""}`} className="cx-exportBlocker">
+                      {exportBlockers.map((blocker) => (
+                          <div key={`${blocker.provider}:${blocker.product_id}:${blocker.offer_id || ""}:${blocker.missing.join("|")}`} className="cx-exportBlocker">
                             <div className="cx-exportBlockerHead">
-                              <strong>{batch.provider === "yandex_market" ? "Я.Маркет" : batch.provider === "ozon" ? "OZON" : batch.provider}</strong>
+                              <strong>{blocker.providerTitle}</strong>
                               <span>{blocker.offer_id ? `SKU GT ${blocker.offer_id}` : blocker.product_id}</span>
+                            </div>
+                            <div className="cx-exportBlockerProduct">
+                              <Link to={`/products/${encodeURIComponent(blocker.product_id)}`}>{blocker.product_title || blocker.product_id}</Link>
                             </div>
                             <ul>
                               {blocker.missing.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
                             </ul>
+                            <div className="cx-exportBlockerActions">
+                              <Link className="btn" to={`/products/${encodeURIComponent(blocker.product_id)}`}>Открыть SKU</Link>
+                              <Link className="btn btn-primary" to={blockerFixHref(blocker, blocker.missing[0] || "")}>{blockerFixLabel(blocker.missing[0] || "")}</Link>
+                            </div>
                           </div>
-                        )),
-                      )}
+                      ))}
                     </div>
                   </section>
                 ) : null}

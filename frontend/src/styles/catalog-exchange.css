@@ -121,12 +121,37 @@
   color:var(--muted);
 }
 
+.cx-exportBlockerProduct{
+  margin-top:8px;
+  font-size:13px;
+  font-weight:800;
+  line-height:1.35;
+}
+
+.cx-exportBlockerProduct a{
+  color:var(--text);
+  text-decoration:none;
+}
+
 .cx-exportBlocker ul{
   margin:10px 0 0;
   padding-left:18px;
   color:var(--muted);
   font-size:13px;
   line-height:1.45;
+}
+
+.cx-exportBlockerActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
+}
+
+.cx-exportBlockerActions .btn{
+  min-height:34px;
+  padding:8px 12px;
+  font-size:13px;
 }
 
 .cx-head{

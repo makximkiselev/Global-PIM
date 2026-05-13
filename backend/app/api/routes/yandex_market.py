@@ -2009,6 +2009,8 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         items.append(
             {
                 "product_id": pid,
+                "product_title": str(p.get("title") or pid),
+                "category_id": category_id,
                 "ready": ready,
                 "missing": missing,
                 "payload_item": payload_item,

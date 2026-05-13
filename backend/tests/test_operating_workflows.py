@@ -216,7 +216,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(catalog_exchange, "_ozon_export_preview", return_value={
                 "ready_count": 0,
                 "count": 1,
-                "items": [{"product_id": "product_1", "ready": False, "missing": ["description"]}],
+                "items": [{"product_id": "product_1", "product_title": "Meta Quest 3 128GB", "category_id": "cat-vr", "ready": False, "missing": ["description"]}],
             }),
             patch.object(catalog_exchange, "_load_runs", return_value={"runs": {}}),
             patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, doc: saved_runs.update(deepcopy(doc))),
@@ -237,6 +237,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["batches"][1]["blockers_count"], 1)
         self.assertEqual(response["batches"][1]["items"][0]["missing"], ["description"])
         self.assertEqual(response["batches"][1]["blockers"][0]["missing"], ["description"])
+        self.assertEqual(response["batches"][1]["blockers"][0]["product_title"], "Meta Quest 3 128GB")
+        self.assertEqual(response["batches"][1]["blockers"][0]["category_id"], "cat-vr")
         self.assertIn("export_abcdef1234", saved_runs["runs"])
 
     def test_yandex_export_preview_filters_products_in_sql_by_selected_ids(self) -> None:
@@ -265,6 +267,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         query_mock.assert_called_once_with(ids=["product_1"])
         self.assertEqual(response["count"], 1)
         self.assertEqual(response["items"][0]["payload_item"]["offerId"], "GT-1")
+        self.assertEqual(response["items"][0]["product_title"], "Meta Quest 3 128GB")
+        self.assertEqual(response["items"][0]["category_id"], "cat-vr")
 
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
