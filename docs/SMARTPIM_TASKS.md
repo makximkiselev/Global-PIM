@@ -201,6 +201,11 @@ Progress:
    - other competitor sources get 2 attempts;
    - failed extraction returns `retryable=true` for transient errors and does not overwrite product content with empty data.
 14. Product competitor UI now shows readable enrichment failures such as `store77 — источник долго отвечает, можно повторить` instead of generic `Ошибок: N`.
+15. `re-store` discovery parser was hardened:
+   - re-store search HTML now parses candidates by scanning `/catalog/...` product links and reading nearby product fields, so it no longer depends on a fragile JSON key order;
+   - the old catastrophic fallback regex was removed because it could hang on megabyte search pages when no candidate matched;
+   - real-site check for `Apple iPhone 17 Pro 256GB Silver` returns `https://re-store.ru/catalog/10117PRO256SLVN/` in about 2 seconds;
+   - `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)` correctly does not match the available physical-SIM `re-store` SKU, because SIM profile conflicts must not collapse.
 
 Verified:
 
@@ -211,6 +216,7 @@ PYTHONPATH=backend python3 -m pytest backend/tests/test_operating_workflows.py -
 PYTHONPATH=backend python3 -m pytest backend/tests/test_products_service.py backend/tests/test_operating_workflows.py -k "product_normalizer or loads_variants or store77"
 PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "store77_product_html_extracts_gallery_images or competitor_product_discovery_endpoint_returns_candidates_and_links"
 PYTHONPATH=backend python3 -m pytest backend/tests/test_operating_workflows.py -k "existing_catalog_enrichment_uses_confirmed_competitor_links or catalog_import_uses_confirmed_partner_links_before_export"
+PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "restore_search_parser_extracts_large_escaped_catalog_fast or restore_search_html_candidates"
 make check-backend
 cd frontend && npm run build
 ```

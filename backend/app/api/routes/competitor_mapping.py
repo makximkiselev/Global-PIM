@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 import hashlib
 import html as html_lib
+import json
 import mimetypes
 import os
 from pathlib import Path
@@ -1421,54 +1422,61 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
         return []
     candidates: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    patterns = [
-        re.compile(
-            r'\\"categoryName\\"\s*:\s*\\"(?P<category>[^\\"]*)\\".*?'
-            r'\\"sectionName\\"\s*:\s*\\"(?P<section>[^\\"]*)\\".*?'
-            r'\\"skuCode\\"\s*:\s*\\"(?P<sku>[^\\"]*)\\".*?'
-            r'\\"brandName\\"\s*:\s*\\"(?P<brand>[^\\"]*)\\".*?'
-            r'(?:\\"price\\"\s*:\s*(?P<price>\d+(?:\.\d+)?)\s*,.*?)?'
-            r'\\"name\\"\s*:\s*\\"(?P<title>[^\\"]*)\\".*?'
-            r'\\"link\\"\s*:\s*\\"(?P<link>/catalog/[^"\\]+/?)\\"',
-            re.IGNORECASE | re.DOTALL,
-        ),
-        re.compile(
-            r'\\"name\\"\s*:\s*\\"(?P<title>[^\\"]*)\\".*?'
-            r'(?:\\"price\\"\s*:\s*\\"?(?P<price>\d+(?:\.\d+)?)\\"?\s*,.*?)?'
-            r'(?:\\"brand(?:Name)?\\"\s*:\s*\\"(?P<brand>[^\\"]*)\\".*?)*'
-            r'\\"skuCode\\"\s*:\s*\\"(?P<sku>[^\\"]*)\\".*?'
-            r'\\"link\\"\s*:\s*\\"(?P<link>/catalog/[^"\\]+/?)\\"',
-            re.IGNORECASE | re.DOTALL,
-        ),
-    ]
-    for pattern in patterns:
-        for match in pattern.finditer(html):
-            link = html_lib.unescape(match.group("link") or "").strip()
-            url = urljoin("https://re-store.ru", link)
-            if detect_site(url) != "restore" or url in seen:
-                continue
-            seen.add(url)
-            title = html_lib.unescape(match.group("title") or "").strip()
-            sku = html_lib.unescape(match.group("sku") or "").strip()
-            brand = html_lib.unescape(match.groupdict().get("brand") or "").strip()
-            confidence_score, reasons = _confidence_for_candidate(product, title, sku, brand)
-            if confidence_score < 0.78:
-                continue
-            candidates.append(
-                {
-                    "url": url,
-                    "title": title,
-                    "brand": brand,
-                    "sku": sku,
-                    "price": match.group("price"),
-                    "confidence_score": confidence_score,
-                    "confidence_reasons": reasons,
-                }
-            )
-            if len(candidates) >= 5:
-                break
+
+    def _json_string(value: Any) -> str:
+        raw = html_lib.unescape(str(value or "").strip())
+        if not raw:
+            return ""
+        try:
+            decoded = json.loads(f'"{raw}"')
+            return str(decoded or "").strip()
+        except Exception:
+            return raw.replace('\\"', '"').replace("\\/", "/").strip()
+
+    def _last_json_field(fragment: str, key: str) -> str:
+        normalized = str(fragment or "").replace('\\"', '"')
+        rx = re.compile(rf'"{re.escape(key)}"\s*:\s*"(?P<value>[^"]*)"', re.IGNORECASE | re.DOTALL)
+        values = [m.group("value") for m in rx.finditer(normalized)]
+        return _json_string(values[-1]) if values else ""
+
+    def _add_candidate(url: str, title: str, sku: str = "", brand: str = "", price: Any = None) -> None:
+        if not url or detect_site(url) != "restore" or url in seen:
+            return
+        title_clean = _json_string(title)
+        sku_clean = _json_string(sku)
+        brand_clean = _json_string(brand)
+        confidence_score, reasons = _confidence_for_candidate(product, title_clean, sku_clean, brand_clean)
+        if confidence_score < 0.78:
+            return
+        seen.add(url)
+        candidates.append(
+            {
+                "url": url,
+                "title": title_clean,
+                "brand": brand_clean,
+                "sku": sku_clean,
+                "price": str(price or "").strip() or None,
+                "confidence_score": confidence_score,
+                "confidence_reasons": reasons,
+            }
+        )
+
+    # re-store changes payload key order often. The product object can contain
+    # `categoryName/skuCode/brandName`, nested analytics, then final `name/link`.
+    # Scan every catalog link and read the nearest product fields around it
+    # instead of depending on one long ordered regex.
+    link_rx = re.compile(r'(?:\\?")link(?:\\?")\s*:\s*(?:\\?")(?P<link>/catalog/[^"\\]+/?)', re.IGNORECASE)
+    for match in link_rx.finditer(html):
+        link = _json_string(match.group("link"))
+        url = urljoin("https://re-store.ru", link)
+        window = html[max(0, match.start() - 5000) : min(len(html), match.end() + 1000)]
+        title = _last_json_field(window, "name")
+        sku = _last_json_field(window, "skuCode")
+        brand = _last_json_field(window, "brandName") or _last_json_field(window, "brand")
+        price = _last_json_field(window, "price")
+        _add_candidate(url, title, sku, brand, price)
         if len(candidates) >= 5:
-            break
+            return candidates
     return candidates
 
 

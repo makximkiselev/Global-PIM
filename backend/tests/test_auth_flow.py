@@ -2231,6 +2231,29 @@ class AuthFlowTests(unittest.TestCase):
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.8)
         self.assertIn("обязательные токены совпали", candidates[0]["confidence_reasons"])
 
+    def test_restore_search_html_candidates_handle_reordered_payload_fields(self) -> None:
+        html = r'''
+          <script>
+          window.__payload = {\"categoryName\":\"Смартфоны\",\"sectionName\":\"iPhone 17 Pro\",
+          \"skuCode\":\"AG_10117P256SLVe\",\"brandName\":\"Apple\",\"variant\":\"серебристый\",
+          \"analytics\":{\"dataLayer\":{\"click\":{\"ecommerce\":{\"click\":{\"products\":[
+          {\"id\":\"4645096\",\"name\":\"Apple iPhone 17 Pro eSIM 256GB, Silver\",
+          \"price\":\"132990\",\"category\":\"iPhone 17 Pro\",\"brand\":\"Apple\",
+          \"skuCode\":\"AG_10117P256SLVe\"}]}}}}},
+          \"id\":4645096,\"name\":\"Apple iPhone 17 Pro eSIM 256GB, Silver\",
+          \"type\":\"undefined\",\"link\":\"/catalog/AG_10117P256SLVE/\"};
+          </script>
+        '''
+        product = {"id": "product_1", "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)", "sku_gt": "52460"}
+
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/AG_10117P256SLVE/")
+        self.assertEqual(candidates[0]["title"], "Apple iPhone 17 Pro eSIM 256GB, Silver")
+        self.assertEqual(candidates[0]["sku"], "AG_10117P256SLVe")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.8)
+
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''
           <script>
