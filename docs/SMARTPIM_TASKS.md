@@ -124,7 +124,8 @@ Audit findings to verify/fix:
    - field list is very long and needs continued visual confirmation for readability, labels, action density, and duplicate controls.
    - Browser audit on 2026-05-14 found duplicated context across `PageHeader`, command card, `Поля модели`, and `Источник структуры`; first useful field rows started too low.
    - Fixed on 2026-05-14: removed duplicate `PageHeader`, compressed the model command block, moved source status into an inline strip, and aligned field tabs/actions in one toolbar.
-   - Remaining issue: field rows are usable but still visually dense; next pass should focus on row editing ergonomics, not another top summary.
+   - Second pass on 2026-05-14: field rows were changed from heavy form-like cards to denser table rows with quieter borders, compact controls, and focus/hover emphasis.
+   - Remaining issue: verify whether editing a field, dictionary binding, drag ordering, and deletion are understandable without extra explanation.
 3. `/sources?tab=sources&category=bb40de87-254b-4170-84d7-8e5d3925b251`
    - Browser-verified on 2026-05-12 after compact layout pass;
    - no accidental horizontal overflow;
