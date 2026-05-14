@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -133,13 +133,25 @@ const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "attributes", label: "Параметры", meta: "значения и источники" },
   { id: "sources", label: "Источники", meta: "импорт, excel, конкуренты" },
   { id: "channels", label: "Площадки", meta: "вывод и альтернативы" },
-  { id: "competitors", label: "Конкуренты", meta: "links review" },
+  { id: "competitors", label: "Конкуренты", meta: "поиск и насыщение" },
   { id: "media", label: "Медиа", meta: "S3 assets" },
   { id: "validation", label: "Валидация", meta: "ошибки перед экспортом" },
   { id: "relations", label: "Связи", meta: "аналоги и комплекты" },
   { id: "variants", label: "Варианты", meta: "SKU family" },
   { id: "create-flow", label: "Создание", meta: "новый процесс" },
 ];
+
+const SECTION_IDS = new Set<SectionId>(SECTION_LABELS.map((section) => section.id));
+
+function sectionFromTab(value: string | null): SectionId {
+  const tab = normalizeText(value).toLowerCase();
+  if (tab === "params" || tab === "features" || tab === "parameters") return "attributes";
+  if (tab === "description") return "overview";
+  if (tab === "platforms" || tab === "marketplaces") return "channels";
+  if (tab === "competitor" || tab === "competitor_links" || tab === "links") return "competitors";
+  if (SECTION_IDS.has(tab as SectionId)) return tab as SectionId;
+  return "overview";
+}
 
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
@@ -823,6 +835,7 @@ function ProductWorkspaceSkeleton() {
 
 function ProductWorkspaceFeature() {
   const { productId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [product, setProduct] = useState<ProductData | null>(null);
@@ -830,7 +843,7 @@ function ProductWorkspaceFeature() {
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [channels, setChannels] = useState<ChannelsSummary | null>(null);
   const [channelsLoading, setChannelsLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<SectionId>("overview");
+  const [activeSection, setActiveSection] = useState<SectionId>(() => sectionFromTab(searchParams.get("tab")));
   const [selectedFeatureKey, setSelectedFeatureKey] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -937,6 +950,10 @@ function ProductWorkspaceFeature() {
     };
   }, [productId, reloadVersion]);
 
+  useEffect(() => {
+    setActiveSection(sectionFromTab(searchParams.get("tab")));
+  }, [searchParams]);
+
   const features = useMemo(() => product?.content?.features || [], [product]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
   const categoryPath = useMemo(() => buildCategoryPath(nodes, product?.category_id), [nodes, product?.category_id]);
@@ -964,6 +981,15 @@ function ProductWorkspaceFeature() {
 
   function handleSectionSelect(id: SectionId) {
     setActiveSection(id);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (id === "overview") {
+        next.delete("tab");
+      } else {
+        next.set("tab", id);
+      }
+      return next;
+    }, { replace: true });
   }
 
   if (loading) {

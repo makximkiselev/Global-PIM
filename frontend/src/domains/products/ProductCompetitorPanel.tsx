@@ -151,7 +151,7 @@ export default function ProductCompetitorPanel({
         return response.items[0]?.id || "";
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось загрузить competitor candidates");
+      setError(err instanceof Error ? err.message : "Не удалось загрузить найденные карточки конкурентов");
     } finally {
       setLoading(false);
     }
@@ -247,7 +247,7 @@ export default function ProductCompetitorPanel({
         body: JSON.stringify({ source_id: manualSource, url }),
       });
       setManualUrl("");
-      setEnrichNotice("Ссылка добавлена вручную и стала confirmed link. Pending candidates этого источника отклонены.");
+      setEnrichNotice("Ссылка добавлена вручную и стала подтвержденной. Неподтвержденные варианты этого источника отклонены.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось добавить ссылку вручную");
@@ -265,8 +265,8 @@ export default function ProductCompetitorPanel({
       <div className="productCompetitorPanel">
         <div className="productCompetitorToolbar">
           <div>
-            <div className="productWorkspaceMiniTitle">Product match review</div>
-            <p>Найденные re-store/store77 candidates для текущего SKU. Подтверждение сохраняет связь с товаром.</p>
+            <div className="productWorkspaceMiniTitle">Сопоставление с конкурентами</div>
+            <p>Найденные карточки re-store/store77 для текущего SKU. Подтверждение сохраняет связь с товаром и открывает загрузку параметров, описания и медиа.</p>
           </div>
           <div className="productCompetitorActions">
             <Button onClick={() => void load()} disabled={loading || running}>
@@ -274,33 +274,33 @@ export default function ProductCompetitorPanel({
             </Button>
             {context?.counts.confirmed_links ? (
               <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || running || enriching || !productId}>
-                {enriching ? "Загружаю…" : "Загрузить данные из ссылок"}
+                {enriching ? "Загружаю…" : "Загрузить параметры и медиа"}
               </Button>
             ) : null}
             <Button variant="primary" onClick={() => void runDiscovery()} disabled={loading || running || !productId}>
-              {running ? "Ищу…" : "Найти ссылки"}
+              {running ? "Ищу…" : "Найти карточки"}
             </Button>
           </div>
         </div>
 
         <div className="productCompetitorMetrics">
-          <div><span>Candidates</span><strong>{context?.counts.total || 0}</strong></div>
+          <div><span>Найдено</span><strong>{context?.counts.total || 0}</strong></div>
           <div><span>На модерации</span><strong>{context?.counts.needs_review || 0}</strong></div>
-          <div><span>Approved</span><strong>{context?.counts.approved || 0}</strong></div>
+          <div><span>Подтверждено</span><strong>{context?.counts.approved || 0}</strong></div>
           <div><span>Устарело</span><strong>{context?.counts.stale || 0}</strong></div>
-          <div><span>Links</span><strong>{context?.counts.confirmed_links || 0}</strong></div>
+          <div><span>Готовых ссылок</span><strong>{context?.counts.confirmed_links || 0}</strong></div>
         </div>
 
         {lastRun ? (
           <div className="productCompetitorNotice">
-            Последний запуск: {lastRun.status}, candidates: {(lastRun.created_count || 0) + (lastRun.updated_count || 0)}
+            Последний запуск: {lastRun.status}, найдено/обновлено: {(lastRun.created_count || 0) + (lastRun.updated_count || 0)}
           </div>
         ) : null}
         {enrichNotice ? <div className="productCompetitorNotice">{enrichNotice}</div> : null}
         {error ? <div className="productCompetitorError">{error}</div> : null}
 
         {loading ? (
-          <EmptyState title="Загружаем competitors" description="Получаем candidates и confirmed links для SKU." />
+          <EmptyState title="Загружаем конкурентов" description="Получаем найденные карточки и подтвержденные ссылки для SKU." />
         ) : candidates.length ? (
           <div className="productCompetitorWorkspace">
             <div className="productCompetitorList" aria-label="Competitor candidates">
@@ -340,7 +340,7 @@ export default function ProductCompetitorPanel({
                   <div className="productCompetitorInspectorHead">
                     <div>
                       <span>{selected.source_name || selected.source_id}</span>
-                      <strong>{selected.title || "Candidate"}</strong>
+                      <strong>{selected.title || "Карточка конкурента"}</strong>
                     </div>
                     <Badge tone={statusTone(selected.status)}>{statusLabel(selected.status)}</Badge>
                   </div>
@@ -348,11 +348,11 @@ export default function ProductCompetitorPanel({
                     {selected.url}
                   </a>
                   <div className="productCompetitorFacts">
-                    <div><span>Score</span><strong>{scoreLabel(selected)}</strong></div>
+                    <div><span>Точность</span><strong>{scoreLabel(selected)}</strong></div>
                     <div><span>SIM в PIM</span><strong>{simProfileLabel(selected.product_sim_profile)}</strong></div>
-                    <div><span>SIM candidate</span><strong>{simProfileLabel(selected.candidate_sim_profile)}</strong></div>
+                    <div><span>SIM у конкурента</span><strong>{simProfileLabel(selected.candidate_sim_profile)}</strong></div>
                     <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
-                    <div><span>Evidence</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
+                    <div><span>Почему подходит</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
                   </div>
                   {selected.status === "needs_review" ? (
                     <div className="productCompetitorModeration">
@@ -366,18 +366,18 @@ export default function ProductCompetitorPanel({
                   ) : null}
                 </>
               ) : (
-                <EmptyState title="Candidate не выбран" description="Выбери строку слева." />
+                <EmptyState title="Карточка не выбрана" description="Выберите вариант слева." />
               )}
             </div>
           </div>
         ) : (
-          <EmptyState title="Candidates пока нет" description="Запусти поиск по re-store и store77 для этого SKU." />
+          <EmptyState title="Карточки пока не найдены" description="Запустите поиск по re-store и store77 для этого SKU." />
         )}
 
         <div className="productCompetitorManual">
           <div>
             <div className="productWorkspaceMiniTitle">Ручная ссылка</div>
-            <p>Если все варианты отклонены, content manager вставляет точную карточку. Pending candidates этого источника будут отклонены автоматически.</p>
+            <p>Если все варианты отклонены, контент-менеджер вставляет точную карточку. Неподтвержденные варианты этого источника будут отклонены автоматически.</p>
           </div>
           <div className="productCompetitorManualForm">
             <select value={manualSource} onChange={(event) => setManualSource(event.target.value as "restore" | "store77")}>
@@ -397,7 +397,7 @@ export default function ProductCompetitorPanel({
 
         {context?.confirmed_links.length ? (
           <div className="productCompetitorConfirmed">
-            <div className="productWorkspaceMiniTitle">Confirmed links</div>
+            <div className="productWorkspaceMiniTitle">Подтвержденные ссылки</div>
             {context.confirmed_links.map((link) => (
               <a key={`${link.source_id}-${link.url}`} href={link.url} target="_blank" rel="noreferrer">
                 <span>{link.source_id}</span>

@@ -2035,7 +2035,11 @@ class AuthFlowTests(unittest.TestCase):
                         "url": "https://store77.net/apple_iphone_16_pro_2/manual/",
                         "status": "confirmed",
                         "updated_at": "2026-05-12T00:00:00+00:00",
-                        "payload": {"candidate_id": "cand_store77_rel"},
+                        "payload": {
+                            "candidate_id": "cand_store77_rel",
+                            "product_sim_profile": "nano_sim_esim",
+                            "candidate_sim_profile": "nano_sim_esim",
+                        },
                     }
                 ],
             ),
@@ -2050,6 +2054,9 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(payload["counts"]["approved"], 2)
         self.assertEqual(payload["counts"]["stale"], 1)
         self.assertEqual({item["id"] for item in payload["items"]}, {"cand_restore", "cand_stale", "cand_store77_rel"})
+        store77_item = next(item for item in payload["items"] if item["id"] == "cand_store77_rel")
+        self.assertEqual(store77_item["product_sim_profile"], "nano_sim_esim")
+        self.assertEqual(store77_item["candidate_sim_profile"], "nano_sim_esim")
         self.assertEqual(payload["confirmed_links"][0]["candidate_id"], "cand_restore")
         self.assertTrue(any(item["source_id"] == "store77" for item in payload["confirmed_links"]))
 
@@ -2344,6 +2351,28 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(candidates[0]["url"], "https://store77.net/catalog/smartfony/apple-iphone-16-128gb-black/")
         self.assertEqual(candidates[0]["title"], "Apple iPhone 16 128GB Black")
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.6)
+
+    def test_store77_product_html_extracts_gallery_images(self) -> None:
+        from app.core.competitors.store77 import extract_store77_image_urls_from_html
+
+        html = """
+        <div id="cardPhoto">
+          <a class="swiper-slide gcm_descr" style="background-image: url('/upload/w247/imageCache/a/b/product-main.png')"></a>
+        </div>
+        <div id="modalCardMain">
+          <img data-src="https://store77.net/upload/w247/imageCache/c/d/product-alt.webp">
+          <img src="/assets/icon.png">
+        </div>
+        """
+
+        images = extract_store77_image_urls_from_html(html, base_url="https://store77.net/product/")
+
+        self.assertEqual(
+            images,
+            [
+                "https://store77.net/upload/w247/imageCache/a/b/product-main.png",
+            ],
+        )
 
     def test_competitor_query_terms_prioritize_title_over_internal_sku(self) -> None:
         product = {

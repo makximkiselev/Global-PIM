@@ -110,7 +110,7 @@ _STORE77_GALLERY_BLOCK_RE2 = re.compile(
     r'(?is)<div[^>]+id="cardPhoto"[^>]*>(.*?)</div>'
 )
 _STORE77_BG_URL_RE = re.compile(
-    r'(?is)background-image\\s*:\\s*url\\(([^)]+)\\)'
+    r'(?is)background-image\s*:\s*url\(([^)]+)\)'
 )
 
 
@@ -121,8 +121,49 @@ def _clean_style_url(raw: str) -> str:
 
 
 def extract_store77_image_urls_from_html(html: str, base_url: str | None = None) -> List[str]:
-    # По решению: изображения берём только из re-store.
-    return []
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    urls: List[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str) -> None:
+        src = _norm_img_url(_clean_style_url(raw), base_url)
+        if not src:
+            return
+        lower = src.lower()
+        if not re.search(r"\.(?:jpg|jpeg|png|webp)(?:[?#].*)?$", lower):
+            return
+        if "/upload/" not in lower and "/resize_cache/" not in lower:
+            return
+        if src in seen:
+            return
+        seen.add(src)
+        urls.append(src)
+
+    primary_roots = [
+        *soup.select("#cardPhoto"),
+        *soup.select("#image-popup-container .slick-offer-img-big"),
+        *soup.select(".wrap_gallery_card_main"),
+    ]
+    secondary_roots = [
+        *soup.select("#image-popup-container"),
+        *soup.select(".modal_card_gallery"),
+    ]
+    roots = primary_roots or secondary_roots or [soup]
+    for root in roots:
+        for img in root.select("img"):
+            for attr in ("data-src", "data-lazy", "src"):
+                add(str(img.get(attr) or ""))
+        for el in root.select("[style]"):
+            style = str(el.get("style") or "")
+            for match in _STORE77_BG_URL_RE.finditer(style):
+                add(match.group(1))
+
+    if not urls:
+        for match in re.finditer(r"""(?i)(?:https?:)?//[^"'\s<>]+?\.(?:jpg|jpeg|png|webp)|/(?:upload|resize_cache)/[^"'\s<>]+?\.(?:jpg|jpeg|png|webp)""", html):
+            add(match.group(0))
+    return urls[:24]
 
 
 def extract_store77_description_from_html(html: str) -> str:

@@ -186,6 +186,16 @@ Progress:
 4. Production cleanup removed old synthetic/test candidates like `/product/product_1` and stale wrong `product_1` restore matches.
 5. Product API recursion blocker fixed: legacy `extra.extra.extra...` payloads are collapsed at `products_rel` normalization, and production `products_rel.extra_json` was cleaned for 1090 affected SKU.
 6. Store77 category scan now returns after the first valid category candidate set instead of continuing into slower fallback routes until the worker timeout.
+7. Product card route now respects `?tab=competitors`, so export blockers and workflow links can open the competitor enrichment step directly.
+8. Product competitor moderation text was cleaned up: no user-facing `candidate/link/review` labels, actions now read as `Найти карточки`, `Подтвердить`, `Загрузить параметры и медиа`.
+9. `pim_channel_links.payload` now persists `product_sim_profile` and `candidate_sim_profile`, so the UI can show `eSIM only` / `nano SIM + eSIM` instead of `SIM не распознан`.
+10. Store77 product-card enrichment now extracts only the real product gallery (`#cardPhoto` and popup gallery), not unrelated modal/promo images.
+11. Partner media enrichment no longer stores broken external hotlinks as ready product media:
+   - Store77 image bytes are fetched through a Playwright browser context when direct HTTP returns Store77 protection HTML;
+   - images are uploaded to S3/object storage through `upload_bytes`;
+   - product DB stores `/api/uploads/...` in `content.media_images.url` and keeps the original competitor URL in `external_url`;
+   - repeated enrichment prunes stale Store77 media that is not present in the current product gallery.
+12. Production `product_1` was cleaned from 24 mixed Store77 images to 6 real product images, all backed by S3 `/api/uploads/...` references. Browser QA verified that the media tab renders images.
 
 Verified:
 
@@ -194,7 +204,9 @@ PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "competi
 PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "store77 or competitor or restore"
 PYTHONPATH=backend python3 -m pytest backend/tests/test_operating_workflows.py -k "store77"
 PYTHONPATH=backend python3 -m pytest backend/tests/test_products_service.py backend/tests/test_operating_workflows.py -k "product_normalizer or loads_variants or store77"
+PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "store77_product_html_extracts_gallery_images or competitor_product_discovery_endpoint_returns_candidates_and_links"
 make check-backend
+cd frontend && npm run build
 ```
 
 ### P0.4 Import / Export Contract Check

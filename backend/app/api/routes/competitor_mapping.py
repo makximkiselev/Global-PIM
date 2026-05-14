@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 import hashlib
 import html as html_lib
+import mimetypes
 import os
 from pathlib import Path
 import re
@@ -18,6 +19,7 @@ import httpx
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
 from app.core.tenant_context import (
     current_tenant_organization_id,
     reset_current_tenant_organization_id,
@@ -69,6 +71,165 @@ def _cache_key() -> str:
 
 def _bootstrap_cache_entry() -> Dict[str, Any]:
     return _bootstrap_cache.setdefault(_cache_key(), {"at": 0.0, "payload": None})
+
+
+def _safe_storage_segment(value: Any, fallback: str) -> str:
+    raw = str(value or "").strip() or fallback
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw)
+    return safe.strip("_") or fallback
+
+
+def _media_extension_from_url(url: str, content_type: str = "") -> str:
+    parsed = urlparse(str(url or "").strip())
+    suffix = Path(parsed.path or "").suffix.lower().lstrip(".")
+    if suffix in {"jpg", "jpeg", "png", "webp"}:
+        return suffix
+    guessed = mimetypes.guess_extension((content_type or "").split(";", 1)[0].strip())
+    if guessed:
+        normalized = guessed.lower().lstrip(".")
+        if normalized in {"jpg", "jpeg", "png", "webp"}:
+            return normalized
+    return "jpg"
+
+
+def _is_internal_upload_url(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    path_value = parsed.path or str(url or "").strip()
+    return path_value.startswith("/api/uploads/")
+
+
+async def _import_competitor_image_to_storage(
+    *,
+    image_url: str,
+    product: Dict[str, Any],
+    source_id: str,
+    source_url: str,
+) -> Optional[Dict[str, Any]]:
+    if not s3_enabled():
+        return None
+
+    url = str(image_url or "").strip()
+    if not url:
+        return None
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+    }
+    if source_url:
+        headers["Referer"] = source_url
+
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(12.0, connect=5.0), follow_redirects=True, verify=False) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.content
+            content_type = str(response.headers.get("content-type") or mimetypes.guess_type(url)[0] or "image/jpeg").split(";", 1)[0]
+    except Exception:
+        return None
+
+    return _upload_competitor_image_bytes(
+        image_url=url,
+        data=data,
+        content_type=content_type,
+        product=product,
+        source_id=source_id,
+    )
+
+
+def _upload_competitor_image_bytes(
+    *,
+    image_url: str,
+    data: bytes,
+    content_type: str,
+    product: Dict[str, Any],
+    source_id: str,
+) -> Optional[Dict[str, Any]]:
+    if not s3_enabled() or not data or len(data) > 12 * 1024 * 1024:
+        return None
+
+    normalized_content_type = str(content_type or mimetypes.guess_type(image_url)[0] or "image/jpeg").split(";", 1)[0]
+    if not normalized_content_type.startswith("image/"):
+        return None
+
+    storage_key = _safe_storage_segment(product.get("sku_pim") or product.get("id"), "product")
+    source_key = _safe_storage_segment(source_id, "competitor")
+    digest = hashlib.sha1(str(image_url or "").encode("utf-8")).hexdigest()[:20]
+    ext = _media_extension_from_url(image_url, normalized_content_type)
+    relative_key = f"media_images/{storage_key}/competitors/{source_key}/{digest}.{ext}"
+
+    try:
+        meta = upload_bytes(relative_key, data, normalized_content_type)
+    except ObjectStorageError:
+        return None
+
+    return {
+        "url": f"/api/uploads/{relative_key}",
+        "external_url": image_url,
+        "content_type": meta.content_type,
+        "size": meta.size,
+        "storage": "s3",
+    }
+
+
+async def _fetch_store77_images_with_browser(image_urls: List[str], source_url: str) -> Dict[str, Tuple[bytes, str]]:
+    urls = [str(url or "").strip() for url in image_urls if str(url or "").strip()]
+    if not urls:
+        return {}
+
+    try:
+        from playwright.async_api import async_playwright
+    except Exception:
+        return {}
+
+    out: Dict[str, Tuple[bytes, str]] = {}
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                ],
+            )
+            context = await browser.new_context(
+                viewport={"width": 1366, "height": 900},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/123.0.0.0 Safari/537.36"
+                ),
+                locale="ru-RU",
+                timezone_id="Europe/Moscow",
+            )
+            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+            page = await context.new_page()
+            try:
+                await page.goto(source_url, wait_until="domcontentloaded", timeout=45000)
+                await page.wait_for_timeout(1200)
+            except Exception:
+                pass
+
+            for url in urls[:24]:
+                try:
+                    response = await context.request.get(url, headers={"Referer": source_url, "Accept": "image/*,*/*;q=0.8"}, timeout=15000)
+                    if response.status >= 400:
+                        continue
+                    content_type = str(response.headers.get("content-type") or mimetypes.guess_type(url)[0] or "")
+                    if not content_type.startswith("image/"):
+                        continue
+                    body = await response.body()
+                    if body:
+                        out[url] = (body, content_type)
+                except Exception:
+                    continue
+            await context.close()
+            await browser.close()
+    except Exception:
+        return out
+    return out
 
 
 ALLOWED_SITES: Dict[str, set[str]] = {
@@ -855,6 +1016,8 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
         "product_title": str(payload.get("product_title") or "").strip(),
         "product_sku": str(payload.get("product_sku") or "").strip(),
         "match_group_key": str(payload.get("match_group_key") or "").strip(),
+        "product_sim_profile": str(payload.get("product_sim_profile") or "").strip(),
+        "candidate_sim_profile": str(payload.get("candidate_sim_profile") or "").strip(),
         "last_seen_at": payload.get("last_seen_at") or row.get("updated_at"),
         "reviewed_at": payload.get("reviewed_at"),
         "rejection_reason": payload.get("rejection_reason"),
@@ -958,6 +1121,8 @@ def _persist_competitor_channel_candidate(candidate: Dict[str, Any]) -> None:
                     "product_title": candidate.get("product_title"),
                     "product_sku": candidate.get("product_sku"),
                     "match_group_key": candidate.get("match_group_key"),
+                    "product_sim_profile": candidate.get("product_sim_profile"),
+                    "candidate_sim_profile": candidate.get("candidate_sim_profile"),
                     "confidence_reasons": candidate.get("confidence_reasons") if isinstance(candidate.get("confidence_reasons"), list) else [],
                     "raw_status": status,
                     "reviewed_at": candidate.get("reviewed_at"),
@@ -1006,7 +1171,7 @@ def _persist_competitor_channel_link(link: Dict[str, Any], candidate: Optional[D
         pass
 
 
-def _merge_competitor_content_into_product(
+async def _merge_competitor_content_into_product(
     product: Dict[str, Any],
     *,
     extracted: Dict[str, Dict[str, Any]],
@@ -1034,7 +1199,55 @@ def _merge_competitor_content_into_product(
     if not existing_images:
         legacy_media = content.get("media") if isinstance(content.get("media"), list) else []
         existing_images = [item for item in legacy_media if isinstance(item, dict)]
+
+    existing_store77_urls = [
+        str(item.get("url") or "").strip()
+        for item in existing_images
+        if isinstance(item, dict)
+        and str(item.get("source") or "").strip() == "store77"
+        and str(item.get("url") or "").strip()
+        and not _is_internal_upload_url(str(item.get("url") or "").strip())
+    ]
+    existing_store77_source_url = ""
+    for item in existing_images:
+        if isinstance(item, dict) and str(item.get("source") or "").strip() == "store77":
+            existing_store77_source_url = str(item.get("source_url") or "").strip()
+            if existing_store77_source_url:
+                break
+    existing_store77_payloads = await _fetch_store77_images_with_browser(existing_store77_urls, existing_store77_source_url) if existing_store77_source_url else {}
+
+    for existing_image in existing_images:
+        if not isinstance(existing_image, dict):
+            continue
+        current_url = str(existing_image.get("url") or "").strip()
+        if not current_url or _is_internal_upload_url(current_url):
+            continue
+        source_id_existing = str(existing_image.get("source") or "competitor").strip() or "competitor"
+        source_url_existing = str(existing_image.get("source_url") or "").strip()
+        imported_existing = await _import_competitor_image_to_storage(
+            image_url=current_url,
+            product=product,
+            source_id=source_id_existing,
+            source_url=source_url_existing,
+        )
+        if not imported_existing and source_id_existing == "store77" and current_url in existing_store77_payloads:
+            body, content_type = existing_store77_payloads[current_url]
+            imported_existing = _upload_competitor_image_bytes(
+                image_url=current_url,
+                data=body,
+                content_type=content_type,
+                product=product,
+                source_id=source_id_existing,
+            )
+        if imported_existing:
+            existing_image.update(imported_existing)
+
     image_urls = {str(item.get("url") or "").strip() for item in existing_images if isinstance(item, dict) and str(item.get("url") or "").strip()}
+    image_external_urls = {
+        str(item.get("external_url") or item.get("source_image_url") or "").strip()
+        for item in existing_images
+        if isinstance(item, dict) and str(item.get("external_url") or item.get("source_image_url") or "").strip()
+    }
 
     for source_id, result in extracted.items():
         if not isinstance(result, dict) or not result.get("ok"):
@@ -1081,6 +1294,38 @@ def _merge_competitor_content_into_product(
                 content["description"] = description
 
         images = result.get("images") if isinstance(result.get("images"), list) else []
+        source_url = str((links.get(source_id) or {}).get("url") or "").strip()
+        current_source_image_urls = {
+            str((image.get("url") if isinstance(image, dict) else image) or "").strip()
+            for image in images
+            if str((image.get("url") if isinstance(image, dict) else image) or "").strip()
+        }
+        if current_source_image_urls:
+            existing_images = [
+                item
+                for item in existing_images
+                if not (
+                    isinstance(item, dict)
+                    and str(item.get("source") or "").strip() == source_id
+                    and str(item.get("url") or item.get("external_url") or "").strip()
+                    and str(item.get("external_url") or item.get("url") or "").strip() not in current_source_image_urls
+                )
+            ]
+            image_urls = {str(item.get("url") or "").strip() for item in existing_images if isinstance(item, dict) and str(item.get("url") or "").strip()}
+            image_external_urls = {
+                str(item.get("external_url") or item.get("source_image_url") or "").strip()
+                for item in existing_images
+                if isinstance(item, dict) and str(item.get("external_url") or item.get("source_image_url") or "").strip()
+            }
+        browser_image_payloads: Dict[str, Tuple[bytes, str]] = {}
+        if source_id == "store77" and source_url and s3_enabled():
+            pending_urls: List[str] = []
+            for image in images:
+                pending_url = str((image.get("url") if isinstance(image, dict) else image) or "").strip()
+                if pending_url:
+                    pending_urls.append(pending_url)
+            browser_image_payloads = await _fetch_store77_images_with_browser(pending_urls, source_url)
+
         appended_images = 0
         for image in images:
             if isinstance(image, dict):
@@ -1089,13 +1334,34 @@ def _merge_competitor_content_into_product(
             else:
                 image_url = str(image or "").strip()
                 next_image = {"url": image_url}
-            if not image_url or image_url in image_urls:
+            if not image_url or image_url in image_urls or image_url in image_external_urls:
                 continue
-            next_image["url"] = image_url
+            imported_image = await _import_competitor_image_to_storage(
+                image_url=image_url,
+                product=product,
+                source_id=source_id,
+                source_url=source_url,
+            )
+            if not imported_image and image_url in browser_image_payloads:
+                body, content_type = browser_image_payloads[image_url]
+                imported_image = _upload_competitor_image_bytes(
+                    image_url=image_url,
+                    data=body,
+                    content_type=content_type,
+                    product=product,
+                    source_id=source_id,
+                )
+            if imported_image:
+                next_image.update(imported_image)
+            else:
+                # Broken external hotlinks must not be treated as ready media.
+                continue
             next_image.setdefault("source", source_id)
-            next_image.setdefault("source_url", str((links.get(source_id) or {}).get("url") or "").strip())
+            next_image.setdefault("source_url", source_url)
             existing_images.append(next_image)
             image_urls.add(image_url)
+            image_urls.add(str(next_image.get("url") or "").strip())
+            image_external_urls.add(image_url)
             appended_images += 1
         if appended_images:
             media_sources = source_values.get("media_images") if isinstance(source_values.get("media_images"), dict) else {}
@@ -2927,7 +3193,7 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
             "errors": errors,
         }
 
-    merged = _merge_competitor_content_into_product(product, extracted=successful, links=link_by_source)
+    merged = await _merge_competitor_content_into_product(product, extracted=successful, links=link_by_source)
     saved = upsert_product_item(merged["product"])
     for source_id in successful.keys():
         link_key = f"{normalized_product_id}:{source_id}"
