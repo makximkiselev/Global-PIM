@@ -50,6 +50,27 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _public_base_url() -> str:
+    value = (
+        os.getenv("APP_PUBLIC_BASE_URL", "").strip()
+        or _env_file_value("APP_PUBLIC_BASE_URL")
+        or "https://pim.id-smart.ru"
+    )
+    return value.rstrip("/")
+
+
+def _export_media_url(url: Any) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"}:
+        return value
+    if value.startswith("/api/uploads/"):
+        return f"{_public_base_url()}{value}"
+    return value
+
+
 def _env_token() -> str:
     return (
         os.getenv("YANDEX_MARKET_API_TOKEN", "").strip()
@@ -1941,8 +1962,8 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
         media = media_images if media_images else media_legacy
         docs = content.get("documents") if isinstance(content.get("documents"), list) else []
-        pictures = [str(x.get("url") or "").strip() for x in media if isinstance(x, dict) and str(x.get("url") or "").strip()]
-        manuals = [str(x.get("url") or "").strip() for x in docs if isinstance(x, dict) and str(x.get("url") or "").strip()]
+        pictures = [_export_media_url(x.get("url")) for x in media if isinstance(x, dict) and _export_media_url(x.get("url"))]
+        manuals = [_export_media_url(x.get("url")) for x in docs if isinstance(x, dict) and _export_media_url(x.get("url"))]
         media_enabled = _is_system_content_export_enabled(media_row, "yandex_market")
         description_enabled = _is_system_content_export_enabled(description_row, "yandex_market")
         parameter_values: List[Dict[str, Any]] = []

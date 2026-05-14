@@ -250,7 +250,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         }
         saved_products: list[dict[str, object]] = []
 
-        async def fake_extract(url):
+        async def fake_extract(url, **_kwargs):
             self.assertEqual(url, "https://store77.net/meta-quest-3-128")
             return {
                 "description": "Partner description",
@@ -264,7 +264,15 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(catalog_exchange, "_load_nodes", return_value=[]),
             patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-vr"),
             patch.object(catalog_exchange, "load_competitor_mapping_db", return_value=deepcopy(competitor_db)),
-            patch.object(catalog_exchange, "extract_competitor_content", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_extract_competitor_content_with_retry", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_import_competitor_image_to_storage", return_value={
+                "url": "/api/uploads/media_images/product_1/competitors/store77/meta-quest-3-128.jpg",
+                "external_url": "https://store77.net/images/meta-quest-3-128.jpg",
+                "content_type": "image/jpeg",
+                "size": 123,
+                "storage": "s3",
+            }),
+            patch.object(catalog_exchange, "_fetch_store77_images_with_browser", return_value={}),
             patch.object(catalog_exchange, "_save_products", side_effect=lambda items: saved_products.extend(deepcopy(items))),
             patch.object(catalog_exchange, "_load_runs", return_value={"runs": {}}),
             patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, _doc: None),
@@ -275,7 +283,45 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["ok"], True)
         self.assertEqual(response["import_overview"]["images_ready"], 1)
         self.assertEqual(response["import_overview"]["with_competitor_media"], 1)
-        self.assertEqual(saved_products[0]["content"]["media_images"][0]["url"], "https://store77.net/images/meta-quest-3-128.jpg")
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["url"], "/api/uploads/media_images/product_1/competitors/store77/meta-quest-3-128.jpg")
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["external_url"], "https://store77.net/images/meta-quest-3-128.jpg")
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["source"], "store77")
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["storage"], "s3")
+
+    def test_content_source_summary_detects_competitor_media_after_storage_import(self) -> None:
+        product = {
+            "id": "product_1",
+            "content": {
+                "media_images": [
+                    {
+                        "url": "/api/uploads/media_images/product_1/competitors/store77/image.jpg",
+                        "external_url": "https://store77.net/images/image.jpg",
+                        "source": "store77",
+                        "storage": "s3",
+                    }
+                ],
+                "source_values": {"media_images": {"store77": {"count": 1}}},
+            },
+        }
+
+        summary = catalog_exchange._content_source_summary(product)
+
+        self.assertEqual(summary["media"]["images_count"], 1)
+        self.assertTrue(summary["media"]["from_competitors"])
+
+    def test_export_media_url_expands_local_uploads_to_public_urls(self) -> None:
+        with (
+            patch.dict(os.environ, {"APP_PUBLIC_BASE_URL": "https://pim.id-smart.ru"}),
+            patch.object(yandex_market, "_env_file_value", return_value=""),
+        ):
+            self.assertEqual(
+                yandex_market._export_media_url("/api/uploads/media_images/product_1/image.jpg"),
+                "https://pim.id-smart.ru/api/uploads/media_images/product_1/image.jpg",
+            )
+            self.assertEqual(
+                yandex_market._export_media_url("https://cdn.example.test/image.jpg"),
+                "https://cdn.example.test/image.jpg",
+            )
 
     def test_store77_discovery_scans_real_category_before_seed_fallback(self) -> None:
         product = {

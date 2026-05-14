@@ -25,9 +25,17 @@ from app.api.routes.yandex_market import (
     _load_category_mapping,
     _parent_map,
     _preferred_offer_id,
+    _export_media_url,
 )
-from app.api.routes.competitor_mapping import _confirmed_links_for_product, _ensure_row_shape, _normalize_mapped_specs
-from app.core.competitors.extract_competitor_fields import extract_competitor_content
+from app.api.routes.competitor_mapping import (
+    _confirmed_links_for_product,
+    _ensure_row_shape,
+    _fetch_store77_images_with_browser,
+    _import_competitor_image_to_storage,
+    _normalize_mapped_specs,
+    _upload_competitor_image_bytes,
+    _extract_competitor_content_with_retry,
+)
 
 router = APIRouter(prefix="/catalog/exchange", tags=["catalog-exchange"])
 
@@ -282,6 +290,16 @@ def _content_source_summary(product: Dict[str, Any]) -> Dict[str, Any]:
     videos = content.get("media_videos") if isinstance(content.get("media_videos"), list) else []
     image_urls = [str(x.get("url") or "").strip() for x in images if isinstance(x, dict) and str(x.get("url") or "").strip()]
     video_urls = [str(x.get("url") or "").strip() for x in videos if isinstance(x, dict) and str(x.get("url") or "").strip()]
+    media_sources = {
+        str(x.get("source") or "").strip()
+        for x in [*images, *videos]
+        if isinstance(x, dict) and str(x.get("source") or "").strip()
+    }
+    media_external_urls = [
+        str(x.get("external_url") or x.get("source_url") or "").strip()
+        for x in [*images, *videos]
+        if isinstance(x, dict) and str(x.get("external_url") or x.get("source_url") or "").strip()
+    ]
 
     def _contains_competitor(urls: List[str]) -> bool:
         return any(_detect_site_from_url(u) in {"restore", "store77"} for u in urls)
@@ -300,7 +318,16 @@ def _content_source_summary(product: Dict[str, Any]) -> Dict[str, Any]:
             "images_count": len(image_urls),
             "videos_count": len(video_urls),
             "from_yandex": bool(media_image_sources.get("yandex_market") or media_video_sources.get("yandex_market") or _contains_yandex(image_urls) or _contains_yandex(video_urls)),
-            "from_competitors": _contains_competitor(image_urls) or _contains_competitor(video_urls),
+            "from_competitors": bool(
+                media_image_sources.get("restore")
+                or media_image_sources.get("store77")
+                or media_video_sources.get("restore")
+                or media_video_sources.get("store77")
+                or media_sources.intersection({"restore", "store77"})
+                or _contains_competitor(image_urls)
+                or _contains_competitor(video_urls)
+                or _contains_competitor(media_external_urls)
+            ),
         },
         "missing_blocks": [
             *([] if str(content.get("description") or "").strip() else ["description"]),
@@ -337,7 +364,7 @@ def _merge_conflict_payload(existing: Any, provider: str, candidates: List[Dict[
     }
 
 
-def _apply_competitor_result_to_product(
+async def _apply_competitor_result_to_product(
     product: Dict[str, Any],
     template_id: str,
     site: str,
@@ -456,13 +483,34 @@ def _apply_competitor_result_to_product(
     if images:
         current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
         existing_urls = {str(x.get("url") or "").strip() for x in current_images if isinstance(x, dict)}
+        existing_external_urls = {str(x.get("external_url") or "").strip() for x in current_images if isinstance(x, dict) and str(x.get("external_url") or "").strip()}
+        browser_image_payloads = await _fetch_store77_images_with_browser([str(x or "").strip() for x in images], url) if site == "store77" else {}
         appended = False
         for img in images:
             url_s = str(img or "").strip()
-            if not url_s or url_s in existing_urls:
+            if not url_s or url_s in existing_urls or url_s in existing_external_urls:
                 continue
-            current_images.append({"url": url_s})
-            existing_urls.add(url_s)
+            imported = await _import_competitor_image_to_storage(
+                image_url=url_s,
+                product=product,
+                source_id=site,
+                source_url=url,
+            )
+            if not imported and site == "store77" and url_s in browser_image_payloads:
+                body, content_type = browser_image_payloads[url_s]
+                imported = _upload_competitor_image_bytes(
+                    image_url=url_s,
+                    data=body,
+                    content_type=content_type,
+                    product=product,
+                    source_id=site,
+                )
+            if not imported:
+                continue
+            next_image = {**imported, "source": site, "source_url": url}
+            current_images.append(next_image)
+            existing_urls.add(str(next_image.get("url") or "").strip())
+            existing_external_urls.add(url_s)
             appended = True
         if appended:
             content["media_images"] = current_images
@@ -586,7 +634,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
         media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
         media = media_images if media_images else media_legacy
-        pictures = [str(x.get("url") or "").strip() for x in media if isinstance(x, dict) and str(x.get("url") or "").strip()]
+        pictures = [_export_media_url(x.get("url")) for x in media if isinstance(x, dict) and _export_media_url(x.get("url"))]
 
         type_row = _provider_row(rows, "ozon", "8229")
         brand_row = _provider_row(rows, "ozon", "85")
@@ -858,7 +906,7 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
                 if not url:
                     continue
                 try:
-                    raw_result = await extract_competitor_content(url)
+                    raw_result = await _extract_competitor_content_with_retry(url, attempts=3 if site == "store77" else 2)
                 except Exception as e:
                     competitor_results[site] = {"ok": False, "error": str(e) or "EXTRACT_FAILED", "url": url}
                     continue
@@ -881,7 +929,7 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
                     "mapped_specs": normalized,
                 }
                 competitor_results[site] = comp_payload
-                changed, field_conflicts, _ = _apply_competitor_result_to_product(product, template_id, site, url, comp_payload)
+                changed, field_conflicts, _ = await _apply_competitor_result_to_product(product, template_id, site, url, comp_payload)
                 if changed:
                     total_changed_ids.add(product_id)
                 for c in field_conflicts:

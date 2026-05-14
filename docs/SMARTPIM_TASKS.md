@@ -244,6 +244,11 @@ Progress:
    - `POST /competitor-mapping/discovery/products/{product_id}/enrich` now writes extracted partner images into `content.media_images` and extracted description into `content.description` when missing;
    - `POST /catalog/exchange/import/run` now uses confirmed relational partner links from `pim_channel_links`, not only legacy/manual `content.links`;
    - regression tests cover confirmed partner link enrichment and import-before-export media readiness.
+8. Import/export media contract fixed:
+   - bulk import enrichment uploads competitor images to S3/object storage and skips broken external hotlinks;
+   - product media keeps `/api/uploads/...` as the canonical internal reference and the original competitor URL in `external_url`;
+   - import overview detects competitor media by source metadata, `source`, and `external_url`, not only by URL hostname;
+   - Я.Маркет and Ozon export previews expand `/api/uploads/...` into public `APP_PUBLIC_BASE_URL` URLs before building marketplace payloads.
 
 ### P1 DB Consolidation
 
