@@ -232,6 +232,22 @@ async def _fetch_store77_images_with_browser(image_urls: List[str], source_url: 
     return out
 
 
+async def _extract_competitor_content_with_retry(url: str, *, attempts: int = 2) -> Dict[str, Any]:
+    last_error: Optional[BaseException] = None
+    normalized_attempts = max(1, int(attempts or 1))
+    for attempt in range(normalized_attempts):
+        try:
+            result = await extract_competitor_content(url)
+            if isinstance(result, dict):
+                result["attempts"] = attempt + 1
+            return result
+        except Exception as exc:
+            last_error = exc
+            if attempt + 1 < normalized_attempts:
+                await asyncio.sleep(1.5 * (attempt + 1))
+    raise last_error or RuntimeError("EXTRACT_FAILED")
+
+
 ALLOWED_SITES: Dict[str, set[str]] = {
     "restore": {"re-store.ru"},
     "store77": {"store77.net"},
@@ -3157,7 +3173,7 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
         source_id = str(link.get("source_id") or "").strip()
         url = str(link.get("url") or "").strip()
         try:
-            result = await extract_competitor_content(url)
+            result = await _extract_competitor_content_with_retry(url, attempts=3 if source_id == "store77" else 2)
             specs = result.get("specs") if isinstance(result.get("specs"), dict) else {}
             return source_id, {
                 "ok": True,
@@ -3166,6 +3182,7 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
                 "images": result.get("images") if isinstance(result.get("images"), list) else [],
                 "specs": specs,
                 "description": str(result.get("description") or "").strip(),
+                "attempts": int(result.get("attempts") or 1),
             }
         except Exception as exc:
             return source_id, {
@@ -3173,13 +3190,19 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
                 "site": source_id,
                 "url": url,
                 "error": str(exc) or "EXTRACT_FAILED",
+                "retryable": str(exc or "").upper() in {"TIMEOUT", "FETCH_ERROR", "EXTRACT_FAILED"},
             }
 
     extracted_pairs = await asyncio.gather(*[_one(link) for link in confirmed_links])
     extracted = {source_id: result for source_id, result in extracted_pairs if source_id}
     successful = {source_id: result for source_id, result in extracted.items() if result.get("ok")}
     errors = [
-        {"source_id": source_id, "url": result.get("url"), "error": result.get("error") or "EXTRACT_FAILED"}
+        {
+            "source_id": source_id,
+            "url": result.get("url"),
+            "error": result.get("error") or "EXTRACT_FAILED",
+            "retryable": bool(result.get("retryable", False)),
+        }
         for source_id, result in extracted.items()
         if not result.get("ok")
     ]

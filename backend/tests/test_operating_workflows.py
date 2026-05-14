@@ -190,6 +190,13 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(competitor_mapping, "upsert_product_item", side_effect=lambda p: deepcopy(p)),
             patch.object(competitor_mapping, "upsert_pim_channel_link", side_effect=lambda row: saved_channel_links.append(deepcopy(row)) or row),
             patch.object(competitor_mapping, "extract_competitor_content", side_effect=fake_extract),
+            patch.object(competitor_mapping, "_import_competitor_image_to_storage", return_value={
+                "url": "/api/uploads/media_images/product_1/competitors/store77/meta-quest-3-128.jpg",
+                "external_url": "https://store77.net/images/meta-quest-3-128.jpg",
+                "content_type": "image/jpeg",
+                "size": 123,
+                "storage": "s3",
+            }),
             patch.object(competitor_mapping, "now_iso", return_value="2026-04-27T12:00:00+00:00"),
         ):
             response = asyncio.run(competitor_mapping.enrich_product_from_confirmed_competitors("product_1"))
@@ -199,7 +206,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn("product", response)
         content = response["product"]["content"]
         self.assertEqual(content["description"], "VR headset with 128GB storage")
-        self.assertEqual(content["media_images"][0]["url"], "https://store77.net/images/meta-quest-3-128.jpg")
+        self.assertEqual(content["media_images"][0]["url"], "/api/uploads/media_images/product_1/competitors/store77/meta-quest-3-128.jpg")
+        self.assertEqual(content["media_images"][0]["external_url"], "https://store77.net/images/meta-quest-3-128.jpg")
+        self.assertEqual(content["media_images"][0]["storage"], "s3")
         self.assertEqual(content["source_values"]["media_images"]["store77"]["count"], 1)
         self.assertTrue(
             any((row.get("payload") or {}).get("last_enriched_at") == "2026-04-27T12:00:00+00:00" for row in saved_channel_links)

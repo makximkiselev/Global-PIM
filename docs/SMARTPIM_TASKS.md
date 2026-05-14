@@ -196,6 +196,11 @@ Progress:
    - product DB stores `/api/uploads/...` in `content.media_images.url` and keeps the original competitor URL in `external_url`;
    - repeated enrichment prunes stale Store77 media that is not present in the current product gallery.
 12. Production `product_1` was cleaned from 24 mixed Store77 images to 6 real product images, all backed by S3 `/api/uploads/...` references. Browser QA verified that the media tab renders images.
+13. Product enrichment now retries competitor product-card extraction:
+   - Store77 gets 3 attempts because the site can intermittently timeout from the production server;
+   - other competitor sources get 2 attempts;
+   - failed extraction returns `retryable=true` for transient errors and does not overwrite product content with empty data.
+14. Product competitor UI now shows readable enrichment failures such as `store77 — источник долго отвечает, можно повторить` instead of generic `Ошибок: N`.
 
 Verified:
 
@@ -205,6 +210,7 @@ PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "store77
 PYTHONPATH=backend python3 -m pytest backend/tests/test_operating_workflows.py -k "store77"
 PYTHONPATH=backend python3 -m pytest backend/tests/test_products_service.py backend/tests/test_operating_workflows.py -k "product_normalizer or loads_variants or store77"
 PYTHONPATH=backend python3 -m pytest backend/tests/test_auth_flow.py -k "store77_product_html_extracts_gallery_images or competitor_product_discovery_endpoint_returns_candidates_and_links"
+PYTHONPATH=backend python3 -m pytest backend/tests/test_operating_workflows.py -k "existing_catalog_enrichment_uses_confirmed_competitor_links or catalog_import_uses_confirmed_partner_links_before_export"
 make check-backend
 cd frontend && npm run build
 ```

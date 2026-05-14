@@ -71,7 +71,7 @@ type EnrichResp = {
   enriched_sources?: string[];
   matched_count?: number;
   unmatched_count?: number;
-  errors?: Array<{ source_id?: string; error?: string }>;
+  errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
 };
 
 function scoreLabel(candidate: CompetitorCandidate): string {
@@ -100,6 +100,21 @@ function simProfileLabel(value?: string): string {
   if (value === "dual_sim") return "Dual SIM";
   if (value === "physical_sim") return "SIM";
   return "SIM не распознан";
+}
+
+function sourceLabel(value?: string): string {
+  if (value === "restore") return "re-store";
+  if (value === "store77") return "store77";
+  return value || "источник";
+}
+
+function enrichErrorLabel(error?: string): string {
+  const value = String(error || "").toUpperCase();
+  if (value.includes("TIMEOUT")) return "источник долго отвечает";
+  if (value.includes("FETCH")) return "не удалось открыть карточку";
+  if (value.includes("NO_FIELDS")) return "в карточке не найдены параметры";
+  if (value.includes("UNSUPPORTED")) return "сайт не поддерживается";
+  return "не удалось загрузить данные";
 }
 
 export default function ProductCompetitorPanel({
@@ -222,9 +237,12 @@ export default function ProductCompetitorPanel({
         method: "POST",
       });
       const sources = response.enriched_sources?.length ? response.enriched_sources.join(", ") : "нет";
-      const errorsCount = response.errors?.length || 0;
+      const errors = response.errors || [];
+      const errorsText = errors.length
+        ? ` Не загрузились: ${errors.map((item) => `${sourceLabel(item.source_id)} — ${enrichErrorLabel(item.error)}${item.retryable ? ", можно повторить" : ""}`).join("; ")}.`
+        : "";
       setEnrichNotice(
-        `Источники: ${sources}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsCount ? ` Ошибок: ${errorsCount}.` : ""}`,
+        `Источники: ${sources}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsText}`,
       );
       await load();
       await onEnriched?.();
