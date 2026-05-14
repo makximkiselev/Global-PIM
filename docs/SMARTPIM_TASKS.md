@@ -121,7 +121,10 @@ Audit findings to verify/fix:
 2. `/templates/bb40de87-254b-4170-84d7-8e5d3925b251`
    - opens authenticated;
    - model has `84` fields and source summary `Я.Маркет 69`;
-   - field list is very long and needs visual confirmation for readability, labels, action density, and duplicate controls.
+   - field list is very long and needs continued visual confirmation for readability, labels, action density, and duplicate controls.
+   - Browser audit on 2026-05-14 found duplicated context across `PageHeader`, command card, `Поля модели`, and `Источник структуры`; first useful field rows started too low.
+   - Fixed on 2026-05-14: removed duplicate `PageHeader`, compressed the model command block, moved source status into an inline strip, and aligned field tabs/actions in one toolbar.
+   - Remaining issue: field rows are usable but still visually dense; next pass should focus on row editing ergonomics, not another top summary.
 3. `/sources?tab=sources&category=bb40de87-254b-4170-84d7-8e5d3925b251`
    - Browser-verified on 2026-05-12 after compact layout pass;
    - no accidental horizontal overflow;

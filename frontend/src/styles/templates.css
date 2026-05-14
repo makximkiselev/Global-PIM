@@ -31,7 +31,7 @@
 .tplEditorSidebarStack,
 .templates-previewActions {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .tplSidebarCard,
@@ -498,7 +498,8 @@
 
 .tplModelCommandCard {
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  padding: 16px 18px 14px;
   overflow: hidden;
   background:
     radial-gradient(circle at top right, rgba(var(--brand-rgb), 0.12), transparent 34%),
@@ -508,8 +509,8 @@
 .tplModelCommandTop {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: start;
+  gap: 16px;
+  align-items: center;
 }
 
 .templatesEditorFrameFocused .tplModelCommandTop {
@@ -517,19 +518,19 @@
 }
 
 .tplModelCommandTop h2 {
-  margin: 6px 0 0;
-  font-size: clamp(24px, 2vw, 34px);
-  line-height: 1;
+  margin: 2px 0 0;
+  font-size: clamp(22px, 1.55vw, 28px);
+  line-height: 1.02;
   letter-spacing: -0.04em;
   font-weight: 950;
 }
 
 .tplModelCommandTop p {
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   max-width: 84ch;
   color: var(--text-soft);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.35;
   font-weight: 720;
 }
 
@@ -546,15 +547,15 @@
 
 .tplModelStatusBar {
   display: grid;
-  grid-template-columns: .72fr .72fr minmax(260px, 1fr);
+  grid-template-columns: 120px 120px minmax(240px, 1fr);
   gap: 8px;
 }
 
 .tplModelStatusItem {
-  min-height: 58px;
-  padding: 10px 12px;
+  min-height: 48px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 14px;
   background: linear-gradient(180deg, rgba(var(--surface-rgb), 0.72), rgba(var(--card-rgb), 0.58));
   display: grid;
   align-content: start;
@@ -564,7 +565,7 @@
 
 .tplModelStatusItem span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 950;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -633,6 +634,27 @@
   font-weight: 950;
 }
 
+.tplAttrToolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: start;
+}
+
+.tplAttrToolbar .dataToolbarActions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.tplAttrToolbar .page-tabs {
+  flex-wrap: nowrap;
+}
+
+.tplAttrToolbar .dataToolbarActions > .btn {
+  min-width: 128px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .tplModelMore summary::-webkit-details-marker,
 .tplDraftHelp summary::-webkit-details-marker {
   display: none;
@@ -665,11 +687,64 @@
   background: rgba(var(--surface-rgb), 0.58);
 }
 
+.tplEditorSourceStrip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(var(--surface-rgb), 0.74), rgba(var(--card-rgb), 0.58));
+}
+
+.tplEditorSourceTitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tplEditorSourceTitle > div {
+  min-width: 0;
+}
+
+.tplEditorSourceTitle span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tplEditorSourceTitle p {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tplUsageStatsCompact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tplUsageStatsCompact .tplUsageStat {
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
 .tplAttrBoard {
   display: grid;
   gap: 10px;
   overflow: auto;
-  max-height: calc(100vh - 420px);
+  max-height: calc(100vh - 300px);
   padding-right: 4px;
   overscroll-behavior: contain;
 }
@@ -1100,7 +1175,8 @@
 
   .tplModelCommandTop,
   .tplModelMorePanel,
-  .tplDraftHeader {
+  .tplDraftHeader,
+  .tplEditorSourceStrip {
     grid-template-columns: 1fr;
   }
 

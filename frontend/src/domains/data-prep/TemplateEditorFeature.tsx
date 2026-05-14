@@ -12,7 +12,6 @@ import EmptyState from "../../components/ui/EmptyState";
 import Field from "../../components/ui/Field";
 import IconButton from "../../components/ui/IconButton";
 import Modal from "../../components/ui/Modal";
-import PageHeader from "../../components/ui/PageHeader";
 import PageTabs from "../../components/ui/PageTabs";
 import TextInput from "../../components/ui/TextInput";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
@@ -985,11 +984,6 @@ export default function TemplateEditor() {
     <div className="templates-page page-shell">
       {toast ? <div className="tpl-toast">{toast}</div> : null}
 
-      <PageHeader
-        title="Инфо-модель"
-        subtitle={category?.name ? `${category.name}: поля, источники и подготовка к маппингу.` : "Поля, источники и подготовка к маппингу."}
-      />
-
       {hasAnyTpl && inheritedFrom && !ownerTpl?.id ? (
         <Alert>
           Эта категория наследует модель из <b>{inheritedFrom.name}</b>. Чтобы начать отдельную настройку, создай свою модель и продолжай работу уже на ней.
@@ -1033,11 +1027,9 @@ export default function TemplateEditor() {
                 <Card className="tplCanvasCard tplModelCommandCard">
                   <div className="tplModelCommandTop">
                     <div>
-                      <div className="tplSectionEyebrow">Сборка инфо-модели</div>
+                      <div className="tplSectionEyebrow">Инфо-модель</div>
                       <h2>{category?.name || tplName || tpl.name}</h2>
-                      <p>
-                        Соберите поля из площадок и товаров, объедините одинаковые параметры, утвердите модель и используйте ее в карточках SKU.
-                      </p>
+                      <p>Поля, источники и подготовка к маппингу для карточек SKU.</p>
                     </div>
                     <div className="tplModelCommandActions">
                       <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : "neutral"}>
@@ -1067,7 +1059,7 @@ export default function TemplateEditor() {
 
                   <div className="tplModelStatusBar">
                     <div className="tplModelStatusItem">
-                      <span>Найдено полей</span>
+                      <span>Поля</span>
                       <strong>{infoModel.status === "approved" ? attrs.length : draftCandidates.length || attrs.length}</strong>
                     </div>
                     <div className="tplModelStatusItem">
@@ -1081,7 +1073,7 @@ export default function TemplateEditor() {
                   </div>
 
                   <details className="tplModelMore">
-                    <summary>Дополнительные действия</summary>
+                    <summary>Еще</summary>
                     <div className="tplModelMorePanel">
                       <Field label="Название модели" className="templateEditorField tplEditorNameField">
                         <TextInput
@@ -1196,8 +1188,10 @@ export default function TemplateEditor() {
 
                 <Card className="tplCanvasCard tplEditorMainCard">
                   <DataToolbar
+                    className="tplAttrToolbar"
+                    compact
                     title="Поля модели"
-                    subtitle={`${REQUIRED_HELP_TEXT}${!canEdit ? " Сейчас открыт наследуемый контур — редактирование отключено." : ""}`}
+                    subtitle={!canEdit ? "Открыт наследуемый контур — редактирование отключено." : "Редактируйте состав и обязательность полей."}
                     actions={
                       <>
                         <PageTabs
@@ -1205,26 +1199,23 @@ export default function TemplateEditor() {
                           activeKey={attrTab}
                           onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
                         />
-                        <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : canEdit ? "active" : "pending"}>
-                          {modelStatusLabel(infoModel.status)}
-                        </Badge>
                         <Button onClick={addAttr} disabled={!canEdit || attrTab === "base"}>
-                          Добавить поле вручную
+                          Добавить поле
                         </Button>
                       </>
                     }
                   />
 
                   {yandexSource?.enabled ? (
-                    <Card className="tplSectionCard tplEditorSourceCard">
-                      <div className="tplSectionHead">
+                    <div className="tplEditorSourceStrip">
+                      <div className="tplEditorSourceTitle">
                         <div>
-                          <h3>Источник структуры</h3>
+                          <span>Источник структуры</span>
                           <p>{yandexSource.category_name || "Категория канала еще не привязана."}</p>
                         </div>
                         <Badge tone="pending">Я.Маркет</Badge>
                       </div>
-                      <div className="tplUsageStatsRow">
+                      <div className="tplUsageStatsRow tplUsageStatsCompact">
                         <div className="tplUsageStat">
                           <span>Параметров площадки</span>
                           <strong>{Number(yandexSource.params_count || 0)}</strong>
@@ -1238,7 +1229,7 @@ export default function TemplateEditor() {
                           <strong>{Number(yandexSource.mapped_rows || 0)}</strong>
                         </div>
                       </div>
-                    </Card>
+                    </div>
                   ) : null}
 
                   {visibleAttrRows.length === 0 ? (
