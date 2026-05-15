@@ -48,6 +48,13 @@ type MetricItem = {
   accent?: boolean;
 };
 
+const EXPORT_PROVIDER_CODE = "yandex_market";
+const EXPORT_STORE_TITLE = "GT USD";
+
+function isAllowedExportStore(store: Store): boolean {
+  return String(store.title || "").trim().toLowerCase() === EXPORT_STORE_TITLE.toLowerCase();
+}
+
 function SummaryMetricRow({ items }: { items: MetricItem[] }) {
   return (
     <section className="cx-summaryStrip card">
@@ -124,7 +131,19 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       ]);
       setNodes(n.nodes || []);
       setProductCountsByCategory(counts.counts || {});
-      setProviders((c.providers || []).filter((x) => ["yandex_market", "ozon"].includes(x.code)));
+      const exportProviders = (c.providers || [])
+        .filter((x) => ["yandex_market", "ozon"].includes(x.code))
+        .map((provider) => ({
+          ...provider,
+          import_stores: provider.code === EXPORT_PROVIDER_CODE
+            ? (provider.import_stores || []).filter(isAllowedExportStore)
+            : (provider.import_stores || []),
+        }))
+        .filter((provider) => provider.code !== EXPORT_PROVIDER_CODE || (provider.import_stores || []).length > 0);
+      setProviders(exportProviders);
+      const gtUsd = exportProviders.find((provider) => provider.code === EXPORT_PROVIDER_CODE)?.import_stores?.[0]?.id;
+      setSelectedProviders({ [EXPORT_PROVIDER_CODE]: Boolean(gtUsd) });
+      setSelectedStores(gtUsd ? { [EXPORT_PROVIDER_CODE]: [gtUsd] } : {});
     };
     void load();
   }, []);
@@ -139,7 +158,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const activeTargets = useMemo(() => {
     return Object.entries(selectedProviders)
       .filter(([, on]) => !!on)
-      .map(([provider]) => ({ provider, store_ids: selectedStores[provider] || [] }));
+      .map(([provider]) => ({ provider, store_ids: selectedStores[provider] || [] }))
+      .filter((target) => target.store_ids.length > 0);
   }, [selectedProviders, selectedStores]);
 
   const selectedScope = useMemo(() => {
@@ -151,7 +171,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   }, [nodeById, selectedNodeIds, selectedProductIds]);
 
   const selectedTargetsCount = useMemo(
-    () => activeTargets.reduce((sum, item) => sum + Math.max(item.store_ids.length, 1), 0),
+    () => activeTargets.reduce((sum, item) => sum + item.store_ids.length, 0),
     [activeTargets],
   );
   const totalBlocked = useMemo(
@@ -352,7 +372,22 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               ]}
             />
 
-            {run ? (
+            {loading && !run ? (
+              <section className="card cx-exportPreparing">
+                <div className="cx-exportPreparingPulse" aria-hidden="true" />
+                <div>
+                  <div className="cx-paneTitle">Готовлю выгрузку</div>
+                  <div className="cx-paneSub">
+                    Проверяю первые 50 SKU в выбранной области: медиа, описание, категории, параметры и значения для выбранных площадок.
+                  </div>
+                </div>
+                <div className="cx-exportPreparingMeta">
+                  <span>Область: <b>{selectedScope}</b></span>
+                  <span>Каналов: <b>{activeTargets.length}</b></span>
+                  <span>Целей: <b>{selectedTargetsCount}</b></span>
+                </div>
+              </section>
+            ) : run ? (
               <>
                 <SummaryMetricRow
                   items={[

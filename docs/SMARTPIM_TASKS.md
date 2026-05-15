@@ -272,6 +272,15 @@ Progress:
    - product media keeps `/api/uploads/...` as the canonical internal reference and the original competitor URL in `external_url`;
    - import overview detects competitor media by source metadata, `source`, and `external_url`, not only by URL hostname;
    - Я.Маркет and Ozon export previews expand `/api/uploads/...` into public `APP_PUBLIC_BASE_URL` URLs before building marketplace payloads.
+9. 2026-05-15 export audit for `Смартфоны`:
+   - `/catalog/export?category=bb40de87-254b-4170-84d7-8e5d3925b251` redirects to `/catalog/exchange?...&tab=export` and opens without console errors or horizontal overflow;
+   - export run API for first 50 SKU returns in about 12 seconds with blocking reasons, for example `Нет изображений (pictures)`;
+   - UI previously only changed button text to `Готовлю...` during the synchronous wait, so the user did not understand whether the screen was working;
+   - export UI now shows an explicit preparation state with selected scope, channel count, target count, and a short explanation of what is being checked.
+10. Export safety rule:
+    - Я.Маркет export work must run only against store `GT USD`;
+    - do not touch `GT RUB` or `ID Store RUB AE` from the UI flow;
+    - Ozon can be used for testing.
 
 ### P1 DB Consolidation
 

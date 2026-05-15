@@ -91,6 +91,54 @@
   color:var(--muted);
 }
 
+.cx-exportPreparing{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  gap:16px;
+  align-items:center;
+  padding:18px 20px;
+  border-color:rgba(var(--brand-rgb),.22);
+  background:
+    radial-gradient(circle at 28px 28px, rgba(var(--brand-rgb),.16), transparent 120px),
+    linear-gradient(180deg, rgba(var(--card-rgb),.96), rgba(var(--card-rgb),.78));
+}
+
+.cx-exportPreparingPulse{
+  width:42px;
+  height:42px;
+  border-radius:999px;
+  border:3px solid rgba(var(--brand-rgb),.18);
+  border-top-color:rgba(var(--brand-rgb),.86);
+  animation:cx-spin .9s linear infinite;
+}
+
+.cx-exportPreparingMeta{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+  max-width:430px;
+}
+
+.cx-exportPreparingMeta span{
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(var(--card-rgb),.82);
+  color:var(--muted);
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+.cx-exportPreparingMeta b{
+  color:var(--text);
+}
+
+@keyframes cx-spin{
+  to{ transform:rotate(360deg); }
+}
+
 .cx-exportBlockers{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
