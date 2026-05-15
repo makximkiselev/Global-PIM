@@ -3157,7 +3157,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           </div>
                                         </div>
                                         <div className="mm-providerHint">
-                                          Система сканирует карточки re-store/store77 по выбранному SKU. Подтвердите точную ссылку здесь, чтобы использовать ее для насыщения товара.
+                                          Это не сопоставление категорий. Здесь выбирается точная карточка товара у конкурента, чтобы забрать параметры, описание и медиа для выбранного SKU.
                                         </div>
                                       </div>
                                       <div className="mm-competitorActions">
@@ -3167,7 +3167,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
                                           disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
                                         >
-                                          {competitorDiscoveryRunning ? "Сканируем..." : "Сканировать каталог"}
+                                          {competitorDiscoveryRunning ? "Подбираю..." : "Подобрать карточки"}
                                         </button>
                                         {selectedSampleProduct ? (
                                           <Link className="btn mm-miniBtn mm-ghostBtn" to={`/products/${encodeURIComponent(selectedSampleProduct.id)}`}>
@@ -3176,14 +3176,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         ) : null}
                                       </div>
                                     </div>
-                                    <div className="mm-lineContent">
+                                      <div className="mm-lineContent">
+                                      <div className="mm-competitorProcessNote">
+                                        <span>Логика шага</span>
+                                        <strong>SKU → карточки re-store/store77 → подтверждение → насыщение товара</strong>
+                                        <em>Если точного совпадения нет, карточку можно добавить вручную уже внутри SKU.</em>
+                                      </div>
                                       <div className="mm-competitorWorkbench">
                                         <div className="mm-competitorSkuPanel">
                                           <div>
                                             <div className="mm-competitorPanelLabel">Проверяемый SKU</div>
                                             <strong>{selectedSampleProduct ? selectedSampleLabel : "В категории пока нет товаров"}</strong>
                                             <p>
-                                              Скан ищет именно карточки товара на re-store/store77. После подтверждения ссылка становится источником для насыщения параметров, описания и медиа.
+                                              Сначала выберите один SKU из этой категории. Подбор ищет не раздел сайта, а конкретную карточку товара у конкурента.
                                             </p>
                                           </div>
                                           <select
@@ -3245,7 +3250,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
                                       <div className="mm-competitorSuggestionsHead">
                                         <strong>Кандидаты для выбранного SKU</strong>
-                                        <span>Подтвердите точную карточку. Остальные варианты этой группы автоматически уйдут в отклоненные.</span>
+                                        <span>Подтвердите только точное совпадение по модели, памяти, цвету и SIM/eSIM. Остальные варианты этой группы будут отклонены.</span>
                                       </div>
                                       <div className="mm-competitorCandidateList">
                                         {productCandidates.map(({ source, candidate }) => (
@@ -3282,7 +3287,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         ))}
                                         {productCandidates.length === 0 ? (
                                           <div className="mm-lineEmpty">
-                                            Для выбранного SKU нет карточек на модерации. Запустите скан или откройте SKU и добавьте точную ссылку вручную.
+                                            Для выбранного SKU нет карточек на модерации. Нажмите «Подобрать карточки» или откройте SKU и добавьте точную ссылку вручную.
                                           </div>
                                         ) : null}
                                       </div>

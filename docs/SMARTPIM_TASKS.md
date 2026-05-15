@@ -131,6 +131,7 @@ Audit findings to verify/fix:
    - no accidental horizontal overflow;
    - selected SKU and Store77 candidate are visible;
    - candidate row actions no longer wrap into a tall broken card;
+   - 2026-05-15 competitor block wording/layout pass: source matching now explains the real job as `SKU -> competitor product card -> enrichment`, and the primary action reads `Подобрать карточки` instead of the misleading `Сканировать каталог`;
    - remaining issue: category tree and top hero are still visually heavy, but usable.
 4. `/sources?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`
    - Browser-verified on 2026-05-13 after provider binding cleanup;
@@ -290,6 +291,7 @@ Progress:
     - default selected Я.Маркет store must be only `GT USD`;
     - `GT RUB` and `ID Store RUB AE` must stay visible but unchecked unless explicitly selected later;
     - Ozon is allowed for testing and may be selected by default.
+    - 2026-05-15 backend safety fix: if a request sends a non-existent `store_id`, export must return `400` instead of silently falling back to `Все магазины`.
 11. 2026-05-15 product media blocker audit:
     - first export blocker opens `/products/product_2?tab=media`;
     - media tab previously showed only an empty S3 message and no next action;

@@ -569,6 +569,16 @@ class CatalogExportRunReq(BaseModel):
     limit: int = Field(default=1000, ge=1, le=5000)
 
 
+def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selected_store_ids: Set[str]) -> List[Dict[str, Any]]:
+    if selected_store_ids:
+        selected = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids]
+        if not selected:
+            raise HTTPException(status_code=400, detail=f"No matching stores selected for {provider}")
+        return selected
+    enabled = [s for s in stores if bool(s.get("enabled", True))]
+    return enabled or [{"id": "default", "title": "Все магазины"}]
+
+
 def _effective_provider_category_id(
     category_id: str,
     provider: str,
@@ -1104,17 +1114,13 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
             preview = yandex_export_preview(ExportPreviewReq(product_ids=product_ids, only_active=False, limit=len(product_ids) or 1000))
             stores = connectors_state.import_stores("yandex_market")
             selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
-            selected_stores = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids] if selected_store_ids else [s for s in stores if bool(s.get("enabled", True))]
-            if not selected_stores:
-                selected_stores = [{"id": "default", "title": "Все магазины"}]
+            selected_stores = _selected_export_stores(provider, stores, selected_store_ids)
             for store in selected_stores:
                 batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))
         elif provider == "ozon":
             stores = connectors_state.import_stores("ozon")
             selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
-            selected_stores = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids] if selected_store_ids else [s for s in stores if bool(s.get("enabled", True))]
-            if not selected_stores:
-                selected_stores = [{"id": "default", "title": "Все магазины"}]
+            selected_stores = _selected_export_stores(provider, stores, selected_store_ids)
             preview = _ozon_export_preview(product_ids, len(product_ids) or 1000)
             for store in selected_stores:
                 batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))

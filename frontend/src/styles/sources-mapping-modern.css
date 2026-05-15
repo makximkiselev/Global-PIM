@@ -896,6 +896,48 @@
   margin-top: 12px;
 }
 
+.sourcesMappingPage .mm-competitorProcessNote {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) minmax(220px, .72fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--line));
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--brand) 8%, transparent), transparent 70%),
+    color-mix(in srgb, var(--panel) 94%, var(--surface));
+  padding: 9px 10px;
+}
+
+.sourcesMappingPage .mm-competitorProcessNote span {
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sourcesMappingPage .mm-competitorProcessNote strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcesMappingPage .mm-competitorProcessNote em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sourcesMappingPage .mm-competitorFlow {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -972,7 +1014,7 @@
 
 .sourcesMappingPage .mm-competitorWorkbench {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.05fr);
+  grid-template-columns: minmax(320px, .94fr) minmax(360px, 1fr);
   gap: 8px;
   align-items: stretch;
   border: 1px solid color-mix(in srgb, var(--brand) 16%, var(--line));
@@ -1046,14 +1088,14 @@
 }
 
 .sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceStrip {
-  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
 }
 
 .sourcesMappingPage .mm-competitorRunNotice {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
-  padding: 10px 12px;
+  padding: 9px 10px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1107,9 +1149,9 @@
 }
 
 .sourcesMappingPage .mm-competitorSourceItem {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-width: 0;
   border: 1px solid var(--line);
@@ -1234,7 +1276,7 @@
 }
 
 .sourcesMappingPage .mm-competitorSuggestionsHead span {
-  max-width: 620px;
+  max-width: 720px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
@@ -1321,7 +1363,7 @@
 
 .sourcesMappingPage .mm-competitorCandidate {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -2572,6 +2614,16 @@
 
   .paramsParamCard {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourcesMappingPage .mm-competitorProcessNote,
+  .sourcesMappingPage .mm-competitorWorkbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourcesMappingPage .mm-competitorProcessNote strong,
+  .sourcesMappingPage .mm-competitorProcessNote em {
+    white-space: normal;
   }
 }
 

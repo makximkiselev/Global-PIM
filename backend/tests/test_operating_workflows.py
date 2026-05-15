@@ -5,6 +5,8 @@ import unittest
 from copy import deepcopy
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -415,6 +417,30 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["batches"][1]["blockers"][0]["product_title"], "Meta Quest 3 128GB")
         self.assertEqual(response["batches"][1]["blockers"][0]["category_id"], "cat-vr")
         self.assertIn("export_abcdef1234", saved_runs["runs"])
+
+    def test_export_run_rejects_unknown_selected_store_id(self) -> None:
+        req = CatalogExportRunReq.model_validate(
+            {
+                "selection": {"node_ids": [], "product_ids": ["product_1"], "include_descendants": False},
+                "targets": [{"provider": "yandex_market", "store_ids": ["gt_usd"]}],
+                "limit": 20,
+            }
+        )
+
+        with (
+            patch.object(catalog_exchange, "_resolve_products", return_value=[{"id": "product_1", "title": "Meta Quest 3 128GB"}]),
+            patch.object(
+                catalog_exchange.ConnectorsStateReadAdapter,
+                "import_stores",
+                return_value=[{"id": "ym-store-real", "title": "GT USD", "enabled": True}],
+            ),
+            patch.object(catalog_exchange, "yandex_export_preview", return_value={"ready_count": 1, "count": 1, "items": []}),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                catalog_exchange.run_catalog_export(req)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("No matching stores selected", str(ctx.exception.detail))
 
     def test_yandex_export_preview_filters_products_in_sql_by_selected_ids(self) -> None:
         product = {
