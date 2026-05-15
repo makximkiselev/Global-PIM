@@ -1150,7 +1150,20 @@ function ProductWorkspaceFeature() {
                     ))}
                   </div>
                 ) : (
-                  <EmptyState title="Медиа пока не добавлены" description="На этом этапе у товара нет загруженных изображений из S3." />
+                  <EmptyState
+                    title="Медиа блокирует выгрузку"
+                    description="У SKU нет изображений в S3. Сначала подтверди карточку конкурента или добавь точную ссылку, затем загрузи параметры и медиа в карточку товара."
+                    action={(
+                      <div className="productWorkspaceEmptyActions">
+                        <Button variant="primary" onClick={() => handleSectionSelect("competitors")}>
+                          Найти карточки и загрузить медиа
+                        </Button>
+                        <Button onClick={() => handleSectionSelect("validation")}>
+                          Проверить остальные блокеры
+                        </Button>
+                      </div>
+                    )}
+                  />
                 )}
               </Card>
             ) : null}

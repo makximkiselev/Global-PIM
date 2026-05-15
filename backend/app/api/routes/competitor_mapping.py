@@ -54,6 +54,7 @@ router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
 _BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
 _DISCOVERY_SOURCE_TIMEOUT_SECONDS = 32.0
 _STORE77_CATEGORY_HTML_CACHE_TTL_SECONDS = 180.0
+_ACTIONABLE_DISCOVERY_CONFIDENCE_SCORE = 0.78
 _bootstrap_cache: Dict[str, Dict[str, Any]] = {}
 _discovery_run_cache: Dict[str, Dict[str, Any]] = {}
 _store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
@@ -1060,6 +1061,22 @@ def _link_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "last_checked_at": payload.get("last_checked_at") or row.get("updated_at"),
         "source": row.get("source") or payload.get("source") or "channel_link",
     }
+
+
+def _candidate_confidence_score(candidate: Dict[str, Any]) -> float:
+    try:
+        return max(0.0, min(1.0, float(candidate.get("confidence_score") or 0.0)))
+    except Exception:
+        return 0.0
+
+
+def _is_actionable_product_candidate(candidate: Dict[str, Any]) -> bool:
+    status = str(candidate.get("status") or "").strip()
+    if status == "approved":
+        return True
+    if status == "needs_review":
+        return _candidate_confidence_score(candidate) >= _ACTIONABLE_DISCOVERY_CONFIDENCE_SCORE
+    return False
 
 
 def _merge_relational_discovery_items(
@@ -2765,6 +2782,8 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
         if not isinstance(item, dict):
             continue
         if str(item.get("product_id") or "").strip() != normalized_product_id:
+            continue
+        if not _is_actionable_product_candidate(item):
             continue
         items.append(dict(item))
     items.sort(key=lambda row: (str(row.get("status") or ""), -float(row.get("confidence_score") or 0), str(row.get("last_seen_at") or "")))

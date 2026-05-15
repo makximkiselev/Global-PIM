@@ -74,9 +74,18 @@ type EnrichResp = {
   errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
 };
 
+const MIN_ACTIONABLE_COMPETITOR_SCORE = 0.78;
+
 function scoreLabel(candidate: CompetitorCandidate): string {
   const raw = Number(candidate.confidence_score || 0);
   return Number.isFinite(raw) ? `${Math.round(raw * 100)}%` : "0%";
+}
+
+function isActionableCandidate(candidate: CompetitorCandidate): boolean {
+  if (candidate.status === "approved") return true;
+  if (candidate.status !== "needs_review") return false;
+  const score = Number(candidate.confidence_score || 0);
+  return Number.isFinite(score) && score >= MIN_ACTIONABLE_COMPETITOR_SCORE;
 }
 
 function statusTone(status: string): "active" | "pending" | "danger" | "neutral" {
@@ -136,7 +145,7 @@ export default function ProductCompetitorPanel({
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
 
-  const candidates = context?.items || [];
+  const candidates = useMemo(() => (context?.items || []).filter(isActionableCandidate), [context?.items]);
   const candidateGroups = useMemo(() => {
     const groups = new Map<string, CompetitorCandidate[]>();
     candidates.forEach((candidate) => {

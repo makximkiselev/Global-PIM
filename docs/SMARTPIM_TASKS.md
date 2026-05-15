@@ -223,6 +223,10 @@ Progress:
    - the old catastrophic fallback regex was removed because it could hang on megabyte search pages when no candidate matched;
    - real-site check for `Apple iPhone 17 Pro 256GB Silver` returns `https://re-store.ru/catalog/10117PRO256SLVN/` in about 2 seconds;
    - `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)` correctly does not match the available physical-SIM `re-store` SKU, because SIM profile conflicts must not collapse.
+16. Product competitor moderation must not show historical low-confidence garbage as actionable candidates:
+   - production audit on `/products/product_2?tab=competitors` showed `35-39%` candidates for unrelated Apple Watch, Samsung vacuum and organization pages;
+   - API context now exposes only approved candidates and `needs_review` candidates with confidence at least `0.78`;
+   - frontend keeps the same defensive threshold so stale/low-confidence rows cannot reappear from cached or legacy payloads.
 
 Verified:
 
@@ -282,6 +286,10 @@ Progress:
     - default selected Я.Маркет store must be only `GT USD`;
     - `GT RUB` and `ID Store RUB AE` must stay visible but unchecked unless explicitly selected later;
     - Ozon is allowed for testing and may be selected by default.
+11. 2026-05-15 product media blocker audit:
+    - first export blocker opens `/products/product_2?tab=media`;
+    - media tab previously showed only an empty S3 message and no next action;
+    - empty media state now explains that export is blocked and links the user to competitor-card discovery/enrichment or validation.
 
 ### P1 DB Consolidation
 

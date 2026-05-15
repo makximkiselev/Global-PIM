@@ -731,6 +731,19 @@
   word-break:break-word;
 }
 
+.productWorkspaceEmptyActions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+
+.productWorkspaceEmptyActions .btn{
+  min-height:40px;
+  padding:10px 14px;
+}
+
 .productWorkspaceChannelGrid{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));

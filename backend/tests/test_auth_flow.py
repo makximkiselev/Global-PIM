@@ -2050,15 +2050,61 @@ class AuthFlowTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["ok"], True)
         self.assertEqual(payload["product_id"], "product_1")
-        self.assertEqual(payload["counts"]["total"], 3)
+        self.assertEqual(payload["counts"]["total"], 2)
         self.assertEqual(payload["counts"]["approved"], 2)
-        self.assertEqual(payload["counts"]["stale"], 1)
-        self.assertEqual({item["id"] for item in payload["items"]}, {"cand_restore", "cand_stale", "cand_store77_rel"})
+        self.assertEqual(payload["counts"]["stale"], 0)
+        self.assertEqual({item["id"] for item in payload["items"]}, {"cand_restore", "cand_store77_rel"})
         store77_item = next(item for item in payload["items"] if item["id"] == "cand_store77_rel")
         self.assertEqual(store77_item["product_sim_profile"], "nano_sim_esim")
         self.assertEqual(store77_item["candidate_sim_profile"], "nano_sim_esim")
         self.assertEqual(payload["confirmed_links"][0]["candidate_id"], "cand_restore")
         self.assertTrue(any(item["source_id"] == "store77" for item in payload["confirmed_links"]))
+
+    def test_competitor_product_discovery_endpoint_hides_low_confidence_review_items(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        store = {
+            "version": 2,
+            "categories": {},
+            "templates": {},
+            "discovery": {
+                "candidates": {
+                    "cand_garbage": {
+                        "id": "cand_garbage",
+                        "product_id": "product_1",
+                        "source_id": "restore",
+                        "url": "https://re-store.ru/catalog/watch/",
+                        "title": "Apple Watch Series 11",
+                        "status": "needs_review",
+                        "confidence_score": 0.39,
+                    },
+                    "cand_actionable": {
+                        "id": "cand_actionable",
+                        "product_id": "product_1",
+                        "source_id": "store77",
+                        "url": "https://store77.net/apple_iphone_17_pro/",
+                        "title": "Apple iPhone 17 Pro 256GB eSIM Orange",
+                        "status": "needs_review",
+                        "confidence_score": 0.91,
+                    },
+                },
+                "links": {},
+                "runs": {},
+            },
+        }
+
+        with (
+            patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", return_value=[]),
+        ):
+            response = self.client.get("/api/competitor-mapping/discovery/products/product_1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["counts"]["total"], 1)
+        self.assertEqual(payload["counts"]["needs_review"], 1)
+        self.assertEqual([item["id"] for item in payload["items"]], ["cand_actionable"])
 
     def test_competitor_candidate_moderation_reads_relational_candidate_without_json(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
