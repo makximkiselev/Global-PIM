@@ -292,6 +292,8 @@ Progress:
     - `GT RUB` and `ID Store RUB AE` must stay visible but unchecked unless explicitly selected later;
     - Ozon is allowed for testing and may be selected by default.
     - 2026-05-15 backend safety fix: if a request sends a non-existent `store_id`, export must return `400` instead of silently falling back to `Все магазины`.
+    - current pipeline QA must use one selected SKU only, preferably a product missing on one or both marketplaces; do not run export/update across all `Смартфоны` while the pipeline is still being stabilized.
+    - current pipeline QA targets are only `GT USD` for Я.Маркет and Ozon test store; other Я.Маркет stores must not be selected or mutated.
 11. 2026-05-15 product media blocker audit:
     - first export blocker opens `/products/product_2?tab=media`;
     - media tab previously showed only an empty S3 message and no next action;
@@ -310,6 +312,11 @@ Progress:
     - production audit for `product_2` shows Store77 is the only confirmed exact eSIM source and therefore is the current media/enrichment source;
     - re-store currently returns low-confidence unrelated candidates for this SKU (Apple Watch / unrelated URLs), so they must stay hidden from moderation;
     - product competitor API/UI must still show per-source reason cards, so a user sees `Store77: confirmed` and `re-store: no exact product` instead of assuming the system ignored re-store.
+15. 2026-05-15 Ozon required system fields:
+    - production export audit found Ozon field `9048 / Название модели` missing from the `Смартфоны` mapping and `8229 / Тип` incorrectly mapped to `Тип основных камер`;
+    - export must derive Ozon `Тип` and `Название модели` from the product itself for commodity electronics instead of forcing users to repair broken technical mappings before every test;
+    - regression test added for `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)`: Ozon payload must contain `Тип=Смартфон` and `Название модели=iPhone 17 Pro`.
+    - production single-SKU verification used only `product_3 / SKU GT 52462` against `GT USD` and Ozon test store; both exports are now blocked by missing images only, not by Ozon `Название модели`.
 
 ### P1 DB Consolidation
 

@@ -442,6 +442,52 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("No matching stores selected", str(ctx.exception.detail))
 
+    def test_ozon_export_preview_derives_required_type_and_model_name(self) -> None:
+        product = {
+            "id": "product_iphone",
+            "sku_gt": "52460",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            "category_id": "cat-iphone",
+            "content": {
+                "media_images": [{"url": "/api/uploads/media_images/iphone.webp"}],
+                "description": "Apple iPhone 17 Pro",
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "camera_type", "name": "Тип основных камер", "value": "телефото"},
+                ],
+            },
+        }
+
+        rows = [
+            {
+                "catalog_name": "Тип основных камер",
+                "provider_map": {
+                    "ozon": {"id": "8229", "name": "Тип", "required": True, "export": True}
+                },
+            },
+            {
+                "catalog_name": "Бренд",
+                "provider_map": {
+                    "ozon": {"id": "85", "name": "Бренд", "required": True, "export": True}
+                },
+            },
+        ]
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[product]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-iphone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-iphone": {"ozon": "17028922"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-iphone": rows}),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_iphone"], 10)
+
+        self.assertEqual(response["ready_count"], 1)
+        item = response["items"][0]
+        self.assertEqual(item["missing"], [])
+        attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
+        self.assertEqual(attrs["8229"], "Смартфон")
+        self.assertEqual(attrs["9048"], "iPhone 17 Pro")
+
     def test_yandex_export_preview_filters_products_in_sql_by_selected_ids(self) -> None:
         product = {
             "id": "product_1",

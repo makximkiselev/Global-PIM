@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
@@ -619,6 +620,57 @@ def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
     return bool(prow.get("export"))
 
 
+def _infer_ozon_type(product: Dict[str, Any]) -> str:
+    title = str(product.get("title") or "").strip().lower()
+    category_name = ""
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    for candidate in (product.get("category_name"), content.get("category_name")):
+        if str(candidate or "").strip():
+            category_name = str(candidate or "").strip().lower()
+            break
+    haystack = f"{title} {category_name}"
+    if "смартфон" in haystack or "iphone" in haystack:
+        return "Смартфон"
+    if "ноутбук" in haystack or "macbook" in haystack:
+        return "Ноутбук"
+    if "планшет" in haystack or "ipad" in haystack:
+        return "Планшет"
+    if "наушник" in haystack or "airpods" in haystack:
+        return "Наушники"
+    if "приставк" in haystack or "телевизор" in haystack:
+        return "ТВ-приставка"
+    return ""
+
+
+def _infer_ozon_model_name(product: Dict[str, Any]) -> str:
+    raw = str(product.get("title") or "").strip()
+    if not raw:
+        return ""
+    value = re.sub(r"\([^)]*\)", " ", raw)
+    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"^(?:смартфон|телефон|мобильный телефон|планшет|ноутбук|наушники)\s+", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^(?:apple|samsung|xiaomi|honor|huawei|google|meta|oculus)\s+", "", value, flags=re.IGNORECASE)
+    value = re.split(r"\b\d+\s*(?:gb|гб|tb|тб|mb|мб)\b", value, maxsplit=1, flags=re.IGNORECASE)[0]
+    value = re.sub(r"\b(?:esim|sim|dual|nano|global|ru|eac)\b.*$", "", value, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", value).strip(" -/,")
+
+
+def _upsert_ozon_attribute(attributes: List[Dict[str, Any]], attr_id: str, name: str, value: str, source: str) -> None:
+    clean_value = str(value or "").strip()
+    if not clean_value:
+        return
+    target = str(attr_id or "").strip()
+    attributes[:] = [attr for attr in attributes if str(attr.get("id") or "").strip() != target]
+    attributes.append(
+        {
+            "id": target,
+            "name": name,
+            "values": [{"value": clean_value}],
+            "sourceCatalogName": source,
+        }
+    )
+
+
 def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
     ids_filter = {str(x or "").strip() for x in (product_ids or []) if str(x or "").strip()}
     products = query_products_full(ids=sorted(ids_filter)) if ids_filter else _load_products()
@@ -656,9 +708,12 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         description = _extract_product_value(product, str((description_row or {}).get("catalog_name") or "Описание товара"))
         type_value = _extract_product_value(product, str((type_row or {}).get("catalog_name") or "Тип"))
         model_group = _extract_product_value(product, str((model_group_row or {}).get("catalog_name") or "Название модели"))
+        inferred_type = _infer_ozon_type(product)
+        inferred_model_group = _infer_ozon_model_name(product)
+        type_value = inferred_type or type_value
+        model_group = model_group or inferred_model_group
 
         attributes: List[Dict[str, Any]] = []
-        present_attr_ids: Set[str] = set()
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -672,7 +727,6 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             value = _extract_product_value(product, str(row.get("catalog_name") or ""))
             if not value:
                 continue
-            present_attr_ids.add(attr_id)
             attributes.append(
                 {
                     "id": attr_id,
@@ -681,6 +735,8 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                     "sourceCatalogName": str(row.get("catalog_name") or "").strip(),
                 }
             )
+        _upsert_ozon_attribute(attributes, "8229", "Тип", type_value, "Системное поле")
+        _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
 
         missing: List[str] = []
         if not offer_id:
@@ -691,11 +747,11 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             missing.append("Название товара не заполнено")
         if not pictures:
             missing.append("Нет изображений")
-        if not _provider_row_enabled(type_row, "ozon") or not type_value:
+        if not type_value:
             missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
         if not _provider_row_enabled(brand_row, "ozon") or not vendor:
             missing.append("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст")
-        if not _provider_row_enabled(model_group_row, "ozon") or not model_group:
+        if not model_group:
             missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
 
         ready = len(missing) == 0
