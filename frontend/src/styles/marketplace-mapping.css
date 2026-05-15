@@ -2854,6 +2854,30 @@
   color:var(--text);
 }
 
+.dictionaryValueEditor input:not([type]),
+.dictionaryValueEditor input[type="text"],
+.dictionaryValueEditor input[type="search"]{
+  min-height:36px;
+  padding:8px 11px;
+  border:1px solid var(--values-line, var(--line));
+  border-radius:10px;
+  background:rgba(var(--card-rgb),.88);
+  color:var(--text);
+  font:inherit;
+  font-size:13px;
+  font-weight:700;
+  outline:none;
+  transition:border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.dictionaryValueEditor input:not([type]):focus,
+.dictionaryValueEditor input[type="text"]:focus,
+.dictionaryValueEditor input[type="search"]:focus{
+  border-color:rgba(var(--brand-rgb),.55);
+  background:var(--card);
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.12);
+}
+
 .dictionaryValueHeader{
   position:sticky;
   top:0;
@@ -3016,6 +3040,44 @@
   background:
     linear-gradient(180deg, rgba(var(--card-rgb),.92), rgba(var(--card-rgb),.72));
   box-shadow:none;
+}
+
+.dictionaryValueRow .btn{
+  min-height:36px;
+  padding:8px 12px;
+  white-space:nowrap;
+}
+
+.dictionaryValueRow .icon-btn{
+  min-width:36px;
+  min-height:36px;
+  padding:0 9px;
+  border:1px solid var(--values-line, var(--line));
+  border-radius:10px;
+  background:rgba(var(--card-rgb),.86);
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+  transition:transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
+}
+
+.dictionaryValueRow .icon-btn:hover{
+  transform:translateY(-1px);
+  border-color:rgba(var(--brand-rgb),.38);
+  background:rgba(var(--brand-rgb),.08);
+  color:var(--text);
+}
+
+.dictionaryValueRow .icon-btn.danger{
+  border-color:rgba(220,38,38,.18);
+  color:#b42318;
+}
+
+.dictionaryValueRow .icon-btn.danger:hover{
+  border-color:rgba(220,38,38,.32);
+  background:rgba(220,38,38,.08);
+  color:#991b1b;
 }
 
 .dictionaryValueProviderCell{
