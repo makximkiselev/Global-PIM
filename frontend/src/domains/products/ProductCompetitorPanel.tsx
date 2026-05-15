@@ -43,6 +43,22 @@ type CompetitorLink = {
   last_enriched_at?: string;
 };
 
+type CompetitorSourceSummary = {
+  source_id: "restore" | "store77";
+  source_name: string;
+  domain: string;
+  status: "confirmed" | "review" | "no_exact_match" | "empty" | string;
+  label: string;
+  message: string;
+  confirmed_count: number;
+  actionable_count: number;
+  hidden_count: number;
+  best_score?: number | null;
+  best_title?: string;
+  best_url?: string;
+  best_reasons?: string[];
+};
+
 type ProductCompetitorResp = {
   ok: boolean;
   product_id: string;
@@ -57,6 +73,7 @@ type ProductCompetitorResp = {
     confirmed_links: number;
   };
   sources: CompetitorSource[];
+  source_summaries?: CompetitorSourceSummary[];
 };
 
 type DiscoveryRun = {
@@ -124,6 +141,19 @@ function sourceLabel(value?: string): string {
   if (value === "restore") return "re-store";
   if (value === "store77") return "store77";
   return value || "источник";
+}
+
+function sourceSummaryTone(status: string): "active" | "pending" | "danger" | "neutral" {
+  if (status === "confirmed") return "active";
+  if (status === "review") return "pending";
+  if (status === "no_exact_match") return "danger";
+  return "neutral";
+}
+
+function sourceBestScoreLabel(summary: CompetitorSourceSummary): string {
+  const raw = Number(summary.best_score || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return "—";
+  return `${Math.round(raw * 100)}%`;
 }
 
 function enrichErrorLabel(error?: string): string {
@@ -326,6 +356,37 @@ export default function ProductCompetitorPanel({
           <div><span>Устарело</span><strong>{context?.counts.stale || 0}</strong></div>
           <div><span>Готовых ссылок</span><strong>{context?.counts.confirmed_links || 0}</strong></div>
         </div>
+
+        {context?.source_summaries?.length ? (
+          <div className="productCompetitorSourceGrid" aria-label="Статус конкурентных источников">
+            {context.source_summaries.map((summary) => (
+              <div key={summary.source_id} className={`productCompetitorSourceCard is-${summary.status}`}>
+                <div className="productCompetitorSourceHead">
+                  <div>
+                    <span>{summary.source_name}</span>
+                    <strong>{summary.domain}</strong>
+                  </div>
+                  <Badge tone={sourceSummaryTone(summary.status)}>{summary.label}</Badge>
+                </div>
+                <p>{summary.message}</p>
+                {summary.status === "no_exact_match" && summary.best_title ? (
+                  <div className="productCompetitorSourceBest">
+                    <span>Лучший скрытый вариант</span>
+                    <strong>{summary.best_title}</strong>
+                    <em>Точность {sourceBestScoreLabel(summary)} · скрыто {summary.hidden_count}</em>
+                  </div>
+                ) : null}
+                {summary.status === "confirmed" ? (
+                  <div className="productCompetitorSourceBest">
+                    <span>Что будет загружаться</span>
+                    <strong>Параметры, описание и медиа</strong>
+                    <em>{summary.confirmed_count} подтвержденная ссылка</em>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {lastRun ? (
           <div className="productCompetitorNotice">

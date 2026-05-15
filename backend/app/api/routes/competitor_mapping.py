@@ -1113,6 +1113,68 @@ def _is_actionable_product_candidate(candidate: Dict[str, Any]) -> bool:
     return False
 
 
+def _product_discovery_source_summaries(
+    product_id: str,
+    candidates: List[Dict[str, Any]],
+    confirmed_links: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    normalized_product_id = str(product_id or "").strip()
+    summaries: List[Dict[str, Any]] = []
+    for source in DISCOVERY_SOURCES:
+        source_id = str(source.get("id") or "").strip()
+        source_candidates = [
+            item
+            for item in candidates
+            if str(item.get("product_id") or "").strip() == normalized_product_id
+            and str(item.get("source_id") or "").strip() == source_id
+        ]
+        source_links = [
+            link
+            for link in confirmed_links
+            if str(link.get("source_id") or "").strip() == source_id
+        ]
+        actionable = [item for item in source_candidates if _is_actionable_product_candidate(item)]
+        best = max(source_candidates, key=_candidate_confidence_score, default=None)
+        best_score = _candidate_confidence_score(best) if best else None
+        hidden_count = max(0, len(source_candidates) - len(actionable))
+        if source_links:
+            status = "confirmed"
+            label = "Подтверждено"
+            message = "Источник используется для загрузки параметров, описания и медиа."
+        elif actionable:
+            status = "review"
+            label = "Нужен выбор"
+            message = "Есть кандидаты с достаточной точностью, их нужно подтвердить или отклонить."
+        elif best:
+            status = "no_exact_match"
+            label = "Нет точного товара"
+            message = "Найденные карточки скрыты: точность ниже порога или товар не совпадает."
+        else:
+            status = "empty"
+            label = "Не сканировали"
+            message = "По этому источнику пока нет кандидатов для SKU."
+        summaries.append(
+            {
+                "source_id": source_id,
+                "source_name": str(source.get("name") or source_id),
+                "domain": str(source.get("domain") or ""),
+                "status": status,
+                "label": label,
+                "message": message,
+                "confirmed_count": len(source_links),
+                "actionable_count": len(actionable),
+                "hidden_count": hidden_count,
+                "best_score": best_score,
+                "best_title": str((best or {}).get("title") or "").strip(),
+                "best_url": str((best or {}).get("url") or "").strip(),
+                "best_reasons": (best or {}).get("confidence_reasons")
+                if isinstance((best or {}).get("confidence_reasons"), list)
+                else [],
+            }
+        )
+    return summaries
+
+
 def _merge_relational_discovery_items(
     candidates: Dict[str, Any],
     links: Dict[str, Any],
@@ -2843,11 +2905,13 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
     _merge_relational_discovery_items(candidates_map, links_map, product_ids={normalized_product_id})
 
     items: List[Dict[str, Any]] = []
+    all_product_candidates: List[Dict[str, Any]] = []
     for item in candidates_map.values():
         if not isinstance(item, dict):
             continue
         if str(item.get("product_id") or "").strip() != normalized_product_id:
             continue
+        all_product_candidates.append(dict(item))
         if not _is_actionable_product_candidate(item):
             continue
         items.append(dict(item))
@@ -2867,6 +2931,11 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
         "product_id": normalized_product_id,
         "items": items,
         "confirmed_links": confirmed_links,
+        "source_summaries": _product_discovery_source_summaries(
+            normalized_product_id,
+            all_product_candidates,
+            confirmed_links,
+        ),
         "counts": {
             "total": len(items),
             "needs_review": sum(1 for item in items if item.get("status") == "needs_review"),

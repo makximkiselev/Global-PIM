@@ -304,6 +304,10 @@ Progress:
     - API now returns the real discovery candidate (`cand_6bfd36bda7f3ad62`) as the selectable approved item with `score=0.95` and `candidate_sim_profile=esim_only`;
     - confirmed links remain in the separate ready-link block and include last checked/enriched timing;
     - product media tab now works functionally, but still needs compact product-card layout polish after the pipeline blockers are cleared.
+14. re-store vs Store77 source visibility:
+    - production audit for `product_2` shows Store77 is the only confirmed exact eSIM source and therefore is the current media/enrichment source;
+    - re-store currently returns low-confidence unrelated candidates for this SKU (Apple Watch / unrelated URLs), so they must stay hidden from moderation;
+    - product competitor API/UI must still show per-source reason cards, so a user sees `Store77: confirmed` and `re-store: no exact product` instead of assuming the system ignored re-store.
 
 ### P1 DB Consolidation
 
