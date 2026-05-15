@@ -278,9 +278,10 @@ Progress:
    - UI previously only changed button text to `Готовлю...` during the synchronous wait, so the user did not understand whether the screen was working;
    - export UI now shows an explicit preparation state with selected scope, channel count, target count, and a short explanation of what is being checked.
 10. Export safety rule:
-    - Я.Маркет export work must run only against store `GT USD`;
-    - do not touch `GT RUB` or `ID Store RUB AE` from the UI flow;
-    - Ozon can be used for testing.
+    - all Я.Маркет stores may be visible in the UI;
+    - default selected Я.Маркет store must be only `GT USD`;
+    - `GT RUB` and `ID Store RUB AE` must stay visible but unchecked unless explicitly selected later;
+    - Ozon is allowed for testing and may be selected by default.
 
 ### P1 DB Consolidation
 

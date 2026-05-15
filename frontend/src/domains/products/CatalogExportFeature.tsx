@@ -135,15 +135,23 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         .filter((x) => ["yandex_market", "ozon"].includes(x.code))
         .map((provider) => ({
           ...provider,
-          import_stores: provider.code === EXPORT_PROVIDER_CODE
-            ? (provider.import_stores || []).filter(isAllowedExportStore)
-            : (provider.import_stores || []),
+          import_stores: provider.import_stores || [],
         }))
-        .filter((provider) => provider.code !== EXPORT_PROVIDER_CODE || (provider.import_stores || []).length > 0);
+        .filter((provider) => provider.code !== EXPORT_PROVIDER_CODE || (provider.import_stores || []).some(isAllowedExportStore));
       setProviders(exportProviders);
-      const gtUsd = exportProviders.find((provider) => provider.code === EXPORT_PROVIDER_CODE)?.import_stores?.[0]?.id;
-      setSelectedProviders({ [EXPORT_PROVIDER_CODE]: Boolean(gtUsd) });
-      setSelectedStores(gtUsd ? { [EXPORT_PROVIDER_CODE]: [gtUsd] } : {});
+      const gtUsd = exportProviders
+        .find((provider) => provider.code === EXPORT_PROVIDER_CODE)
+        ?.import_stores?.find(isAllowedExportStore)?.id;
+      const ozonStores = exportProviders.find((provider) => provider.code === "ozon")?.import_stores || [];
+      const defaultOzonStoreIds = ozonStores.filter((store) => store.enabled !== false).map((store) => store.id).filter(Boolean);
+      setSelectedProviders({
+        [EXPORT_PROVIDER_CODE]: Boolean(gtUsd),
+        ozon: defaultOzonStoreIds.length > 0,
+      });
+      setSelectedStores({
+        ...(gtUsd ? { [EXPORT_PROVIDER_CODE]: [gtUsd] } : {}),
+        ...(defaultOzonStoreIds.length ? { ozon: defaultOzonStoreIds } : {}),
+      });
     };
     void load();
   }, []);
