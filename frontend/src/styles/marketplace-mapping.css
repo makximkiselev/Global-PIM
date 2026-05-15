@@ -2850,7 +2850,7 @@
 }
 
 .dictionaryValueEditor{
-  gap:12px;
+  gap:10px;
   color:var(--text);
 }
 
@@ -2862,9 +2862,9 @@
   align-items:center;
   justify-content:space-between;
   flex-wrap:wrap;
-  gap:14px;
-  min-height:70px;
-  padding:14px 0 12px;
+  gap:10px;
+  min-height:52px;
+  padding:8px 0;
   background:linear-gradient(180deg, rgba(var(--card-rgb),.98), rgba(var(--card-rgb),.86));
   border-bottom:1px solid var(--values-line, var(--line));
   backdrop-filter:blur(10px);
@@ -2872,45 +2872,46 @@
 
 .dictionaryValueHeaderMain{
   min-width:0;
-  flex:1 1 360px;
+  flex:1 1 280px;
 }
 
 .dictionaryValueHeader > .btn{
   flex:0 0 auto;
+  min-height:34px;
+  padding:8px 12px;
 }
 
 .dictionaryValueEyebrow{
   color:rgba(var(--brand-rgb),.9);
-  font-size:10px;
+  font-size:9px;
   font-weight:1000;
   letter-spacing:.09em;
   text-transform:uppercase;
 }
 
 .dictionaryValueTitle{
-  margin-top:3px;
+  margin-top:1px;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
   color:var(--text);
-  font-size:24px;
+  font-size:20px;
   line-height:1;
   font-weight:1000;
   letter-spacing:-.04em;
 }
 
 .dictionaryValueSub{
-  margin-top:6px;
-  color:var(--text-soft);
-  font-size:12px;
-  font-weight:800;
+  display:none;
 }
 
 .dictionaryValueEditor > .card{
   border-color:var(--values-line, var(--line));
-  border-radius:18px;
+  border-radius:16px;
   background:rgba(var(--card-rgb),.72);
   box-shadow:none;
+  padding:10px;
+  margin-bottom:8px !important;
 }
 
 .dictionaryValueEditor .dictionaryEditorTop{
@@ -2927,7 +2928,83 @@
 }
 
 .dictionaryValueEditor .dictionaryEditorProviderGrid{
-  grid-template-columns:minmax(0,300px) minmax(0,1fr);
+  grid-template-columns:minmax(0,240px) minmax(0,1fr);
+  gap:8px;
+  margin-top:8px;
+}
+
+.dictionaryValueEditor .dictionaryEditorProviderCard{
+  padding:10px;
+}
+
+.dictionaryValueEditor .dictionaryProviderCompactCard .dataToolbar{
+  align-items:center;
+  gap:10px;
+}
+
+.dictionaryValueEditor .dictionaryProviderCompactCard .dataToolbarTitle{
+  font-size:15px;
+  line-height:1.1;
+}
+
+.dictionaryValueEditor .dictionaryProviderCompactCard .dataToolbarSubtitle{
+  display:none;
+}
+
+.dictionaryValueEditor .dictionaryProviderCompactCard .btn{
+  min-height:34px;
+  padding:8px 12px;
+}
+
+.dictionaryAllowedValuesCloud{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  max-height:46px;
+  overflow:hidden;
+}
+
+.dictionaryAllowedValuesCloud span{
+  padding:4px 7px;
+  border:1px solid rgba(var(--line-rgb),.55);
+  border-radius:999px;
+  background:rgba(var(--line-rgb),.20);
+  color:var(--text);
+  font-size:11px;
+  font-weight:800;
+  line-height:1;
+}
+
+.dictionarySearchCompactCard{
+  display:grid;
+  grid-template-columns:minmax(320px, 1fr) auto auto;
+  gap:8px 10px;
+  align-items:end;
+}
+
+.dictionarySearchCompactCard .dictionaryEditorField,
+.dictionarySearchCompactCard .dictionaryEditorFilters{
+  margin:0;
+}
+
+.dictionarySearchCompactCard .dictionaryEditorActions{
+  grid-column:auto;
+  padding-top:0;
+}
+
+.dictionarySearchCompactCard .dictionaryEditorActions .dataToolbarActions{
+  justify-content:flex-end;
+  flex-wrap:nowrap;
+}
+
+.dictionarySearchCompactCard .dictionaryEditorActions > .muted{
+  display:none;
+}
+
+.dictionarySearchCompactCard .dictionaryEditorActions .btn{
+  min-height:38px;
+  padding:9px 12px;
+  white-space:nowrap;
 }
 
 .dictionaryValueEditor .dictionaryEditorActions .dataToolbarActions{

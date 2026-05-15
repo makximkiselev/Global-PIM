@@ -161,6 +161,19 @@ Required behavior:
 4. Provide clear actions: accept suggestion, edit mapping, mark not needed, reset.
 5. Preserve category context and return route.
 
+Progress:
+
+1. 2026-05-15 audit of `/sources?tab=values&category=bb40de87-254b-4170-84d7-8e5d3925b251` found the value editor working but too tall before actual rows:
+   - duplicated semantic header inside the embedded dictionary editor;
+   - separate provider/supplier dictionary card consumed too much vertical space;
+   - search/actions card pushed value rows below the first viewport;
+   - no backend change needed for this pass.
+2. Compact embedded dictionary editor pass:
+   - inner header now reads as field context, not a second page title;
+   - provider dictionary block uses denser cards and a shorter allowed-value cloud;
+   - search/filter/actions block is laid out as one compact control strip;
+   - target is to make actual value rows visible immediately after opening a field.
+
 ### P0.3 Competitor Matching Quality
 
 Status: active after pipeline audit; backend variant matching tightened on 2026-05-13 and Store77 category scan corrected on 2026-05-14.

@@ -572,9 +572,9 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       {embedded ? (
         <div className="dictionaryValueHeader">
           <div className="dictionaryValueHeaderMain">
-            <div className="dictionaryValueEyebrow">Сопоставление значений</div>
+            <div className="dictionaryValueEyebrow">Поле PIM</div>
             <div className="dictionaryValueTitle">{item?.title || "Параметр"}</div>
-            <div className="dictionaryValueSub">Слева значение PIM, справа — как оно должно уйти на выбранную площадку.</div>
+            <div className="dictionaryValueSub">Написания для выбранной площадки.</div>
           </div>
           <Button onClick={() => void load()} disabled={loading}>
             {loading ? "Обновляю…" : "Обновить"}
@@ -726,7 +726,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       </div> : null}
 
       {providerCodes.length ? (
-        <Card style={{ marginBottom: 14 }}>
+        <Card className="dictionaryProviderCompactCard" style={{ marginBottom: 14 }}>
           <DataToolbar
             title="Площадка для выгрузки"
             subtitle="Здесь не меняем PIM-значение. Здесь задаем, какое написание примет маркетплейс при экспорте."
@@ -777,19 +777,9 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                       placeholder="Найти значение площадки..."
                       style={{ marginBottom: 10 }}
                     />
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 112, overflow: "hidden" }}>
+                    <div className="dictionaryAllowedValuesCloud">
                       {visibleProviderAllowedValues.map((value) => (
-                        <span
-                          key={value}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(11,18,32,.10)",
-                            background: "rgba(11,18,32,.04)",
-                            fontSize: 12,
-                            fontWeight: 700,
-                          }}
-                        >
+                        <span key={value}>
                           {value}
                         </span>
                       ))}
@@ -811,7 +801,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
         </Card>
       ) : null}
 
-      <Card style={{ marginBottom: 14 }}>
+      <Card className="dictionarySearchCompactCard" style={{ marginBottom: 14 }}>
         <Field label="Поиск по значениям" className="dictionaryEditorField">
           <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Например: black, 256, titanium…" />
         </Field>
