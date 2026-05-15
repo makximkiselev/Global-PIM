@@ -300,7 +300,9 @@ Progress:
     - backend now computes the Store77 challenge cookies and retries the image request before writing media into S3;
     - verified on `/products/product_2?tab=media`: Store77 enrichment now shows S3-backed media cards with `/api/uploads/...` URLs.
 13. Next product-pipeline UI cleanup:
-    - competitor candidate cards still show weak metadata for already-confirmed manual links (`0%`, `SIM не распознан`) and need a better confirmed-link presentation;
+    - fixed: product-source confirmed links such as `product_2:store77` are no longer shown as candidate cards with `0%` and `SIM не распознан`;
+    - API now returns the real discovery candidate (`cand_6bfd36bda7f3ad62`) as the selectable approved item with `score=0.95` and `candidate_sim_profile=esim_only`;
+    - confirmed links remain in the separate ready-link block and include last checked/enriched timing;
     - product media tab now works functionally, but still needs compact product-card layout polish after the pipeline blockers are cleared.
 
 ### P1 DB Consolidation

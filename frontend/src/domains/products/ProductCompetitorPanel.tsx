@@ -31,12 +31,16 @@ type CompetitorCandidate = {
 };
 
 type CompetitorLink = {
+  id?: string;
   candidate_id?: string;
   product_id?: string;
   source_id?: string;
   url?: string;
   status?: string;
+  source?: string;
   confirmed_at?: string;
+  last_checked_at?: string;
+  last_enriched_at?: string;
 };
 
 type ProductCompetitorResp = {
@@ -79,6 +83,11 @@ const MIN_ACTIONABLE_COMPETITOR_SCORE = 0.78;
 function scoreLabel(candidate: CompetitorCandidate): string {
   const raw = Number(candidate.confidence_score || 0);
   return Number.isFinite(raw) ? `${Math.round(raw * 100)}%` : "0%";
+}
+
+function confirmedLinkTime(link: CompetitorLink): string {
+  const value = link.last_enriched_at || link.last_checked_at || link.confirmed_at;
+  return value ? new Date(value).toLocaleString("ru-RU") : "пока не загружали";
 }
 
 function isActionableCandidate(candidate: CompetitorCandidate): boolean {
@@ -328,74 +337,96 @@ export default function ProductCompetitorPanel({
 
         {loading ? (
           <EmptyState title="Загружаем конкурентов" description="Получаем найденные карточки и подтвержденные ссылки для SKU." />
-        ) : candidates.length ? (
+        ) : candidates.length || context?.confirmed_links.length ? (
           <div className="productCompetitorWorkspace">
-            <div className="productCompetitorList" aria-label="Competitor candidates">
-              {candidateGroups.map((group) => (
-                <section key={group.key} className="productCompetitorGroup">
-                  <div className="productCompetitorGroupTitle">
-                    <span>Группа вариантов</span>
-                    <strong>{group.title}</strong>
-                  </div>
-                  <div className="productCompetitorCarousel">
-                    {group.items.map((candidate) => (
-                      <button
-                        key={candidate.id}
-                        type="button"
-                        className={`productCompetitorCandidate${selected?.id === candidate.id ? " isActive" : ""}`}
-                        onClick={() => setSelectedId(candidate.id)}
-                      >
-                        <span>
-                          <strong>{candidate.title || candidate.url}</strong>
-                          <em>{candidate.url}</em>
-                        </span>
-                        <span className="productCompetitorCandidateMeta">
-                          <b>{scoreLabel(candidate)}</b>
-                          <small>{simProfileLabel(candidate.candidate_sim_profile)}</small>
-                          <Badge tone={statusTone(candidate.status)}>{statusLabel(candidate.status)}</Badge>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
+            {candidates.length ? (
+              <div className="productCompetitorList" aria-label="Competitor candidates">
+                {candidateGroups.map((group) => (
+                  <section key={group.key} className="productCompetitorGroup">
+                    <div className="productCompetitorGroupTitle">
+                      <span>Варианты для выбора</span>
+                      <strong>{group.title}</strong>
+                    </div>
+                    <div className="productCompetitorCarousel">
+                      {group.items.map((candidate) => (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          className={`productCompetitorCandidate${selected?.id === candidate.id ? " isActive" : ""}`}
+                          onClick={() => setSelectedId(candidate.id)}
+                        >
+                          <span>
+                            <strong>{candidate.title || candidate.url}</strong>
+                            <em>{candidate.url}</em>
+                          </span>
+                          <span className="productCompetitorCandidateMeta">
+                            <b>{scoreLabel(candidate)}</b>
+                            <small>{simProfileLabel(candidate.candidate_sim_profile)}</small>
+                            <Badge tone={statusTone(candidate.status)}>{statusLabel(candidate.status)}</Badge>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                className="productCompetitorReadyState"
+                title="Кандидатов на выбор нет"
+                description="Для SKU уже есть подтвержденная ссылка. Можно сразу загрузить параметры, описание и медиа из нее."
+                action={
+                  <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || running || enriching || !productId}>
+                    {enriching ? "Загружаю…" : "Загрузить параметры и медиа"}
+                  </Button>
+                }
+              />
+            )}
 
-            <div className="productCompetitorInspector">
-              {selected ? (
-                <>
-                  <div className="productCompetitorInspectorHead">
-                    <div>
-                      <span>{selected.source_name || selected.source_id}</span>
-                      <strong>{selected.title || "Карточка конкурента"}</strong>
-                    </div>
-                    <Badge tone={statusTone(selected.status)}>{statusLabel(selected.status)}</Badge>
+            {selected ? (
+              <div className="productCompetitorInspector">
+                <div className="productCompetitorInspectorHead">
+                  <div>
+                    <span>{selected.source_name || selected.source_id}</span>
+                    <strong>{selected.title || "Карточка конкурента"}</strong>
                   </div>
-                  <a className="productCompetitorUrl" href={selected.url} target="_blank" rel="noreferrer">
-                    {selected.url}
-                  </a>
-                  <div className="productCompetitorFacts">
-                    <div><span>Точность</span><strong>{scoreLabel(selected)}</strong></div>
-                    <div><span>SIM в PIM</span><strong>{simProfileLabel(selected.product_sim_profile)}</strong></div>
-                    <div><span>SIM у конкурента</span><strong>{simProfileLabel(selected.candidate_sim_profile)}</strong></div>
-                    <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
-                    <div><span>Почему подходит</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
+                  <Badge tone={statusTone(selected.status)}>{statusLabel(selected.status)}</Badge>
+                </div>
+                <a className="productCompetitorUrl" href={selected.url} target="_blank" rel="noreferrer">
+                  {selected.url}
+                </a>
+                <div className="productCompetitorFacts">
+                  <div><span>Точность</span><strong>{scoreLabel(selected)}</strong></div>
+                  <div><span>SIM в PIM</span><strong>{simProfileLabel(selected.product_sim_profile)}</strong></div>
+                  <div><span>SIM у конкурента</span><strong>{simProfileLabel(selected.candidate_sim_profile)}</strong></div>
+                  <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
+                  <div><span>Почему подходит</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
+                </div>
+                {selected.status === "needs_review" ? (
+                  <div className="productCompetitorModeration">
+                    <Button variant="primary" onClick={() => void moderate(selected, "approve")}>
+                      Подтвердить
+                    </Button>
+                    <Button variant="danger" onClick={() => void moderate(selected, "reject")}>
+                      Отклонить
+                    </Button>
                   </div>
-                  {selected.status === "needs_review" ? (
-                    <div className="productCompetitorModeration">
-                      <Button variant="primary" onClick={() => void moderate(selected, "approve")}>
-                        Подтвердить
-                      </Button>
-                      <Button variant="danger" onClick={() => void moderate(selected, "reject")}>
-                        Отклонить
-                      </Button>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <EmptyState title="Карточка не выбрана" description="Выберите вариант слева." />
-              )}
-            </div>
+                ) : null}
+              </div>
+            ) : context?.confirmed_links.length ? (
+              <div className="productCompetitorInspector">
+                <div className="productCompetitorInspectorHead">
+                  <div>
+                    <span>Готово к насыщению</span>
+                    <strong>Есть подтвержденные ссылки</strong>
+                  </div>
+                  <Badge tone="active">{context.confirmed_links.length}</Badge>
+                </div>
+                <p className="productCompetitorInspectorText">
+                  Этот SKU не требует выбора кандидата. Следующий шаг — загрузить данные из подтвержденных карточек.
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState title="Карточки пока не найдены" description="Запустите поиск по re-store и store77 для этого SKU." />
@@ -427,8 +458,9 @@ export default function ProductCompetitorPanel({
             <div className="productWorkspaceMiniTitle">Подтвержденные ссылки</div>
             {context.confirmed_links.map((link) => (
               <a key={`${link.source_id}-${link.url}`} href={link.url} target="_blank" rel="noreferrer">
-                <span>{link.source_id}</span>
+                <span>{sourceLabel(link.source_id)}</span>
                 <strong>{link.url}</strong>
+                <em>{confirmedLinkTime(link)}</em>
               </a>
             ))}
           </div>

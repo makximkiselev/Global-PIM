@@ -1167,7 +1167,7 @@
 
 .productCompetitorConfirmed a{
   display:grid;
-  grid-template-columns:110px minmax(0, 1fr);
+  grid-template-columns:110px minmax(0, 1fr) 180px;
   gap:12px;
   align-items:center;
   padding:11px 12px;
@@ -1183,6 +1183,27 @@
   color:var(--muted);
   font-size:12px;
   word-break:break-all;
+}
+
+.productCompetitorConfirmed em{
+  color:var(--muted);
+  font-size:12px;
+  font-style:normal;
+  font-weight:800;
+  text-align:right;
+}
+
+.productCompetitorInspectorText{
+  margin:0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.5;
+  font-weight:750;
+}
+
+.productCompetitorReadyState.emptyState{
+  height:100%;
+  align-self:stretch;
 }
 
 .productCompetitorManual{

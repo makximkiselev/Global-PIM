@@ -2655,6 +2655,67 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(imported["storage"], "s3")
         self.assertEqual(imported["content_type"], "image/webp")
 
+    def test_product_competitor_context_keeps_confirmed_link_out_of_candidate_list(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        rows = [
+            {
+                "link_id": "product_2:store77",
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": "product_2",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_cosmic_orange/",
+                "title": "",
+                "status": "confirmed",
+                "score": None,
+                "source": "moderation",
+                "payload": {"candidate_id": "cand_exact"},
+                "updated_at": "2026-05-15T12:00:00+00:00",
+            },
+            {
+                "link_id": "cand_exact",
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": "product_2",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_cosmic_orange/",
+                "title": "Телефон Apple iPhone 17 Pro 256 ГБ eSim Cosmic Orange",
+                "status": "confirmed",
+                "score": 0.95,
+                "source": "discovery",
+                "payload": {
+                    "candidate_id": "cand_exact",
+                    "match_group_key": "iphone_17_pro|256gb|orange|esim_only",
+                    "product_sim_profile": "esim_only",
+                    "candidate_sim_profile": "esim_only",
+                    "confidence_reasons": ["обязательные токены совпали"],
+                },
+                "updated_at": "2026-05-15T12:00:00+00:00",
+            },
+        ]
+
+        with (
+            patch.object(
+                competitor_mapping_routes,
+                "load_competitor_mapping_db",
+                return_value={"version": 2, "categories": {}, "templates": {}, "discovery": {"runs": {}, "candidates": {}, "links": {}}},
+            ),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", return_value=rows),
+        ):
+            response = self.client.get("/api/competitor-mapping/discovery/products/product_2")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["counts"]["total"], 1)
+        self.assertEqual(payload["counts"]["approved"], 1)
+        self.assertEqual(payload["counts"]["confirmed_links"], 1)
+        self.assertEqual(payload["items"][0]["id"], "cand_exact")
+        self.assertEqual(payload["items"][0]["confidence_score"], 0.95)
+        self.assertEqual(payload["items"][0]["candidate_sim_profile"], "esim_only")
+        self.assertEqual(payload["confirmed_links"][0]["id"], "product_2:store77")
+
     def test_sim_profile_conflict_blocks_esim_only_candidate_for_nano_esim_product(self) -> None:
         product = {
             "id": "product_113",

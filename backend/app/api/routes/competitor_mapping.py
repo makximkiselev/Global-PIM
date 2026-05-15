@@ -1040,6 +1040,11 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
     product_id = str(row.get("entity_id") or "").strip()
     if provider not in ALLOWED_SITES or not product_id:
         return None
+    link_id = str(row.get("link_id") or "").strip()
+    if str(row.get("status") or "").strip() == "confirmed" and link_id == f"{product_id}:{provider}":
+        # Product-source confirmed links are the accepted result, not another
+        # candidate row. Candidate rows keep their discovery candidate id.
+        return None
     source_name = next((str(item.get("name") or "") for item in DISCOVERY_SOURCES if item.get("id") == provider), provider)
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
     status = {
@@ -1050,7 +1055,7 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
     }.get(str(row.get("status") or "").strip(), str(payload.get("raw_status") or row.get("status") or "needs_review"))
     url = str(row.get("url") or "").strip()
     return {
-        "id": str(payload.get("candidate_id") or row.get("link_id") or "").strip(),
+        "id": str(payload.get("candidate_id") or link_id or "").strip(),
         "product_id": product_id,
         "source_id": provider,
         "source_name": source_name,
@@ -1204,30 +1209,60 @@ def _persist_competitor_channel_link(link: Dict[str, Any], candidate: Optional[D
     url = str(link.get("url") or (candidate or {}).get("url") or "").strip()
     if not product_id or source_id not in ALLOWED_SITES or not url:
         return
+    link_id = str(link.get("id") or f"{product_id}:{source_id}")
+    existing: Dict[str, Any] = {}
+    try:
+        rows = list_pim_channel_links(
+            link_id=link_id,
+            scope="competitor_product",
+            entity_type="product",
+            entity_id=product_id,
+        )
+        existing = next((row for row in rows if isinstance(row, dict)), {})
+    except Exception:
+        existing = {}
+    existing_payload = existing.get("payload") if isinstance(existing.get("payload"), dict) else {}
+    payload = dict(existing_payload)
+
+    def put_payload(key: str, value: Any) -> None:
+        if value is None:
+            return
+        if isinstance(value, str) and not value.strip():
+            return
+        if isinstance(value, list) and not value:
+            return
+        payload[key] = value
+
+    put_payload("candidate_id", link.get("candidate_id") or (candidate or {}).get("id"))
+    put_payload("category_id", (candidate or {}).get("category_id") or existing_payload.get("category_id"))
+    put_payload("product_title", (candidate or {}).get("product_title") or existing_payload.get("product_title"))
+    put_payload("product_sku", (candidate or {}).get("product_sku") or existing_payload.get("product_sku"))
+    put_payload("match_group_key", (candidate or {}).get("match_group_key") or existing_payload.get("match_group_key"))
+    put_payload("product_sim_profile", (candidate or {}).get("product_sim_profile") or existing_payload.get("product_sim_profile"))
+    put_payload("candidate_sim_profile", (candidate or {}).get("candidate_sim_profile") or existing_payload.get("candidate_sim_profile"))
+    put_payload("confirmed_at", link.get("confirmed_at") or existing_payload.get("confirmed_at"))
+    put_payload("last_checked_at", link.get("last_checked_at") or existing_payload.get("last_checked_at"))
+    put_payload("last_enriched_at", link.get("last_enriched_at") or existing_payload.get("last_enriched_at"))
+    put_payload(
+        "confidence_reasons",
+        (candidate or {}).get("confidence_reasons") if isinstance((candidate or {}).get("confidence_reasons"), list) else existing_payload.get("confidence_reasons"),
+    )
+
     try:
         upsert_pim_channel_link(
             {
-                "link_id": str(link.get("id") or f"{product_id}:{source_id}"),
+                "link_id": link_id,
                 "scope": "competitor_product",
                 "entity_type": "product",
                 "entity_id": product_id,
                 "provider": source_id,
                 "url": url,
-                "external_id": str((candidate or {}).get("sku") or (candidate or {}).get("gtin") or ""),
-                "title": str((candidate or {}).get("title") or link.get("title") or ""),
+                "external_id": str((candidate or {}).get("sku") or (candidate or {}).get("gtin") or existing.get("external_id") or ""),
+                "title": str((candidate or {}).get("title") or link.get("title") or existing.get("title") or ""),
                 "status": "confirmed",
-                "score": (candidate or {}).get("confidence_score"),
-                "source": str(link.get("source") or "moderation"),
-                "payload": {
-                    "candidate_id": link.get("candidate_id") or (candidate or {}).get("id"),
-                    "category_id": (candidate or {}).get("category_id"),
-                    "product_title": (candidate or {}).get("product_title"),
-                    "product_sku": (candidate or {}).get("product_sku"),
-                    "confirmed_at": link.get("confirmed_at"),
-                    "last_checked_at": link.get("last_checked_at"),
-                    "last_enriched_at": link.get("last_enriched_at"),
-                    "confidence_reasons": (candidate or {}).get("confidence_reasons") if isinstance((candidate or {}).get("confidence_reasons"), list) else [],
-                },
+                "score": (candidate or {}).get("confidence_score") if (candidate or {}).get("confidence_score") is not None else existing.get("score"),
+                "source": str(link.get("source") or existing.get("source") or "moderation"),
+                "payload": payload,
             }
         )
     except Exception:
