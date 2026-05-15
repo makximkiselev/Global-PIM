@@ -14,7 +14,7 @@ import subprocess
 import sys
 from time import monotonic
 from typing import Any, Dict, Optional, List, Tuple
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote, quote_plus, urljoin, urlparse
 
 import httpx
 
@@ -100,6 +100,29 @@ def _is_internal_upload_url(url: str) -> bool:
     return path_value.startswith("/api/uploads/")
 
 
+def _store77_js_challenge_hash(code: int) -> int:
+    value = 123456789
+    counter = 0
+    for index in range(1677696):
+        value = ((value + code) ^ (value + (value % 3) + (value % 17) + code) ^ index) % 16776960
+        if value % 117 == 0:
+            counter = (counter + 1) % 1111
+    return counter
+
+
+def _apply_store77_js_challenge_cookies(client: httpx.AsyncClient, user_agent: str) -> bool:
+    raw_cookie = str(client.cookies.get("__js_p_") or "").strip()
+    if not raw_cookie:
+        return False
+    try:
+        code = int(raw_cookie.split(",", 1)[0])
+    except (TypeError, ValueError):
+        return False
+    client.cookies.set("__jhash_", str(_store77_js_challenge_hash(code)), domain="store77.net", path="/")
+    client.cookies.set("__jua_", quote(user_agent, safe=""), domain="store77.net", path="/")
+    return True
+
+
 async def _import_competitor_image_to_storage(
     *,
     image_url: str,
@@ -114,8 +137,9 @@ async def _import_competitor_image_to_storage(
     if not url:
         return None
 
+    user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "User-Agent": user_agent,
         "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
     }
@@ -125,9 +149,13 @@ async def _import_competitor_image_to_storage(
     try:
         async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(12.0, connect=5.0), follow_redirects=True, verify=False) as client:
             response = await client.get(url)
+            content_type = str(response.headers.get("content-type") or mimetypes.guess_type(url)[0] or "image/jpeg").split(";", 1)[0]
+            if "store77.net" in (urlparse(url).hostname or "") and not content_type.startswith("image/"):
+                if _apply_store77_js_challenge_cookies(client, user_agent):
+                    response = await client.get(url)
+                    content_type = str(response.headers.get("content-type") or mimetypes.guess_type(url)[0] or "image/jpeg").split(";", 1)[0]
             response.raise_for_status()
             data = response.content
-            content_type = str(response.headers.get("content-type") or mimetypes.guess_type(url)[0] or "image/jpeg").split(";", 1)[0]
     except Exception:
         return None
 
@@ -844,6 +872,7 @@ def _variant_profile(value: Any) -> Dict[str, str]:
         ("silver", ("silver", "серебрист", "серебро")),
         ("blue", ("blue", "синий", "голубой")),
         ("green", ("green", "зеленый", "зелёный")),
+        ("orange", ("orange", "оранжевый", "оранжев")),
         ("pink", ("pink", "розовый")),
         ("yellow", ("yellow", "желтый", "жёлтый")),
     ]
@@ -1673,6 +1702,7 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
         ("desert_titanium", "Desert Titanium", ("desert titanium", "пустынный титан")),
         ("black_titanium", "Black Titanium", ("black titanium", "черный титан", "чёрный титан")),
         ("white_titanium", "White Titanium", ("white titanium", "белый титан")),
+        ("cosmic_orange", "Cosmic Orange", ("cosmic orange", "космический оранжевый", "orange", "оранжевый", "оранжев")),
     ]
     color_slug = ""
     color_label = ""

@@ -246,6 +246,7 @@ scripts/server_ops.sh public-health
 scripts/server_ops.sh status
 scripts/server_ops.sh logs
 scripts/server_ops.sh restart
+scripts/server_ops.sh exec '<safe diagnostic command>'
 ```
 
 Server config backup:

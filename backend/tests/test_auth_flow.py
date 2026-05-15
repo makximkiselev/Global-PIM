@@ -6,6 +6,7 @@ import unittest
 from contextlib import ExitStack
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -2560,6 +2561,99 @@ class AuthFlowTests(unittest.TestCase):
             "https://store77.net/apple_iphone_16_pro_2/telefon_apple_iphone_16_pro_128gb_nano_sim_esim_natural_titanium/",
         )
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.9)
+
+    def test_store77_seed_candidate_builds_exact_orange_iphone_product_url(self) -> None:
+        product = {
+            "id": "product_2",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Orange (Global)",
+            "sku_gt": "52461",
+        }
+
+        candidates = competitor_mapping_routes._store77_seed_candidates_for_product(product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0]["url"],
+            "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_cosmic_orange/",
+        )
+        self.assertEqual(candidates[0]["candidate_sim_profile"], "esim_only")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.9)
+
+    def test_iphone_variant_matching_rejects_wrong_orange_candidate(self) -> None:
+        product = {
+            "id": "product_2",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Orange (Global)",
+            "sku_gt": "52461",
+        }
+
+        score, reasons = competitor_mapping_routes._confidence_for_candidate(
+            product,
+            "Телефон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            "",
+        )
+
+        self.assertEqual(score, 0.0)
+        self.assertIn("конфликт цвета", reasons[0])
+
+    def test_store77_media_import_passes_js_challenge_before_s3_upload(self) -> None:
+        image_url = "https://store77.net/upload/w247/imageCache/example.png"
+        product = {"id": "product_2", "sku_pim": "52461"}
+        calls: list[str] = []
+        test_case = self
+
+        class FakeAsyncClient:
+            def __init__(self, **_kwargs):
+                self.cookies = competitor_mapping_routes.httpx.Cookies()
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def get(self, url):
+                calls.append(url)
+                request = competitor_mapping_routes.httpx.Request("GET", url)
+                if len(calls) == 1:
+                    self.cookies.set("__js_p_", "527,1800,0,0,0", domain="store77.net", path="/")
+                    return competitor_mapping_routes.httpx.Response(
+                        200,
+                        headers={"content-type": "text/html; charset=utf-8"},
+                        content=b"<html>challenge</html>",
+                        request=request,
+                    )
+                test_case.assertTrue(self.cookies.get("__jhash_"))
+                test_case.assertTrue(self.cookies.get("__jua_"))
+                return competitor_mapping_routes.httpx.Response(
+                    200,
+                    headers={"content-type": "image/webp"},
+                    content=b"RIFF-image-bytes",
+                    request=request,
+                )
+
+        with (
+            patch.object(competitor_mapping_routes, "s3_enabled", return_value=True),
+            patch.object(competitor_mapping_routes.httpx, "AsyncClient", FakeAsyncClient),
+            patch.object(
+                competitor_mapping_routes,
+                "upload_bytes",
+                return_value=SimpleNamespace(key="media_images/52461/competitors/store77/example.webp", content_type="image/webp", size=16),
+            ),
+        ):
+            imported = asyncio.run(
+                competitor_mapping_routes._import_competitor_image_to_storage(
+                    image_url=image_url,
+                    product=product,
+                    source_id="store77",
+                    source_url="https://store77.net/product/",
+                )
+            )
+
+        self.assertEqual(len(calls), 2)
+        self.assertIsNotNone(imported)
+        self.assertTrue(imported["url"].startswith("/api/uploads/media_images/52461/competitors/store77/"))
+        self.assertEqual(imported["storage"], "s3")
+        self.assertEqual(imported["content_type"], "image/webp")
 
     def test_sim_profile_conflict_blocks_esim_only_candidate_for_nano_esim_product(self) -> None:
         product = {

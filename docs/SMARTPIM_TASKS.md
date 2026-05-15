@@ -227,6 +227,10 @@ Progress:
    - production audit on `/products/product_2?tab=competitors` showed `35-39%` candidates for unrelated Apple Watch, Samsung vacuum and organization pages;
    - API context now exposes only approved candidates and `needs_review` candidates with confidence at least `0.78`;
    - frontend keeps the same defensive threshold so stale/low-confidence rows cannot reappear from cached or legacy payloads.
+17. Store77 exact fallback must support current iPhone colors:
+   - `iPhone 17 Pro 256Gb eSIM Orange` previously had no exact seed because `orange` was absent from the Store77 color URL builder;
+   - `orange/оранжевый` is now part of variant color normalization, while Store77 URL generation uses the real site slug `cosmic_orange`;
+   - wrong-color Orange/Silver matches are explicitly rejected by the confidence function.
 
 Verified:
 
@@ -290,6 +294,14 @@ Progress:
     - first export blocker opens `/products/product_2?tab=media`;
     - media tab previously showed only an empty S3 message and no next action;
     - empty media state now explains that export is blocked and links the user to competitor-card discovery/enrichment or validation.
+12. 2026-05-15 Store77 media import fix:
+    - production S3 is enabled and `global-pim.service` reads `/opt/projects/global-pim/backend/.env`;
+    - Store77 `/upload/...` image URLs first return an HTML JS challenge, not an image;
+    - backend now computes the Store77 challenge cookies and retries the image request before writing media into S3;
+    - verified on `/products/product_2?tab=media`: Store77 enrichment now shows S3-backed media cards with `/api/uploads/...` URLs.
+13. Next product-pipeline UI cleanup:
+    - competitor candidate cards still show weak metadata for already-confirmed manual links (`0%`, `SIM не распознан`) and need a better confirmed-link presentation;
+    - product media tab now works functionally, but still needs compact product-card layout polish after the pipeline blockers are cleared.
 
 ### P1 DB Consolidation
 

@@ -30,6 +30,7 @@ Commands:
   status         Show systemd service status
   logs           Show last 200 service log lines
   restart        Restart service and wait for local health
+  exec <cmd>     Run a diagnostic command on the server
   path           Print remote app path
 USAGE
 }
@@ -89,6 +90,14 @@ case "${command_name}" in
     ;;
   restart)
     ssh_run "systemctl restart ${APP_SERVICE_NAME}; for attempt in {1..30}; do curl -fsS ${APP_LOCAL_HEALTH_URL} && exit 0; sleep 1; done; curl -fsS ${APP_LOCAL_HEALTH_URL}"
+    ;;
+  exec)
+    shift
+    if [[ $# -eq 0 ]]; then
+      echo "Usage: scripts/server_ops.sh exec <command>" >&2
+      exit 1
+    fi
+    ssh_run "$*"
     ;;
   path)
     printf "%s\n" "${APP_SERVER_PATH}"
