@@ -326,6 +326,11 @@ Progress:
 17. Direct SSH diagnostics gotcha:
     - `server_ops.sh exec` does not inherit `global-pim.service` env; S3 can appear disabled in manual Python diagnostics if runtime env is not loaded safely;
     - prefer API/service verification for S3/media flows, or load required env inside Python without printing secrets.
+18. 2026-05-16 stock/archive safety audit:
+    - SmartPim code currently does not send Ozon stock, warehouse, price, archive, posting, or visibility mutation requests;
+    - Ozon product status sync is read-only from SmartPim side: `/v3/product/info/list` and `/v1/product/rating-by-sku`;
+    - if stock changes or marketplace archive happens by itself, compare exact SKU/timestamp with server logs and audit external integrations/cron/systemd/Ozon API keys before blaming the PIM export preview;
+    - local product archive status is now normalized to canonical `archived`; legacy `archive` is accepted only for backwards-compatible reads/writes.
 
 ### P1 DB Consolidation
 

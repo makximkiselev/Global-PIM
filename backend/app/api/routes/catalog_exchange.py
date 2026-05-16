@@ -697,6 +697,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
         media = media_images if media_images else media_legacy
         pictures = [_export_media_url(x.get("url")) for x in media if isinstance(x, dict) and _export_media_url(x.get("url"))]
+        status = str(product.get("status") or "").strip()
 
         type_row = _provider_row(rows, "ozon", "8229")
         brand_row = _provider_row(rows, "ozon", "85")
@@ -739,6 +740,8 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
 
         missing: List[str] = []
+        if status in {"archived", "archive"}:
+            missing.append("Товар в архиве")
         if not offer_id:
             missing.append("SKU GT (offer_id) не заполнен")
         if not ozon_category_id:

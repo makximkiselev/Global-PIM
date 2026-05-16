@@ -40,6 +40,7 @@ class ProductServiceTests(unittest.TestCase):
             "id": "product_1",
             "category_id": "phones",
             "title": "Apple iPhone",
+            "status": "archive",
             "extra": {"extra": {"extra": {}}},
         }
 
@@ -47,7 +48,26 @@ class ProductServiceTests(unittest.TestCase):
         item = normalized["items"][0]
 
         self.assertEqual(item["extra"], {})
+        self.assertEqual(item["status"], "archived")
         jsonable_encoder({"product": item})
+
+    def test_patch_product_service_stores_archived_status_canonically(self) -> None:
+        product = {
+            "id": "product_1",
+            "category_id": "phones",
+            "title": "Apple iPhone",
+            "status": "active",
+            "sku_gt": "50001",
+        }
+
+        with (
+            patch.object(products_service, "query_products_full", return_value=[product]),
+            patch.object(products_service, "upsert_product_item", side_effect=lambda item: item) as upsert_product,
+        ):
+            result = products_service.patch_product_service("product_1", {"status": "archive"})
+
+        self.assertEqual(result["product"]["status"], "archived")
+        upsert_product.assert_called_once()
 
 
 if __name__ == "__main__":

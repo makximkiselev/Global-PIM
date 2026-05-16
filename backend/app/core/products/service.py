@@ -208,7 +208,7 @@ def patch_product_service(product_id: str, patch: Dict[str, Any]) -> Dict[str, A
         if status and status not in {"draft", "active", "archive", "archived"}:
             raise JsonStoreError("BAD_STATUS")
         if status:
-            target["status"] = "archive" if status == "archived" else status
+            target["status"] = "archived" if status == "archive" else status
 
     if "title" in patch:
         title = _norm(patch.get("title"))

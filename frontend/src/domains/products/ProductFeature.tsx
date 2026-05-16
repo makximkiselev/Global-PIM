@@ -460,8 +460,8 @@ export default function ProductFeature() {
   }, [content.links]);
 
   const autoStatus = useMemo<ProductT["status"]>(() => {
-    // Archived is explicit/manual only.
-    if (status === "archived") return "archived";
+    // Archived is explicit/manual only. `archive` is a legacy backend value.
+    if (status === "archived" || String(status) === "archive") return "archived";
 
     const hasTitle = !!String(title || "").trim();
     const hasMedia = Array.isArray(content.media_images) && content.media_images.length > 0;

@@ -4007,7 +4007,7 @@ def _normalize_products_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
                 "id": pid,
                 "category_id": category_id,
                 "type": str(raw.get("type") or "single").strip() or "single",
-                "status": str(raw.get("status") or "draft").strip() or "draft",
+                "status": _normalize_product_status(raw.get("status")),
                 "title": title,
                 "sku_pim": str(raw.get("sku_pim") or "").strip(),
                 "sku_gt": str(raw.get("sku_gt") or "").strip(),
@@ -4072,6 +4072,11 @@ def _preview_url_for_content(content: Dict[str, Any]) -> str:
     return ""
 
 
+def _normalize_product_status(value: Any) -> str:
+    status = str(value or "draft").strip() or "draft"
+    return "archived" if status == "archive" else status
+
+
 def _replace_products_table(doc: Dict[str, Any]) -> None:
     normalized = _normalize_products_doc(doc)
     items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
@@ -4089,7 +4094,7 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
                 str(item.get("id") or "").strip(),
                 category_id,
                 str(item.get("type") or "single").strip() or "single",
-                str(item.get("status") or "draft").strip() or "draft",
+                _normalize_product_status(item.get("status")),
                 str(item.get("title") or "").strip(),
                 str(item.get("sku_pim") or "").strip() or None,
                 str(item.get("sku_gt") or "").strip() or None,
@@ -4305,7 +4310,7 @@ def load_products_doc() -> Dict[str, Any]:
                 "id": str(row[0] or "").strip(),
                 "category_id": str(row[1] or "").strip(),
                 "type": str(row[2] or "single").strip() or "single",
-                "status": str(row[3] or "draft").strip() or "draft",
+                "status": _normalize_product_status(row[3]),
                 "title": str(row[4] or "").strip(),
                 "sku_pim": str(row[5] or "").strip(),
                 "sku_gt": str(row[6] or "").strip(),
@@ -4376,7 +4381,7 @@ def find_product_by_sku_gt(sku_gt: str) -> Dict[str, Any]:
             "id": str(row[0] or "").strip(),
             "category_id": str(row[1] or "").strip(),
             "type": str(row[2] or "single").strip() or "single",
-            "status": str(row[3] or "draft").strip() or "draft",
+            "status": _normalize_product_status(row[3]),
             "title": str(row[4] or "").strip(),
             "sku_pim": str(row[5] or "").strip(),
             "sku_gt": str(row[6] or "").strip(),
@@ -4478,7 +4483,7 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
                     product_id,
                     category_id,
                     str(normalized.get("type") or "single").strip() or "single",
-                    str(normalized.get("status") or "draft").strip() or "draft",
+                    _normalize_product_status(normalized.get("status")),
                     str(normalized.get("title") or "").strip(),
                     str(normalized.get("sku_pim") or "").strip() or None,
                     str(normalized.get("sku_gt") or "").strip() or None,
@@ -4571,7 +4576,7 @@ def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any
                         product_id,
                         category_id,
                         str(normalized.get("type") or "single").strip() or "single",
-                        str(normalized.get("status") or "draft").strip() or "draft",
+                        _normalize_product_status(normalized.get("status")),
                         str(normalized.get("title") or "").strip(),
                         str(normalized.get("sku_pim") or "").strip() or None,
                         str(normalized.get("sku_gt") or "").strip() or None,
@@ -5028,7 +5033,7 @@ def query_products_full(
                 "id": str(row[0] or "").strip(),
                 "category_id": str(row[1] or "").strip(),
                 "type": str(row[2] or "single").strip() or "single",
-                "status": str(row[3] or "draft").strip() or "draft",
+                "status": _normalize_product_status(row[3]),
                 "title": str(row[4] or "").strip(),
                 "sku_pim": str(row[5] or "").strip(),
                 "sku_gt": str(row[6] or "").strip(),

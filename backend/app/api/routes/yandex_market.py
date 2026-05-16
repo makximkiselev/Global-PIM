@@ -1995,8 +1995,8 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             )
 
         missing: List[str] = []
-        if status == "archived":
-            missing.append("status=archived (товар в архиве)")
+        if status in {"archived", "archive"}:
+            missing.append("Товар в архиве")
         if not offer_id:
             missing.append("SKU GT (offerId) не заполнен")
         if not name:
