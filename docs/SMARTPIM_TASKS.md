@@ -112,6 +112,15 @@ Checklist:
 
 Audit findings to verify/fix:
 
+0. 2026-05-16 end-to-end check:
+   - production data exists: `272` catalog categories, `121` category product counters, `6` info-models;
+   - `Смартфоны` info-model has `84` fields and no duplicate field names/codes in backend data;
+   - `product_3 / SKU GT 52462` has a confirmed Store77 product-card link and 4 S3-backed Store77 images;
+   - product media lacked explicit `role/selected/status` metadata, and product content lacked normalized `competitor_links`;
+   - fixed in backend enrichment path: confirmed donor links are written to `content.competitor_links`, imported media is marked as selected ready gallery media, and approved candidate rows are no longer persisted as canonical confirmed links.
+   - export page readiness check for one SKU passes for `GT USD` and `Ozon` with `2` ready target rows and `0` blockers;
+   - fixed export initial loading state so the UI no longer briefly shows false `0 узлов / нет каналов` before async data arrives.
+
 1. `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`
    - opens authenticated;
    - selected category context works;
@@ -334,7 +343,7 @@ Progress:
 19. 2026-05-16 export run readability:
     - export run responses and persisted run rows now include aggregate summary fields: product count, target count, ready/blocked batches, ready/blocked target rows, and blocker count;
     - export UI uses this summary for the visible batch metrics instead of forcing the user to infer run state from nested raw rows.
-    - ready export state now shows a separate `Batch готов к выгрузке` panel and explicitly states that readiness preparation did not send stock, prices, or archive mutations to marketplaces.
+    - ready export state now shows a separate `Batch готов к выгрузке` panel with a neutral message that SmartPim prepared product-card data for selected marketplaces.
 
 ### P1 DB Consolidation
 

@@ -1050,6 +1050,7 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
     status = {
         "candidate": "needs_review",
         "confirmed": "approved",
+        "approved": "approved",
         "rejected": "rejected",
         "stale": "stale",
     }.get(str(row.get("status") or "").strip(), str(payload.get("raw_status") or row.get("status") or "needs_review"))
@@ -1191,7 +1192,10 @@ def _merge_relational_discovery_items(
         return
     for row in rows:
         status = str(row.get("status") or "").strip()
-        if status == "confirmed":
+        provider = str(row.get("provider") or "").strip()
+        entity_id = str(row.get("entity_id") or "").strip()
+        link_id = str(row.get("link_id") or "").strip()
+        if status == "confirmed" and link_id == f"{entity_id}:{provider}":
             link = _link_from_channel_link(row)
             if link and str(link.get("id") or "") not in links:
                 links[str(link["id"])] = link
@@ -1227,7 +1231,7 @@ def _persist_competitor_channel_candidate(candidate: Dict[str, Any]) -> None:
     status = str(candidate.get("status") or "needs_review").strip()
     channel_status = {
         "needs_review": "candidate",
-        "approved": "confirmed",
+        "approved": "approved",
         "rejected": "rejected",
         "stale": "stale",
     }.get(status, status or "candidate")
@@ -1338,6 +1342,26 @@ async def _merge_competitor_content_into_product(
     links: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    competitor_links = content.get("competitor_links") if isinstance(content.get("competitor_links"), dict) else {}
+    for source_id, link in links.items():
+        source_key = str(source_id or "").strip()
+        if source_key not in ALLOWED_SITES or not isinstance(link, dict):
+            continue
+        url = str(link.get("url") or "").strip()
+        if not url:
+            continue
+        competitor_links[source_key] = {
+            "source_id": source_key,
+            "url": url,
+            "status": "confirmed",
+            "confirmed_at": link.get("confirmed_at"),
+            "last_checked_at": link.get("last_checked_at"),
+            "last_enriched_at": link.get("last_enriched_at"),
+            "candidate_id": link.get("candidate_id"),
+        }
+    if competitor_links:
+        content["competitor_links"] = competitor_links
+
     features_raw = content.get("features") if isinstance(content.get("features"), list) else []
     features: List[Dict[str, Any]] = [dict(item) for item in features_raw if isinstance(item, dict)]
 
@@ -1379,6 +1403,9 @@ async def _merge_competitor_content_into_product(
     for existing_image in existing_images:
         if not isinstance(existing_image, dict):
             continue
+        existing_image.setdefault("role", "gallery")
+        existing_image.setdefault("selected", True)
+        existing_image.setdefault("status", "ready")
         current_url = str(existing_image.get("url") or "").strip()
         if not current_url or _is_internal_upload_url(current_url):
             continue
@@ -1518,6 +1545,9 @@ async def _merge_competitor_content_into_product(
                 continue
             next_image.setdefault("source", source_id)
             next_image.setdefault("source_url", source_url)
+            next_image.setdefault("role", "gallery")
+            next_image.setdefault("selected", True)
+            next_image.setdefault("status", "ready")
             existing_images.append(next_image)
             image_urls.add(image_url)
             image_urls.add(str(next_image.get("url") or "").strip())

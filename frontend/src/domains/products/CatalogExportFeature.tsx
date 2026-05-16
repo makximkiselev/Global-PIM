@@ -128,6 +128,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({ yandex_market: true, ozon: false });
   const [selectedStores, setSelectedStores] = useState<Record<string, string[]>>({});
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
@@ -139,34 +140,41 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
 
   useEffect(() => {
     const load = async () => {
-      const [n, counts, c] = await Promise.all([
-        api<{ nodes: ExchangeNode[] }>("/catalog/nodes"),
-        api<{ counts: Record<string, number> }>("/catalog/products/counts"),
-        api<ConnectorsResp>("/connectors/status"),
-      ]);
-      setNodes(n.nodes || []);
-      setProductCountsByCategory(counts.counts || {});
-      const exportProviders = (c.providers || [])
-        .filter((x) => ["yandex_market", "ozon"].includes(x.code))
-        .map((provider) => ({
-          ...provider,
-          import_stores: provider.import_stores || [],
-        }))
-        .filter((provider) => provider.code !== EXPORT_PROVIDER_CODE || (provider.import_stores || []).some(isAllowedExportStore));
-      setProviders(exportProviders);
-      const gtUsd = exportProviders
-        .find((provider) => provider.code === EXPORT_PROVIDER_CODE)
-        ?.import_stores?.find(isAllowedExportStore)?.id;
-      const ozonStores = exportProviders.find((provider) => provider.code === "ozon")?.import_stores || [];
-      const defaultOzonStoreIds = ozonStores.filter((store) => store.enabled !== false).map((store) => store.id).filter(Boolean);
-      setSelectedProviders({
-        [EXPORT_PROVIDER_CODE]: Boolean(gtUsd),
-        ozon: defaultOzonStoreIds.length > 0,
-      });
-      setSelectedStores({
-        ...(gtUsd ? { [EXPORT_PROVIDER_CODE]: [gtUsd] } : {}),
-        ...(defaultOzonStoreIds.length ? { ozon: defaultOzonStoreIds } : {}),
-      });
+      setInitialLoading(true);
+      try {
+        const [n, counts, c] = await Promise.all([
+          api<{ nodes: ExchangeNode[] }>("/catalog/nodes"),
+          api<{ counts: Record<string, number> }>("/catalog/products/counts"),
+          api<ConnectorsResp>("/connectors/status"),
+        ]);
+        setNodes(n.nodes || []);
+        setProductCountsByCategory(counts.counts || {});
+        const exportProviders = (c.providers || [])
+          .filter((x) => ["yandex_market", "ozon"].includes(x.code))
+          .map((provider) => ({
+            ...provider,
+            import_stores: provider.import_stores || [],
+          }))
+          .filter((provider) => provider.code !== EXPORT_PROVIDER_CODE || (provider.import_stores || []).some(isAllowedExportStore));
+        setProviders(exportProviders);
+        const gtUsd = exportProviders
+          .find((provider) => provider.code === EXPORT_PROVIDER_CODE)
+          ?.import_stores?.find(isAllowedExportStore)?.id;
+        const ozonStores = exportProviders.find((provider) => provider.code === "ozon")?.import_stores || [];
+        const defaultOzonStoreIds = ozonStores.filter((store) => store.enabled !== false).map((store) => store.id).filter(Boolean);
+        setSelectedProviders({
+          [EXPORT_PROVIDER_CODE]: Boolean(gtUsd),
+          ozon: defaultOzonStoreIds.length > 0,
+        });
+        setSelectedStores({
+          ...(gtUsd ? { [EXPORT_PROVIDER_CODE]: [gtUsd] } : {}),
+          ...(defaultOzonStoreIds.length ? { ozon: defaultOzonStoreIds } : {}),
+        });
+      } catch (e) {
+        setErr((e as Error).message || "Не удалось загрузить данные экспорта");
+      } finally {
+        setInitialLoading(false);
+      }
     };
     void load();
   }, []);
@@ -343,6 +351,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             onSelectedProductIdsChange={setSelectedProductIds}
             includeDescendants={includeDescendants}
             onIncludeDescendantsChange={setIncludeDescendants}
+            dataLoading={initialLoading}
           />
         )}
         main={(
@@ -353,17 +362,19 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               className="cx-workspaceToolbar"
               actions={(
                 <div className="cx-toolbarActions">
-                  <Badge tone={activeTargets.length ? "active" : "neutral"}>
-                    {activeTargets.length ? `${activeTargets.length} канала` : "Нет каналов"}
+                  <Badge tone={initialLoading ? "pending" : activeTargets.length ? "active" : "neutral"}>
+                    {initialLoading ? "Загружаю каналы" : activeTargets.length ? `${activeTargets.length} канала` : "Нет каналов"}
                   </Badge>
-                  <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>
+                  <Button variant="primary" onClick={() => void startExport()} disabled={initialLoading || loading || activeTargets.length === 0}>
                     {loading ? "Готовлю…" : "Подготовить"}
                   </Button>
                 </div>
               )}
             >
               <div className="cx-targetsBoard">
-                {providers.map((provider) => {
+                {initialLoading ? (
+                  <div className="cx-empty">Загружаю магазины и каналы экспорта…</div>
+                ) : providers.map((provider) => {
                   const checked = !!selectedProviders[provider.code];
                   const stores = provider.import_stores || [];
                   const current = new Set(selectedStores[provider.code] || []);
@@ -441,8 +452,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     <div>
                       <div className="cx-paneTitle">Batch готов к выгрузке</div>
                       <div className="cx-paneSub">
-                        Проверка прошла по выбранной области и выбранным магазинам. На этом шаге SmartPim подготовил payload и readiness,
-                        но не отправлял остатки, цены или архивирование на площадки.
+                        Проверка прошла по выбранной области и выбранным магазинам. SmartPim подготовил данные карточки для выбранных площадок.
                       </div>
                     </div>
                     <Badge tone="active">Можно переходить к отправке</Badge>

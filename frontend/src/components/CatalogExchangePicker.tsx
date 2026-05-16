@@ -28,6 +28,7 @@ type Props = {
   includeDescendants: boolean;
   onIncludeDescendantsChange: (value: boolean) => void;
   embedded?: boolean;
+  dataLoading?: boolean;
 };
 
 function qnorm(s: string) {
@@ -57,6 +58,7 @@ export default function CatalogExchangePicker(props: Props) {
     includeDescendants,
     onIncludeDescendantsChange,
     embedded = false,
+    dataLoading = false,
   } = props;
 
   const [nodeQuery, setNodeQuery] = useState("");
@@ -330,7 +332,7 @@ export default function CatalogExchangePicker(props: Props) {
             </label>
           );
         })}
-        {!hasProductScope ? <div className="cx-empty">Сначала выбери раздел каталога или начни поиск по товарам.</div> : productsLoading ? <div className="cx-empty">Загружаю товары…</div> : visibleProducts.length === 0 ? <div className="cx-empty">Ничего не найдено</div> : null}
+        {dataLoading ? <div className="cx-empty">Загружаю товары и категории…</div> : !hasProductScope ? <div className="cx-empty">Сначала выбери раздел каталога или начни поиск по товарам.</div> : productsLoading ? <div className="cx-empty">Загружаю товары…</div> : visibleProducts.length === 0 ? <div className="cx-empty">Ничего не найдено</div> : null}
       </div>
     </section>
   );
@@ -339,7 +341,7 @@ export default function CatalogExchangePicker(props: Props) {
     <CategorySidebar
       className="cx-pane cx-paneSidebar cx-importCategoryPanel"
       title="Категории"
-      hint={`${nodes.length} узлов в каталоге`}
+      hint={dataLoading ? "Загружаю каталог…" : `${nodes.length} узлов в каталоге`}
       searchValue={nodeQuery}
       onSearchChange={setNodeQuery}
       searchPlaceholder="Поиск категории"
@@ -359,7 +361,7 @@ export default function CatalogExchangePicker(props: Props) {
         </>
       }
     >
-      <div className="csb-tree">{renderTree(null)}</div>
+      <div className="csb-tree">{dataLoading ? <div className="cx-empty">Загружаю дерево категорий…</div> : renderTree(null)}</div>
     </CategorySidebar>
   );
 

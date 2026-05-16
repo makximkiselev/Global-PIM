@@ -138,7 +138,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["candidate"]["status"], "approved")
         self.assertEqual(candidates, {})
         by_id = {row["link_id"]: row for row in saved_channel_links}
-        self.assertEqual(by_id["candidate-a"]["status"], "confirmed")
+        self.assertEqual(by_id["candidate-a"]["status"], "approved")
         self.assertEqual(by_id["candidate-b"]["status"], "rejected")
         self.assertEqual(by_id["candidate-b"]["payload"]["rejection_reason"], "sibling_not_selected")
         self.assertEqual(by_id["product_1:store77"]["url"], "https://store77.net/a")
@@ -211,6 +211,11 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(content["media_images"][0]["url"], "/api/uploads/media_images/product_1/competitors/store77/meta-quest-3-128.jpg")
         self.assertEqual(content["media_images"][0]["external_url"], "https://store77.net/images/meta-quest-3-128.jpg")
         self.assertEqual(content["media_images"][0]["storage"], "s3")
+        self.assertEqual(content["media_images"][0]["role"], "gallery")
+        self.assertEqual(content["media_images"][0]["selected"], True)
+        self.assertEqual(content["media_images"][0]["status"], "ready")
+        self.assertEqual(content["competitor_links"]["store77"]["url"], "https://store77.net/meta-quest-3-128")
+        self.assertEqual(content["competitor_links"]["store77"]["status"], "confirmed")
         self.assertEqual(content["source_values"]["media_images"]["store77"]["count"], 1)
         self.assertTrue(
             any((row.get("payload") or {}).get("last_enriched_at") == "2026-04-27T12:00:00+00:00" for row in saved_channel_links)
