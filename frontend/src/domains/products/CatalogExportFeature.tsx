@@ -212,6 +212,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
     [run],
   );
+  const runIsReady = Boolean(run) && (run?.summary?.blocked_target_items ?? totalBlocked) === 0;
   const exportBlockers = useMemo<ExportBlocker[]>(() => {
     const byKey = new Map<string, ExportBlocker>();
     for (const batch of run?.batches || []) {
@@ -434,6 +435,19 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     { label: "Блокеров", value: run.summary?.blocked_target_items ?? totalBlocked, accent: (run.summary?.blocked_target_items ?? totalBlocked) > 0 },
                   ]}
                 />
+
+                {runIsReady ? (
+                  <section className="card cx-exportReady">
+                    <div>
+                      <div className="cx-paneTitle">Batch готов к выгрузке</div>
+                      <div className="cx-paneSub">
+                        Проверка прошла по выбранной области и выбранным магазинам. На этом шаге SmartPim подготовил payload и readiness,
+                        но не отправлял остатки, цены или архивирование на площадки.
+                      </div>
+                    </div>
+                    <Badge tone="active">Можно переходить к отправке</Badge>
+                  </section>
+                ) : null}
 
                 <section className="card cx-pane">
                   <div className="cx-paneHead">

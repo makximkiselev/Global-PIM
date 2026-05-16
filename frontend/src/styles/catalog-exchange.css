@@ -135,6 +135,22 @@
   color:var(--text);
 }
 
+.cx-exportReady{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:18px 20px;
+  border-color:rgba(31, 122, 72, .22);
+  background:
+    radial-gradient(circle at 32px 26px, rgba(57, 189, 112, .14), transparent 130px),
+    linear-gradient(180deg, rgba(var(--card-rgb),.96), rgba(var(--card-rgb),.84));
+}
+
+.cx-exportReady .badge{
+  white-space:nowrap;
+}
+
 @keyframes cx-spin{
   to{ transform:rotate(360deg); }
 }

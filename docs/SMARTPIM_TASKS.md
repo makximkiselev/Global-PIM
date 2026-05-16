@@ -334,6 +334,7 @@ Progress:
 19. 2026-05-16 export run readability:
     - export run responses and persisted run rows now include aggregate summary fields: product count, target count, ready/blocked batches, ready/blocked target rows, and blocker count;
     - export UI uses this summary for the visible batch metrics instead of forcing the user to infer run state from nested raw rows.
+    - ready export state now shows a separate `Batch готов к выгрузке` panel and explicitly states that readiness preparation did not send stock, prices, or archive mutations to marketplaces.
 
 ### P1 DB Consolidation
 
