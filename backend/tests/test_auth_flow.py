@@ -2308,6 +2308,55 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(candidates[0]["sku"], "AG_10117P256SLVe")
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.8)
 
+    def test_restore_search_html_candidates_handle_current_escaped_payload(self) -> None:
+        html = r'''
+          <script>
+          window.__payload = {\"linkedProducts\":[{\"categoryName\":\"Смартфоны\",
+          \"sectionName\":\"iPhone 17 Pro\",\"skuCode\":\"10117PRO256BLUe\",
+          \"brandName\":\"Apple\",\"variant\":\"темно-синий\",
+          \"analytics\":{\"dataLayer\":{\"click\":{\"ecommerce\":{\"click\":{\"products\":[
+          {\"id\":\"4645095\",\"name\":\"Apple iPhone 17 Pro eSIM 256GB, Deep Blue\",
+          \"price\":\"132990\",\"category\":\"iPhone 17 Pro\",\"brand\":\"Apple\",
+          \"skuCode\":\"10117PRO256BLUe\"}]}}}}},
+          \"id\":4645095,\"name\":\"Apple iPhone 17 Pro eSIM 256GB, Deep Blue\",
+          \"type\":\"undefined\",\"link\":\"/catalog/10117PRO256BLUE/\"}]};
+          </script>
+        '''
+        product = {"id": "product_3", "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Blue (Global)", "sku_gt": "52462"}
+
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/10117PRO256BLUE/")
+        self.assertEqual(candidates[0]["title"], "Apple iPhone 17 Pro eSIM 256GB, Deep Blue")
+        self.assertEqual(candidates[0]["sku"], "10117PRO256BLUe")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.8)
+
+    def test_restore_search_html_candidates_surface_sim_near_miss_for_review(self) -> None:
+        html = r'''
+          <script>
+          window.__payload = {\"linkedProducts\":[{\"categoryName\":\"Смартфоны\",
+          \"sectionName\":\"iPhone 17 Pro\",\"skuCode\":\"10117PRO256BLUn\",
+          \"brandName\":\"Apple\",\"variant\":\"темно-синий\",
+          \"analytics\":{\"dataLayer\":{\"click\":{\"ecommerce\":{\"click\":{\"products\":[
+          {\"id\":\"4645093\",\"name\":\"Apple iPhone 17 Pro 256GB, Deep Blue\",
+          \"price\":\"124990\",\"category\":\"iPhone 17 Pro\",\"brand\":\"Apple\",
+          \"skuCode\":\"10117PRO256BLUn\"}]}}}}},
+          \"id\":4645093,\"name\":\"Apple iPhone 17 Pro 256GB, Deep Blue\",
+          \"type\":\"undefined\",\"link\":\"/catalog/10117PRO256BLUN/\"}]};
+          </script>
+        '''
+        product = {"id": "product_3", "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Blue (Global)", "sku_gt": "52462"}
+
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/10117PRO256BLUN/")
+        self.assertEqual(candidates[0]["title"], "Apple iPhone 17 Pro 256GB, Deep Blue")
+        self.assertEqual(candidates[0]["sku"], "10117PRO256BLUn")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
+        self.assertTrue(any("проверь SIM" in reason for reason in candidates[0]["confidence_reasons"]))
+
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''
           <script>

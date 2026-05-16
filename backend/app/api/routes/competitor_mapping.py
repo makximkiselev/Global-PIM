@@ -982,6 +982,51 @@ def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, bra
     return min(1.0, score), reasons or ["найдено в разрешенной выдаче источника"]
 
 
+def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, brand: str = "") -> Tuple[float, List[str]]:
+    product_profile = _variant_profile(product.get("title"))
+    candidate_profile = _variant_profile(f"{brand} {title}")
+    for key, label in (
+        ("model", "модели"),
+        ("memory", "памяти"),
+        ("color", "цвета"),
+        ("region", "региона"),
+    ):
+        product_value = product_profile.get(key)
+        candidate_value = candidate_profile.get(key)
+        if product_value and candidate_value and product_value != candidate_value:
+            return 0.0, [f"конфликт {label}: PIM={product_value}, candidate={candidate_value}"]
+
+    product_title = _norm_match_text(product.get("title"))
+    product_tokens = _match_tokens(product_title)
+    candidate_tokens = _match_tokens(f"{brand} {title}")
+    line_conflict = _apple_line_conflict(product_tokens, candidate_tokens)
+    if line_conflict:
+        return 0.0, [line_conflict]
+    product_brand_tokens = _brand_tokens(product.get("title"))
+    candidate_brand_tokens = _brand_tokens(brand) | _brand_tokens(title)
+    if product_brand_tokens and candidate_brand_tokens and product_brand_tokens.isdisjoint(candidate_brand_tokens):
+        return 0.0, ["конфликт бренда"]
+
+    required_tokens = _required_match_tokens(product)
+    missing_required = sorted(required_tokens - candidate_tokens)
+    sim_missing = [token for token in missing_required if token in {"esim", "sim"}]
+    if missing_required and missing_required != sim_missing:
+        return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
+    if not sim_missing:
+        return 0.0, ["нет причины для ручной проверки"]
+
+    product_sim = product_profile.get("sim") or "unknown"
+    candidate_sim = candidate_profile.get("sim") or "unknown"
+    if product_sim != "unknown" and candidate_sim != "unknown" and product_sim != candidate_sim:
+        return 0.79, [f"проверь SIM: PIM={product_sim}, candidate={candidate_sim}"]
+
+    comparable_product_tokens = {token for token in product_tokens if token not in {"esim", "sim"} and len(token) > 1}
+    overlap = len(comparable_product_tokens & candidate_tokens) / max(1, len(comparable_product_tokens))
+    if overlap < 0.72:
+        return 0.0, [f"название похоже только на {round(overlap * 100)}%"]
+    return 0.79, [f"проверь SIM: у карточки re-store не указан {'/'.join(sim_missing)}", f"название похоже на {round(overlap * 100)}%"]
+
+
 def _source_value_key(value: Any) -> str:
     return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").lower()).strip()
 
@@ -1620,6 +1665,8 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
         brand_clean = _json_string(brand)
         confidence_score, reasons = _confidence_for_candidate(product, title_clean, sku_clean, brand_clean)
         if confidence_score < 0.78:
+            confidence_score, reasons = _near_miss_confidence_for_candidate(product, title_clean, sku_clean, brand_clean)
+        if confidence_score < 0.78:
             return
         seen.add(url)
         candidates.append(
@@ -1638,18 +1685,29 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
     # `categoryName/skuCode/brandName`, nested analytics, then final `name/link`.
     # Scan every catalog link and read the nearest product fields around it
     # instead of depending on one long ordered regex.
-    link_rx = re.compile(r'(?:\\?")link(?:\\?")\s*:\s*(?:\\?")(?P<link>/catalog/[^"\\]+/?)', re.IGNORECASE)
-    for match in link_rx.finditer(html):
-        link = _json_string(match.group("link"))
-        url = urljoin("https://re-store.ru", link)
-        window = html[max(0, match.start() - 5000) : min(len(html), match.end() + 1000)]
-        title = _last_json_field(window, "name")
-        sku = _last_json_field(window, "skuCode")
-        brand = _last_json_field(window, "brandName") or _last_json_field(window, "brand")
-        price = _last_json_field(window, "price")
-        _add_candidate(url, title, sku, brand, price)
-        if len(candidates) >= 5:
-            return candidates
+    search_docs = [
+        html,
+        html.replace('\\"', '"').replace("\\/", "/"),
+    ]
+    link_rx_list = [
+        re.compile(r'(?:\\?")link(?:\\?")\s*:\s*(?:\\?")(?P<link>/catalog/[^"\\]+/?)', re.IGNORECASE),
+        re.compile(r'"link"\s*:\s*"(?P<link>/catalog/[^"]+/?)(?=")', re.IGNORECASE),
+    ]
+    for search_doc in search_docs:
+        for link_rx in link_rx_list:
+            for match in link_rx.finditer(search_doc):
+                link = _json_string(match.group("link"))
+                url = urljoin("https://re-store.ru", link)
+                window = search_doc[max(0, match.start() - 5000) : min(len(search_doc), match.end() + 1000)]
+                title = _last_json_field(window, "name")
+                sku = _last_json_field(window, "skuCode")
+                brand = _last_json_field(window, "brandName") or _last_json_field(window, "brand")
+                price = _last_json_field(window, "price")
+                _add_candidate(url, title, sku, brand, price)
+                if len(candidates) >= 5:
+                    candidates.sort(key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+                    return candidates
+    candidates.sort(key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
     return candidates
 
 
@@ -1669,11 +1727,10 @@ async def _fetch_search_html(url: str) -> str:
 
 
 async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if os.getenv("ENABLE_HTTP_COMPETITOR_DISCOVERY", "").strip().lower() not in {"1", "true", "yes"}:
-        # External crawling must not run in the web API worker. The extractor
-        # remains covered by tests and can be enabled in a dedicated worker
-        # process, but production request handlers should only reconcile stored
-        # candidates and mark missing review items as stale.
+    if os.getenv("ENABLE_HTTP_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
+        # Hard kill switch for production incidents. re-store serves the product
+        # payload in the first HTML response, so this does not require browser
+        # automation and should work by default for per-SKU discovery.
         return []
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
