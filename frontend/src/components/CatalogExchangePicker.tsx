@@ -147,7 +147,7 @@ export default function CatalogExchangePicker(props: Props) {
     return out;
   }, [selectedNodeIds, includeDescendants, childrenByParent]);
 
-  const hasProductScope = !!selectedTreeCategoryIds || !!qnorm(productQuery);
+  const hasProductScope = !!selectedTreeCategoryIds || !!qnorm(productQuery) || selectedProductIds.length > 0;
   const visibleProducts = productItems;
   const hasSelectedCategoryScope = selectedNodeIds.length > 0;
   const categoryScopeMode: CategoryScopeMode = !hasSelectedCategoryScope && selectedProductIds.length === 0
@@ -306,60 +306,67 @@ export default function CatalogExchangePicker(props: Props) {
     });
   }
 
+  const productPanel = (
+    <section className="card cx-pane cx-productsPickerPanel">
+      <div className="cx-paneHead">
+        <div>
+          <div className="cx-paneTitle">Товары</div>
+          <div className="cx-paneSub">Точный выбор SKU для проверки, импорта или выгрузки.</div>
+        </div>
+        <div className="cx-count">{productsLoading ? "…" : visibleProducts.length}</div>
+      </div>
+      <input className="pn-input" placeholder="Поиск по товарам..." value={productQuery} onChange={(e) => setProductQuery(e.target.value)} />
+      <div className="cx-productsList">
+        {visibleProducts.map((p) => {
+          const title = String(p.title || p.name || p.id);
+          const cid = String(p.category_id || "");
+          return (
+            <label key={p.id} className="cx-productRow">
+              <input type="checkbox" checked={selectedProductSet.has(p.id)} onChange={(e) => toggleProduct(p.id, e.target.checked)} />
+              <span className="cx-productMain">
+                <span className="cx-productTitle">{title}</span>
+                <span className="cx-productMeta">{buildPath(nodeById, cid)} · GT {p.sku_gt || "-"}</span>
+              </span>
+            </label>
+          );
+        })}
+        {!hasProductScope ? <div className="cx-empty">Сначала выбери раздел каталога или начни поиск по товарам.</div> : productsLoading ? <div className="cx-empty">Загружаю товары…</div> : visibleProducts.length === 0 ? <div className="cx-empty">Ничего не найдено</div> : null}
+      </div>
+    </section>
+  );
+
+  const categoryPanel = (
+    <CategorySidebar
+      className="cx-pane cx-paneSidebar cx-importCategoryPanel"
+      title="Категории"
+      hint={`${nodes.length} узлов в каталоге`}
+      searchValue={nodeQuery}
+      onSearchChange={setNodeQuery}
+      searchPlaceholder="Поиск категории"
+      controls={
+        <>
+          <CategoryScopeSelector
+            mode={categoryScopeMode}
+            categorySelected={hasSelectedCategoryScope}
+            onModeChange={changeCategoryScope}
+          />
+          <button className="btn sm" type="button" onClick={expandAll}>
+            Развернуть
+          </button>
+          <button className="btn sm" type="button" onClick={collapseAll} disabled={!hasExpandedNodes}>
+            Свернуть
+          </button>
+        </>
+      }
+    >
+      <div className="csb-tree">{renderTree(null)}</div>
+    </CategorySidebar>
+  );
+
   return (
     <div className={`cx-pickerGrid${embedded ? " isEmbedded" : ""}`}>
-      <CategorySidebar
-        className="cx-pane cx-paneSidebar cx-importCategoryPanel"
-        title="Категории"
-        hint={`${nodes.length} узлов в каталоге`}
-        searchValue={nodeQuery}
-        onSearchChange={setNodeQuery}
-        searchPlaceholder="Поиск категории"
-        controls={
-          <>
-            <CategoryScopeSelector
-              mode={categoryScopeMode}
-              categorySelected={hasSelectedCategoryScope}
-              onModeChange={changeCategoryScope}
-            />
-            <button className="btn sm" type="button" onClick={expandAll}>
-              Развернуть
-            </button>
-            <button className="btn sm" type="button" onClick={collapseAll} disabled={!hasExpandedNodes}>
-              Свернуть
-            </button>
-          </>
-        }
-      >
-        <div className="csb-tree">{renderTree(null)}</div>
-      </CategorySidebar>
-
-      <section className="card cx-pane">
-        <div className="cx-paneHead">
-          <div>
-            <div className="cx-paneTitle">Товары</div>
-            <div className="cx-paneSub">Точный выбор товаров по уже прогретым backend-данным</div>
-          </div>
-          <div className="cx-count">{productsLoading ? "…" : visibleProducts.length}</div>
-        </div>
-        <input className="pn-input" placeholder="Поиск по товарам..." value={productQuery} onChange={(e) => setProductQuery(e.target.value)} />
-        <div className="cx-productsList">
-          {visibleProducts.map((p) => {
-            const title = String(p.title || p.name || p.id);
-            const cid = String(p.category_id || "");
-            return (
-              <label key={p.id} className="cx-productRow">
-                <input type="checkbox" checked={selectedProductSet.has(p.id)} onChange={(e) => toggleProduct(p.id, e.target.checked)} />
-                <span className="cx-productMain">
-                  <span className="cx-productTitle">{title}</span>
-                  <span className="cx-productMeta">{buildPath(nodeById, cid)} · GT {p.sku_gt || "-"}</span>
-                </span>
-              </label>
-            );
-          })}
-          {!hasProductScope ? <div className="cx-empty">Сначала выбери раздел каталога или начни поиск по товарам.</div> : productsLoading ? <div className="cx-empty">Загружаю товары…</div> : visibleProducts.length === 0 ? <div className="cx-empty">Ничего не найдено</div> : null}
-        </div>
-      </section>
+      {selectedProductIds.length ? productPanel : categoryPanel}
+      {selectedProductIds.length ? categoryPanel : productPanel}
     </div>
   );
 }

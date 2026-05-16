@@ -322,6 +322,7 @@ Progress:
     - Store77 candidate `https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_deep_blue/` was confirmed for this SKU;
     - enrichment wrote 4 Store77 images into S3-backed `/api/uploads/...` media references;
     - export readiness for this one SKU is now `ready` for `GT USD` and Ozon test store.
+    - product-list export navigation now supports single-SKU checks through `/catalog/export?product=<product_id>` and selected SKU checks through `/catalog/export?products=<ids>`, so users are not pushed into category-wide export preparation by default.
 17. Direct SSH diagnostics gotcha:
     - `server_ops.sh exec` does not inherit `global-pim.service` env; S3 can appear disabled in manual Python diagnostics if runtime env is not loaded safely;
     - prefer API/service verification for S3/media flows, or load required env inside Python without printing secrets.

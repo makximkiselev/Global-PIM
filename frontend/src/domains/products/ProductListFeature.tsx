@@ -124,6 +124,13 @@ function withCategoryHref(path: string, categoryId?: string | null, param = "cat
   return id ? `${path}?${param}=${encodeURIComponent(id)}` : path;
 }
 
+function withProductExportHref(productIds: string[]) {
+  const ids = productIds.map((id) => String(id || "").trim()).filter(Boolean);
+  if (!ids.length) return "/catalog/export";
+  const param = ids.length === 1 ? "product" : "products";
+  return `/catalog/export?${param}=${encodeURIComponent(ids.join(","))}`;
+}
+
 function ProductQueueSwitch({
   mode,
   onChange,
@@ -349,8 +356,8 @@ function ProductListInspector({
           <Link className="btn" to="/sources-mapping">
             Открыть mapping
           </Link>
-          <Link className="btn" to={withCategoryHref("/catalog/export", product.category_id)}>
-            Перейти к экспорту
+          <Link className="btn" to={withProductExportHref([product.id])}>
+            Проверить этот SKU
           </Link>
         </div>
       </div>
@@ -505,8 +512,8 @@ function ProductBulkActionBar({
         <Link className="btn" to={`/products/${encodeURIComponent(first)}`}>
           Открыть первый
         </Link>
-        <Link className="btn" to={withCategoryHref("/catalog/export", categoryId)}>
-          К экспорту
+        <Link className="btn" to={withProductExportHref(selectedIds)}>
+          Проверить выбор
         </Link>
         <Link className="btn" to="/sources-mapping">
           К mapping

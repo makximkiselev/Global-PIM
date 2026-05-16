@@ -121,6 +121,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
   const initialCategoryId = String(searchParams.get("category") || "").trim();
+  const initialProductIds = [
+    ...String(searchParams.get("product") || "").split(","),
+    ...String(searchParams.get("products") || "").split(","),
+  ].map((item) => item.trim()).filter(Boolean);
 
   useEffect(() => {
     const load = async () => {
@@ -157,9 +161,20 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   }, []);
 
   useEffect(() => {
+    if (initialProductIds.length) return;
     if (!initialCategoryId || !nodes.some((node) => node.id === initialCategoryId)) return;
     setSelectedNodeIds((prev) => (prev.length === 1 && prev[0] === initialCategoryId ? prev : [initialCategoryId]));
-  }, [initialCategoryId, nodes]);
+  }, [initialCategoryId, initialProductIds.length, nodes]);
+
+  useEffect(() => {
+    if (!initialProductIds.length) return;
+    setSelectedNodeIds([]);
+    setIncludeDescendants(false);
+    setSelectedProductIds((prev) => {
+      const next = Array.from(new Set(initialProductIds));
+      return prev.length === next.length && prev.every((id, index) => id === next[index]) ? prev : next;
+    });
+  }, [initialProductIds.join(",")]);
 
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
@@ -217,6 +232,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   async function startExport() {
     setLoading(true);
     setErr("");
+    const runLimit = selectedProductIds.length ? Math.max(1, selectedProductIds.length) : 50;
     try {
       const res = await api<ExportRunResp>("/catalog/exchange/export/run", {
         method: "POST",
@@ -228,7 +244,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             include_descendants: includeDescendants,
           },
           targets: activeTargets,
-          limit: 50,
+          limit: runLimit,
         }),
       });
       setRun(res);
@@ -386,7 +402,9 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 <div>
                   <div className="cx-paneTitle">Готовлю выгрузку</div>
                   <div className="cx-paneSub">
-                    Проверяю первые 50 SKU в выбранной области: медиа, описание, категории, параметры и значения для выбранных площадок.
+                    {selectedProductIds.length
+                      ? "Проверяю только выбранные SKU: медиа, описание, категории, параметры и значения для выбранных площадок."
+                      : "Проверяю первые 50 SKU в выбранной области: медиа, описание, категории, параметры и значения для выбранных площадок."}
                   </div>
                 </div>
                 <div className="cx-exportPreparingMeta">
