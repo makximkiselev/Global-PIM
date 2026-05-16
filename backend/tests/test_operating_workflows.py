@@ -12,10 +12,90 @@ sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.routes import catalog_exchange, competitor_mapping, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
+from app.core.products import parameter_flow
 from app.core.products import service as products_service
 
 
 class OperatingWorkflowTests(unittest.TestCase):
+    def test_product_parameter_flow_connects_sources_pim_and_marketplace_outputs(self) -> None:
+        product = {
+            "id": "product_phone",
+            "category_id": "cat_phones",
+            "sku_gt": "52462",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Blue",
+            "content": {
+                "features": [
+                    {
+                        "code": "memory",
+                        "name": "Встроенная память",
+                        "value": "256 ГБ",
+                        "source_values": {
+                            "competitor": {
+                                "store77": {"raw_value": "256Gb", "resolved_value": "256 ГБ"},
+                                "restore": {"raw_value": "256GB", "resolved_value": "256 ГБ"},
+                            }
+                        },
+                    }
+                ],
+                "description": "Описание",
+                "media_images": [{"url": "/api/uploads/p.jpg"}],
+            },
+        }
+
+        with (
+            patch.object(parameter_flow, "load_catalog_nodes", return_value=[{"id": "cat_phones", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(
+                parameter_flow,
+                "load_attribute_mapping_doc",
+                return_value={
+                    "items": {
+                        "cat_phones": {
+                            "rows": [
+                                {
+                                    "catalog_name": "Встроенная память",
+                                    "provider_map": {
+                                        "yandex_market": {"id": "ym_memory", "name": "Объем встроенной памяти", "export": True},
+                                        "ozon": {"id": "oz_memory", "name": "Встроенная память", "export": True},
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                },
+            ),
+            patch.object(
+                parameter_flow,
+                "load_attribute_value_refs_doc",
+                return_value={
+                    "items": {
+                        "cat_phones": {
+                            "catalog_params": {
+                                "memory": {"catalog_name": "Встроенная память", "dict_id": "dict_memory"}
+                            }
+                        }
+                    }
+                },
+            ),
+            patch.object(
+                parameter_flow,
+                "provider_export_value",
+                side_effect=lambda dict_id, provider, value: "256" if provider == "ozon" else str(value),
+            ),
+        ):
+            payload = parameter_flow.build_product_parameter_flow(product)
+
+        self.assertEqual(payload["summary"]["features_total"], 1)
+        self.assertEqual(payload["summary"]["source_values"], 2)
+        self.assertEqual(payload["service_rows"][0]["name"], "SKU GT")
+        self.assertEqual(payload["service_rows"][0]["marketplaces"][0]["output_value"], "52462")
+        row = payload["items"][0]
+        self.assertEqual(row["value"], "256 ГБ")
+        self.assertEqual({source["source_id"] for source in row["sources"]}, {"store77", "restore"})
+        outputs = {item["provider"]: item for item in row["marketplaces"]}
+        self.assertEqual(outputs["yandex_market"]["output_value"], "256 ГБ")
+        self.assertEqual(outputs["ozon"]["output_value"], "256")
+        self.assertEqual(outputs["ozon"]["status"], "ready")
+
     def test_new_category_without_model_can_create_draft_template(self) -> None:
         db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
         saved: dict[str, object] = {}

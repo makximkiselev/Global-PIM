@@ -26,6 +26,50 @@ type ProductFeature = {
   code?: string;
   name: string;
   value: string;
+  source_values?: Record<string, any>;
+};
+
+type ParameterFlowMarketplace = {
+  provider: "yandex_market" | "ozon" | string;
+  provider_label: string;
+  target_id?: string;
+  target_name?: string;
+  output_value?: string;
+  status: string;
+  label: string;
+};
+
+type ParameterFlowSource = {
+  source_id: string;
+  source_label: string;
+  raw_value?: string;
+  resolved_value?: string;
+  canonical_value?: string;
+};
+
+type ParameterFlowRow = {
+  key: string;
+  kind: "service" | "feature" | string;
+  code?: string;
+  name: string;
+  value?: string;
+  status?: string;
+  sources?: ParameterFlowSource[];
+  marketplaces?: ParameterFlowMarketplace[];
+};
+
+type ParameterFlowResp = {
+  ok: boolean;
+  summary: {
+    features_total: number;
+    features_ready: number;
+    features_attention: number;
+    features_empty: number;
+    source_values: number;
+    service_rows: number;
+  };
+  service_rows: ParameterFlowRow[];
+  items: ParameterFlowRow[];
 };
 
 type ProductRelation = {
@@ -191,6 +235,18 @@ function marketplaceStoreCountLabel(item: MarketplaceChannel): string {
     ? `${item.stores.length} магазин${item.stores.length === 1 ? "" : item.stores.length < 5 ? "а" : "ов"}`
     : "-";
 }
+
+function parameterFlowTone(status?: string): "ok" | "warn" | "muted" {
+  if (status === "ready") return "ok";
+  if (status === "empty" || status === "not_mapped" || status === "value_missing") return "warn";
+  return "muted";
+}
+
+function marketplaceOutputText(item: ParameterFlowMarketplace): string {
+  const target = item.target_name || item.target_id || "поле не выбрано";
+  const value = item.output_value || item.label || "нет значения";
+  return `${target}: ${value}`;
+}
 type GroupProductItem = {
   id: string;
   title?: string;
@@ -343,6 +399,7 @@ export default function ProductFeature() {
   const [groupItemFeatures, setGroupItemFeatures] = useState<Record<string, ProductFeature[]>>({});
   const [channelsSummary, setChannelsSummary] = useState<ChannelsSummaryResp>(defaultChannelsSummary);
   const [openMarketplace, setOpenMarketplace] = useState("");
+  const [parameterFlow, setParameterFlow] = useState<ParameterFlowResp | null>(null);
 
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
   const [allProducts, setAllProducts] = useState<CatalogProductItem[]>([]);
@@ -685,6 +742,13 @@ export default function ProductFeature() {
         setLoading(false);
 
         try {
+          const flow = await api<ParameterFlowResp>(`/products/${encodeURIComponent(productId)}/parameter-flow`);
+          if (!cancelled) setParameterFlow(flow);
+        } catch {
+          if (!cancelled) setParameterFlow(null);
+        }
+
+        try {
           const channels = await api<ChannelsSummaryResp>(`/products/${encodeURIComponent(productId)}/channels-summary`);
           if (!cancelled) {
             setChannelsSummary({
@@ -772,7 +836,7 @@ export default function ProductFeature() {
           const byName = new Map((merged.features || []).map((f) => [qnorm(f.name || ""), f]));
           const nextFeatures: ProductFeature[] = attrs.map((d) => {
             const hit = byCode.get(qnorm(d.code)) || byName.get(qnorm(d.name));
-            return { code: d.code, name: d.name, value: String(hit?.value || "") };
+            return { ...hit, code: d.code, name: d.name, value: String(hit?.value || "") };
           });
           const known = new Set(nextFeatures.map((f) => qnorm(f.code || f.name)));
           for (const item of merged.features || []) {
@@ -1069,6 +1133,7 @@ export default function ProductFeature() {
       const featuresSanitized = featureDefs.map((d) => {
         const hit = (content.features || []).find((f) => qnorm(f.code || "") === qnorm(d.code));
         return {
+          ...hit,
           code: d.code,
           name: d.name,
           value: String(hit?.value || ""),
@@ -1079,6 +1144,7 @@ export default function ProductFeature() {
         .filter((f) => !knownDefs.has(qnorm(f.code || "")))
         .filter((f) => String(f.value || "").trim())
         .map((f) => ({
+          ...f,
           code: String(f.code || "").trim(),
           name: String(f.name || f.code || "").trim(),
           value: String(f.value || ""),
@@ -1103,6 +1169,12 @@ export default function ProductFeature() {
       setProduct(res.product);
       setStatus(res.product.status || autoStatus);
       setContent(normalizeContent({ ...content, links: linksSanitized, features: [...featuresSanitized, ...extraFeatures] }));
+      try {
+        const flow = await api<ParameterFlowResp>(`/products/${encodeURIComponent(productId)}/parameter-flow`);
+        setParameterFlow(flow);
+      } catch {
+        setParameterFlow(null);
+      }
 
       const relatedIdsNow = (content.related || []).map((x) => String(x.id || "").trim()).filter(Boolean);
       await syncReverseRelated(res.product, relatedIdsNow);
@@ -1841,32 +1913,94 @@ export default function ProductFeature() {
       )}
 
       {tab === "features" && (
-        <div className="pn-card">
-          <div className="pn-sectionHeader">
-            <div>
-              <div className="pn-cardTitle">Характеристики</div>
-              <div className="pn-muted">Поля берутся только из мастер-шаблона категории.</div>
-            </div>
-          </div>
-          <div className="pn-featureTable">
-            {sortedFeatures.map((f) => (
-              <div key={f.key} className={`pn-featureRow${String(f.value || "").trim() ? "" : " isEmpty"}`}>
-                <div className="pn-featureName">
-                  {f.name}
-                  {f.required ? <span className="pn-featureRequired">*</span> : null}
-                </div>
-                <div className="pn-featureInputWrap">
-                  <input
-                    className="pn-input pn-featureInput"
-                    placeholder="Не заполнено"
-                    value={f.value}
-                    onChange={(e) => setFeatureValue(f, e.target.value)}
-                  />
-                  {!String(f.value || "").trim() ? <span className="pn-featureEmptyTag">Пусто</span> : null}
+        <div className="pn-parametersFlow">
+          <div className="pn-card pn-parameterFlowSummary">
+            <div className="pn-sectionHeader">
+              <div>
+                <div className="pn-cardTitle">Параметры и выгрузка</div>
+                <div className="pn-muted">
+                  Слева редактируется PIM-значение, справа видно откуда оно пришло и как будет передано на площадки.
                 </div>
               </div>
-            ))}
-            {!featureDefs.length && !content.features.length && <div className="pn-muted">Для категории не найден мастер-шаблон.</div>}
+            </div>
+            <div className="pn-flowStats">
+              <span><strong>{parameterFlow?.summary.features_ready ?? 0}</strong> готово</span>
+              <span><strong>{parameterFlow?.summary.features_attention ?? 0}</strong> проверить</span>
+              <span><strong>{parameterFlow?.summary.features_empty ?? 0}</strong> пусто</span>
+              <span><strong>{parameterFlow?.summary.source_values ?? 0}</strong> значений из источников</span>
+            </div>
+            <div className="pn-serviceFlowGrid">
+              {(parameterFlow?.service_rows || []).slice(0, 4).map((row) => (
+                <div key={row.key} className="pn-serviceFlowCard">
+                  <span>{row.name}</span>
+                  <strong>{row.value || "—"}</strong>
+                  {!!row.marketplaces?.length && (
+                    <em>{row.marketplaces.map((item) => `${item.provider_label}: ${item.output_value || "—"}`).join(" · ")}</em>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pn-card">
+            <div className="pn-sectionHeader">
+              <div>
+                <div className="pn-cardTitle">Характеристики</div>
+                <div className="pn-muted">Поля берутся из инфо-модели категории, источники и площадки сверяются автоматически.</div>
+              </div>
+            </div>
+            <div className="pn-featureTable pn-featureTableFlow">
+              {sortedFeatures.map((f) => {
+                const flowRow = parameterFlow?.items.find((item) => qnorm(item.code || item.name) === qnorm(f.code || f.name));
+                return (
+                  <div key={f.key} className={`pn-featureRow pn-featureRowFlow${String(f.value || "").trim() ? "" : " isEmpty"}`}>
+                    <div className="pn-featureMainCell">
+                      <div className="pn-featureName">
+                        {f.name}
+                        {f.required ? <span className="pn-featureRequired">*</span> : null}
+                      </div>
+                      <div className="pn-featureInputWrap">
+                        <input
+                          className="pn-input pn-featureInput"
+                          placeholder="Не заполнено"
+                          value={f.value}
+                          onChange={(e) => setFeatureValue(f, e.target.value)}
+                        />
+                        {!String(f.value || "").trim() ? <span className="pn-featureEmptyTag">Пусто</span> : null}
+                      </div>
+                    </div>
+                    <div className="pn-featureEvidenceCell">
+                      <div className="pn-flowCellTitle">Источники</div>
+                      {!!flowRow?.sources?.length ? (
+                        <div className="pn-sourcePills">
+                          {flowRow.sources.slice(0, 3).map((source, idx) => (
+                            <span key={`${source.source_id}-${idx}`}>
+                              <strong>{source.source_label}</strong>
+                              {source.resolved_value || source.raw_value || "—"}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="pn-muted">Нет данных от конкурентов или импорта.</div>
+                      )}
+                    </div>
+                    <div className="pn-featureMarketplaceCell">
+                      <div className="pn-flowCellTitle">Площадки</div>
+                      <div className="pn-marketplaceFlowList">
+                        {(flowRow?.marketplaces || []).map((item) => (
+                          <span key={`${f.key}-${item.provider}`} className={`is-${parameterFlowTone(item.status)}`}>
+                            <strong>{item.provider_label}</strong>
+                            {marketplaceOutputText(item)}
+                          </span>
+                        ))}
+                        {!flowRow?.marketplaces?.length ? <em>Нет сопоставления с площадками</em> : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {!featureDefs.length && !content.features.length && <div className="pn-muted">Для категории не найден мастер-шаблон.</div>}
+            </div>
           </div>
         </div>
       )}

@@ -19,6 +19,7 @@ from app.core.products.service import (
     find_product_by_sku_service,
     allocate_sku_pairs_service,
 )
+from app.core.products.parameter_flow import build_product_parameter_flow
 from app.core.json_store import JsonStoreError, read_doc, DATA_DIR
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.object_storage import ObjectStorageError, delete_object, s3_enabled, upload_bytes
@@ -364,6 +365,18 @@ def products_bulk(ids: str = Query(default="")):
 def products_get(product_id: str, include_variants: bool = True):
     try:
         return get_product_service(product_id, include_variants=include_variants)
+    except JsonStoreError as e:
+        raise _http_from_store_error(str(e))
+
+
+@router.get("/{product_id}/parameter-flow")
+def products_parameter_flow(product_id: str):
+    try:
+        payload = get_product_service(product_id, include_variants=False)
+        product = payload.get("product") if isinstance(payload, dict) else None
+        if not isinstance(product, dict):
+            raise JsonStoreError("PRODUCT_NOT_FOUND")
+        return build_product_parameter_flow(product)
     except JsonStoreError as e:
         raise _http_from_store_error(str(e))
 

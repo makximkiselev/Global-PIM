@@ -305,44 +305,49 @@ Progress:
     - 2026-05-15 backend safety fix: if a request sends a non-existent `store_id`, export must return `400` instead of silently falling back to `Все магазины`.
     - current pipeline QA must use one selected SKU only, preferably a product missing on one or both marketplaces; do not run export/update across all `Смартфоны` while the pipeline is still being stabilized.
     - current pipeline QA targets are only `GT USD` for Я.Маркет and Ozon test store; other Я.Маркет stores must not be selected or mutated.
-11. 2026-05-15 product media blocker audit:
+11. Parameter enrichment and marketplace mapping contract:
+    - competitor/partner extraction writes raw evidence into product feature `source_values`;
+    - product card must show `PIM field -> selected value -> source evidence -> marketplace output value` in one screen;
+    - export uses canonical PIM values plus marketplace value mapping, never raw competitor values directly;
+    - `SKU GT` is a service row and must be visible as the marketplace `offerId/offer_id` source.
+12. 2026-05-15 product media blocker audit:
     - first export blocker opens `/products/product_2?tab=media`;
     - media tab previously showed only an empty S3 message and no next action;
     - empty media state now explains that export is blocked and links the user to competitor-card discovery/enrichment or validation.
-12. 2026-05-15 Store77 media import fix:
+13. 2026-05-15 Store77 media import fix:
     - production S3 is enabled and `global-pim.service` reads `/opt/projects/global-pim/backend/.env`;
     - Store77 `/upload/...` image URLs first return an HTML JS challenge, not an image;
     - backend now computes the Store77 challenge cookies and retries the image request before writing media into S3;
     - verified on `/products/product_2?tab=media`: Store77 enrichment now shows S3-backed media cards with `/api/uploads/...` URLs.
-13. Next product-pipeline UI cleanup:
+14. Next product-pipeline UI cleanup:
     - fixed: product-source confirmed links such as `product_2:store77` are no longer shown as candidate cards with `0%` and `SIM не распознан`;
     - API now returns the real discovery candidate (`cand_6bfd36bda7f3ad62`) as the selectable approved item with `score=0.95` and `candidate_sim_profile=esim_only`;
     - confirmed links remain in the separate ready-link block and include last checked/enriched timing;
     - product media tab now works functionally, but still needs compact product-card layout polish after the pipeline blockers are cleared.
-14. re-store vs Store77 source visibility:
+15. re-store vs Store77 source visibility:
     - production audit for `product_2` shows Store77 is the only confirmed exact eSIM source and therefore is the current media/enrichment source;
     - re-store currently returns low-confidence unrelated candidates for this SKU (Apple Watch / unrelated URLs), so they must stay hidden from moderation;
     - product competitor API/UI must still show per-source reason cards, so a user sees `Store77: confirmed` and `re-store: no exact product` instead of assuming the system ignored re-store.
-15. 2026-05-15 Ozon required system fields:
+16. 2026-05-15 Ozon required system fields:
     - production export audit found Ozon field `9048 / Название модели` missing from the `Смартфоны` mapping and `8229 / Тип` incorrectly mapped to `Тип основных камер`;
     - export must derive Ozon `Тип` and `Название модели` from the product itself for commodity electronics instead of forcing users to repair broken technical mappings before every test;
     - regression test added for `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)`: Ozon payload must contain `Тип=Смартфон` and `Название модели=iPhone 17 Pro`.
     - production single-SKU verification used only `product_3 / SKU GT 52462` against `GT USD` and Ozon test store; both exports are now blocked by missing images only, not by Ozon `Название модели`.
-16. 2026-05-16 single-SKU pipeline verification:
+17. 2026-05-16 single-SKU pipeline verification:
     - only `product_3 / SKU GT 52462` was used; no category-wide export/update was run;
     - Store77 candidate `https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_deep_blue/` was confirmed for this SKU;
     - enrichment wrote 4 Store77 images into S3-backed `/api/uploads/...` media references;
     - export readiness for this one SKU is now `ready` for `GT USD` and Ozon test store.
     - product-list export navigation now supports single-SKU checks through `/catalog/export?product=<product_id>` and selected SKU checks through `/catalog/export?products=<ids>`, so users are not pushed into category-wide export preparation by default.
-17. Direct SSH diagnostics gotcha:
+18. Direct SSH diagnostics gotcha:
     - `server_ops.sh exec` does not inherit `global-pim.service` env; S3 can appear disabled in manual Python diagnostics if runtime env is not loaded safely;
     - prefer API/service verification for S3/media flows, or load required env inside Python without printing secrets.
-18. 2026-05-16 stock/archive safety audit:
+19. 2026-05-16 stock/archive safety audit:
     - SmartPim code currently does not send Ozon stock, warehouse, price, archive, posting, or visibility mutation requests;
     - Ozon product status sync is read-only from SmartPim side: `/v3/product/info/list` and `/v1/product/rating-by-sku`;
     - if stock changes or marketplace archive happens by itself, compare exact SKU/timestamp with server logs and audit external integrations/cron/systemd/Ozon API keys before blaming the PIM export preview;
     - local product archive status is now normalized to canonical `archived`; legacy `archive` is accepted only for backwards-compatible reads/writes.
-19. 2026-05-16 export run readability:
+20. 2026-05-16 export run readability:
     - export run responses and persisted run rows now include aggregate summary fields: product count, target count, ready/blocked batches, ready/blocked target rows, and blocker count;
     - export UI uses this summary for the visible batch metrics instead of forcing the user to infer run state from nested raw rows.
     - ready export state now shows a separate `Batch готов к выгрузке` panel with a neutral message that SmartPim prepared product-card data for selected marketplaces.
