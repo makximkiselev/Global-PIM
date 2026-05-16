@@ -150,6 +150,8 @@ Never print the env file contents.
 
 Do not `source backend/.env` in shell scripts. Some application env values are not shell-escaped. If a script needs backend env values, parse key/value lines deliberately and never print secrets.
 
+Production `scripts/server_ops.sh exec '<cmd>'` starts a fresh SSH shell, not the `global-pim.service` process. Direct Python diagnostics run through SSH do not automatically inherit service env values such as S3 settings. Prefer testing through API/service endpoints. If a direct Python diagnostic must use runtime env, load only the required key/value pairs inside Python with a safe parser and never echo env contents.
+
 ## Local Commands
 
 Install backend dependencies:

@@ -317,6 +317,14 @@ Progress:
     - export must derive Ozon `Тип` and `Название модели` from the product itself for commodity electronics instead of forcing users to repair broken technical mappings before every test;
     - regression test added for `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)`: Ozon payload must contain `Тип=Смартфон` and `Название модели=iPhone 17 Pro`.
     - production single-SKU verification used only `product_3 / SKU GT 52462` against `GT USD` and Ozon test store; both exports are now blocked by missing images only, not by Ozon `Название модели`.
+16. 2026-05-16 single-SKU pipeline verification:
+    - only `product_3 / SKU GT 52462` was used; no category-wide export/update was run;
+    - Store77 candidate `https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_deep_blue/` was confirmed for this SKU;
+    - enrichment wrote 4 Store77 images into S3-backed `/api/uploads/...` media references;
+    - export readiness for this one SKU is now `ready` for `GT USD` and Ozon test store.
+17. Direct SSH diagnostics gotcha:
+    - `server_ops.sh exec` does not inherit `global-pim.service` env; S3 can appear disabled in manual Python diagnostics if runtime env is not loaded safely;
+    - prefer API/service verification for S3/media flows, or load required env inside Python without printing secrets.
 
 ### P1 DB Consolidation
 
