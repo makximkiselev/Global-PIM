@@ -831,6 +831,27 @@ def _export_batch_from_preview(
     }
 
 
+def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, Any]]) -> Dict[str, Any]:
+    product_count = len([pid for pid in product_ids if str(pid or "").strip()])
+    target_count = len(batches)
+    blocked_batches = sum(1 for batch in batches if str(batch.get("status") or "") != "ready")
+    ready_batches = max(0, target_count - blocked_batches)
+    ready_target_items = sum(int(batch.get("ready_count") or 0) for batch in batches)
+    blocked_target_items = sum(int(batch.get("not_ready_count") or 0) for batch in batches)
+    blockers_count = sum(int(batch.get("blockers_count") or 0) for batch in batches)
+    return {
+        "product_count": product_count,
+        "target_count": target_count,
+        "batch_count": target_count,
+        "ready_batches": ready_batches,
+        "blocked_batches": blocked_batches,
+        "ready_target_items": ready_target_items,
+        "blocked_target_items": blocked_target_items,
+        "blockers_count": blockers_count,
+        "status": "ready" if target_count > 0 and blocked_batches == 0 else "blocked",
+    }
+
+
 def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
     return "|".join(
         [
@@ -1184,20 +1205,18 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
             for store in selected_stores:
                 batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))
     run_id = f"export_{uuid4().hex[:10]}"
+    summary = _summarize_export_batches(product_ids, batches)
     runs = _load_runs(EXPORT_RUNS_PATH)
     runs["runs"][run_id] = {
         "id": run_id,
         "created_at": _now_iso(),
         "selection": req.selection.model_dump(),
         "targets": [t.model_dump() for t in req.targets or []],
-        "summary": {
-            "count": len(product_ids),
-            "batches": len(batches),
-        },
+        "summary": summary,
         "batches": batches,
     }
     _save_runs(EXPORT_RUNS_PATH, runs)
-    return {"ok": True, "run_id": run_id, "count": len(product_ids), "batches": batches}
+    return {"ok": True, "run_id": run_id, "count": len(product_ids), "summary": summary, "batches": batches}
 
 
 @router.get("/export/runs/{run_id}")

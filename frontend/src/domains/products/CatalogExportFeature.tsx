@@ -19,6 +19,17 @@ type ExportRunResp = {
   ok: boolean;
   run_id: string;
   count: number;
+  summary?: {
+    product_count?: number;
+    target_count?: number;
+    batch_count?: number;
+    ready_batches?: number;
+    blocked_batches?: number;
+    ready_target_items?: number;
+    blocked_target_items?: number;
+    blockers_count?: number;
+    status?: "ready" | "blocked" | string;
+  };
   batches: Array<{
     provider: string;
     store_id: string;
@@ -417,9 +428,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <>
                 <SummaryMetricRow
                   items={[
-                    { label: "Товаров в batch", value: run.count },
-                    { label: "Подготовлено batch rows", value: run.batches.length },
-                    { label: "Блокеров", value: totalBlocked, accent: totalBlocked > 0 },
+                    { label: "SKU", value: run.summary?.product_count ?? run.count },
+                    { label: "Целей выгрузки", value: run.summary?.target_count ?? run.batches.length },
+                    { label: "Готовых строк", value: run.summary?.ready_target_items ?? 0 },
+                    { label: "Блокеров", value: run.summary?.blocked_target_items ?? totalBlocked, accent: (run.summary?.blocked_target_items ?? totalBlocked) > 0 },
                   ]}
                 />
 

@@ -331,6 +331,9 @@ Progress:
     - Ozon product status sync is read-only from SmartPim side: `/v3/product/info/list` and `/v1/product/rating-by-sku`;
     - if stock changes or marketplace archive happens by itself, compare exact SKU/timestamp with server logs and audit external integrations/cron/systemd/Ozon API keys before blaming the PIM export preview;
     - local product archive status is now normalized to canonical `archived`; legacy `archive` is accepted only for backwards-compatible reads/writes.
+19. 2026-05-16 export run readability:
+    - export run responses and persisted run rows now include aggregate summary fields: product count, target count, ready/blocked batches, ready/blocked target rows, and blocker count;
+    - export UI uses this summary for the visible batch metrics instead of forcing the user to infer run state from nested raw rows.
 
 ### P1 DB Consolidation
 

@@ -403,6 +403,20 @@ class OperatingWorkflowTests(unittest.TestCase):
 
         self.assertEqual(response["ok"], True)
         self.assertEqual(response["count"], 1)
+        self.assertEqual(
+            response["summary"],
+            {
+                "product_count": 1,
+                "target_count": 2,
+                "batch_count": 2,
+                "ready_batches": 1,
+                "blocked_batches": 1,
+                "ready_target_items": 1,
+                "blocked_target_items": 1,
+                "blockers_count": 1,
+                "status": "blocked",
+            },
+        )
         self.assertEqual(len(response["batches"]), 2)
         self.assertEqual(response["batches"][0]["provider"], "yandex_market")
         self.assertEqual(response["batches"][0]["status"], "ready")
@@ -417,6 +431,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["batches"][1]["blockers"][0]["product_title"], "Meta Quest 3 128GB")
         self.assertEqual(response["batches"][1]["blockers"][0]["category_id"], "cat-vr")
         self.assertIn("export_abcdef1234", saved_runs["runs"])
+        self.assertEqual(saved_runs["runs"]["export_abcdef1234"]["summary"]["blocked_target_items"], 1)
 
     def test_export_run_rejects_unknown_selected_store_id(self) -> None:
         req = CatalogExportRunReq.model_validate(
