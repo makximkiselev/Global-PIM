@@ -136,6 +136,48 @@ Audit findings to verify/fix:
    - fixed: group filter no longer receives global project groups from `/catalog/products-page-data`; backend now returns group facets for the current category/filter scope with SKU counts;
    - verified on production via in-app Browser for `Смартфоны`: filter options reduced to `29`, scoped to smartphone groups, with counts, and irrelevant global groups such as `MacBook` are absent.
 
+0. 2026-05-17 cross-functional team audit, production Browser routes `/catalog`, `/sources?tab=sources`, `/sources?tab=params`, `/sources?tab=values`, `/products/product_1091`, `/catalog/exchange?tab=export`:
+   - Overall verdict: the project is no longer visually broken on the critical screens, but it is still not yet a self-explanatory SaaS workflow for a new team. The biggest remaining problem is not one page; it is the missing cross-screen state of “what is the next action for this category/SKU”.
+   - Product owner finding:
+     - P0: add a persistent category/SKU work queue that follows the user from catalog to info-model, sources, parameters, values, product card, and export;
+     - the queue must show one current blocker and one next action, for example `сопоставить категорию Ozon`, `подтвердить 5 карточек конкурентов`, `закрыть 3 обязательных поля`, `добавить медиа`, `проверить выгрузку`;
+     - pages must stop behaving as independent tools and start behaving as one conveyor for `импортировать товары -> сгруппировать -> сопоставить категории -> собрать модель -> сопоставить параметры/значения -> насытить -> выгрузить`.
+   - Designer finding:
+     - P0: unify the workspace primitives across catalog, sources, params, values, product card, and export: one header pattern, one tab strip pattern, one tree pattern, one toolbar/search/filter pattern, one table/list pattern, one inspector pattern;
+     - current screenshots still show different density and button hierarchy between catalog, sources, values, and export;
+     - destructive/secondary actions such as delete/rename/subcategory should move behind quieter controls or an overflow menu when they are not the primary job.
+   - Content-manager finding:
+     - P0: replace explanatory text blocks with actionable states and evidence;
+     - product card and mapping screens must show `PIM field -> selected value -> source evidence -> marketplace output value -> status` without forcing the user to infer it from separate tabs;
+     - values screen needs `fix next` mode: show only fields that block export first, then ready fields by request.
+   - Frontend developer finding:
+     - P0: split large page components before adding more behavior. `ProductRegistry`, `SourcesMarketplaceSection`, params/value mapping sections, and product workspace should be decomposed into reusable containers and shared primitives;
+     - current CSS still has many page-specific files for similar layout jobs, so every page cleanup risks creating another local solution;
+     - route-level loading/empty/error states must be standardized to avoid false empty states returning in new screens.
+   - Backend developer finding:
+     - P0: introduce explicit page contract objects for pipeline screens instead of assembling UI state from many independent endpoints;
+     - `products-page-data`, sources mapping, parameter mapping, value mapping, and export readiness should return workflow state, warnings, and next actions consistently;
+     - fallbacks that hide backend errors must also return a visible warning/metric, otherwise UI can silently show plausible but wrong data.
+   - DB architect finding:
+     - P0: formalize read models and source-of-truth ownership per route;
+     - `catalog_product_page_tenant_rel` is now a real read model used by catalog/product filters and should have documented refresh semantics, source tables, and invalidation rules;
+     - canonical attributes must stay global across categories, with uniqueness/merge rules for memory, RAM, SIM type, color, model, dimensions, OS, and marketplace dictionaries;
+     - source evidence needs a clearly owned relational path: competitor category mapping -> competitor product link -> extracted raw values/media -> canonical product values -> marketplace value mapping -> export payload.
+   - New implementation priority from this audit:
+     - P0.1: create shared `WorkspaceHeader`, `WorkspaceTabs`, `WorkspaceTreePanel`, `WorkspaceToolbar`, `WorkspaceInspector`, and `TaskQueue/NextAction` primitives, then retrofit current heavy screens to them;
+     - P0.2: add category/SKU pipeline state API and show it in catalog, sources, product card, and export;
+     - P0.3: make `/sources?tab=sources` a competitor-card confirmation workspace, not a mixed explanation/source page;
+     - P0.4: make `/sources?tab=params` and `/sources?tab=values` operate from blocker queues by default;
+     - P0.5: add route-to-table map and response-contract tests for catalog, sources, product card, and export before continuing broad UI changes.
+   - P0.1 progress on 2026-05-18:
+     - added shared frontend primitive `WorkspaceHeader` for title/context/badges/actions/tabs;
+     - `/catalog` now uses `WorkspaceHeader` with the same header density as other workspaces;
+     - `/sources?tab=sources|params|values` now uses the same `WorkspaceHeader` and tab primitive instead of its own local hero/tab implementation;
+     - deployed and Browser-verified on production:
+       - `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`: no old `.page-header`, product table remains visible, no horizontal overflow;
+       - `/sources?tab=sources|params|values&category=bb40de87-254b-4170-84d7-8e5d3925b251`: no old `.sourcesMappingHero`, shared tabs render through `WorkspaceHeader`, no horizontal overflow;
+     - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
+
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
    - Browser status: in-app Browser pane was unavailable (`No active Codex browser pane available`), so visual QA was done through authenticated Playwright fallback against production as owner in `Global Trade`.
    - Overall clarity for a new product manager: `6/10`.

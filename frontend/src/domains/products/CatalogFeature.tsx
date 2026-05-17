@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
-import PageHeader from "../../components/ui/PageHeader";
+import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -731,9 +731,14 @@ export default function CatalogFeature() {
 
   return (
     <div className="catalog-fresh-page catalogWorkspacePage page-shell">
-      <PageHeader
+      <WorkspaceHeader
+        eyebrow="Товары"
         title="Каталог"
         subtitle="Чистая структура категорий и товары внутри выбранной ветки."
+        badges={[
+          { label: `${nodes.length || 0} категорий`, tone: "neutral" },
+          { label: `${totalProductsCount || 0} SKU`, tone: totalProductsCount > 0 ? "active" : "neutral" },
+        ]}
         actions={
           <>
             <Link className="btn" to="/catalog/groups">

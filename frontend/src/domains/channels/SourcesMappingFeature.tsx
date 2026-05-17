@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
+import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
 import { api } from "../../lib/api";
 import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
@@ -168,29 +169,15 @@ export default function SourcesMappingFeature() {
 
   return (
     <div className="page-shell sourcesMappingPage">
-      <div className="sourcesMappingHero">
-        <div className="sourcesMappingHeroText">
-          <div className="sourcesMappingEyebrow">Инфо-модели</div>
-          <div className="sourcesMappingTitleRow">
-            <h1 className="sourcesMappingTitle">Сопоставления</h1>
-            {selectedCategoryName ? <span className="sourcesMappingCategoryChip">{selectedCategoryName}</span> : null}
-          </div>
-          <p className="sourcesMappingSubtitle">{tabDescription}</p>
-        </div>
-        <div className="sourcesMappingSegmentTabs" aria-label="Раздел сопоставлений">
-          {TAB_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`sourcesMappingSegmentTab ${tab === item.key ? "isActive" : ""}`}
-              onClick={() => setTab(item.key)}
-            >
-              <strong>{item.label}</strong>
-              <span>{item.hint}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <WorkspaceHeader
+        eyebrow="Инфо-модели"
+        title="Сопоставления"
+        context={selectedCategoryName || undefined}
+        subtitle={tabDescription}
+        tabs={TAB_ITEMS}
+        activeTab={tab}
+        onTabChange={(nextTab) => setTab(nextTab as SourcesTab)}
+      />
 
       <div className="sourcesMappingCanvas">
         {tab === "params" && categoryResolving ? (
