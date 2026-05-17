@@ -5,6 +5,7 @@ import "../../styles/product.css";
 import "../../styles/product-groups.css";
 import { api } from "../../lib/api";
 import { toRenderableMediaUrl } from "../../lib/media";
+import ProductCompetitorPanel from "./ProductCompetitorPanel";
 
 type CatalogNode = {
   id: string;
@@ -261,6 +262,7 @@ type GroupDetailsResp = {
 
 type VariantParam = { id: string; name: string; code?: string; selected?: boolean };
 type VariantParamsResp = { items: VariantParam[]; selected_ids?: string[] };
+type ProductTab = "variants" | "competitors" | "media" | "features" | "description" | "documents" | "analogs" | "related";
 type TemplatesByCategoryResp = {
   template?: { id: string } | null;
   attributes?: Array<{
@@ -405,11 +407,9 @@ export default function ProductFeature() {
   const [allProducts, setAllProducts] = useState<CatalogProductItem[]>([]);
   const [relationSearchLoading, setRelationSearchLoading] = useState(false);
 
-  const [tab, setTabState] = useState<
-    "variants" | "media" | "features" | "description" | "documents" | "analogs" | "related"
-  >((() => {
+  const [tab, setTabState] = useState<ProductTab>((() => {
     const raw = searchParams.get("tab");
-    return raw === "media" || raw === "features" || raw === "description" || raw === "documents" || raw === "analogs" || raw === "related"
+    return raw === "competitors" || raw === "media" || raw === "features" || raw === "description" || raw === "documents" || raw === "analogs" || raw === "related"
       ? raw
       : "variants";
   })());
@@ -458,7 +458,7 @@ export default function ProductFeature() {
   useEffect(() => {
     const raw = searchParams.get("tab");
     const next =
-      raw === "media" || raw === "features" || raw === "description" || raw === "documents" || raw === "analogs" || raw === "related"
+      raw === "competitors" || raw === "media" || raw === "features" || raw === "description" || raw === "documents" || raw === "analogs" || raw === "related"
         ? raw
         : "variants";
     setTabState(next);
@@ -473,9 +473,7 @@ export default function ProductFeature() {
     setDescriptionViewState(searchParams.get("descView") === "edit" ? "edit" : "preview");
   }, [searchParams]);
 
-  function setTab(
-    nextTab: "variants" | "media" | "features" | "description" | "documents" | "analogs" | "related"
-  ) {
+  function setTab(nextTab: ProductTab) {
     setTabState(nextTab);
     const next = new URLSearchParams(searchParams);
     next.set("tab", nextTab);
@@ -631,6 +629,61 @@ export default function ProductFeature() {
   const selectedMarketplace = openMarketplace
     ? marketplaces.find((item) => item.title === openMarketplace) || null
     : null;
+
+  const workflowSteps = useMemo(() => {
+    const competitorCount = Object.values(normalizedLinks).filter((value) => String(value || "").trim()).length;
+    const ready = parameterFlow?.summary.features_ready ?? 0;
+    const attention = parameterFlow?.summary.features_attention ?? 0;
+    const empty = parameterFlow?.summary.features_empty ?? 0;
+    const images = content.media_images?.length || 0;
+    const descriptionReady = String(content.description || "").trim().length > 0;
+    return [
+      {
+        key: "competitors",
+        label: "1",
+        title: "Подобрать карточки конкурентов",
+        text: competitorCount
+          ? `Подтверждено источников: ${competitorCount}. Можно загрузить параметры и медиа.`
+          : "Найдите точные карточки re-store/store77 или добавьте ссылку вручную.",
+        status: competitorCount ? "Готово" : "Нужно сделать",
+        tone: competitorCount ? "ok" : "warn",
+        action: "Открыть подбор",
+        onClick: () => setTab("competitors"),
+      },
+      {
+        key: "features",
+        label: "2",
+        title: "Проверить параметры",
+        text: parameterFlow
+          ? `${ready} готово · ${attention} проверить · ${empty} пусто`
+          : "После загрузки источников здесь видно PIM-значение, источник и значение для площадки.",
+        status: attention || empty ? "Есть задачи" : ready ? "Готово" : "Нет данных",
+        tone: attention || empty ? "warn" : ready ? "ok" : "muted",
+        action: "Открыть параметры",
+        onClick: () => setTab("features"),
+      },
+      {
+        key: "media",
+        label: "3",
+        title: "Проверить медиа",
+        text: images ? `${images} изображений в карточке. Проверьте порядок, подписи и обложку.` : "Добавьте фото или загрузите их из подтвержденных источников.",
+        status: images ? "Есть медиа" : "Пусто",
+        tone: images ? "ok" : "warn",
+        action: "Открыть медиа",
+        onClick: () => setTab("media"),
+      },
+      {
+        key: "export",
+        label: "4",
+        title: "Подготовить выгрузку",
+        text: descriptionReady && images && ready ? "Карточка близка к проверке экспорта." : "Сначала закройте параметры, медиа и описание.",
+        status: autoStatus === "active" ? "Можно проверять" : "Рано",
+        tone: autoStatus === "active" ? "ok" : "muted",
+        action: "Открыть экспорт",
+        href: `/catalog/export?category=${encodeURIComponent(product?.category_id || "")}&product=${encodeURIComponent(product?.id || "")}`,
+      },
+    ];
+  }, [normalizedLinks, parameterFlow, content.media_images, content.description, autoStatus, product?.category_id, product?.id]);
 
   const modalItems = useMemo(() => {
     if (!selectModalKind) return [] as CatalogProductItem[];
@@ -908,6 +961,26 @@ export default function ProductFeature() {
         variantsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });
+  }
+
+  async function refreshProductSignals() {
+    if (!productId) return;
+    try {
+      const flow = await api<ParameterFlowResp>(`/products/${encodeURIComponent(productId)}/parameter-flow`);
+      setParameterFlow(flow);
+    } catch {
+      setParameterFlow(null);
+    }
+    try {
+      const channels = await api<ChannelsSummaryResp>(`/products/${encodeURIComponent(productId)}/channels-summary`);
+      setChannelsSummary({
+        marketplaces: channels.marketplaces?.length ? channels.marketplaces : defaultChannelsSummary().marketplaces,
+        external_systems: channels.external_systems?.length ? channels.external_systems : defaultChannelsSummary().external_systems,
+        competitors: channels.competitors?.length ? channels.competitors : defaultChannelsSummary().competitors,
+      });
+    } catch {
+      setChannelsSummary(defaultChannelsSummary());
+    }
   }
 
   function setFeatureValue(feature: Pick<DisplayFeatureRow, "code" | "name">, value: string) {
@@ -1510,10 +1583,50 @@ export default function ProductFeature() {
         </div>
       </div>
 
+      <div className="pn-card pn-workflowNext">
+        <div className="pn-workflowNextHead">
+          <div>
+            <div className="pn-cardTitle">Что дальше по карточке</div>
+            <div className="pn-muted">Рабочий порядок для контент-менеджера: источники, параметры, медиа и выгрузка.</div>
+          </div>
+          <div className="pn-workflowContext">
+            <span>{categoryPath || "Категория не выбрана"}</span>
+            <strong>{skuGt ? `SKU GT ${skuGt}` : product.id}</strong>
+          </div>
+        </div>
+        <div className="pn-workflowNextGrid">
+          {workflowSteps.map((step) => {
+            const body = (
+              <>
+                <div className="pn-workflowStepTop">
+                  <span className={`pn-workflowStepIndex is-${step.tone}`}>{step.label}</span>
+                  <em className={`pn-workflowStepStatus is-${step.tone}`}>{step.status}</em>
+                </div>
+                <strong>{step.title}</strong>
+                <p>{step.text}</p>
+                <span className="pn-workflowStepAction">{step.action}</span>
+              </>
+            );
+            return step.href ? (
+              <Link key={step.key} className={`pn-workflowStep is-${step.tone}`} to={step.href}>
+                {body}
+              </Link>
+            ) : (
+              <button key={step.key} className={`pn-workflowStep is-${step.tone}`} type="button" onClick={step.onClick}>
+                {body}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="pn-card">
         <div className="pn-tabs pn-tabsUnder">
           <button className={`pn-tab ${tab === "variants" ? "isActive" : ""}`} onClick={() => setTab("variants")} type="button">
             Варианты
+          </button>
+          <button className={`pn-tab ${tab === "competitors" ? "isActive" : ""}`} onClick={() => setTab("competitors")} type="button">
+            Конкуренты
           </button>
           <button className={`pn-tab ${tab === "media" ? "isActive" : ""}`} onClick={() => setTab("media")} type="button">
             Медиа
@@ -1641,6 +1754,8 @@ export default function ProductFeature() {
           </div>
         </div>
       )}
+
+      {tab === "competitors" && <ProductCompetitorPanel productId={product.id} onEnriched={refreshProductSignals} />}
 
       {tab === "media" && (
         <div className="pn-card">

@@ -123,7 +123,6 @@ Audit findings to verify/fix:
    - Export readiness: `7.5/10`. Single-SKU export path is technically ready for the verified SKU, but the UI still needs stronger protection against accidental broad category exports.
    - Overall project readiness for real filling: `6.5/10`. The vertical path exists and is improving, but the project is not yet “self-explanatory” for a content manager.
    - Next P0 growth points:
-     - after creation, show an explicit next-action panel in the product card: `подобрать карточки конкурентов`, `наполнить параметры`, `проверить медиа`, `подготовить export`;
      - make category context explicit everywhere: selected leaf category, parent branch, and why product appears in the parent branch;
      - add an attention queue for `parameter-flow`: only rows with missing marketplace mapping or missing value first;
      - audit suspect marketplace mappings for smartphones, especially Ozon memory/model fields;
@@ -135,6 +134,8 @@ Audit findings to verify/fix:
    - variant creation creates one real product row per SKU, creates a product group, assigns all variant SKU rows to that group, and opens the first SKU on the `Варианты` tab;
    - 2026-05-17 implemented `/api/products/create-family`: single SKU and variant families are now created through one backend operation; frontend wizard sends one payload and navigates to the first created SKU;
    - backend test coverage exists for the single-operation family creation path;
+   - 2026-05-17 product card now has a next-action panel after creation/current load: `подобрать карточки конкурентов`, `проверить параметры`, `проверить медиа`, `подготовить выгрузку`;
+   - competitor matching is now a first-class product-card tab, so the next-action card opens the real moderation/enrichment workspace instead of scattered external-link fields;
    - enrichment, media, description, analogs, related products, and export readiness belong in the product card after creation, not in the creation wizard;
    - verify that variant groups are visible from the product card and product groups page after creation.
 
