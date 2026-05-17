@@ -3135,9 +3135,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         : "нет кандидатов",
                                   };
                                 });
+                                const branchProductCount = Number(competitorDiscovery?.category?.products_count || 0);
                                 const selectedSampleLabel = selectedSampleProduct
                                   ? `${selectedSampleProduct.sku_gt ? `${selectedSampleProduct.sku_gt} · ` : ""}${selectedSampleProduct.title || selectedSampleProduct.id}`
-                                  : "В категории пока нет товаров";
+                                  : competitorDiscoveryLoading
+                                    ? "Загружаю SKU выбранной ветки..."
+                                    : "В выбранной ветке пока нет SKU";
                                 const competitorStatusText = competitorConfirmedTotal
                                   ? `${competitorConfirmedTotal} карточек подтверждено`
                                   : competitorNeedsReviewTotal || competitorCandidatesTotal
@@ -3157,7 +3160,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           </div>
                                         </div>
                                         <div className="mm-providerHint">
-                                          Это не сопоставление категорий. Здесь выбирается точная карточка товара у конкурента, чтобы забрать параметры, описание и медиа для выбранного SKU.
+                                          Здесь выбирается точная карточка товара у re-store/store77. Из нее потом забираем параметры, описание и медиа для выбранного SKU.
                                         </div>
                                       </div>
                                       <div className="mm-competitorActions">
@@ -3166,6 +3169,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           className="btn btn-primary mm-miniBtn"
                                           onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
                                           disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
+                                          title={!selectedSampleProduct ? "Сначала выберите категорию, где есть SKU в ветке" : undefined}
                                         >
                                           {competitorDiscoveryRunning ? "Подбираю..." : "Подобрать карточки"}
                                         </button>
@@ -3179,16 +3183,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       <div className="mm-lineContent">
                                       <div className="mm-competitorProcessNote">
                                         <span>Логика шага</span>
-                                        <strong>SKU → карточки re-store/store77 → подтверждение → насыщение товара</strong>
-                                        <em>Если точного совпадения нет, карточку можно добавить вручную уже внутри SKU.</em>
+                                        <strong>Выбрать SKU → подобрать карточки → подтвердить точные совпадения</strong>
+                                        <em>Работаем с товарами всей выбранной ветки, не только с прямыми SKU категории.</em>
                                       </div>
                                       <div className="mm-competitorWorkbench">
                                         <div className="mm-competitorSkuPanel">
                                           <div>
                                             <div className="mm-competitorPanelLabel">Проверяемый SKU</div>
-                                            <strong>{selectedSampleProduct ? selectedSampleLabel : "В категории пока нет товаров"}</strong>
+                                            <strong>{selectedSampleLabel}</strong>
                                             <p>
-                                              Сначала выберите один SKU из этой категории. Подбор ищет не раздел сайта, а конкретную карточку товара у конкурента.
+                                              Сначала выберите SKU из ветки категории. Подбор ищет не раздел сайта, а конкретную карточку товара у конкурента.
                                             </p>
                                           </div>
                                           <select
@@ -3202,7 +3206,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 {product.sku_gt ? `${product.sku_gt} · ` : ""}{product.title || product.id}
                                               </option>
                                             )) : (
-                                              <option value="">В категории пока нет товаров</option>
+                                              <option value="">
+                                                {competitorDiscoveryLoading ? "Загружаю SKU..." : "В выбранной ветке пока нет SKU"}
+                                              </option>
                                             )}
                                           </select>
                                         </div>
@@ -3216,7 +3222,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         </div>
                                         <div className="mm-competitorMiniStats">
                                           <span>{competitorStatusText}</span>
-                                          <span>{competitorDiscovery?.category?.products_count ?? "—"} SKU в категории</span>
+                                          <span>{branchProductCount ? `до ${branchProductCount} SKU в выборке скана` : "нет SKU для скана"}</span>
                                           <span>
                                             {competitorDiscoveryRunning
                                               ? "скан выполняется"

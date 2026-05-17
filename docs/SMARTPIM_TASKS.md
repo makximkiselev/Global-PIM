@@ -112,6 +112,28 @@ Checklist:
 
 Audit findings to verify/fix:
 
+0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
+   - Browser status: in-app Browser pane was unavailable (`No active Codex browser pane available`), so visual QA was done through authenticated Playwright fallback against production as owner in `Global Trade`.
+   - Overall clarity for a new product manager: `6/10`.
+   - The interface is readable screen-by-screen, but it still does not behave like one guided workflow for the job “заведи новый товар и выложи его на площадку”.
+   - `/` score `6.5/10`: useful metrics and quick actions exist, but the dashboard mixes summary, queues, readiness, operations, and source problems without one primary “continue work” lane for the manager.
+   - `/products/new` score `7/10`: the creation wizard is the clearest part; still needs stronger post-create promise: after SKU creation user must land in a product card checklist with exact next actions.
+   - `/products` score `6.5/10`: good product table and inspector, but too many filters are visible before the user understands the job; inspector actions are useful but not framed as a pipeline.
+   - `/catalog` score `6/10`: structure is cleaner, but selected category `Аксессуары` shows contradictory `63 SKU` while table says `0`; this destroys trust and must be fixed before real filling.
+   - `/templates` score `5.5/10`: category tree is still too dominant and shows many `ПУСТО`; new user cannot tell whether they should create a model here or first go through marketplace/category sources.
+   - `/sources?tab=sources` score `5.5/10`: the competitor block is more understandable than before, but for `Смартфоны` it says no SKU in category because it checks direct category products rather than branch products; user cannot proceed.
+   - `/sources?tab=params` score `7/10`: the “attention / ready / all” layout is close to usable; still too technical around `0/2 источников`, `параметр`, and field cards.
+   - `/sources?tab=values` score `6.5/10`: concept is understandable, but the amount of rows/statuses is high and there is no compressed “fix next 10 blockers” queue.
+   - `/catalog/exchange?tab=export` score `7/10`: export target selection is now much clearer; keep `GT USD` and `Ozon` selected-only behavior and avoid accidental broad exports.
+   - Required product-manager workflow change:
+     - 2026-05-17 fixed: after creating SKU/family, the user now lands in the product card on `tab=competitors&created=1`, and the persistent checklist explains that the next step is competitor-card confirmation before parameters/media/export;
+     - product card checklist must stay persistent and continue to cover: `Конкуренты`, `Параметры`, `Медиа`, `Экспорт`;
+     - each checklist item must have one action and one state, for example `Открыть сопоставление`, `Подобрать карточки`, `Заполнить медиа`, `Проверить выгрузку`;
+     - dashboard should show one primary work lane: `Продолжить товар`, `Создать товар`, `Импортировать товары`, `Проверить экспорт`;
+     - 2026-05-17 fixed in UI copy: source/competitor matching now says it uses SKU from the selected branch, not only direct category SKU; the scan counter is labeled as a scan sample (`до 250 SKU`), not the full category total;
+     - 2026-05-17 fixed in catalog copy: product workspace title is `SKU в выбранной ветке`, with `прямо здесь` shown only as a secondary counter;
+     - remaining verification: re-run Browser QA and confirm backend response for parent categories always returns branch `sample_products`.
+
 0. 2026-05-17 pipeline audit scorecard, creation -> category -> card -> export:
    - Browser QA status: blocked by unavailable in-app Browser pane (`No active Codex browser pane available`); current score is based on production API/DB diagnostics and code audit, not visual proof.
    - Product creation UX: `7/10`. Improved because the wizard is now short and variants become real SKU rows. 2026-05-17: family creation was moved behind one backend operation, so the frontend no longer creates group/products/patches as separate user-path steps.

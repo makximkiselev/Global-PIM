@@ -862,11 +862,12 @@ export default function CatalogFeature() {
                   <div>
                     <div className="catalogProductsKicker">{selectedPath}</div>
                     <div className="catalogProductsTitleRow">
-                      <h2>Товары в категории</h2>
+                      <h2>SKU в выбранной ветке</h2>
                     </div>
                     <div className="catalogProductsMeta">
                       <span>{selectedCount} SKU</span>
                       <span>{selectedChildrenCount} подкатегорий</span>
+                      <span>{selected.products_count ?? 0} прямо здесь</span>
                       <span>перемещение и просмотр</span>
                     </div>
                   </div>

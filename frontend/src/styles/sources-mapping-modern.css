@@ -846,7 +846,7 @@
   display: block;
   width: 100%;
   min-width: 0;
-  padding: 10px;
+  padding: 12px;
 }
 
 .sourcesMappingPage .mm-competitorSourceCard.is-missing {
@@ -868,7 +868,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .sourcesMappingPage .mm-competitorHeaderMain {
@@ -892,21 +892,21 @@
 
 .sourcesMappingPage .mm-competitorSourceCard .mm-lineContent {
   display: grid;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .sourcesMappingPage .mm-competitorProcessNote {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) minmax(220px, .72fr);
-  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 12px;
   align-items: center;
   border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--line));
   border-radius: 14px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--brand) 8%, transparent), transparent 70%),
     color-mix(in srgb, var(--panel) 94%, var(--surface));
-  padding: 9px 10px;
+  padding: 8px 10px;
 }
 
 .sourcesMappingPage .mm-competitorProcessNote span {
@@ -928,6 +928,7 @@
 }
 
 .sourcesMappingPage .mm-competitorProcessNote em {
+  grid-column: 2;
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -1014,15 +1015,15 @@
 
 .sourcesMappingPage .mm-competitorWorkbench {
   display: grid;
-  grid-template-columns: minmax(320px, .94fr) minmax(360px, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(360px, 1.1fr) minmax(320px, .9fr);
+  gap: 10px;
   align-items: stretch;
   border: 1px solid color-mix(in srgb, var(--brand) 16%, var(--line));
   border-radius: 16px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--brand) 7%, transparent), transparent 68%),
     color-mix(in srgb, var(--panel) 94%, var(--surface));
-  padding: 9px;
+  padding: 10px;
 }
 
 .sourcesMappingPage .mm-competitorSkuPanel {
@@ -1143,7 +1144,7 @@
 .sourcesMappingPage .mm-competitorSourceStrip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
   align-content: start;
   grid-column: 1;
 }
@@ -1220,7 +1221,7 @@
 .sourcesMappingPage .mm-competitorMiniStats {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   align-content: start;
   justify-content: flex-start;
 }
@@ -1265,7 +1266,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 0;
+  margin-top: 2px;
+  padding-top: 2px;
 }
 
 .sourcesMappingPage .mm-competitorSuggestionsHead strong {

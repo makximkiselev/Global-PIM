@@ -1376,7 +1376,7 @@ export default function ProductNewFeature() {
       const firstCreated = res.first_product || res.products?.[0];
       if (firstCreated) {
         setCreated(firstCreated);
-        navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=variants`);
+        navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=competitors&created=1`);
       }
     } catch (e: any) {
       setSaveErr(e?.message || "SAVE_FAILED");

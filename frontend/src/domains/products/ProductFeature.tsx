@@ -413,6 +413,7 @@ export default function ProductFeature() {
       ? raw
       : "variants";
   })());
+  const isNewlyCreated = searchParams.get("created") === "1";
 
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState<ProductT["status"]>("draft");
@@ -1586,8 +1587,12 @@ export default function ProductFeature() {
       <div className="pn-card pn-workflowNext">
         <div className="pn-workflowNextHead">
           <div>
-            <div className="pn-cardTitle">Что дальше по карточке</div>
-            <div className="pn-muted">Рабочий порядок для контент-менеджера: источники, параметры, медиа и выгрузка.</div>
+            <div className="pn-cardTitle">{isNewlyCreated ? "Товар создан. Следующий шаг" : "Что дальше по карточке"}</div>
+            <div className="pn-muted">
+              {isNewlyCreated
+                ? "Сначала подтвердите карточки конкурентов, затем загрузите параметры и медиа."
+                : "Рабочий порядок для контент-менеджера: источники, параметры, медиа и выгрузка."}
+            </div>
           </div>
           <div className="pn-workflowContext">
             <span>{categoryPath || "Категория не выбрана"}</span>
