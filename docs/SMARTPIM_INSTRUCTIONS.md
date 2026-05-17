@@ -67,6 +67,15 @@ Main entity rule:
 4. products are the most frequent operational entity;
 5. catalog, info-models, channels, and mappings are setup contexts around products.
 
+Info-model attribute rule:
+
+1. info-models are compositions of global attributes, not isolated local fields per category;
+2. if the same business parameter appears in different categories, it must reuse one global `attribute_id` and one dictionary/reference where applicable;
+3. examples: `Встроенная память` and `Оперативная память` are shared parameters for smartphones, tablets, laptops, VR devices, and other categories that need them;
+4. source/provider names such as `Объем встроенной памяти`, `Внутренняя память`, `storage`, `ROM`, `RAM`, and `Объем оперативной памяти` must be normalized to canonical global attributes before approving an info-model;
+5. local template attributes may keep category-specific source evidence and required flags, but must point to the canonical global `attribute_id` and `options.dict_id`;
+6. do not create category-local duplicates for parameters that already exist globally.
+
 Media rule:
 
 1. binary media lives in S3/object storage;

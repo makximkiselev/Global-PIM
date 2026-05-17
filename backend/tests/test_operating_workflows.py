@@ -922,6 +922,11 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
             patch.object(draft_service, "save_templates_db", side_effect=save),
             patch.object(draft_service, "new_id", return_value="attr-memory"),
+            patch.object(
+                draft_service,
+                "ensure_global_attribute",
+                return_value={"id": "global-memory", "dict_id": "dict_vstroennaya_pamyat"},
+            ),
             patch.object(draft_service, "now_iso", return_value="2026-04-27T01:00:00+00:00"),
         ):
             response = draft_service.approve_draft("tpl-draft-vr")
@@ -930,8 +935,97 @@ class OperatingWorkflowTests(unittest.TestCase):
         attrs = saved["attributes"]["tpl-draft-vr"]
         self.assertEqual(len(attrs), 1)
         self.assertEqual(attrs[0]["name"], "Встроенная память")
+        self.assertEqual(attrs[0]["attribute_id"], "global-memory")
+        self.assertEqual(attrs[0]["options"]["dict_id"], "dict_vstroennaya_pamyat")
         self.assertEqual(attrs[0]["options"]["source_candidates"], ["cand-memory"])
         self.assertEqual(saved["templates"]["tpl-draft-vr"]["meta"]["info_model"]["approved_at"], "2026-04-27T01:00:00+00:00")
+
+    def test_info_model_approve_reuses_global_attribute_for_synonymous_fields(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {
+            "templates": {
+                "tpl-draft-devices": {
+                    "id": "tpl-draft-devices",
+                    "category_id": "cat-devices",
+                    "name": "Draft: Devices",
+                    "meta": {
+                        "info_model": {
+                            "status": "draft",
+                            "candidates": [
+                                {
+                                    "id": "cand-storage-1",
+                                    "name": "Встроенная память",
+                                    "code": "vstroennaya_pamyat",
+                                    "type": "select",
+                                    "group": "Характеристики",
+                                    "required": True,
+                                    "status": "accepted",
+                                },
+                                {
+                                    "id": "cand-storage-2",
+                                    "name": "Объем встроенной памяти",
+                                    "code": "obem_vstroennoy_pamyati",
+                                    "type": "select",
+                                    "group": "Требования площадок",
+                                    "required": False,
+                                    "status": "accepted",
+                                },
+                                {
+                                    "id": "cand-ram",
+                                    "name": "Объем оперативной памяти",
+                                    "code": "obem_operativnoy_pamyati",
+                                    "type": "select",
+                                    "group": "Характеристики",
+                                    "required": False,
+                                    "status": "accepted",
+                                },
+                            ],
+                        }
+                    },
+                }
+            },
+            "attributes": {"tpl-draft-devices": []},
+            "category_to_template": {"cat-devices": "tpl-draft-devices"},
+            "category_to_templates": {"cat-devices": ["tpl-draft-devices"]},
+        }
+        saved: dict[str, object] = {}
+        created_refs: list[tuple[str, str, str]] = []
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        def ensure_global(title: str, type_: str, code: str, scope: str):
+            created_refs.append((title, code, scope))
+            return {"id": f"global-{code}", "dict_id": f"dict_{code}"}
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "new_id", side_effect=["attr-storage", "attr-ram"]),
+            patch.object(draft_service, "ensure_global_attribute", side_effect=ensure_global),
+            patch.object(draft_service, "now_iso", return_value="2026-04-27T01:00:00+00:00"),
+        ):
+            response = draft_service.approve_draft("tpl-draft-devices")
+
+        attrs = response["attributes"]
+        self.assertEqual([attr["code"] for attr in attrs], ["vstroennaya_pamyat", "operativnaya_pamyat"])
+        storage = attrs[0]
+        self.assertEqual(storage["name"], "Встроенная память")
+        self.assertEqual(storage["attribute_id"], "global-vstroennaya_pamyat")
+        self.assertEqual(storage["options"]["dict_id"], "dict_vstroennaya_pamyat")
+        self.assertEqual(storage["options"]["source_candidates"], ["cand-storage-1", "cand-storage-2"])
+        self.assertEqual(attrs[1]["name"], "Оперативная память")
+        self.assertEqual(
+            created_refs,
+            [
+                ("Встроенная память", "vstroennaya_pamyat", "feature"),
+                ("Встроенная память", "vstroennaya_pamyat", "feature"),
+                ("Оперативная память", "operativnaya_pamyat", "feature"),
+            ],
+        )
+        self.assertEqual(saved["attributes"]["tpl-draft-devices"][0]["attribute_id"], "global-vstroennaya_pamyat")
 
 
 if __name__ == "__main__":

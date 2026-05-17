@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from app.core.products.service import query_products_full
 from app.core.json_store import DATA_DIR, read_doc
-from app.storage.json_store import load_templates_db, new_id, save_templates_db
+from app.storage.json_store import ensure_global_attribute, load_templates_db, new_id, save_templates_db
 from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings
 
 
@@ -72,6 +72,33 @@ def _slugify(value: str) -> str:
             out.append("_")
             prev_sep = True
     return "".join(out).strip("_") or "field"
+
+
+CANONICAL_ATTRIBUTE_ALIASES: Dict[str, Tuple[str, str]] = {
+    "vstroennaya_pamyat": ("Встроенная память", "vstroennaya_pamyat"),
+    "obem_vstroennoy_pamyati": ("Встроенная память", "vstroennaya_pamyat"),
+    "obem_vnutrenney_pamyati": ("Встроенная память", "vstroennaya_pamyat"),
+    "vnutrennyaya_pamyat": ("Встроенная память", "vstroennaya_pamyat"),
+    "hranilische": ("Встроенная память", "vstroennaya_pamyat"),
+    "nakopitel": ("Встроенная память", "vstroennaya_pamyat"),
+    "storage": ("Встроенная память", "vstroennaya_pamyat"),
+    "storage_capacity": ("Встроенная память", "vstroennaya_pamyat"),
+    "rom": ("Встроенная память", "vstroennaya_pamyat"),
+    "operativnaya_pamyat": ("Оперативная память", "operativnaya_pamyat"),
+    "obem_operativnoy_pamyati": ("Оперативная память", "operativnaya_pamyat"),
+    "ram": ("Оперативная память", "operativnaya_pamyat"),
+    "memory_ram": ("Оперативная память", "operativnaya_pamyat"),
+    "system_memory": ("Оперативная память", "operativnaya_pamyat"),
+}
+
+
+def _canonical_attribute_identity(name: str, code: str | None = None) -> Tuple[str, str]:
+    raw_code = _text(code)
+    for key in (raw_code, _slugify(raw_code), _slugify(name)):
+        normalized = _text(key).lower()
+        if normalized in CANONICAL_ATTRIBUTE_ALIASES:
+            return CANONICAL_ATTRIBUTE_ALIASES[normalized]
+    return _text(name), raw_code or _slugify(name)
 
 
 def _infer_type(values: Iterable[str]) -> str:
@@ -146,12 +173,12 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
     by_code: OrderedDict[str, Dict[str, Any]] = OrderedDict()
     for product in products:
         for name, value in _feature_items(product):
-            code = _slugify(name)
+            canonical_name, code = _canonical_attribute_identity(name)
             row = by_code.get(code)
             if not row:
                 row = {
                     "id": new_id(),
-                    "name": name,
+                    "name": canonical_name,
                     "code": code,
                     "group": "Характеристики",
                     "required": False,
@@ -329,12 +356,12 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
         name = _text(param.get("name"))
         if not name:
             continue
-        code = _slugify(name)
+        canonical_name, code = _canonical_attribute_identity(name)
         values = param.get("values") if isinstance(param.get("values"), list) else []
         provider = _text(param.get("provider"))
         candidate = {
             "id": new_id(),
-            "name": name,
+            "name": canonical_name,
             "code": code,
             "group": "Требования площадок",
             "required": bool(param.get("required") or False),
@@ -457,22 +484,52 @@ def approve_draft(template_id: str) -> Dict[str, Any]:
     info_model = _info_model_meta(template)
     candidates = info_model.get("candidates") if isinstance(info_model.get("candidates"), list) else []
     attrs: List[Dict[str, Any]] = []
+    by_global_key: Dict[str, Dict[str, Any]] = {}
     for position, candidate in enumerate(c for c in candidates if isinstance(c, dict) and c.get("status") == "accepted"):
-        attrs.append(
-            {
-                "id": new_id(),
-                "name": _text(candidate.get("name")),
-                "code": _text(candidate.get("code")) or _slugify(_text(candidate.get("name"))),
-                "type": _text(candidate.get("type")) or "text",
-                "required": bool(candidate.get("required")),
-                "scope": "feature",
-                "position": position,
-                "options": {
-                    "param_group": _text(candidate.get("group")) or "Характеристики",
-                    "source_candidates": [_text(candidate.get("id"))],
-                },
-            }
+        candidate_type = _text(candidate.get("type")) or "text"
+        canonical_name, canonical_code = _canonical_attribute_identity(
+            _text(candidate.get("name")),
+            _text(candidate.get("code")),
         )
+        global_attr = ensure_global_attribute(
+            title=canonical_name,
+            type_=candidate_type,
+            code=canonical_code,
+            scope="feature",
+        )
+        attribute_id = _text(global_attr.get("id"))
+        dict_id = _text(global_attr.get("dict_id"))
+        dedupe_key = attribute_id or canonical_code
+        source_candidate_id = _text(candidate.get("id"))
+        existing = by_global_key.get(dedupe_key)
+        if existing:
+            existing["required"] = bool(existing.get("required") or candidate.get("required"))
+            options = existing.get("options") if isinstance(existing.get("options"), dict) else {}
+            source_candidates = options.get("source_candidates") if isinstance(options.get("source_candidates"), list) else []
+            if source_candidate_id and source_candidate_id not in source_candidates:
+                source_candidates.append(source_candidate_id)
+            options["source_candidates"] = source_candidates
+            existing["options"] = options
+            continue
+        attr = {
+            "id": new_id(),
+            "name": canonical_name,
+            "code": canonical_code,
+            "type": candidate_type,
+            "required": bool(candidate.get("required")),
+            "scope": "feature",
+            "attribute_id": attribute_id or None,
+            "position": len(attrs),
+            "options": {
+                "param_group": _text(candidate.get("group")) or "Характеристики",
+                "source_candidates": [source_candidate_id] if source_candidate_id else [],
+                "attribute_id": attribute_id or None,
+                "dict_id": dict_id or None,
+                "global_code": canonical_code,
+            },
+        }
+        by_global_key[dedupe_key] = attr
+        attrs.append(attr)
     db.setdefault("attributes", {})[template_id] = attrs
     info_model["status"] = "approved"
     info_model["approved_at"] = now_iso()

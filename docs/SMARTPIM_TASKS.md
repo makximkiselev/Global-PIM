@@ -170,6 +170,13 @@ Audit findings to verify/fix:
      - deleting all info-models leaves only the rebuilt leaf-category model, so inherited category/model behavior must be retested before real filling;
      - the recreated model has `71` approved attributes while the recreated product still carries `73` feature rows, so the next audit must compare model fields versus product fields and explain/drop/merge the extra rows.
 
+0. 2026-05-17 global attribute reuse rule:
+   - info-model fields must be approved as references to global attributes, not as isolated category-local copies;
+   - shared parameters such as `Встроенная память` and `Оперативная память` must have one canonical `attribute_id` and one `dict_id` reused by smartphones, tablets, laptops, VR devices, and any other category;
+   - synonyms from products/marketplaces/competitors must normalize before approval, for example `Объем встроенной памяти`, `Внутренняя память`, `storage`, `ROM` -> `Встроенная память`, and `Объем оперативной памяти`, `RAM` -> `Оперативная память`;
+   - implemented first backend guardrail in `draft_service.approve_draft`: accepted candidates now call `ensure_global_attribute`, write `attribute_id/options.dict_id`, and collapse accepted synonyms into one template attribute;
+   - next validation: run real smartphone/tablet model rebuild comparison and verify no duplicate memory/RAM attributes are created across categories.
+
 0. 2026-05-16 product creation and variants:
    - `/products/new` must be a short SKU creation workflow, not a full product-card editor;
    - single product creation creates one real product row and opens its product card;
