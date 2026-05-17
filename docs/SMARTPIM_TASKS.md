@@ -128,6 +128,48 @@ Audit findings to verify/fix:
      - audit suspect marketplace mappings for smartphones, especially Ozon memory/model fields;
      - restore Browser QA and re-score the same path visually before calling this block complete.
 
+0. 2026-05-17 production reset checkpoint for info-model/product recreation:
+   - Baseline before reset:
+     - active info-model/template count: `6`;
+     - selected control product: `product_4`;
+     - title: `Смартфон Apple iPhone 17 Pro 512Gb eSIM Silver (Global)`;
+     - category: `a29cf263-1bf1-4cb2-b3bb-eeaa7c88b3e4`;
+     - SKU GT: `52464`;
+     - group: `group_37`;
+     - product features: `73`;
+     - media images: `0`.
+   - Snapshot was written on the production server before destructive changes:
+     - `/tmp/smartpim_rebuild_snapshot_product_4_1779017670.json`.
+   - Action performed:
+     - all active info-model templates were cleared;
+     - `product_4` was deleted through backend product deletion;
+     - info-model for the selected product category was rebuilt from `products + marketplaces`;
+     - rebuilt template id: `9931bac5-8c4d-4b14-bfa3-5112485e01ef`;
+     - rebuilt template attributes: `71`;
+     - selected product was recreated from captured product content and restored into `group_37`.
+   - Result after reset:
+     - active info-model/template count: `1`;
+     - old product `product_4`: deleted and no longer resolvable;
+     - recreated product id: `product_1091`;
+     - recreated title: `Смартфон Apple iPhone 17 Pro 512Gb eSIM Silver (Global)`;
+     - recreated SKU GT: `52464`;
+     - recreated group: `group_37`;
+     - recreated product features: `73`;
+     - recreated media images: `0`;
+     - `group_37` still contains `27` products;
+     - `group_37` contains `product_1091` and no longer contains `product_4`.
+   - Recreated product parameter-flow summary:
+     - `features_total=73`;
+     - `features_ready=34`;
+     - `features_attention=22`;
+     - `features_empty=17`;
+     - `source_values=57`;
+     - `service_rows=4`.
+   - Immediate comparison finding:
+     - product data survived recreation when content snapshot was reused, but product id changed from `product_4` to `product_1091`; any old deep links to `product_4` now break;
+     - deleting all info-models leaves only the rebuilt leaf-category model, so inherited category/model behavior must be retested before real filling;
+     - the recreated model has `71` approved attributes while the recreated product still carries `73` feature rows, so the next audit must compare model fields versus product fields and explain/drop/merge the extra rows.
+
 0. 2026-05-16 product creation and variants:
    - `/products/new` must be a short SKU creation workflow, not a full product-card editor;
    - single product creation creates one real product row and opens its product card;
