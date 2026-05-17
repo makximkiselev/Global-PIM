@@ -5406,6 +5406,102 @@ def query_catalog_product_page_rows(
     return _with_pg_retry(_run)
 
 
+def query_catalog_product_group_facets(
+    *,
+    category_ids: List[str] | None = None,
+    exact_category_id: str = "",
+    template_filter: str = "",
+    ym_filter: str = "all",
+    oz_filter: str = "all",
+    view_filter: str = "all",
+    q: str = "",
+    organization_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    _bootstrap_catalog_product_page_tenant_from_legacy(org_id)
+    safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
+    exact_category_id = str(exact_category_id or "").strip()
+    template_filter = str(template_filter or "").strip()
+    ym_filter = str(ym_filter or "all").strip().lower()
+    oz_filter = str(oz_filter or "all").strip().lower()
+    view_filter = str(view_filter or "all").strip().lower()
+    q = str(q or "").strip().lower()
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        clauses: List[str] = ["organization_id = %s", "COALESCE(group_id, '') <> ''"]
+        params: List[Any] = [org_id]
+        if exact_category_id:
+            clauses.append("category_id = %s")
+            params.append(exact_category_id)
+        elif safe_category_ids:
+            clauses.append("category_id = ANY(%s)")
+            params.append(safe_category_ids)
+
+        if template_filter == "__without__":
+            clauses.append("COALESCE(template_id, '') = ''")
+        elif template_filter:
+            clauses.append("template_id = %s")
+            params.append(template_filter)
+
+        if ym_filter == "on":
+            clauses.append("yandex_present = TRUE")
+        elif ym_filter == "off":
+            clauses.append("yandex_present = FALSE")
+
+        if oz_filter == "on":
+            clauses.append("ozon_present = TRUE")
+        elif oz_filter == "off":
+            clauses.append("ozon_present = FALSE")
+
+        if view_filter == "issues":
+            clauses.append("(COALESCE(template_id, '') = '' OR yandex_present = FALSE OR ozon_present = FALSE)")
+        elif view_filter == "no_template":
+            clauses.append("COALESCE(template_id, '') = ''")
+        elif view_filter == "no_ym":
+            clauses.append("yandex_present = FALSE")
+        elif view_filter == "no_oz":
+            clauses.append("ozon_present = FALSE")
+        elif view_filter == "no_photo":
+            clauses.append("COALESCE(preview_url, '') = ''")
+        elif view_filter == "no_group":
+            return []
+
+        if q:
+            clauses.append(
+                "(LOWER(title) LIKE %s OR LOWER(COALESCE(sku_gt, '')) LIKE %s OR LOWER(COALESCE(category_path, '')) LIKE %s)"
+            )
+            like = f"%{q}%"
+            params.extend([like, like, like])
+
+        where_sql = f" WHERE {' AND '.join(clauses)}"
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT group_id, COALESCE(NULLIF(group_name, ''), group_id) AS group_name, COUNT(*) AS products_count
+                FROM catalog_product_page_tenant_rel
+                {where_sql}
+                GROUP BY group_id, COALESCE(NULLIF(group_name, ''), group_id)
+                ORDER BY LOWER(COALESCE(NULLIF(group_name, ''), group_id))
+                LIMIT 250
+                """,
+                params,
+            )
+            rows = cur.fetchall() or []
+        return [
+            {
+                "id": str(row[0] or "").strip(),
+                "name": str(row[1] or "").strip(),
+                "products_count": int(row[2] or 0),
+            }
+            for row in rows
+            if str(row[0] or "").strip()
+        ]
+
+    return _with_pg_retry(_run)
+
+
 def save_dashboard_stats_summary(payload: Dict[str, Any]) -> None:
     _ensure_tables()
     row = (

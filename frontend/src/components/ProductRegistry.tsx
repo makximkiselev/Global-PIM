@@ -30,6 +30,7 @@ type CatalogNode = {
 type GroupItem = {
   id: string;
   name: string;
+  products_count?: number;
 };
 
 type TemplateItem = {
@@ -318,7 +319,11 @@ export default function ProductRegistry({
 
   const groupOptions = useMemo(() => {
     return (groups || [])
-      .map((g) => ({ id: String(g.id || ""), name: String(g.name || "") }))
+      .map((g) => ({
+        id: String(g.id || ""),
+        name: String(g.name || ""),
+        products_count: Math.max(0, Number(g.products_count || 0)),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name, "ru"));
   }, [groups]);
 
@@ -476,10 +481,12 @@ export default function ProductRegistry({
             </>
           ) : null}
           <select className="pn-input products-filterControl" value={groupFilter} onChange={(e) => updateFilters({ group: e.target.value, page: 1 })}>
-            <option value="">Все группы</option>
+            <option value="">{scopeCategoryId ? "Все группы ветки" : "Все группы"}</option>
             <option value="__ungrouped__">Без группы</option>
             {groupOptions.map((g) => (
-              <option key={g.id} value={g.id}>{g.name}</option>
+              <option key={g.id} value={g.id}>
+                {g.products_count ? `${g.name} · ${g.products_count}` : g.name}
+              </option>
             ))}
           </select>
           {!isCatalogClean ? (

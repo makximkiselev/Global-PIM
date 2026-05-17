@@ -19,6 +19,7 @@ from app.storage.relational_pim_store import (
     query_catalog_product_items,
     save_catalog_product_page_rows,
     query_catalog_product_page_rows,
+    query_catalog_product_group_facets,
     load_category_product_counts,
     save_category_template_resolution,
     load_category_template_resolution_map,
@@ -999,6 +1000,18 @@ def products_page_data(
         page=page,
         page_size=page_size,
     )
+    try:
+        scoped_groups = query_catalog_product_group_facets(
+            category_ids=category_scope,
+            exact_category_id=exact_category if exact else "",
+            template_filter=template,
+            ym_filter=ym_filter,
+            oz_filter=oz_filter,
+            view_filter=view_filter,
+            q=q_normalized,
+        )
+    except Exception:
+        scoped_groups = groups
 
     payload = {
         "ok": True,
@@ -1007,7 +1020,7 @@ def products_page_data(
         "page": page,
         "page_size": page_size,
         "nodes": nodes,
-        "groups": groups,
+        "groups": scoped_groups,
         "templates": templates,
     }
     result_cache[cache_key] = (now, payload)

@@ -133,7 +133,8 @@ Audit findings to verify/fix:
      - old repeated text `Выбранная категория` is gone;
      - category context is a single line `Каталог / Смартфоны`;
      - the SKU list starts immediately under the compact category header.
-   - next UX issue in this route: group filter currently exposes too many groups globally; it should be scoped or searchable so it does not become a giant irrelevant dropdown.
+   - fixed: group filter no longer receives global project groups from `/catalog/products-page-data`; backend now returns group facets for the current category/filter scope with SKU counts;
+   - verified on production via in-app Browser for `Смартфоны`: filter options reduced to `29`, scoped to smartphone groups, with counts, and irrelevant global groups such as `MacBook` are absent.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
    - Browser status: in-app Browser pane was unavailable (`No active Codex browser pane available`), so visual QA was done through authenticated Playwright fallback against production as owner in `Global Trade`.
