@@ -169,6 +169,55 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotEqual(first["sku_gt"], second["sku_gt"])
         self.assertEqual(len(saved_products), 2)
 
+    def test_product_family_creation_is_single_backend_operation(self) -> None:
+        saved_groups: list[dict[str, object]] = []
+        saved_products: list[dict[str, object]] = []
+
+        def save_groups(doc):
+            saved_groups.append(deepcopy(doc))
+
+        def save_products(items):
+            saved_products.extend(deepcopy(items))
+            return deepcopy(items)
+
+        with (
+            patch.object(products_service, "query_products_full", return_value=[]),
+            patch.object(products_service, "allocate_next_product_identity", return_value={"product_id": "product_10", "next_sku_pim": "100", "next_sku_gt": "50100"}),
+            patch.object(products_service, "load_product_groups_doc", return_value={"version": 1, "items": []}),
+            patch.object(products_service, "save_product_groups_doc", side_effect=save_groups),
+            patch.object(products_service, "bulk_upsert_product_items", side_effect=save_products),
+        ):
+            response = products_service.create_product_family_service(
+                {
+                    "category_id": "cat-smartphones",
+                    "type": "multi",
+                    "title": "Apple iPhone 17 Pro",
+                    "selected_params": ["memory", "color"],
+                    "variants": [
+                        {
+                            "title": "Apple iPhone 17 Pro 256GB Blue",
+                            "sku_pim": "100",
+                            "sku_gt": "50100",
+                            "content": {"features": [{"code": "memory", "name": "Память", "value": "256 ГБ"}]},
+                        },
+                        {
+                            "title": "Apple iPhone 17 Pro 512GB Blue",
+                            "sku_pim": "101",
+                            "sku_gt": "50101",
+                            "content": {"features": [{"code": "memory", "name": "Память", "value": "512 ГБ"}]},
+                        },
+                    ],
+                }
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["group"]["id"], "group_1")
+        self.assertEqual(response["count"], 2)
+        self.assertEqual([item["id"] for item in saved_products], ["product_10", "product_11"])
+        self.assertEqual({item["group_id"] for item in saved_products}, {"group_1"})
+        self.assertEqual(saved_products[0]["content"]["features"][0]["value"], "256 ГБ")
+        self.assertEqual(saved_groups[-1]["items"][0]["variant_param_ids"], ["memory", "color"])
+
     def test_competitor_candidate_approval_confirms_one_and_rejects_siblings(self) -> None:
         db = {
             "version": 2,

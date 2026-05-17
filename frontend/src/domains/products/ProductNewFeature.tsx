@@ -12,9 +12,7 @@ const API_TEMPLATE_GET = `${apiBase()}/templates`;
 const API_COMP_MAPPING = `${apiBase()}/competitor-mapping/template`;
 const API_COMP_CONTENT_BATCH = `${apiBase()}/competitor-mapping/competitor-content-batch`;
 const API_ALLOCATE_SKUS = `${apiBase()}/products/allocate-skus`;
-const API_PRODUCT_CREATE = `${apiBase()}/products/create`;
-const API_PRODUCT_PATCH = `${apiBase()}/products`;
-const API_GROUP_CREATE = `${apiBase()}/product-groups`;
+const API_PRODUCT_CREATE_FAMILY = `${apiBase()}/products/create-family`;
 const API_DICT_GET = (dictId: string) => `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}`;
 const API_DICT_ENSURE_VALUE = (dictId: string) =>
   `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}/values/ensure`;
@@ -33,23 +31,6 @@ async function getJson<T>(url: string): Promise<T> {
 async function postJson<T>(url: string, body: any): Promise<T> {
   const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const text = await r.text();
-  const data = text ? JSON.parse(text) : null;
-
-  if (!r.ok) {
-    const detail = data?.detail || data?.message || `HTTP_${r.status}`;
-    throw new Error(String(detail));
-  }
-  return data as T;
-}
-
-async function patchJson<T>(url: string, body: any): Promise<T> {
-  const r = await fetch(url, {
-    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -732,13 +713,6 @@ type ProductContent = {
   related: { sku: string; name: string }[];
 };
 
-type ProductGroupCreateResp = {
-  group: {
-    id: string;
-    name: string;
-  };
-};
-
 function emptyVariantContent(): VariantContent {
   return {
     features: [],
@@ -1380,37 +1354,26 @@ export default function ProductNewFeature() {
       setVariants(nextVariants);
 
       const sharedContent: ProductContent = { documents: [], analogs: [], related: [] };
-      let groupId = "";
-      if (productType === "multi") {
-        const groupName = normStr(title);
-        const groupRes = await postJson<ProductGroupCreateResp>(API_GROUP_CREATE, {
-          name: groupName,
-          variant_param_ids: selectedOrder,
-        });
-        groupId = groupRes.group.id;
-      }
-
-      const createdProducts: Array<{ id: string; title: string }> = [];
-      for (const variant of nextVariants) {
-        const createPayload: any = {
-          category_id: categoryId,
-          type: productType,
+      const createPayload = {
+        category_id: categoryId,
+        type: productType,
+        title: normStr(title),
+        selected_params: productType === "multi" ? selectedOrder : [],
+        feature_params: [],
+        exports_enabled: {},
+        variants: nextVariants.map((variant) => ({
           title: variant.title,
           sku_pim: variant.sku_pim,
           sku_gt: variant.sku_gt,
-          group_id: groupId || undefined,
-          selected_params: productType === "multi" ? selectedOrder : [],
-          feature_params: [],
-          exports_enabled: {},
-        };
-        const res = await postJson<{ product: { id: string; title: string } }>(API_PRODUCT_CREATE, createPayload);
-        createdProducts.push({ id: res.product.id, title: res.product.title });
-        await patchJson(`${API_PRODUCT_PATCH}/${encodeURIComponent(res.product.id)}`, {
           content: variantContentPatch(variant, sharedContent),
-        });
-      }
+        })),
+      };
+      const res = await postJson<{
+        products: Array<{ id: string; title: string }>;
+        first_product?: { id: string; title: string } | null;
+      }>(API_PRODUCT_CREATE_FAMILY, createPayload);
 
-      const firstCreated = createdProducts[0];
+      const firstCreated = res.first_product || res.products?.[0];
       if (firstCreated) {
         setCreated(firstCreated);
         navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=variants`);

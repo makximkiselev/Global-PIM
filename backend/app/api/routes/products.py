@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
 from app.core.products.service import (
+    create_product_family_service,
     create_product_service,
     get_product_service,
     get_products_bulk_service,
@@ -111,6 +112,25 @@ class CreateProductReq(BaseModel):
     selected_params: List[str] = Field(default_factory=list)
     feature_params: List[str] = Field(default_factory=list)
     exports_enabled: Dict[str, bool] = Field(default_factory=dict)
+
+
+class CreateProductVariantReq(BaseModel):
+    title: str
+    sku_pim: Optional[str] = None
+    sku_gt: Optional[str] = None
+    status: Optional[str] = None
+    exports_enabled: Dict[str, bool] = Field(default_factory=dict)
+    content: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CreateProductFamilyReq(BaseModel):
+    category_id: str
+    type: str = Field(default="single")
+    title: str
+    selected_params: List[str] = Field(default_factory=list)
+    feature_params: List[str] = Field(default_factory=list)
+    exports_enabled: Dict[str, bool] = Field(default_factory=dict)
+    variants: List[CreateProductVariantReq] = Field(default_factory=list)
 
 
 class PatchProductReq(BaseModel):
@@ -348,6 +368,14 @@ def products_create(req: CreateProductReq):
     try:
         p = create_product_service(req.model_dump())
         return {"product": p}
+    except JsonStoreError as e:
+        raise _http_from_store_error(str(e))
+
+
+@router.post("/create-family")
+def products_create_family(req: CreateProductFamilyReq):
+    try:
+        return create_product_family_service(req.model_dump())
     except JsonStoreError as e:
         raise _http_from_store_error(str(e))
 

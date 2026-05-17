@@ -3,15 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from app.core.json_store import JsonStoreError
+from datetime import datetime, timezone
+
+from app.core.json_store import JsonStoreError, with_lock
 from app.storage.relational_pim_store import (
     allocate_next_product_identity,
+    bulk_upsert_product_items,
     delete_product_items,
     find_product_by_sku_gt,
+    load_product_groups_doc,
     load_products_by_category,
     load_products_by_group,
     load_products_by_ids,
     query_products_full,
+    save_product_groups_doc,
     upsert_product_item,
 )
 from app.core.products.variants_repo import (
@@ -101,6 +106,43 @@ def _ensure_unique_sku(items: List[Dict[str, Any]], *, sku_gt: str = "", exclude
         if sku_gt and _norm(item.get("sku_gt")) == sku_gt:
             raise JsonStoreError("DUPLICATE_SKU_GT")
 
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _normalize_ids(items: Any) -> List[str]:
+    if not isinstance(items, list):
+        return []
+    out: List[str] = []
+    seen: Set[str] = set()
+    for item in items:
+        value = _norm(item)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _next_group_id_from_doc(groups_doc: Dict[str, Any]) -> str:
+    max_idx = 0
+    for group in groups_doc.get("items", []) or []:
+        if not isinstance(group, dict):
+            continue
+        gid = _norm(group.get("id"))
+        if gid.startswith("group_"):
+            suffix = gid.split("_", 1)[1]
+            if suffix.isdigit():
+                max_idx = max(max_idx, int(suffix))
+    return f"group_{max_idx + 1}"
+
+
+def _content_payload(value: Any) -> Dict[str, Any]:
+    base = _default_content()
+    incoming = value if isinstance(value, dict) else {}
+    return {**base, **incoming}
+
 def allocate_sku_pairs_service(count: int) -> Dict[str, Any]:
     qty = int(count or 0)
     if qty < 1:
@@ -158,6 +200,109 @@ def create_product_service(payload: Dict[str, Any]) -> Dict[str, Any]:
     items.append(product)
     saved = upsert_product_item(product)
     return saved or product
+
+
+def create_product_family_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+    category_id = _norm(payload.get("category_id"))
+    product_type = _norm(payload.get("type")) or "single"
+    group_name = _norm(payload.get("title")) or _norm(payload.get("group_name"))
+    selected_params = _normalize_ids(payload.get("selected_params") or [])
+    feature_params = _normalize_ids(payload.get("feature_params") or [])
+    exports_enabled = dict(payload.get("exports_enabled") or {})
+    variants = payload.get("variants") if isinstance(payload.get("variants"), list) else []
+
+    if not category_id:
+        raise JsonStoreError("CATEGORY_REQUIRED")
+    if product_type not in {"single", "multi"}:
+        raise JsonStoreError("BAD_TYPE")
+    if not variants:
+        raise JsonStoreError("TITLE_REQUIRED")
+    if product_type == "single" and len(variants) != 1:
+        raise JsonStoreError("BAD_TYPE")
+    if product_type == "multi" and not group_name:
+        raise JsonStoreError("TITLE_REQUIRED")
+
+    lock = with_lock("products_family_create")
+    lock.acquire()
+    saved_group_doc: Optional[Dict[str, Any]] = None
+    try:
+        existing = query_products_full()
+        existing_skus = {_norm(item.get("sku_gt")) for item in existing if _norm(item.get("sku_gt"))}
+        next_identity = allocate_next_product_identity()
+        next_product_num = _parse_int(str(next_identity.get("product_id") or "").replace("product_", ""))
+        next_pim = _parse_int(next_identity.get("next_sku_pim"))
+        next_gt = _parse_int(next_identity.get("next_sku_gt"))
+
+        groups_doc = load_product_groups_doc()
+        group_id: Optional[str] = None
+        group: Optional[Dict[str, Any]] = None
+        if product_type == "multi":
+            group_id = _next_group_id_from_doc(groups_doc)
+            now = _now_iso()
+            group = {
+                "id": group_id,
+                "name": group_name,
+                "variant_param_ids": selected_params,
+                "created_at": now,
+                "updated_at": now,
+            }
+            saved_group_doc = groups_doc
+            next_groups_doc = {
+                **groups_doc,
+                "items": list(groups_doc.get("items", []) or []) + [group],
+            }
+            save_product_groups_doc(next_groups_doc)
+
+        products: List[Dict[str, Any]] = []
+        seen_skus: Set[str] = set()
+        for idx, raw_variant in enumerate(variants):
+            variant = raw_variant if isinstance(raw_variant, dict) else {}
+            title = _norm(variant.get("title"))
+            if not title:
+                raise JsonStoreError("TITLE_REQUIRED")
+
+            sku_pim = _norm(variant.get("sku_pim")) or str(next_pim + idx)
+            sku_gt = _norm(variant.get("sku_gt")) or str(next_gt + idx)
+            if not sku_gt:
+                raise JsonStoreError("BAD_SKU")
+            if sku_gt in existing_skus or sku_gt in seen_skus:
+                raise JsonStoreError("DUPLICATE_SKU_GT")
+            seen_skus.add(sku_gt)
+
+            products.append(
+                {
+                    "id": f"product_{next_product_num + idx}",
+                    "category_id": category_id,
+                    "type": product_type,
+                    "status": _norm(variant.get("status")) or "draft",
+                    "title": title,
+                    "sku_pim": sku_pim,
+                    "sku_gt": sku_gt,
+                    "group_id": group_id,
+                    "selected_params": selected_params if product_type == "multi" else [],
+                    "feature_params": feature_params,
+                    "exports_enabled": dict(variant.get("exports_enabled") or exports_enabled),
+                    "content": _content_payload(variant.get("content")),
+                }
+            )
+
+        saved_products = bulk_upsert_product_items(products)
+        return {
+            "ok": True,
+            "group": group,
+            "products": saved_products or products,
+            "count": len(saved_products or products),
+            "first_product": (saved_products or products)[0] if products else None,
+        }
+    except Exception:
+        if saved_group_doc is not None:
+            try:
+                save_product_groups_doc(saved_group_doc)
+            except Exception:
+                pass
+        raise
+    finally:
+        lock.release()
 
 
 def get_product_service(product_id: str, include_variants: bool = True) -> Dict[str, Any]:

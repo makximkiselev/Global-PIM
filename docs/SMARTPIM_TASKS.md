@@ -114,7 +114,7 @@ Audit findings to verify/fix:
 
 0. 2026-05-17 pipeline audit scorecard, creation -> category -> card -> export:
    - Browser QA status: blocked by unavailable in-app Browser pane (`No active Codex browser pane available`); current score is based on production API/DB diagnostics and code audit, not visual proof.
-   - Product creation UX: `6.5/10`. Improved because the wizard is now short and variants become real SKU rows, but family creation is still frontend-orchestrated through multiple requests and must become one backend operation.
+   - Product creation UX: `7/10`. Improved because the wizard is now short and variants become real SKU rows. 2026-05-17: family creation was moved behind one backend operation, so the frontend no longer creates group/products/patches as separate user-path steps.
    - Category assignment: `7/10`. Created SKU rows receive `category_id`; existing `product_3` is correctly in a child smartphone category and still reachable through the smartphone branch, but category context between root branch and child leaf must be clearer in UI.
    - Product variant card: `7/10`. `product_3` shows `group_37` with `27` SKU variants, but the variants tab still needs clearer primary actions: open group, add missing SKU, compare variant values.
    - Parameter/enrichment view: `7/10`. `product_3` has `73` features, `120` source values, and parameter-flow summary `34 ready / 22 attention / 17 empty`; this is usable but still needs a focused attention queue.
@@ -123,7 +123,6 @@ Audit findings to verify/fix:
    - Export readiness: `7.5/10`. Single-SKU export path is technically ready for the verified SKU, but the UI still needs stronger protection against accidental broad category exports.
    - Overall project readiness for real filling: `6.5/10`. The vertical path exists and is improving, but the project is not yet “self-explanatory” for a content manager.
    - Next P0 growth points:
-     - create one backend endpoint for atomic product/family creation: single SKU or variant family in one request, with rollback on failure;
      - after creation, show an explicit next-action panel in the product card: `подобрать карточки конкурентов`, `наполнить параметры`, `проверить медиа`, `подготовить export`;
      - make category context explicit everywhere: selected leaf category, parent branch, and why product appears in the parent branch;
      - add an attention queue for `parameter-flow`: only rows with missing marketplace mapping or missing value first;
@@ -134,6 +133,8 @@ Audit findings to verify/fix:
    - `/products/new` must be a short SKU creation workflow, not a full product-card editor;
    - single product creation creates one real product row and opens its product card;
    - variant creation creates one real product row per SKU, creates a product group, assigns all variant SKU rows to that group, and opens the first SKU on the `Варианты` tab;
+   - 2026-05-17 implemented `/api/products/create-family`: single SKU and variant families are now created through one backend operation; frontend wizard sends one payload and navigates to the first created SKU;
+   - backend test coverage exists for the single-operation family creation path;
    - enrichment, media, description, analogs, related products, and export readiness belong in the product card after creation, not in the creation wizard;
    - verify that variant groups are visible from the product card and product groups page after creation.
 
