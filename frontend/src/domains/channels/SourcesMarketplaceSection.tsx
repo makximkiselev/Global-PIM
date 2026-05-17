@@ -3222,7 +3222,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         </div>
                                         <div className="mm-competitorMiniStats">
                                           <span>{competitorStatusText}</span>
-                                          <span>{branchProductCount ? `до ${branchProductCount} SKU в выборке скана` : "нет SKU для скана"}</span>
+                                          <span>
+                                            {competitorDiscoveryLoading
+                                              ? "загружаю SKU ветки"
+                                              : branchProductCount
+                                                ? `до ${branchProductCount} SKU в выборке скана`
+                                                : "нет SKU для скана"}
+                                          </span>
                                           <span>
                                             {competitorDiscoveryRunning
                                               ? "скан выполняется"

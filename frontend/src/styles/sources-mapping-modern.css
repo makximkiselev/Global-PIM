@@ -2,7 +2,13 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  min-width: 1180px;
   padding-top: 0;
+}
+
+.shellContent:has(.sourcesMappingPage) {
+  overflow-x: auto;
 }
 
 .sourcesMappingHero,
@@ -21,8 +27,8 @@
 
 .sourcesMappingHero {
   width: 100%;
-  max-width: var(--page-content-width);
-  margin: 0 auto 2px;
+  max-width: none;
+  margin: 0 0 2px;
 }
 
 .sourcesMappingHeroText {
@@ -88,7 +94,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(116px, 1fr));
   gap: 6px;
-  flex: 0 0 min(500px, 42vw);
+  flex: 0 0 500px;
 }
 
 .sourcesMappingSegmentTab {
@@ -1882,13 +1888,13 @@
 @media (max-width: 1240px) {
   .sourcesMappingHero,
   .sourcesMappingTopbar {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
   }
 
   .sourcesMappingSegmentTabs {
-    flex-basis: auto;
-    width: 100%;
+    flex: 0 0 500px;
+    width: auto;
   }
 
   .sourcesMappingTopbarMeta {
@@ -2215,6 +2221,60 @@
   background: color-mix(in srgb, var(--surface) 76%, var(--panel));
   cursor: pointer;
   transition: border-color .18s ease, transform .18s ease, background .18s ease;
+}
+
+.paramsParamCardSkeleton,
+.paramsInspectorLoading {
+  cursor: default;
+  pointer-events: none;
+}
+
+.paramsSkeletonLine,
+.paramsSkeletonGrid span {
+  display: block;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--muted) 8%, transparent),
+      color-mix(in srgb, var(--muted) 16%, transparent),
+      color-mix(in srgb, var(--muted) 8%, transparent)
+    );
+  background-size: 220% 100%;
+  animation: paramsSkeletonPulse 1.15s ease-in-out infinite;
+}
+
+.paramsSkeletonLine {
+  width: 68%;
+  height: 14px;
+}
+
+.paramsSkeletonLine.isTitle {
+  width: 46%;
+  height: 20px;
+  border-radius: 12px;
+}
+
+.paramsSkeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paramsSkeletonGrid span {
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.paramsInspectorLoading {
+  display: grid;
+  gap: 12px;
+  min-height: 320px;
+}
+
+@keyframes paramsSkeletonPulse {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
 }
 
 .paramsParamCard.isAttention {
@@ -2626,17 +2686,5 @@
   .sourcesMappingPage .mm-competitorProcessNote strong,
   .sourcesMappingPage .mm-competitorProcessNote em {
     white-space: normal;
-  }
-}
-
-@media (max-width: 1180px) {
-  .paramsWorkspace,
-  .paramsParamCard,
-  .paramsFocusLayout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .paramsInspector {
-    position: static;
   }
 }

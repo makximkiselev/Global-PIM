@@ -317,7 +317,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
   const categoryName = details?.category?.name || "Выберите категорию";
   const categoryPath = details?.category?.path || "Категория не выбрана";
-  const readinessText = stats.total ? `${stats.ready}/${stats.total} полей инфо-модели готово` : "нет полей инфо-модели";
+  const initialParamsLoading = loading && !details;
+  const readinessText = initialParamsLoading
+    ? "загружаю поля инфо-модели"
+    : stats.total
+      ? `${stats.ready}/${stats.total} полей инфо-модели готово`
+      : "нет полей инфо-модели";
   const competitorTotals = useMemo(() => {
     const sources = competitors?.sources || [];
     return sources.reduce(
@@ -559,14 +564,25 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                   type="button"
                   className={`paramsChip ${queueFilter === key ? "isActive" : ""}`}
                   onClick={() => setQueueFilter(key as QueueFilter)}
+                  disabled={initialParamsLoading}
                 >
-                  {label}<span>{count}</span>
+                  {label}<span>{initialParamsLoading ? "..." : count}</span>
                 </button>
               ))}
             </div>
 
             <div className="paramsQueueList">
-              {queueRows.length ? queueRows.map((row) => {
+              {initialParamsLoading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <div className="paramsParamCard paramsParamCardSkeleton" key={`params-loading-${index}`}>
+                    <div className="paramsSkeletonLine isTitle" />
+                    <div className="paramsSkeletonGrid">
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                ))
+              ) : queueRows.length ? queueRows.map((row) => {
                 const coverage = rowProviderCoverage(row, codes);
                 const needsAttention = rowNeedsAttention(row, codes);
                 const active = String(selectedRow?.id || "") === String(row.id || "");
@@ -609,7 +625,17 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           </div>
 
           <aside className="paramsInspector">
-            {selectedRow ? (
+            {initialParamsLoading ? (
+              <div className="paramsInspectorLoading">
+                <div className="paramsSkeletonLine isTitle" />
+                <div className="paramsSkeletonLine" />
+                <div className="paramsSkeletonLine" />
+                <div className="paramsSkeletonGrid">
+                  <span />
+                  <span />
+                </div>
+              </div>
+            ) : selectedRow ? (
               <>
                 <div className="paramsInspectorHead">
                   <div>

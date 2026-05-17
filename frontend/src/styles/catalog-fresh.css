@@ -721,6 +721,11 @@
 /* ============ Catalog Workspace Rework ============ */
 .catalogWorkspacePage{
   --page-content-width:min(1760px, calc(100vw - 104px));
+  min-width:1180px;
+}
+
+.shellContent:has(.catalogWorkspacePage){
+  overflow-x:auto;
 }
 
 .catalogWorkspacePage > .page-header{
@@ -1335,4 +1340,27 @@
 .catalogInspectorActions .btn{
   min-height:34px;
   border-radius:12px;
+}
+
+@media (max-width: 1240px){
+  .catalogWorkspaceFrame.workspaceFrameThree{
+    grid-template-columns:300px minmax(720px, 1fr) 288px;
+  }
+
+  .catalogWorkspaceFrame.workspaceFrameTwo{
+    grid-template-columns:minmax(340px, 430px) minmax(720px, 1fr);
+  }
+
+  .catalogWorkspaceFrame .workspaceFrameInspector{
+    grid-column:auto;
+  }
+
+  .catalogTreePanel{
+    position:sticky;
+  }
+
+  .catalogCanvasGrid,
+  .catalogWorkHeader{
+    grid-template-columns:1fr;
+  }
 }

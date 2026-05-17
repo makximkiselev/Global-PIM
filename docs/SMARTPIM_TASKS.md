@@ -112,6 +112,19 @@ Checklist:
 
 Audit findings to verify/fix:
 
+0. 2026-05-17 async/layout audit, routes `/catalog`, `/sources?tab=sources`, `/sources?tab=params`:
+   - Browser visual proof: in-app Browser opened the current production `params` route, and the page collapsed into a narrow column although the product is desktop-only;
+   - root cause: sources mapping CSS used viewport breakpoints that stacked the command/header/cards at narrow browser-pane widths instead of preserving a desktop workspace with horizontal scroll;
+   - fixed: `sourcesMappingPage` now has a desktop minimum width and horizontal scroll through shell content; `params` layout no longer collapses to one column at `1180px`;
+   - fixed: `catalogWorkspacePage` uses the same desktop-min-width policy, so the catalog tree/table workspace no longer collapses into a narrow mobile-like column;
+   - fixed: product registry no longer shows `Товары не найдены` while a request/search is still loading;
+   - fixed: competitor scan counter no longer says `нет SKU для скана` while branch SKU are loading;
+   - fixed: parameter mapping no longer shows `нет полей инфо-модели` / zero tabs / empty queue while the category attribute request is still loading;
+   - verified on production via in-app Browser at `485x837` browser pane:
+     - `/sources?tab=params&category=bb40de87-254b-4170-84d7-8e5d3925b251`: page width `1180`, hero width `1124`, params grid `752px 360px`, no false `нет полей`;
+     - `/sources?tab=sources&category=bb40de87-254b-4170-84d7-8e5d3925b251`: page width `1180`, hero width `1124`, no false `нет SKU для скана`;
+     - `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`: page width `1180`, frame grid `390px 720px`, no false `Товары не найдены` with `431`.
+
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
    - Browser status: in-app Browser pane was unavailable (`No active Codex browser pane available`), so visual QA was done through authenticated Playwright fallback against production as owner in `Global Trade`.
    - Overall clarity for a new product manager: `6/10`.

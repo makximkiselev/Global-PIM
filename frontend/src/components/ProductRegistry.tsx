@@ -533,7 +533,7 @@ export default function ProductRegistry({
             )}
           </thead>
           <tbody>
-            {!loading && products.map((p) => {
+            {!listBusy && products.map((p) => {
               const title = String(p.title || p.name || "").trim() || p.id;
               const breadcrumbs = String(p.category_path || "");
               const previewUrl = toRenderableMediaUrl(String(p.preview_url || "").trim());
@@ -610,12 +610,12 @@ export default function ProductRegistry({
                 </tr>
               );
             })}
-            {products.length === 0 ? (
+            {!listBusy && products.length === 0 ? (
               <tr>
                 <td colSpan={isCatalogClean ? 4 : 6} className="products-empty">Товары не найдены</td>
               </tr>
             ) : null}
-            {loading && Array.from({ length: 8 }).map((_, idx) => (
+            {listBusy && Array.from({ length: 8 }).map((_, idx) => (
               <tr key={`sk-${idx}`} className="products-skeletonRow">
                 <td className="products-colSku"><span className="products-skeleton products-skeletonSku" /></td>
                 <td><div className="products-skeletonMain"><span className="products-skeleton products-skeletonThumb" /><div className="products-skeletonMeta"><span className="products-skeleton products-skeletonTitle" /><span className="products-skeleton products-skeletonCrumbs" /></div></div></td>
