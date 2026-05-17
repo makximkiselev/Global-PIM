@@ -908,7 +908,118 @@
 }
 
 .pnWizardReviewGrid{
-  grid-template-columns:repeat(6, minmax(120px,1fr));
+  grid-template-columns:repeat(4, minmax(150px,1fr));
+}
+
+.pnWizardNotice{
+  padding:12px 14px;
+  border:1px solid rgba(var(--brand-rgb), .18);
+  border-radius:18px;
+  background:rgba(var(--brand-rgb), .07);
+  color:var(--text-soft);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:850;
+}
+
+.pnVariantRecipe{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  gap:10px;
+}
+
+.pnVariantRecipe > div{
+  min-width:0;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(var(--surface-rgb), .6);
+}
+
+.pnVariantRecipe span{
+  display:block;
+  color:rgba(var(--brand-rgb), .92);
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+.pnVariantRecipe strong{
+  display:block;
+  margin-top:5px;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.3;
+  font-weight:950;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pnVariantMatrix{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:20px;
+  overflow:hidden;
+  background:rgba(var(--surface-rgb), .38);
+}
+
+.pnVariantMatrixHead,
+.pnVariantMatrixRow{
+  display:grid;
+  grid-template-columns:minmax(320px, 1.2fr) minmax(220px, .8fr) 130px 130px;
+  gap:12px;
+  align-items:center;
+  padding:11px 14px;
+}
+
+.pnVariantMatrixHead{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  background:rgba(var(--card-rgb), .74);
+  border-bottom:1px solid var(--line);
+}
+
+.pnVariantMatrixRow{
+  width:100%;
+  border:0;
+  border-bottom:1px solid var(--line);
+  background:rgba(var(--card-rgb), .56);
+  color:var(--text);
+  text-align:left;
+  cursor:pointer;
+}
+
+.pnVariantMatrixRow:last-child{
+  border-bottom:0;
+}
+
+.pnVariantMatrixRow:hover,
+.pnVariantMatrixRow.isActive{
+  background:rgba(var(--brand-rgb), .08);
+}
+
+.pnVariantMatrixRow strong,
+.pnVariantMatrixRow span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pnVariantMatrixRow strong{
+  font-size:13px;
+  font-weight:950;
+}
+
+.pnVariantMatrixRow span{
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:850;
 }
 
 @media(max-width:1200px){

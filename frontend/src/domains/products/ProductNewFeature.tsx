@@ -15,7 +15,7 @@ const API_COMP_CONTENT_BATCH = `${apiBase()}/competitor-mapping/competitor-conte
 const API_ALLOCATE_SKUS = `${apiBase()}/products/allocate-skus`;
 const API_PRODUCT_CREATE = `${apiBase()}/products/create`;
 const API_PRODUCT_PATCH = `${apiBase()}/products`;
-const API_VARIANTS_BULK_CREATE = `${apiBase()}/variants/bulk-create`;
+const API_GROUP_CREATE = `${apiBase()}/product-groups`;
 const API_DICT_GET = (dictId: string) => `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}`;
 const API_DICT_ENSURE_VALUE = (dictId: string) =>
   `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}/values/ensure`;
@@ -984,6 +984,13 @@ type ProductContent = {
   related: { sku: string; name: string }[];
 };
 
+type ProductGroupCreateResp = {
+  group: {
+    id: string;
+    name: string;
+  };
+};
+
 function emptyVariantContent(): VariantContent {
   return {
     features: [],
@@ -1159,6 +1166,40 @@ function buildFeatureSkeleton(attrs: TemplateAttr[]) {
     });
   }
   return out;
+}
+
+function variantContentPatch(
+  variant: Variant,
+  shared: ProductContent
+): ProductContent & {
+  description: string;
+  media: { url: string; source?: string }[];
+  media_images: { url: string; source?: string }[];
+  links: { label: string; url: string }[];
+  features: { code: string; name: string; value: string; source_values?: any }[];
+} {
+  const links = variant.links.map((link) => ({ label: link.source, url: normStr(link.url) }));
+  const media = variant.content.media || [];
+  return {
+    ...shared,
+    description: variant.content.description.custom || "",
+    media,
+    media_images: media,
+    links,
+    features: (variant.content.features || [])
+      .filter((feature) => normStr(feature.value))
+      .map((feature) => ({
+        code: feature.code,
+        name: feature.name,
+        value: feature.value,
+        source_values: {
+          competitor: {
+            restore: feature.restore ? { raw_value: feature.restore, resolved_value: feature.restore } : undefined,
+            store77: feature.store77 ? { raw_value: feature.store77, resolved_value: feature.store77 } : undefined,
+          },
+        },
+      })),
+  };
 }
 
 export default function ProductNewFeature() {
@@ -1702,62 +1743,43 @@ export default function ProductNewFeature() {
         });
       }
       setVariants(nextVariants);
-      const vFirst = nextVariants[0];
-      const payload: any = {
-        category_id: categoryId,
-        type: productType,
-        title: normStr(title),
-        selected_params: productType === "multi" ? selectedOrder : [],
-        feature_params: [],
-        exports_enabled: {},
-      };
-      if (productType === "single" && vFirst) {
-        payload.sku_pim = vFirst.sku_pim;
-        payload.sku_gt = vFirst.sku_gt;
+
+      const sharedContent = { documents, analogs, related };
+      let groupId = "";
+      if (productType === "multi") {
+        const groupName = normStr(title);
+        const groupRes = await postJson<ProductGroupCreateResp>(API_GROUP_CREATE, {
+          name: groupName,
+          variant_param_ids: selectedOrder,
+        });
+        groupId = groupRes.group.id;
       }
 
-      let productId = created?.id || "";
-      if (!productId) {
-        const res = await postJson<{ product: { id: string; title: string } }>(API_PRODUCT_CREATE, payload);
-        productId = res.product.id;
-        setCreated({ id: res.product.id, title: res.product.title });
-      }
-
-      if (productId && !created) {
-        await postJson(API_VARIANTS_BULK_CREATE, {
-          product_id: productId,
-          selected_params: selectedOrder,
-          rows: nextVariants.map((v) => ({
-            options: v.params,
-            variant_key: v.key,
-            enabled: true,
-            sku: "",
-            sku_pim: v.sku_pim,
-            sku_gt: v.sku_gt,
-            title: v.title,
-            links: v.links,
-            content: v.content,
-          })),
+      const createdProducts: Array<{ id: string; title: string }> = [];
+      for (const variant of nextVariants) {
+        const createPayload: any = {
+          category_id: categoryId,
+          type: productType,
+          title: variant.title,
+          sku_pim: variant.sku_pim,
+          sku_gt: variant.sku_gt,
+          group_id: groupId || undefined,
+          selected_params: productType === "multi" ? selectedOrder : [],
+          feature_params: [],
+          exports_enabled: {},
+        };
+        const res = await postJson<{ product: { id: string; title: string } }>(API_PRODUCT_CREATE, createPayload);
+        createdProducts.push({ id: res.product.id, title: res.product.title });
+        await patchJson(`${API_PRODUCT_PATCH}/${encodeURIComponent(res.product.id)}`, {
+          content: variantContentPatch(variant, sharedContent),
         });
       }
 
-      if (productId) {
-        const vActive = nextVariants.find((v) => v.key === active?.key) || nextVariants[0];
-        const content: ProductContent & { description?: string; media?: { url: string }[]; features?: any[] } = {
-          documents,
-          analogs,
-          related,
-        };
-        if (productType === "single" && vActive) {
-          content.description = vActive.content.description.custom || "";
-          content.media = vActive.content.media;
-          content.features = vActive.content.features.map((f) => ({ name: f.name, value: f.value }));
-        }
-        await patchJson(`${API_PRODUCT_PATCH}/${encodeURIComponent(productId)}`, { content });
+      const firstCreated = createdProducts[0];
+      if (firstCreated) {
+        setCreated(firstCreated);
         clearDescDraft();
-      }
-      if (productId) {
-        navigate(`/products/${encodeURIComponent(productId)}`);
+        navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=variants`);
       }
     } catch (e: any) {
       setSaveErr(e?.message || "SAVE_FAILED");
@@ -1834,12 +1856,10 @@ export default function ProductNewFeature() {
   }, [variants, categoryId, productType, activeVariantKey]);
 
   const wizardSteps = [
-    { label: "База", meta: "название и категория" },
-    { label: "Варианты", meta: "SKU и family" },
-    { label: "Источники", meta: "re-store, store77" },
-    { label: "Контент", meta: "параметры, медиа, описание" },
-    { label: "Связи", meta: "аналоги и cross-sell" },
-    { label: "Проверка", meta: "создать и открыть" },
+    { label: "Основа", meta: "название, категория, тип" },
+    { label: "SKU и варианты", meta: "один SKU или группа" },
+    { label: "Источники", meta: "ссылки для насыщения" },
+    { label: "Проверка", meta: "создать реальные SKU" },
   ];
   const activeStep = Math.min(currentStep, wizardSteps.length - 1);
   const filledFeatures = active?.content.features.filter((feature) => normStr(feature.value)).length || 0;
@@ -1847,10 +1867,20 @@ export default function ProductNewFeature() {
     (count, variant) => count + variant.links.filter((link) => normStr(link.url)).length,
     0,
   );
+  const selectedParamLabels = selectedOrder.map((id) => {
+    const param = paramDefs.find((item) => item.attr_id === id);
+    const values = selectedValues[id] || [];
+    return {
+      id,
+      label: param?.title || id,
+      values,
+    };
+  });
+  const readyToCreate = Boolean(normStr(title) && categoryId && variants.length);
   const canGoNext =
     activeStep === 0
       ? Boolean(normStr(title) && categoryId)
-      : activeStep === 1
+    : activeStep === 1
       ? Boolean(variants.length)
       : true;
 
@@ -1904,8 +1934,8 @@ export default function ProductNewFeature() {
             </div>
             <div className="pnWizardTopActions">
               <Link className="btn" to="/products">К товарам</Link>
-              <button className="btn primary" onClick={onSaveAll} disabled={!canSave}>
-                {saving ? "Создаем..." : "Создать SKU"}
+              <button className="btn primary" onClick={onSaveAll} disabled={!canSave || !readyToCreate}>
+                {saving ? "Создаем..." : productType === "single" ? "Создать SKU" : "Создать группу"}
               </button>
             </div>
           </div>
@@ -1974,27 +2004,66 @@ export default function ProductNewFeature() {
               <div className="pnWizardFormStack">
                 <div className="pnWizardSectionHead">
                   <div>
-                    <strong>{productType === "single" ? "Один SKU" : "Варианты SKU"}</strong>
-                    <span>{productType === "single" ? "SKU будет выделен автоматически при создании." : "Выберите параметры и сгенерируйте family."}</span>
+                    <strong>{productType === "single" ? "Один товарный SKU" : "Группа вариантов"}</strong>
+                    <span>
+                      {productType === "single"
+                        ? "Один товар сразу получит SKU GT и SKU PIM."
+                        : "Каждая комбинация станет отдельным SKU, а все SKU будут объединены в одну группу товара."}
+                    </span>
                   </div>
                   {productType === "single" ? (
                     <button className="btn" type="button" onClick={() => void ensureSingleSkus()}>Выделить SKU</button>
                   ) : (
                     <div className="pnWizardInlineActions">
-                      <button className="btn" onClick={() => setParamModalOpen(true)} type="button" disabled={!templateId || !hasVariantParams}>Параметры</button>
-                      <button className="btn primary" onClick={onGenerateVariants} type="button" disabled={!canGenerateVariants || !hasVariantParams}>Сгенерировать</button>
+                      <button className="btn" onClick={() => setParamModalOpen(true)} type="button" disabled={!hasVariantParams}>Выбрать параметры</button>
+                      <button className="btn primary" onClick={onGenerateVariants} type="button" disabled={!canGenerateVariants || !hasVariantParams}>Собрать SKU</button>
                     </div>
                   )}
                 </div>
+                {productType === "multi" && !hasVariantParams ? (
+                  <div className="pnWizardNotice">
+                    В категории пока нет справочников для вариантов. Можно создать один SKU или сначала настроить инфо-модель.
+                  </div>
+                ) : null}
+                {productType === "multi" && selectedParamLabels.length ? (
+                  <div className="pnVariantRecipe">
+                    {selectedParamLabels.map((param) => (
+                      <div key={param.id}>
+                        <span>{param.label}</span>
+                        <strong>{param.values.length ? param.values.join(" / ") : "значения не выбраны"}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {variantErr ? <div className="pn-hint pn-hintWarn">{variantErr}</div> : null}
-                <div className="pnWizardVariantGrid">
-                  {variants.length ? variants.map((variant) => (
-                    <article key={variant.key} className={`pnWizardVariantCard${variant.key === activeVariantKey ? " isActive" : ""}`} onClick={() => setActiveVariantKey(variant.key)}>
-                      <strong>{variant.title}</strong>
-                      <span>SKU GT: {variant.sku_gt || "будет выделен"}</span>
-                      <span>SKU PIM: {variant.sku_pim || "будет выделен"}</span>
-                    </article>
-                  )) : <div className="pnWizardEmpty">Варианты еще не созданы.</div>}
+                <div className="pnVariantMatrix">
+                  {variants.length ? (
+                    <>
+                      <div className="pnVariantMatrixHead">
+                        <span>Товар</span>
+                        <span>Параметры</span>
+                        <span>SKU GT</span>
+                        <span>SKU PIM</span>
+                      </div>
+                      {variants.map((variant) => (
+                        <button
+                          key={variant.key}
+                          type="button"
+                          className={`pnVariantMatrixRow${variant.key === activeVariantKey ? " isActive" : ""}`}
+                          onClick={() => setActiveVariantKey(variant.key)}
+                        >
+                          <strong>{variant.title}</strong>
+                          <span>{Object.values(variant.params).filter(Boolean).join(" / ") || "без вариантов"}</span>
+                          <span>{variant.sku_gt || "будет выделен"}</span>
+                          <span>{variant.sku_pim || "будет выделен"}</span>
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="pnWizardEmpty">
+                      {productType === "single" ? "Нажмите «Выделить SKU»." : "Выберите параметры и нажмите «Собрать SKU»."}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
@@ -2006,8 +2075,8 @@ export default function ProductNewFeature() {
                     <strong>Источники конкурентов</strong>
                     <span>Опционально. Можно создать SKU сейчас, а ссылки подтянуть позже через карточку товара.</span>
                   </div>
-                  <button className="btn" onClick={onLoadData} type="button" disabled={loadingData || !variants.length}>
-                    {loadingData ? "Загружаем..." : "Загрузить данные"}
+                  <button className="btn" onClick={onLoadData} type="button" disabled={loadingData || !variants.length || !templateId}>
+                    {loadingData ? "Загружаем..." : "Проверить ссылки"}
                   </button>
                 </div>
                 {loadErr ? <div className="pn-hint pn-hintWarn">{loadErr}</div> : null}
@@ -2030,66 +2099,9 @@ export default function ProductNewFeature() {
             ) : null}
 
             {activeStep === 3 ? (
-              <div className="pnWizardFormStack">
-                {variants.length > 1 ? (
-                  <select className="pn-select" value={active?.key || ""} onChange={(e) => setActiveVariantKey(e.target.value)}>
-                    {variants.map((variant) => <option key={variant.key} value={variant.key}>{variant.title}</option>)}
-                  </select>
-                ) : null}
-                <div className="pnWizardContentGrid">
-                  <div className="pnWizardContentPanel">
-                    <span>Характеристики</span>
-                    <strong>{filledFeatures}/{active?.content.features.length || 0}</strong>
-                    <p>{active?.content.features.slice(0, 4).map((feature) => `${feature.name}: ${feature.value || "—"}`).join(" · ") || "Пока нет загруженных характеристик."}</p>
-                  </div>
-                  <div className="pnWizardContentPanel">
-                    <span>Медиа</span>
-                    <strong>{active?.content.media.length || 0}</strong>
-                    <p>{active?.content.media.length ? "Изображения подтянуты из источников." : "Можно добавить после создания в карточке товара."}</p>
-                  </div>
-                  <div className="pnWizardContentPanel isWide">
-                    <span>Описание</span>
-                    {active ? (
-                      <RichTextEditor value={active.content.description.custom} onChange={(next) => updateActiveDescription({ selected: "custom", custom: next })} />
-                    ) : <p>Создайте вариант, чтобы редактировать описание.</p>}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {activeStep === 4 ? (
-              <div className="pnWizardRelationsGrid">
-                <div className="pnWizardRelationPanel">
-                  <div className="pnWizardSectionHead">
-                    <div><strong>Аналоги</strong><span>{analogs.length} выбрано</span></div>
-                    <button className="btn" type="button" onClick={() => setPickerMode("analogs")}>Добавить</button>
-                  </div>
-                  {analogs.length ? analogs.map((item, index) => (
-                    <div key={`${item.sku}-${index}`} className="pnWizardRelationRow">
-                      <span>{item.name}</span>
-                      <button type="button" onClick={() => setAnalogs((prev) => prev.filter((_, i) => i !== index))}>×</button>
-                    </div>
-                  )) : <div className="pnWizardEmpty">Аналоги можно заполнить позже.</div>}
-                </div>
-                <div className="pnWizardRelationPanel">
-                  <div className="pnWizardSectionHead">
-                    <div><strong>Сопутствующие</strong><span>{related.length} выбрано</span></div>
-                    <button className="btn" type="button" onClick={() => setPickerMode("related")}>Добавить</button>
-                  </div>
-                  {related.length ? related.map((item, index) => (
-                    <div key={`${item.sku}-${index}`} className="pnWizardRelationRow">
-                      <span>{item.name}</span>
-                      <button type="button" onClick={() => setRelated((prev) => prev.filter((_, i) => i !== index))}>×</button>
-                    </div>
-                  )) : <div className="pnWizardEmpty">Cross-sell можно заполнить позже.</div>}
-                </div>
-              </div>
-            ) : null}
-
-            {activeStep === 5 ? (
               <div className="pnWizardReview">
                 <div className="pnWizardReviewHero">
-                  <span>Готово к созданию</span>
+                  <span>{readyToCreate ? "Можно создавать" : "Не все готово"}</span>
                   <h2>{normStr(title) || "Название не заполнено"}</h2>
                   <p>{categoryPath || "Категория не выбрана"}</p>
                 </div>
@@ -2097,12 +2109,14 @@ export default function ProductNewFeature() {
                   <div><span>Тип</span><strong>{productType === "single" ? "Один SKU" : "С вариантами"}</strong></div>
                   <div><span>Варианты</span><strong>{variants.length}</strong></div>
                   <div><span>Ссылки</span><strong>{sourceLinksCount}</strong></div>
-                  <div><span>Аналоги</span><strong>{analogs.length}</strong></div>
-                  <div><span>Сопутствующие</span><strong>{related.length}</strong></div>
-                  <div><span>Медиа</span><strong>{active?.content.media.length || 0}</strong></div>
+                  <div><span>Параметры</span><strong>{filledFeatures}</strong></div>
                 </div>
-                <button className="btn primary pnWizardCreateButton" onClick={onSaveAll} disabled={!canSave}>
-                  {saving ? "Создаем..." : "Создать и открыть карточку"}
+                <div className="pnWizardNotice">
+                  После создания откроется карточка первого SKU. Там выполняется основная работа: конкуренты, параметры, медиа,
+                  аналоги, сопутствующие товары и готовность к выгрузке.
+                </div>
+                <button className="btn primary pnWizardCreateButton" onClick={onSaveAll} disabled={!canSave || !readyToCreate}>
+                  {saving ? "Создаем..." : productType === "single" ? "Создать SKU" : "Создать группу SKU"}
                 </button>
               </div>
             ) : null}

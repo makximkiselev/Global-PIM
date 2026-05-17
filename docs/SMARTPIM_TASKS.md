@@ -112,6 +112,13 @@ Checklist:
 
 Audit findings to verify/fix:
 
+0. 2026-05-16 product creation and variants:
+   - `/products/new` must be a short SKU creation workflow, not a full product-card editor;
+   - single product creation creates one real product row and opens its product card;
+   - variant creation creates one real product row per SKU, creates a product group, assigns all variant SKU rows to that group, and opens the first SKU on the `Варианты` tab;
+   - enrichment, media, description, analogs, related products, and export readiness belong in the product card after creation, not in the creation wizard;
+   - verify that variant groups are visible from the product card and product groups page after creation.
+
 0. 2026-05-16 end-to-end check:
    - production data exists: `272` catalog categories, `121` category product counters, `6` info-models;
    - `Смартфоны` info-model has `84` fields and no duplicate field names/codes in backend data;
