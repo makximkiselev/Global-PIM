@@ -821,58 +821,33 @@ export default function CatalogFeature() {
         main={
           selected ? (
             <div className="catalogCanvas isProductsMode">
-              <Card className="catalogWorkHeader">
-                <div className="catalogWorkTitleBlock">
-                  <div className="catalogSectionEyebrow">Выбранная категория</div>
-                  <div className="catalogWorkTitleRow">
-                    <h1>{selected.name}</h1>
-                    <Badge tone={selectedCount > 0 ? "active" : "neutral"}>
-                      {selectedCount > 0 ? "Есть товары" : "Пустая ветка"}
-                    </Badge>
-                  </div>
-                  <div className="catalogWorkMeta">
-                    <span>{selectedCount} SKU в ветке</span>
-                    <span>{selectedChildrenCount} подкатегорий</span>
-                    {selectedPath ? <span>{selectedPath}</span> : null}
-                  </div>
-                </div>
-                <div className="catalogWorkActionPanel">
-                  <div className="catalogWorkQuickStats">
-                    <span><strong>{selectedCount}</strong> SKU в ветке</span>
-                    <span><strong>{selectedChildrenCount}</strong> подкатегорий</span>
-                    <span><strong>{selected ? selected.products_count ?? 0 : 0}</strong> прямо здесь</span>
-                  </div>
-                  <div className="catalogCanvasActions">
-                    <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selected.id)}`}>
-                      Добавить SKU
-                    </Link>
-                    <Button onClick={() => openCreateChild(selected.id)}>
-                      Подкатегория
-                    </Button>
-                    <Button onClick={() => openRename(selected.id)}>Переименовать</Button>
-                    <Button variant="danger" onClick={() => openDelete(selected.id)}>
-                      Удалить ветку
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-
               <Card className="catalogProductsWorkspace">
                 <div className="catalogProductsHead">
                   <div>
-                    <div className="catalogProductsKicker">{selectedPath}</div>
+                    <div className="catalogProductsKicker">Каталог / {selectedPath || selected.name}</div>
                     <div className="catalogProductsTitleRow">
-                      <h2>SKU в выбранной ветке</h2>
+                      <h2>{selected.name}</h2>
+                      <Badge tone={selectedCount > 0 ? "active" : "neutral"}>
+                        {selectedCount > 0 ? "Есть товары" : "Пустая ветка"}
+                      </Badge>
                     </div>
                     <div className="catalogProductsMeta">
-                      <span>{selectedCount} SKU</span>
-                      <span>{selectedChildrenCount} подкатегорий</span>
-                      <span>{selected.products_count ?? 0} прямо здесь</span>
-                      <span>перемещение и просмотр</span>
+                      <span><strong>{selectedCount}</strong> SKU в ветке</span>
+                      <span><strong>{selectedChildrenCount}</strong> подкатегорий</span>
+                      <span><strong>{selected.products_count ?? 0}</strong> прямо здесь</span>
+                      <span>просмотр и перемещение товаров</span>
                     </div>
                   </div>
                   <div className="catalogProductsCommandActions">
+                    <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selected.id)}`}>
+                      Добавить SKU
+                    </Link>
                     <Link className="btn" to={openProductsHref}>Полный список</Link>
+                    <Button onClick={() => openCreateChild(selected.id)}>Подкатегория</Button>
+                    <Button onClick={() => openRename(selected.id)}>Переименовать</Button>
+                    <Button variant="danger" onClick={() => openDelete(selected.id)}>
+                      Удалить
+                    </Button>
                   </div>
                 </div>
                 <ProductRegistry

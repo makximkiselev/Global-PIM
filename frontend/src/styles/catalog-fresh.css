@@ -690,13 +690,8 @@
   .catalogCanvasMetrics.metricGrid,
   .catalogActionGrid,
   .catalogTemplateSummaryStats,
-  .catalogInspectorMetrics,
-  .catalogWorkQuickStats{
+  .catalogInspectorMetrics{
     grid-template-columns:1fr 1fr;
-  }
-
-  .catalogWorkHeader{
-    grid-template-columns:1fr;
   }
 }
 
@@ -704,8 +699,7 @@
   .catalogCanvasMetrics.metricGrid,
   .catalogActionGrid,
   .catalogTemplateSummaryStats,
-  .catalogInspectorMetrics,
-  .catalogWorkQuickStats{
+  .catalogInspectorMetrics{
     grid-template-columns:1fr;
   }
 
@@ -890,128 +884,12 @@
   display:none;
 }
 
-.catalogWorkHeader,
 .catalogTabBarCard,
 .catalogProductsWorkspace,
 .catalogSecondaryWorkspace{
   border:1px solid var(--line);
   background:linear-gradient(180deg, rgba(var(--card-rgb),.98), rgba(var(--card-rgb),.92));
   box-shadow:var(--shadow-soft);
-}
-
-.catalogWorkHeader{
-  min-height:128px;
-  display:grid;
-  grid-template-columns:minmax(0, 1fr) minmax(360px, 520px);
-  align-items:start;
-  gap:18px;
-  padding:18px;
-  border-radius:18px;
-}
-
-.catalogWorkTitleBlock{
-  min-width:0;
-}
-
-.catalogSectionEyebrow{
-  color:rgba(var(--brand-rgb),.90);
-  font-size:11px;
-  font-weight:950;
-  letter-spacing:.11em;
-  line-height:1;
-  text-transform:uppercase;
-}
-
-.catalogWorkPath{
-  margin-top:8px;
-  color:var(--muted);
-  font-size:12px;
-  line-height:1.45;
-  font-weight:800;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.catalogWorkTitleRow{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin-top:4px;
-}
-
-.catalogWorkTitleRow h1{
-  margin:0;
-  color:var(--text);
-  font-size:26px;
-  line-height:1;
-  letter-spacing:-.04em;
-  font-weight:1000;
-}
-
-.catalogWorkMeta{
-  display:flex;
-  align-items:center;
-  flex-wrap:wrap;
-  gap:8px;
-  margin-top:8px;
-  color:var(--text-soft);
-  font-size:12px;
-  font-weight:800;
-}
-
-.catalogWorkActionPanel{
-  display:grid;
-  align-content:start;
-  gap:12px;
-  padding:14px;
-  border:1px solid var(--line);
-  border-radius:18px;
-  background:linear-gradient(180deg, rgba(var(--surface-rgb),.58), rgba(var(--card-rgb),.72));
-}
-
-.catalogWorkQuickStats{
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:8px;
-}
-
-.catalogWorkQuickStats span{
-  min-width:0;
-  padding:10px;
-  border:1px solid var(--line);
-  border-radius:14px;
-  background:rgba(var(--card-rgb),.72);
-  color:var(--text-soft);
-  font-size:11px;
-  font-weight:850;
-}
-
-.catalogWorkQuickStats strong{
-  display:block;
-  margin-bottom:3px;
-  color:var(--text);
-  font-size:18px;
-  line-height:1;
-  font-weight:1000;
-}
-
-.catalogWorkMeta span{
-  display:inline-flex;
-  align-items:center;
-  min-height:22px;
-  padding:0 8px;
-  border-radius:999px;
-  background:rgba(var(--surface-rgb),.48);
-}
-
-.catalogCanvasActions{
-  justify-content:flex-start;
-  flex:0 0 auto;
-}
-
-.catalogCanvasActions .btn{
-  min-height:36px;
-  border-radius:12px;
 }
 
 .catalogTabBarCard{
@@ -1068,18 +946,19 @@
 }
 
 .catalogProductsWorkspace{
-  min-height:calc(100vh - 114px);
+  min-height:calc(100vh - 48px);
   padding:12px;
   border-radius:18px;
   overflow:hidden;
 }
 
 .catalogProductsHead{
-  display:flex;
-  align-items:center;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:start;
   justify-content:space-between;
   gap:14px;
-  min-height:68px;
+  min-height:58px;
   margin-bottom:8px;
   padding:0 2px 10px;
   border-bottom:1px solid var(--line);
@@ -1109,7 +988,7 @@
   display:flex;
   align-items:center;
   gap:10px;
-  margin-top:4px;
+  margin-top:3px;
 }
 
 .catalogProductsMeta{
@@ -1133,13 +1012,19 @@
   font-weight:850;
 }
 
+.catalogProductsMeta strong{
+  margin-right:4px;
+  color:var(--text);
+  font-weight:1000;
+}
+
 .catalogProductsCommandActions{
-  flex:0 0 auto;
   display:flex;
   align-items:center;
   justify-content:flex-end;
   gap:8px;
   flex-wrap:wrap;
+  max-width:520px;
 }
 
 .catalogProductsCommandActions .btn{
@@ -1360,7 +1245,12 @@
   }
 
   .catalogCanvasGrid,
-  .catalogWorkHeader{
+  .catalogProductsHead{
     grid-template-columns:1fr;
+  }
+
+  .catalogProductsCommandActions{
+    max-width:none;
+    justify-content:flex-start;
   }
 }

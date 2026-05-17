@@ -125,6 +125,16 @@ Audit findings to verify/fix:
      - `/sources?tab=sources&category=bb40de87-254b-4170-84d7-8e5d3925b251`: page width `1180`, hero width `1124`, no false `нет SKU для скана`;
      - `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`: page width `1180`, frame grid `390px 720px`, no false `Товары не найдены` with `431`.
 
+0. 2026-05-17 catalog cleanup, route `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`:
+   - problem: selected-category header and SKU table header duplicated the same category context and counters, pushing the real product table down;
+   - fixed: category title, status, branch counters, primary category actions, and product registry now live in one `catalogProductsWorkspace` card;
+   - removed stale CSS for the deleted duplicated category summary card;
+   - verified on production via in-app Browser:
+     - old repeated text `Выбранная категория` is gone;
+     - category context is a single line `Каталог / Смартфоны`;
+     - the SKU list starts immediately under the compact category header.
+   - next UX issue in this route: group filter currently exposes too many groups globally; it should be scoped or searchable so it does not become a giant irrelevant dropdown.
+
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
    - Browser status: in-app Browser pane was unavailable (`No active Codex browser pane available`), so visual QA was done through authenticated Playwright fallback against production as owner in `Global Trade`.
    - Overall clarity for a new product manager: `6/10`.
