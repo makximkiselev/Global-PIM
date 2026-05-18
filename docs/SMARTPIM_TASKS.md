@@ -563,6 +563,14 @@ Progress:
     - variant mode is functional at a basic level, but the parameter picker exposes the full info-model field list, including fields that cannot be meaningful variant axes;
     - next required cleanup: restrict variant axes to a curated set such as `Название цвета от производителя`, `Встроенная память`, `Оперативная память`, `Количество SIM-карт`, `Размер/диагональ` where relevant, and keep the full field list out of the first creation flow;
     - creation must remain short: create SKU/family first, then move the user into the product card for competitor pickup, enrichment, marketplace mapping, media, validation, and export.
+23. 2026-05-18 competitor enrichment/value-normalization gap:
+    - verified `product_70`: only Store77 has a confirmed product link; re-store is shown as `Не сканировали`, so it cannot participate in product enrichment yet;
+    - discovery must run every enabled competitor source for the SKU and show one of these states per source: `не сканировали`, `нет точного товара`, `есть кандидаты`, `подтверждено`, `ошибка источника`;
+    - competitor raw values must not become marketplace values directly;
+    - required value pipeline: competitor raw value -> normalized PIM canonical value -> provider-specific export value for Я.Маркет/Ozon -> export payload;
+    - example: `Степень защиты` from Store77 raw text `IP68 допускается...` must normalize to PIM value `IP68`, then be mapped separately to Я.Маркет/Ozon accepted values or block export with `значение не сопоставлено`;
+    - current gap: if no provider-specific export map exists, some flows fallback to canonical value, which makes Я.Маркет/Ozon look identical and hides missing value mappings;
+    - UI requirement: product parameter row must show source raw value, PIM canonical value, Я.Маркет output/status, Ozon output/status, and an action to map/approve values.
 
 ### P1 DB Consolidation
 
