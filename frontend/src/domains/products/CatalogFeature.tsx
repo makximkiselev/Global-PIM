@@ -14,6 +14,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
+import WorkspaceTaskQueue from "../../components/layout/WorkspaceTaskQueue";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -749,6 +750,45 @@ export default function CatalogFeature() {
             </Button>
           </>
         }
+      />
+
+      <WorkspaceTaskQueue
+        title="Маршрут работы с веткой"
+        items={[
+          {
+            key: "select-category",
+            label: selected ? `Открыта ветка: ${selected.name}` : "Выбери категорию",
+            description: selected
+              ? "Смотри SKU в выбранной ветке и перемещай товары между категориями."
+              : "Слева выбери категорию, чтобы увидеть товары и действия.",
+            status: selected ? "done" : "active",
+          },
+          {
+            key: "add-products",
+            label: "Добавить или импортировать SKU",
+            description: selected ? "Создай товар вручную или загрузи Excel в эту ветку." : "Доступно после выбора категории.",
+            href: selected ? `/products/new?category_id=${encodeURIComponent(selected.id)}` : undefined,
+            actionLabel: "Создать SKU",
+            status: selected && selectedCount > 0 ? "done" : "active",
+            meta: selected ? `${selectedCount} SKU в ветке` : undefined,
+          },
+          {
+            key: "map-sources",
+            label: "Сопоставить источники",
+            description: "Проверь категории площадок и конкурентные карточки для насыщения.",
+            href: selected ? `/sources?tab=sources&category=${encodeURIComponent(selected.id)}` : undefined,
+            actionLabel: "К сопоставлениям",
+            status: selected ? "todo" : "blocked",
+          },
+          {
+            key: "export",
+            label: "Подготовить выгрузку",
+            description: "После модели, значений и медиа проверь готовность к Я.Маркет и Ozon.",
+            href: selected ? `/catalog/exchange?tab=export&category=${encodeURIComponent(selected.id)}` : undefined,
+            actionLabel: "Экспорт",
+            status: "todo",
+          },
+        ]}
       />
 
       {refreshError ? <Alert tone="error">{refreshError}</Alert> : null}

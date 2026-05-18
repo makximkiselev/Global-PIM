@@ -704,6 +704,208 @@
     color-mix(in srgb, var(--panel) 94%, var(--surface));
 }
 
+.workspaceTaskQueue{
+  width:100%;
+  max-width:var(--page-content-width);
+  margin:0 auto 10px;
+  padding:8px 10px;
+  display:grid;
+  grid-template-columns:148px minmax(0, 1fr);
+  align-items:stretch;
+  gap:10px;
+  border:1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius:18px;
+  background:
+    radial-gradient(420px 160px at 12% 0%, rgba(var(--brand-rgb), .08), transparent 68%),
+    linear-gradient(180deg, rgba(var(--card-rgb), .86), rgba(var(--card-rgb), .58));
+  box-shadow:var(--shadow-soft);
+}
+
+.workspaceTaskQueueHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+  margin:0;
+}
+
+.workspaceTaskQueueEyebrow{
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+}
+
+.workspaceTaskQueueHead h2{
+  margin:2px 0 0;
+  color:var(--text);
+  font-size:15px;
+  line-height:1;
+  font-weight:1000;
+  letter-spacing:-.035em;
+}
+
+.workspaceTaskQueueAside{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:800;
+  text-align:right;
+}
+
+.workspaceTaskQueueList{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:7px;
+  min-width:0;
+}
+
+.workspaceTaskQueueItem{
+  display:grid;
+  grid-template-columns:28px minmax(0, 1fr) auto;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  min-height:58px;
+  padding:8px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(var(--card-rgb), .72);
+  color:var(--text);
+  text-decoration:none;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.workspaceTaskQueueItem:hover{
+  transform:translateY(-1px);
+  border-color:color-mix(in srgb, var(--brand) 28%, var(--line));
+  box-shadow:var(--shadow-soft);
+}
+
+.workspaceTaskQueueItem.is-active{
+  border-color:color-mix(in srgb, var(--brand) 36%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(var(--brand-rgb), .13), rgba(var(--brand2-rgb), .08)),
+    rgba(var(--card-rgb), .82);
+}
+
+.workspaceTaskQueueItem.is-done{
+  border-color:color-mix(in srgb, #35b475 24%, var(--line));
+  background:rgba(53, 180, 117, .08);
+}
+
+.workspaceTaskQueueItem.is-blocked{
+  border-color:rgba(180,35,24,.28);
+  background:rgba(180,35,24,.07);
+}
+
+.workspaceTaskQueueIndex{
+  width:28px;
+  height:28px;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(var(--brand-rgb), .12);
+  color:color-mix(in srgb, var(--brand) 74%, var(--text));
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.04em;
+}
+
+.workspaceTaskQueueCopy{
+  min-width:0;
+}
+
+.workspaceTaskQueueTitleRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+
+.workspaceTaskQueueTitleRow strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+  line-height:1.1;
+  font-weight:1000;
+}
+
+.workspaceTaskQueueStatus{
+  flex:0 0 auto;
+  min-height:18px;
+  padding:0 6px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  color:var(--muted);
+  background:rgba(var(--card-rgb), .74);
+  font-size:9px;
+  line-height:16px;
+  font-weight:1000;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.workspaceTaskQueueStatus.is-active{
+  border-color:color-mix(in srgb, var(--brand) 32%, var(--line));
+  color:color-mix(in srgb, var(--brand) 70%, var(--text));
+  background:rgba(var(--brand-rgb), .1);
+}
+
+.workspaceTaskQueueStatus.is-done{
+  border-color:color-mix(in srgb, #35b475 32%, var(--line));
+  color:#20784d;
+  background:rgba(53, 180, 117, .12);
+}
+
+.workspaceTaskQueueStatus.is-blocked{
+  border-color:rgba(180,35,24,.28);
+  color:#b42318;
+  background:rgba(180,35,24,.08);
+}
+
+.workspaceTaskQueueCopy p,
+.workspaceTaskQueueCopy small{
+  display:block;
+  margin:2px 0 0;
+  overflow:hidden;
+  color:var(--muted);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  line-height:1.25;
+  font-weight:750;
+}
+
+.workspaceTaskQueueCopy small{
+  color:var(--text-soft);
+  font-size:10px;
+}
+
+.workspaceTaskQueueAction{
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 9px;
+  border-radius:12px;
+  background:linear-gradient(135deg, var(--brand), var(--brand2));
+  color:#fff;
+  font-size:11px;
+  font-weight:950;
+  white-space:nowrap;
+  box-shadow:0 10px 20px rgba(var(--brand-rgb), .18);
+}
+
 .workspaceOverviewGrid{
   margin-top:18px;
   display:grid;

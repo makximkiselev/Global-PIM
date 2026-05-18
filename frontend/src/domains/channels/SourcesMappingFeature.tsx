@@ -4,6 +4,7 @@ import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
 import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
+import WorkspaceTaskQueue from "../../components/layout/WorkspaceTaskQueue";
 import { api } from "../../lib/api";
 import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
@@ -177,6 +178,44 @@ export default function SourcesMappingFeature() {
         tabs={TAB_ITEMS}
         activeTab={tab}
         onTabChange={(nextTab) => setTab(nextTab as SourcesTab)}
+      />
+
+      <WorkspaceTaskQueue
+        title="Маршрут сопоставления"
+        items={[
+          {
+            key: "sources",
+            label: "Категории и конкурентные карточки",
+            description: "Сначала свяжи PIM-ветку с площадками и выбери точные карточки re-store/store77.",
+            href: selectedCategoryId ? `/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            actionLabel: "Открыть",
+            status: tab === "sources" ? "active" : "done",
+          },
+          {
+            key: "params",
+            label: "Поля инфо-модели",
+            description: "Свяжи поля PIM с обязательными и полезными полями Я.Маркет/Ozon.",
+            href: selectedCategoryId ? `/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            actionLabel: "Параметры",
+            status: tab === "params" ? "active" : tab === "values" ? "done" : "todo",
+          },
+          {
+            key: "values",
+            label: "Значения для выгрузки",
+            description: "Нормализуй написания: 256 ГБ, eSIM, цвета и справочники площадок.",
+            href: selectedCategoryId ? `/sources?tab=values&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            actionLabel: "Значения",
+            status: tab === "values" ? "active" : "todo",
+          },
+          {
+            key: "export",
+            label: "Проверить экспорт",
+            description: "Когда категории, поля и значения закрыты, проверь готовность выгрузки.",
+            href: selectedCategoryId ? `/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            actionLabel: "Экспорт",
+            status: "todo",
+          },
+        ]}
       />
 
       <div className="sourcesMappingCanvas">

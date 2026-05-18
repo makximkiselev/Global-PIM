@@ -171,11 +171,15 @@ Audit findings to verify/fix:
      - P0.5: add route-to-table map and response-contract tests for catalog, sources, product card, and export before continuing broad UI changes.
    - P0.1 progress on 2026-05-18:
      - added shared frontend primitive `WorkspaceHeader` for title/context/badges/actions/tabs;
+     - added shared frontend primitive `WorkspaceTaskQueue` for a visible next-action lane;
      - `/catalog` now uses `WorkspaceHeader` with the same header density as other workspaces;
+     - `/catalog` now shows a compact route from selected category to SKU creation/import, source mapping, and export;
      - `/sources?tab=sources|params|values` now uses the same `WorkspaceHeader` and tab primitive instead of its own local hero/tab implementation;
+     - `/sources?tab=sources|params|values` now shows one route: categories/competitors -> params -> values -> export;
      - deployed and Browser-verified on production:
        - `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`: no old `.page-header`, product table remains visible, no horizontal overflow;
        - `/sources?tab=sources|params|values&category=bb40de87-254b-4170-84d7-8e5d3925b251`: no old `.sourcesMappingHero`, shared tabs render through `WorkspaceHeader`, no horizontal overflow;
+       - `WorkspaceTaskQueue` was compacted after Browser QA: height is `76-84px`, not a tall dashboard block, and work areas start at `y=233` for catalog and `y=291` for sources routes at the current browser pane;
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
