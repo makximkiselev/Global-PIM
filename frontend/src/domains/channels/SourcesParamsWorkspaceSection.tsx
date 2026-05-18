@@ -84,6 +84,7 @@ type Props = {
 };
 
 type QueueFilter = "attention" | "unmapped" | "ready" | "all";
+type ParamGroupKey = "all" | "product" | "technical" | "logistics" | "media" | "service" | "other";
 
 const PROVIDER_LABEL: Record<string, string> = {
   yandex_market: "Я.Маркет",
@@ -92,6 +93,15 @@ const PROVIDER_LABEL: Record<string, string> = {
   store77: "Store77",
 };
 const MARKETPLACE_CODES = ["yandex_market", "ozon"];
+const PARAM_GROUPS: Array<{ key: Exclude<ParamGroupKey, "all">; label: string; hint: string }> = [
+  { key: "product", label: "Товарные", hint: "Название, бренд, модель, цвет" },
+  { key: "technical", label: "Технические", hint: "Память, экран, SIM, характеристики" },
+  { key: "logistics", label: "Логистика", hint: "Вес, габариты, упаковка, страна" },
+  { key: "media", label: "Медиа", hint: "Фото, описание, контент" },
+  { key: "service", label: "Служебные", hint: "SKU, offerId, штрихкод" },
+  { key: "other", label: "Прочие", hint: "Нужна классификация" },
+];
+const PARAM_GROUP_LABEL = Object.fromEntries(PARAM_GROUPS.map((item) => [item.key, item.label])) as Record<Exclude<ParamGroupKey, "all">, string>;
 
 const SERVICE_EXPORTS = [
   { key: "sku_gt", title: "SKU GT", target: "offerId / SKU площадки", note: "Главный идентификатор товара для выгрузки." },
@@ -136,6 +146,26 @@ function serviceKey(row: AttrRow) {
   if (name.includes("описание")) return "description";
   if (name.includes("фото") || name.includes("картин")) return "media_images";
   return "";
+}
+
+function paramGroupKey(row: AttrRow): Exclude<ParamGroupKey, "all"> {
+  const service = serviceKey(row);
+  if (service) {
+    if (service === "description" || service === "media_images") return "media";
+    return "service";
+  }
+  const source = qnorm(`${row.group || ""} ${row.catalog_name || ""}`);
+  if (/(логист|габарит|размер|вес|длина|ширина|высота|упаков|страна|сертифик|код тн|штрихкод)/.test(source)) return "logistics";
+  if (/(медиа|фото|изображ|картин|видео|описан|контент|rich|инфограф)/.test(source)) return "media";
+  if (/(технич|памят|накопител|процессор|камера|экран|дисплей|аккумулятор|sim|esim|wi[- ]?fi|bluetooth|операцион|разъем|частот|разрешен|диагонал|ядр|датчик)/.test(source)) {
+    return "technical";
+  }
+  if (/(товар|назван|бренд|марка|модель|цвет|серия|комплект|гарант|линейк|тип товара|назначен)/.test(source)) return "product";
+  return "other";
+}
+
+function paramGroupLabel(row: AttrRow) {
+  return PARAM_GROUP_LABEL[paramGroupKey(row)];
 }
 
 function providerCodes(details: AttrDetailsResp | null) {
@@ -199,6 +229,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const [competitorsLoading, setCompetitorsLoading] = useState(false);
   const [competitorsError, setCompetitorsError] = useState("");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("attention");
+  const [groupFilter, setGroupFilter] = useState<ParamGroupKey>("all");
   const [fieldQuery, setFieldQuery] = useState("");
   const [selectedRowId, setSelectedRowId] = useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
@@ -286,11 +317,40 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     const values = paramRows.filter((row) => rowHasValues(row, codes)).length;
     return { total, ready, unmapped, attention, values };
   }, [paramRows, codes]);
+  const groupStats = useMemo(() => {
+    const base = new Map(
+      PARAM_GROUPS.map((item) => [
+        item.key,
+        {
+          ...item,
+          total: 0,
+          ready: 0,
+          attention: 0,
+          unmapped: 0,
+          percent: 0,
+        },
+      ]),
+    );
+    for (const row of paramRows) {
+      const group = paramGroupKey(row);
+      const current = base.get(group);
+      if (!current) continue;
+      current.total += 1;
+      if (rowProviderCoverage(row, codes) === 0) current.unmapped += 1;
+      if (rowNeedsAttention(row, codes)) current.attention += 1;
+      else current.ready += 1;
+    }
+    return PARAM_GROUPS.map((item) => {
+      const current = base.get(item.key) || { ...item, total: 0, ready: 0, attention: 0, unmapped: 0, percent: 0 };
+      return { ...current, percent: current.total ? Math.round((current.ready / current.total) * 100) : 0 };
+    });
+  }, [paramRows, codes]);
 
   const queueRows = useMemo(() => {
     const q = qnorm(fieldQuery);
     return paramRows
       .filter((row) => {
+        if (groupFilter !== "all" && paramGroupKey(row) !== groupFilter) return false;
         if (queueFilter === "attention" && !rowNeedsAttention(row, codes)) return false;
         if (queueFilter === "unmapped" && rowProviderCoverage(row, codes) > 0) return false;
         if (queueFilter === "ready" && (!row.confirmed || rowProviderCoverage(row, codes) === 0)) return false;
@@ -298,6 +358,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         const hay = [
           row.catalog_name,
           row.group,
+          paramGroupLabel(row),
           ...codes.flatMap((code) => [row.provider_map?.[code]?.name || "", row.provider_map?.[code]?.kind || ""]),
         ].join(" ").toLowerCase();
         return hay.includes(q);
@@ -308,12 +369,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         if (aa !== bb) return aa - bb;
         return String(a.catalog_name || "").localeCompare(String(b.catalog_name || ""), "ru");
       });
-  }, [paramRows, codes, queueFilter, fieldQuery]);
+  }, [paramRows, codes, queueFilter, groupFilter, fieldQuery]);
 
   const selectedRow = useMemo(() => {
-    const fromSelected = paramRows.find((row) => String(row.id) === selectedRowId);
-    return fromSelected || queueRows[0] || paramRows[0] || null;
-  }, [paramRows, queueRows, selectedRowId]);
+    const fromSelected = queueRows.find((row) => String(row.id) === selectedRowId);
+    return fromSelected || queueRows[0] || null;
+  }, [queueRows, selectedRowId]);
 
   const categoryName = details?.category?.name || "Выберите категорию";
   const categoryPath = details?.category?.path || "Категория не выбрана";
@@ -337,14 +398,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   }, [competitors]);
 
   useEffect(() => {
-    if (!paramRows.length) {
+    if (!paramRows.length || !queueRows.length) {
       setSelectedRowId("");
       return;
     }
-    if (selectedRowId && paramRows.some((row) => String(row.id) === selectedRowId)) return;
-    const next = queueRows[0] || paramRows.find((row) => rowNeedsAttention(row, codes)) || paramRows[0];
+    if (selectedRowId && queueRows.some((row) => String(row.id) === selectedRowId)) return;
+    const next = queueRows[0];
     setSelectedRowId(String(next?.id || ""));
-  }, [paramRows, queueRows, codes, selectedRowId]);
+  }, [paramRows, queueRows, selectedRowId]);
 
   function toggleAll() {
     const ids = nodes.filter((node) => (childrenByParent.get(String(node.id || "")) || []).length > 0).map((node) => String(node.id || ""));
@@ -571,6 +632,38 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               ))}
             </div>
 
+            <div className="paramsGroupRail" aria-label="Группы параметров">
+              <button
+                type="button"
+                className={`paramsGroupChip ${groupFilter === "all" ? "isActive" : ""}`}
+                onClick={() => {
+                  setGroupFilter("all");
+                  setQueueFilter("attention");
+                }}
+                disabled={initialParamsLoading}
+              >
+                <strong>Все поля</strong>
+                <span>{initialParamsLoading ? "..." : `${stats.ready}/${stats.total}`}</span>
+                <em>общая готовность</em>
+              </button>
+              {groupStats.filter((group) => group.total > 0).map((group) => (
+                <button
+                  key={group.key}
+                  type="button"
+                  className={`paramsGroupChip ${groupFilter === group.key ? "isActive" : ""} ${group.attention ? "hasAttention" : ""}`}
+                  onClick={() => {
+                    setGroupFilter(group.key);
+                    setQueueFilter("all");
+                  }}
+                  disabled={initialParamsLoading}
+                >
+                  <strong>{group.label}</strong>
+                  <span>{initialParamsLoading ? "..." : `${group.percent}%`}</span>
+                  <em>{group.total ? `${group.ready}/${group.total} готово` : group.hint}</em>
+                </button>
+              ))}
+            </div>
+
             <div className="paramsQueueList">
               {initialParamsLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
@@ -596,7 +689,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     <div className="paramsParamMain">
                       <div className="paramsParamHead">
                         <strong>{row.catalog_name || "Параметр"}</strong>
-                        <span>{row.group || "О товаре"}</span>
+                        <span>{paramGroupLabel(row)}</span>
                       </div>
                       <div className="paramsParamMeta">
                         <span>{coverage}/{codes.length} источников</span>
@@ -641,7 +734,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                   <div>
                     <span>Выбранный параметр</span>
                     <h3>{selectedRow.catalog_name || "Параметр"}</h3>
-                    <p>{selectedRow.group || "О товаре"}</p>
+                    <p>{paramGroupLabel(selectedRow)}{selectedRow.group ? ` · ${selectedRow.group}` : ""}</p>
                   </div>
                   <b className={rowNeedsAttention(selectedRow, codes) ? "isWarn" : "isOk"}>
                     {rowStatusLabel(selectedRow, codes)}

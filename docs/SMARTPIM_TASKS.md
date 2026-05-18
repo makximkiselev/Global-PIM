@@ -184,6 +184,11 @@ Audit findings to verify/fix:
          - `WorkspaceTaskQueue` now behaves as a stepper: all steps show short labels, while only the active step shows the full explanation/action;
          - `/sources` no longer forces `min-width:1180px`; production Browser check shows `document.scrollWidth == clientWidth` and `.shellContent { overflow-x: hidden; }`;
          - verified on `/sources?tab=sources` and `/sources?tab=values`: task route remains visible, active-step text is readable, and the page does not move horizontally.
+       - 2026-05-18 parameter grouping:
+         - `/sources?tab=params` must group PIM fields into `Товарные`, `Технические`, `Логистика`, `Медиа`, `Служебные`, `Прочие`;
+         - grouping is based on existing `group/param_group` plus field-name inference, not a new table;
+         - the group strip must show ready/total or percent by group and filter the field queue;
+         - this grouping becomes the basis for product-card and export readiness percentages.
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:

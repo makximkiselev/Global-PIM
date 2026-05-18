@@ -2204,6 +2204,78 @@
   color: var(--text);
 }
 
+.paramsGroupRail {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.paramsGroupChip {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.paramsGroupChip:hover {
+  border-color: color-mix(in srgb, var(--brand) 32%, var(--line));
+  background: color-mix(in srgb, var(--brand) 6%, var(--panel));
+}
+
+.paramsGroupChip.isActive {
+  border-color: color-mix(in srgb, var(--brand) 54%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 12%, var(--panel)), color-mix(in srgb, var(--surface) 82%, var(--panel)));
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--brand) 9%, transparent);
+}
+
+.paramsGroupChip strong,
+.paramsGroupChip em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramsGroupChip strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.paramsGroupChip span {
+  min-width: 34px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 11%, transparent);
+  color: var(--success-strong);
+  font-size: 10px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.paramsGroupChip.hasAttention span {
+  background: color-mix(in srgb, var(--brand) 11%, transparent);
+  color: var(--brand-strong);
+}
+
+.paramsGroupChip em {
+  grid-column: 1 / -1;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .paramsQueueList {
   display: grid;
   gap: 8px;
