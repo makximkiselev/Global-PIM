@@ -599,6 +599,46 @@ def _normalize_param_group(group_value: Any, catalog_name: str, yandex_name: str
     return _classify_param_group(catalog_name, yandex_name)
 
 
+def _provider_binding_payload(raw: Any) -> Dict[str, Any]:
+    cur = raw if isinstance(raw, dict) else {}
+    return {
+        "id": str(cur.get("id") or "").strip(),
+        "name": str(cur.get("name") or "").strip(),
+        "kind": str(cur.get("kind") or "").strip(),
+        "values": _extract_text_list(cur.get("values"))[:200],
+        "required": bool(cur.get("required") or False),
+        "export": bool(cur.get("export") or False),
+    }
+
+
+def _provider_binding_list(raw: Any) -> List[Dict[str, Any]]:
+    cur = raw if isinstance(raw, dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(item: Any) -> None:
+        payload = _provider_binding_payload(item)
+        if not payload["id"] and not payload["name"]:
+            return
+        key = payload["id"] or f"name:{_norm_name(payload['name'])}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(payload)
+
+    _add(cur)
+    bindings = cur.get("bindings") if isinstance(cur.get("bindings"), list) else []
+    for item in bindings:
+        _add(item)
+    return out
+
+
+def _provider_map_payload(raw: Any) -> Dict[str, Any]:
+    payload = _provider_binding_payload(raw)
+    payload["bindings"] = _provider_binding_list(raw)
+    return payload
+
+
 def _humanize_catalog_name(name_raw: Any) -> str:
     s = str(name_raw or "").strip()
     if not s:
@@ -665,16 +705,9 @@ def _normalize_attr_rows(rows_in: Any) -> List[Dict[str, Any]]:
         for provider in MAPPING_PROVIDERS:
             cur = pmap_in.get(provider) if isinstance(pmap_in, dict) else None
             if not isinstance(cur, dict):
-                pmap[provider] = {"id": "", "name": "", "kind": "", "values": [], "required": False, "export": False}
+                pmap[provider] = _provider_map_payload({})
                 continue
-            pmap[provider] = {
-                "id": str(cur.get("id") or "").strip(),
-                "name": str(cur.get("name") or "").strip(),
-                "kind": str(cur.get("kind") or "").strip(),
-                "values": _extract_text_list(cur.get("values"))[:200],
-                "required": bool(cur.get("required") or False),
-                "export": bool(cur.get("export") or False),
-            }
+            pmap[provider] = _provider_map_payload(cur)
         if not catalog_name:
             for provider in MAPPING_PROVIDERS:
                 catalog_name = canonical_base_field_name(str(pmap.get(provider, {}).get("name") or "").strip())
@@ -713,10 +746,15 @@ def _normalize_attr_rows(rows_in: Any) -> List[Dict[str, Any]]:
         for provider in MAPPING_PROVIDERS:
             cur_payload = cur_map.get(provider) if isinstance(cur_map.get(provider), dict) else {}
             row_payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else {}
-            if not str(cur_payload.get("id") or "").strip() and (
-                str(row_payload.get("id") or "").strip() or str(row_payload.get("name") or "").strip()
-            ):
-                cur_map[provider] = row_payload
+            cur_bindings = _provider_binding_list(cur_payload)
+            row_bindings = _provider_binding_list(row_payload)
+            if not cur_bindings and row_bindings:
+                cur_map[provider] = _provider_map_payload(row_payload)
+                cur["provider_map"] = cur_map
+            elif cur_bindings and row_bindings:
+                merged_provider = dict(cur_payload)
+                merged_provider["bindings"] = [*cur_bindings, *row_bindings]
+                cur_map[provider] = _provider_map_payload(merged_provider)
                 cur["provider_map"] = cur_map
         cur["confirmed"] = bool(cur.get("confirmed") or r.get("confirmed"))
         if not str(cur.get("catalog_name") or "").strip() and str(r.get("catalog_name") or "").strip():
@@ -1098,6 +1136,17 @@ def _provider_binding_snapshot(provider_map: Dict[str, Any]) -> Dict[str, Any]:
             "required": bool(cur.get("required") or False),
             "export": bool(cur.get("export") or False),
             "allowed_values": _unique_text_values(cur.get("values"), limit=200),
+            "bindings": [
+                {
+                    "id": str(item.get("id") or "").strip() or None,
+                    "name": str(item.get("name") or "").strip() or None,
+                    "kind": str(item.get("kind") or "").strip() or None,
+                    "required": bool(item.get("required") or False),
+                    "export": bool(item.get("export") or False),
+                    "allowed_values": _unique_text_values(item.get("values"), limit=200),
+                }
+                for item in _provider_binding_list(cur)
+            ],
         }
     return out
 
@@ -1815,13 +1864,17 @@ def _preserve_templates_for_categories(
     return sorted(set(preserved))
 
 
-class AttrRowProviderMap(BaseModel):
+class AttrRowProviderBinding(BaseModel):
     id: str = ""
     name: str = ""
     kind: str = ""
     values: List[str] = Field(default_factory=list)
     required: bool = False
     export: bool = False
+
+
+class AttrRowProviderMap(AttrRowProviderBinding):
+    bindings: List[AttrRowProviderBinding] = Field(default_factory=list)
 
 
 class AttrRow(BaseModel):
@@ -1990,7 +2043,7 @@ def _service_names() -> List[str]:
 
 
 def _empty_provider_binding() -> Dict[str, Any]:
-    return {"id": "", "name": "", "kind": "", "values": [], "required": False, "export": False}
+    return _provider_map_payload({})
 
 
 def _build_row(
@@ -2014,6 +2067,7 @@ def _build_row(
                 "values": _extract_text_list((y or {}).get("values")),
                 "required": bool((y or {}).get("required") or False),
                 "export": bool(y),
+                "bindings": _provider_binding_list(y or {}),
             },
             "ozon": {
                 "id": str((oz or {}).get("id") or "").strip(),
@@ -2022,6 +2076,7 @@ def _build_row(
                 "values": _extract_text_list((oz or {}).get("values")),
                 "required": bool((oz or {}).get("required") or False),
                 "export": bool(oz),
+                "bindings": _provider_binding_list(oz or {}),
             },
         },
         "confirmed": bool(confirmed),
@@ -2087,6 +2142,7 @@ def _deterministic_ai_rows(
             "values": _extract_text_list(y.get("values"))[:120],
             "required": bool(y.get("required") or False),
             "export": True,
+            "bindings": _provider_binding_list({**y, "id": yid, "export": True}),
         }
         row["provider_map"] = provider_map
         row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
@@ -2136,6 +2192,7 @@ def _deterministic_ai_rows(
             "values": _extract_text_list(o.get("values"))[:120],
             "required": bool(o.get("required") or False),
             "export": True,
+            "bindings": _provider_binding_list({**o, "id": oid, "export": True}),
         }
         row["provider_map"] = provider_map
         row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
@@ -2154,23 +2211,31 @@ def _prune_rows_for_current_provider_params(
     valid_ozon_ids = {str(x.get("id") or "").strip() for x in ozon_params if str(x.get("id") or "").strip()}
     pruned: List[Dict[str, Any]] = []
 
+    def _prune_provider_binding(raw: Dict[str, Any], valid_ids: set[str]) -> Dict[str, Any]:
+        bindings = [
+            item
+            for item in _provider_binding_list(raw)
+            if not str(item.get("id") or "").strip() or str(item.get("id") or "").strip() in valid_ids
+        ]
+        if not bindings:
+            return _empty_provider_binding()
+        primary_id = str(raw.get("id") or "").strip()
+        primary = next((item for item in bindings if str(item.get("id") or "").strip() == primary_id), bindings[0])
+        payload = dict(primary)
+        payload["bindings"] = bindings
+        return _provider_map_payload(payload)
+
     for row in _normalize_attr_rows(rows):
         name = str(row.get("catalog_name") or "").strip()
         provider_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
         y_map = dict(provider_map.get("yandex_market") or {}) if isinstance(provider_map.get("yandex_market"), dict) else _empty_provider_binding()
         oz_map = dict(provider_map.get("ozon") or {}) if isinstance(provider_map.get("ozon"), dict) else _empty_provider_binding()
 
-        had_provider_binding = bool(str(y_map.get("id") or "").strip() or str(oz_map.get("id") or "").strip())
+        had_provider_binding = bool(_provider_binding_list(y_map) or _provider_binding_list(oz_map))
+        y_map = _prune_provider_binding(y_map, valid_yandex_ids)
+        oz_map = _prune_provider_binding(oz_map, valid_ozon_ids)
 
-        y_id = str(y_map.get("id") or "").strip()
-        if y_id and y_id not in valid_yandex_ids:
-            y_map = _empty_provider_binding()
-
-        oz_id = str(oz_map.get("id") or "").strip()
-        if oz_id and oz_id not in valid_ozon_ids:
-            oz_map = _empty_provider_binding()
-
-        has_valid_binding = bool(str(y_map.get("id") or "").strip() or str(oz_map.get("id") or "").strip())
+        has_valid_binding = bool(_provider_binding_list(y_map) or _provider_binding_list(oz_map))
         keep_without_binding = (
             bool(row.get("confirmed") or False)
             or is_base_field_name(name)

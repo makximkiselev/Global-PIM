@@ -607,9 +607,38 @@ def _provider_row(rows: List[Dict[str, Any]], provider: str, provider_id: str) -
             continue
         pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
         prow = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
-        if str(prow.get("id") or "").strip() == target:
+        if any(str(item.get("id") or "").strip() == target for item in _provider_bindings(prow)):
             return row
     return None
+
+
+def _provider_bindings(raw: Any) -> List[Dict[str, Any]]:
+    cur = raw if isinstance(raw, dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(item: Any) -> None:
+        candidate = item if isinstance(item, dict) else {}
+        payload = {
+            "id": str(candidate.get("id") or "").strip(),
+            "name": str(candidate.get("name") or "").strip(),
+            "kind": str(candidate.get("kind") or "").strip(),
+            "values": list(candidate.get("values") or []) if isinstance(candidate.get("values"), list) else [],
+            "required": bool(candidate.get("required") or False),
+            "export": bool(candidate.get("export") or False),
+        }
+        if not payload["id"] and not payload["name"]:
+            return
+        key = payload["id"] or f"name:{payload['name'].strip().lower()}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(payload)
+
+    _add(cur)
+    for item in cur.get("bindings") if isinstance(cur.get("bindings"), list) else []:
+        _add(item)
+    return out
 
 
 def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
@@ -617,7 +646,7 @@ def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
         return False
     pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
     prow = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
-    return bool(prow.get("export"))
+    return any(bool(item.get("export")) for item in _provider_bindings(prow))
 
 
 def _infer_ozon_type(product: Dict[str, Any]) -> str:
@@ -720,22 +749,25 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 continue
             pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
             oz = pmap.get("ozon") if isinstance(pmap.get("ozon"), dict) else {}
-            if not isinstance(oz, dict) or not bool(oz.get("export")):
-                continue
-            attr_id = str(oz.get("id") or "").strip()
-            if not attr_id:
+            if not isinstance(oz, dict):
                 continue
             value = _extract_product_value(product, str(row.get("catalog_name") or ""))
             if not value:
                 continue
-            attributes.append(
-                {
-                    "id": attr_id,
-                    "name": str(oz.get("name") or row.get("catalog_name") or "").strip(),
-                    "values": [{"value": value}],
-                    "sourceCatalogName": str(row.get("catalog_name") or "").strip(),
-                }
-            )
+            for binding in _provider_bindings(oz):
+                if not bool(binding.get("export")):
+                    continue
+                attr_id = str(binding.get("id") or "").strip()
+                if not attr_id:
+                    continue
+                attributes.append(
+                    {
+                        "id": attr_id,
+                        "name": str(binding.get("name") or row.get("catalog_name") or "").strip(),
+                        "values": [{"value": value}],
+                        "sourceCatalogName": str(row.get("catalog_name") or "").strip(),
+                    }
+                )
         _upsert_ozon_attribute(attributes, "8229", "Тип", type_value, "Системное поле")
         _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
 

@@ -1000,14 +1000,40 @@ def _find_system_row(rows: List[Dict[str, Any]], key_names: Set[str]) -> Optiona
     return None
 
 
+def _provider_bindings(raw: Any) -> List[Dict[str, Any]]:
+    cur = raw if isinstance(raw, dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    def _add(item: Any) -> None:
+        candidate = item if isinstance(item, dict) else {}
+        payload = {
+            "id": str(candidate.get("id") or "").strip(),
+            "name": str(candidate.get("name") or "").strip(),
+            "export": bool(candidate.get("export") or False),
+        }
+        if not payload["id"] and not payload["name"]:
+            return
+        key = payload["id"] or f"name:{_norm(payload['name'])}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(payload)
+
+    _add(cur)
+    for item in cur.get("bindings") if isinstance(cur.get("bindings"), list) else []:
+        _add(item)
+    return out
+
+
 def _find_provider_system_row(rows: List[Dict[str, Any]], provider_code: str, target_ids: Set[str]) -> Optional[Dict[str, Any]]:
     for row in rows or []:
         if not isinstance(row, dict):
             continue
         pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
         prow = pmap.get(provider_code) if isinstance(pmap.get(provider_code), dict) else {}
-        pid = _norm(prow.get("id"))
-        if pid and pid in {_norm(x) for x in target_ids}:
+        target_norm = {_norm(x) for x in target_ids}
+        if any(_norm(item.get("id")) in target_norm for item in _provider_bindings(prow)):
             return row
     return None
 
@@ -1017,7 +1043,7 @@ def _is_provider_row_enabled(row: Optional[Dict[str, Any]], provider_code: str) 
         return False
     pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
     prow = pmap.get(provider_code) if isinstance(pmap.get(provider_code), dict) else {}
-    return bool(prow.get("export"))
+    return any(bool(item.get("export")) for item in _provider_bindings(prow))
 
 
 def _is_system_content_export_enabled(row: Optional[Dict[str, Any]], provider_code: str) -> bool:
@@ -1025,9 +1051,9 @@ def _is_system_content_export_enabled(row: Optional[Dict[str, Any]], provider_co
         return True
     pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
     prow = pmap.get(provider_code) if isinstance(pmap.get(provider_code), dict) else {}
-    if not isinstance(prow, dict) or not str(prow.get("id") or "").strip():
+    if not isinstance(prow, dict) or not _provider_bindings(prow):
         return True
-    return bool(prow.get("export"))
+    return any(bool(item.get("export")) for item in _provider_bindings(prow))
 
 
 def _yandex_required_param_ids(category_id: str) -> Set[str]:
@@ -1974,10 +2000,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             pname = str(row.get("catalog_name") or "").strip()
             pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
             ym = pmap.get("yandex_market") if isinstance(pmap.get("yandex_market"), dict) else {}
-            if not isinstance(ym, dict) or not bool(ym.get("export")):
-                continue
-            ypid = str(ym.get("id") or "").strip()
-            if not ypid:
+            if not isinstance(ym, dict):
                 continue
             value = _extract_product_value(p, pname)
             if not value:
@@ -1985,14 +2008,20 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             value = export_value_for(category_id, pname, value)
             if not value:
                 continue
-            present_param_ids.add(ypid)
-            parameter_values.append(
-                {
-                    "parameterId": ypid,
-                    "values": [{"value": value}],
-                    "sourceCatalogName": pname,
-                }
-            )
+            for binding in _provider_bindings(ym):
+                if not bool(binding.get("export")):
+                    continue
+                ypid = str(binding.get("id") or "").strip()
+                if not ypid:
+                    continue
+                present_param_ids.add(ypid)
+                parameter_values.append(
+                    {
+                        "parameterId": ypid,
+                        "values": [{"value": value}],
+                        "sourceCatalogName": pname,
+                    }
+                )
 
         missing: List[str] = []
         if status in {"archived", "archive"}:

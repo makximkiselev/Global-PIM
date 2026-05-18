@@ -39,6 +39,35 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
+def _provider_bindings(raw: Any) -> List[Dict[str, Any]]:
+    cur = raw if isinstance(raw, dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(item: Any) -> None:
+        candidate = item if isinstance(item, dict) else {}
+        payload = {
+            "id": _text(candidate.get("id")),
+            "name": _text(candidate.get("name")),
+            "kind": _text(candidate.get("kind")),
+            "values": list(candidate.get("values") or []) if isinstance(candidate.get("values"), list) else [],
+            "required": bool(candidate.get("required") or False),
+            "export": bool(candidate.get("export") or False),
+        }
+        if not payload["id"] and not payload["name"]:
+            return
+        key = payload["id"] or f"name:{payload['name'].lower()}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(payload)
+
+    _add(cur)
+    for item in cur.get("bindings") if isinstance(cur.get("bindings"), list) else []:
+        _add(item)
+    return out
+
+
 def _parent_map(nodes: List[Dict[str, Any]]) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for node in nodes:
@@ -160,38 +189,54 @@ def _marketplace_outputs(
     outputs: List[Dict[str, Any]] = []
     for provider in MARKETPLACE_PROVIDERS:
         provider_row = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
-        target_id = str(provider_row.get("id") or "").strip()
-        target_name = str(provider_row.get("name") or "").strip()
-        export_enabled = bool(provider_row.get("export")) if provider_row else False
-        output_value = provider_export_value(dict_id, provider, canonical_value) if canonical_value else ""
-        if not target_id:
-            status = "not_mapped"
-            label = "поле не сопоставлено"
-        elif not export_enabled:
-            status = "not_exported"
-            label = "не выгружается"
-        elif not canonical_value:
-            status = "empty"
-            label = "нет значения"
-        elif not output_value:
-            status = "value_missing"
-            label = "значение не сопоставлено"
-        else:
-            status = "ready"
-            label = "готово"
-        outputs.append(
-            {
-                "provider": provider,
-                "provider_label": PROVIDER_LABELS.get(provider, provider),
-                "target_id": target_id,
-                "target_name": target_name,
-                "export": export_enabled,
-                "dict_id": dict_id,
-                "output_value": output_value,
-                "status": status,
-                "label": label,
-            }
-        )
+        bindings = _provider_bindings(provider_row)
+        if not bindings:
+            outputs.append(
+                {
+                    "provider": provider,
+                    "provider_label": PROVIDER_LABELS.get(provider, provider),
+                    "target_id": "",
+                    "target_name": "",
+                    "export": False,
+                    "dict_id": dict_id,
+                    "output_value": "",
+                    "status": "not_mapped",
+                    "label": "поле не сопоставлено",
+                }
+            )
+            continue
+        for index, binding in enumerate(bindings):
+            target_id = str(binding.get("id") or "").strip()
+            target_name = str(binding.get("name") or "").strip()
+            export_enabled = bool(binding.get("export")) if binding else False
+            output_value = provider_export_value(dict_id, provider, canonical_value) if canonical_value else ""
+            if not export_enabled:
+                status = "not_exported"
+                label = "не выгружается"
+            elif not canonical_value:
+                status = "empty"
+                label = "нет значения"
+            elif not output_value:
+                status = "value_missing"
+                label = "значение не сопоставлено"
+            else:
+                status = "ready"
+                label = "готово"
+            outputs.append(
+                {
+                    "provider": provider,
+                    "provider_label": PROVIDER_LABELS.get(provider, provider),
+                    "target_id": target_id,
+                    "target_name": target_name,
+                    "export": export_enabled,
+                    "dict_id": dict_id,
+                    "output_value": output_value,
+                    "status": status,
+                    "label": label,
+                    "binding_index": index,
+                    "primary": index == 0,
+                }
+            )
     return outputs
 
 

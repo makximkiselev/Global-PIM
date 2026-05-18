@@ -18,7 +18,10 @@ type ProviderParam = {
   values?: string[];
   required?: boolean;
   export?: boolean;
+  bindings?: ProviderBinding[];
 };
+
+type ProviderBinding = Omit<ProviderParam, "bindings">;
 
 type AttrRow = {
   id: string;
@@ -174,7 +177,7 @@ function providerCodes(details: AttrDetailsResp | null) {
 }
 
 function rowProviderCoverage(row: AttrRow, codes: string[]) {
-  return codes.filter((code) => !!String(row.provider_map?.[code]?.id || row.provider_map?.[code]?.name || "").trim()).length;
+  return codes.filter((code) => providerBindings(row.provider_map?.[code]).length > 0).length;
 }
 
 function rowNeedsAttention(row: AttrRow, codes: string[]) {
@@ -182,8 +185,8 @@ function rowNeedsAttention(row: AttrRow, codes: string[]) {
 }
 
 function rowHasValues(row: AttrRow, codes: string[]) {
-  if (["select", "enum", "list", "multiselect"].some((part) => qnorm(row.provider_map?.yandex_market?.kind || "").includes(part))) return true;
-  return codes.some((code) => Array.isArray(row.provider_map?.[code]?.values) && (row.provider_map?.[code]?.values || []).length > 0);
+  if (providerBindings(row.provider_map?.yandex_market).some((item) => ["select", "enum", "list", "multiselect"].some((part) => qnorm(item.kind || "").includes(part)))) return true;
+  return codes.some((code) => providerBindings(row.provider_map?.[code]).some((item) => Array.isArray(item.values) && (item.values || []).length > 0));
 }
 
 function rowStatusLabel(row: AttrRow, codes: string[]) {
@@ -214,6 +217,44 @@ function formatAiMatchNotice(resp: AttrAiMatchResp) {
     return `AI-сопоставление (${aiEngineLabel(resp.engine)}) улучшило ${improved} полей, изменено ${changed}. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.${providerText}`;
   }
   return `AI-сопоставление (${aiEngineLabel(resp.engine)}) проверило ${total} полей, но новых уверенных связок не нашло. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.`;
+}
+
+function providerBindingPayload(param?: ProviderParam | ProviderBinding): ProviderBinding | null {
+  if (!param) return null;
+  const id = String(param.id || "").trim();
+  const name = String(param.name || "").trim();
+  if (!id && !name) return null;
+  return {
+    id,
+    name,
+    kind: param.kind || "",
+    values: param.values || [],
+    required: !!param.required,
+    export: param.export !== false,
+  };
+}
+
+function providerBindings(value?: ProviderParam): ProviderBinding[] {
+  const out: ProviderBinding[] = [];
+  const seen = new Set<string>();
+  const add = (item?: ProviderParam | ProviderBinding) => {
+    const payload = providerBindingPayload(item);
+    if (!payload) return;
+    const key = payload.id || `name:${qnorm(payload.name)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(payload);
+  };
+  add(value);
+  (value?.bindings || []).forEach(add);
+  return out;
+}
+
+function providerMapFromBindings(bindings: ProviderBinding[]): ProviderParam | undefined {
+  const filtered = bindings.map(providerBindingPayload).filter(Boolean) as ProviderBinding[];
+  if (!filtered.length) return undefined;
+  const primary = filtered[0];
+  return { ...primary, bindings: filtered };
 }
 
 export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
@@ -359,7 +400,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           row.catalog_name,
           row.group,
           paramGroupLabel(row),
-          ...codes.flatMap((code) => [row.provider_map?.[code]?.name || "", row.provider_map?.[code]?.kind || ""]),
+          ...codes.flatMap((code) => providerBindings(row.provider_map?.[code]).flatMap((item) => [item.name || "", item.kind || ""])),
         ].join(" ").toLowerCase();
         return hay.includes(q);
       })
@@ -455,26 +496,39 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     }
   }
 
-  async function updateProviderParam(row: AttrRow, code: string, paramId: string) {
-    const providerParam = (details?.providers?.[code]?.params || []).find((param) => String(param.id) === String(paramId));
+  async function saveProviderBindings(row: AttrRow, code: string, bindings: ProviderBinding[]) {
+    const nextProvider = providerMapFromBindings(bindings);
     const nextRows = rows.map((candidate) => {
       if (String(candidate.id) !== String(row.id)) return candidate;
       const nextMap = { ...(candidate.provider_map || {}) };
-      if (!providerParam) {
+      if (!nextProvider) {
         delete nextMap[code];
       } else {
-        nextMap[code] = {
-          id: String(providerParam.id || ""),
-          name: String(providerParam.name || ""),
-          kind: providerParam.kind,
-          values: providerParam.values || [],
-          required: !!providerParam.required,
-          export: providerParam.export !== false,
-        };
+        nextMap[code] = nextProvider;
       }
       return { ...candidate, provider_map: nextMap, confirmed: false };
     });
     await saveRows(nextRows, String(row.id));
+  }
+
+  async function addProviderParam(row: AttrRow, code: string, paramId: string) {
+    const providerParam = (details?.providers?.[code]?.params || []).find((param) => String(param.id) === String(paramId));
+    const payload = providerBindingPayload(providerParam);
+    if (!payload) return;
+    await saveProviderBindings(row, code, [...providerBindings(row.provider_map?.[code]), payload]);
+  }
+
+  async function removeProviderParam(row: AttrRow, code: string, paramId: string) {
+    const target = String(paramId || "").trim();
+    await saveProviderBindings(
+      row,
+      code,
+      providerBindings(row.provider_map?.[code]).filter((item) => String(item.id || "").trim() !== target),
+    );
+  }
+
+  async function clearProviderParam(row: AttrRow, code: string) {
+    await saveProviderBindings(row, code, []);
   }
 
   async function confirmRow(row: AttrRow) {
@@ -485,10 +539,11 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   function providerParamOptions(code: string, current?: ProviderParam) {
     const search = qnorm(providerSearch[code] || "");
     const params = details?.providers?.[code]?.params || [];
+    const currentIds = new Set(providerBindings(current).map((item) => String(item.id || "").trim()).filter(Boolean));
     const sorted = [...params].sort((a, b) => {
-      const currentId = String(current?.id || "");
-      if (currentId && String(a.id) === currentId) return -1;
-      if (currentId && String(b.id) === currentId) return 1;
+      const aSelected = currentIds.has(String(a.id || "").trim());
+      const bSelected = currentIds.has(String(b.id || "").trim());
+      if (aSelected !== bSelected) return aSelected ? -1 : 1;
       const aq = qnorm(a.name || "");
       const bq = qnorm(b.name || "");
       const aStarts = search ? aq.startsWith(search) : false;
@@ -714,11 +769,19 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     <div className="paramsParamProviders">
                       {codes.map((code) => {
                         const value = row.provider_map?.[code];
+                        const bindings = providerBindings(value);
+                        const valuesCount = bindings.reduce((acc, item) => acc + (item.values?.length || 0), 0);
                         return (
                           <div className="paramsProviderCell" key={`${row.id}-${code}`}>
                             <span>{PROVIDER_LABEL[code] || code}</span>
-                            <strong>{value?.name || "не связано"}</strong>
-                            <em>{value?.values?.length ? `${value.values.length} значений` : value?.kind || "параметр"}</em>
+                            {bindings.length ? (
+                              <div className="paramsProviderBindings">
+                                {bindings.map((item) => <b key={`${code}-${item.id || item.name}`}>{item.name || item.id}</b>)}
+                              </div>
+                            ) : (
+                              <strong>не связано</strong>
+                            )}
+                            <em>{valuesCount ? `${valuesCount} значений` : bindings.length > 1 ? `${bindings.length} поля` : bindings[0]?.kind || "параметр"}</em>
                           </div>
                         );
                       })}
@@ -762,15 +825,37 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     const provider = details?.providers?.[code];
                     const current = selectedRow.provider_map?.[code];
                     const options = providerParamOptions(code, current);
+                    const bindings = providerBindings(current);
+                    const currentIds = new Set(bindings.map((item) => String(item.id || "").trim()).filter(Boolean));
                     return (
                       <div className="paramsFieldSelect" key={code}>
                         <div className="paramsProviderBindHead">
                           <span>{PROVIDER_LABEL[code] || code}</span>
-                          <b className={current?.id ? "isOk" : "isWarn"}>{current?.id ? "связано" : "не связано"}</b>
+                          <b className={bindings.length ? "isOk" : "isWarn"}>{bindings.length ? `${bindings.length} полей` : "не связано"}</b>
                         </div>
                         <div className="paramsProviderCurrent">
-                          <strong>{current?.name || "Поле площадки не выбрано"}</strong>
-                          <em>{current?.values?.length ? `${current.values.length} значений` : current?.kind || "тип не указан"}</em>
+                          {bindings.length ? (
+                            <div className="paramsCurrentBindings">
+                              {bindings.map((item, index) => (
+                                <span key={`${code}-current-${item.id || item.name}`}>
+                                  <strong>{item.name || item.id}</strong>
+                                  <em>{index === 0 ? "основное" : "доп. поле"}</em>
+                                  <button
+                                    type="button"
+                                    disabled={savingRowId === String(selectedRow.id)}
+                                    onClick={() => void removeProviderParam(selectedRow, code, item.id)}
+                                  >
+                                    Убрать
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <>
+                              <strong>Поле площадки не выбрано</strong>
+                              <em>тип не указан</em>
+                            </>
+                          )}
                         </div>
                         <input
                           value={providerSearch[code] || ""}
@@ -781,25 +866,28 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                         <div className="paramsProviderOptionList">
                           <button
                             type="button"
-                            className={!current?.id ? "isSelected" : ""}
+                            className={!bindings.length ? "isSelected" : ""}
                             disabled={savingRowId === String(selectedRow.id)}
-                            onClick={() => void updateProviderParam(selectedRow, code, "")}
+                            onClick={() => void clearProviderParam(selectedRow, code)}
                           >
                             <strong>Не связывать</strong>
                             <em>Поле не передается на площадку</em>
                           </button>
-                          {options.visible.map((param) => (
-                            <button
-                              type="button"
-                              key={String(param.id)}
-                              className={String(current?.id || "") === String(param.id) ? "isSelected" : ""}
-                              disabled={savingRowId === String(selectedRow.id)}
-                              onClick={() => void updateProviderParam(selectedRow, code, String(param.id))}
-                            >
-                              <strong>{param.name}</strong>
-                              <em>{param.values?.length ? `${param.values.length} значений` : param.kind || "тип не указан"}</em>
-                            </button>
-                          ))}
+                          {options.visible.map((param) => {
+                            const selected = currentIds.has(String(param.id || "").trim());
+                            return (
+                              <button
+                                type="button"
+                                key={String(param.id)}
+                                className={selected ? "isSelected" : ""}
+                                disabled={savingRowId === String(selectedRow.id)}
+                                onClick={() => void (selected ? removeProviderParam(selectedRow, code, String(param.id)) : addProviderParam(selectedRow, code, String(param.id)))}
+                              >
+                                <strong>{param.name}</strong>
+                                <em>{selected ? "Нажмите, чтобы убрать" : param.values?.length ? `${param.values.length} значений` : param.kind || "тип не указан"}</em>
+                              </button>
+                            );
+                          })}
                         </div>
                         <small>
                           {options.filtered.length

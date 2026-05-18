@@ -2465,6 +2465,28 @@
   white-space: nowrap;
 }
 
+.paramsProviderBindings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 5px 0;
+}
+
+.paramsProviderBindings b {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 76%, var(--panel));
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .paramsInspector {
   position: sticky;
   top: 10px;
@@ -2602,6 +2624,41 @@
   font-weight: 950;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.paramsCurrentBindings {
+  display: grid;
+  gap: 6px;
+}
+
+.paramsCurrentBindings span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.paramsCurrentBindings em {
+  white-space: nowrap;
+}
+
+.paramsCurrentBindings button {
+  border: 0;
+  background: transparent;
+  color: var(--brand-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.paramsCurrentBindings button:disabled {
+  cursor: wait;
+  opacity: .55;
 }
 
 .paramsFieldSelect input {

@@ -133,12 +133,14 @@ def _ensure_tables_impl() -> None:
                   yandex_values TEXT[] NULL,
                   yandex_required BOOLEAN NOT NULL DEFAULT FALSE,
                   yandex_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_bindings_json JSONB NULL,
                   ozon_param_id TEXT NULL,
                   ozon_param_name TEXT NULL,
                   ozon_kind TEXT NULL,
                   ozon_values TEXT[] NULL,
                   ozon_required BOOLEAN NOT NULL DEFAULT FALSE,
                   ozon_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_bindings_json JSONB NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (catalog_category_id, row_id)
                 )
@@ -159,15 +161,127 @@ def _ensure_tables_impl() -> None:
                   yandex_values TEXT[] NULL,
                   yandex_required BOOLEAN NOT NULL DEFAULT FALSE,
                   yandex_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  yandex_bindings_json JSONB NULL,
                   ozon_param_id TEXT NULL,
                   ozon_param_name TEXT NULL,
                   ozon_kind TEXT NULL,
                   ozon_values TEXT[] NULL,
                   ozon_required BOOLEAN NOT NULL DEFAULT FALSE,
                   ozon_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  ozon_bindings_json JSONB NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (organization_id, catalog_category_id, row_id)
                 )
+                """
+            )
+            for table_name in ("attribute_mappings_rel", "attribute_mappings_tenant_rel"):
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS yandex_bindings_json JSONB NULL")
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS ozon_bindings_json JSONB NULL")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attribute_provider_bindings_rel (
+                  catalog_category_id TEXT NOT NULL,
+                  row_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  provider_param_id TEXT NULL,
+                  provider_param_name TEXT NULL,
+                  provider_kind TEXT NULL,
+                  provider_values TEXT[] NULL,
+                  provider_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (catalog_category_id, row_id, provider, position)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attribute_provider_bindings_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  catalog_category_id TEXT NOT NULL,
+                  row_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  provider_param_id TEXT NULL,
+                  provider_param_name TEXT NULL,
+                  provider_kind TEXT NULL,
+                  provider_values TEXT[] NULL,
+                  provider_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, catalog_category_id, row_id, provider, position)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_attribute_provider_bindings_tenant_rel_lookup
+                  ON attribute_provider_bindings_tenant_rel(organization_id, catalog_category_id, row_id, provider)
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_rel (
+                  catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  catalog_category_id, row_id, 'yandex_market', 0,
+                  yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
+                  NOW()
+                FROM attribute_mappings_rel
+                WHERE COALESCE(yandex_param_id, '') <> '' OR COALESCE(yandex_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_rel (
+                  catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  catalog_category_id, row_id, 'ozon', 0,
+                  ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                  NOW()
+                FROM attribute_mappings_rel
+                WHERE COALESCE(ozon_param_id, '') <> '' OR COALESCE(ozon_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_tenant_rel (
+                  organization_id, catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  organization_id, catalog_category_id, row_id, 'yandex_market', 0,
+                  yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
+                  NOW()
+                FROM attribute_mappings_tenant_rel
+                WHERE COALESCE(yandex_param_id, '') <> '' OR COALESCE(yandex_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_tenant_rel (
+                  organization_id, catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  organization_id, catalog_category_id, row_id, 'ozon', 0,
+                  ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                  NOW()
+                FROM attribute_mappings_tenant_rel
+                WHERE COALESCE(ozon_param_id, '') <> '' OR COALESCE(ozon_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
                 """
             )
             cur.execute(
@@ -1066,6 +1180,116 @@ def _ensure_lightweight_schema_migrations() -> None:
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE templates_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
             cur.execute("ALTER TABLE templates_tenant_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+            for table_name in ("attribute_mappings_rel", "attribute_mappings_tenant_rel"):
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS yandex_bindings_json JSONB NULL")
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS ozon_bindings_json JSONB NULL")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attribute_provider_bindings_rel (
+                  catalog_category_id TEXT NOT NULL,
+                  row_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  provider_param_id TEXT NULL,
+                  provider_param_name TEXT NULL,
+                  provider_kind TEXT NULL,
+                  provider_values TEXT[] NULL,
+                  provider_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (catalog_category_id, row_id, provider, position)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attribute_provider_bindings_tenant_rel (
+                  organization_id TEXT NOT NULL,
+                  catalog_category_id TEXT NOT NULL,
+                  row_id TEXT NOT NULL,
+                  provider TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  provider_param_id TEXT NULL,
+                  provider_param_name TEXT NULL,
+                  provider_kind TEXT NULL,
+                  provider_values TEXT[] NULL,
+                  provider_required BOOLEAN NOT NULL DEFAULT FALSE,
+                  provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (organization_id, catalog_category_id, row_id, provider, position)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_attribute_provider_bindings_tenant_rel_lookup
+                  ON attribute_provider_bindings_tenant_rel(organization_id, catalog_category_id, row_id, provider)
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_rel (
+                  catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  catalog_category_id, row_id, 'yandex_market', 0,
+                  yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
+                  NOW()
+                FROM attribute_mappings_rel
+                WHERE COALESCE(yandex_param_id, '') <> '' OR COALESCE(yandex_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_rel (
+                  catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  catalog_category_id, row_id, 'ozon', 0,
+                  ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                  NOW()
+                FROM attribute_mappings_rel
+                WHERE COALESCE(ozon_param_id, '') <> '' OR COALESCE(ozon_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_tenant_rel (
+                  organization_id, catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  organization_id, catalog_category_id, row_id, 'yandex_market', 0,
+                  yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
+                  NOW()
+                FROM attribute_mappings_tenant_rel
+                WHERE COALESCE(yandex_param_id, '') <> '' OR COALESCE(yandex_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO attribute_provider_bindings_tenant_rel (
+                  organization_id, catalog_category_id, row_id, provider, position,
+                  provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                  updated_at
+                )
+                SELECT
+                  organization_id, catalog_category_id, row_id, 'ozon', 0,
+                  ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                  NOW()
+                FROM attribute_mappings_tenant_rel
+                WHERE COALESCE(ozon_param_id, '') <> '' OR COALESCE(ozon_param_name, '') <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS pim_channel_links (
@@ -1595,38 +1819,152 @@ def _replace_attribute_mappings_table(doc: Dict[str, Any]) -> None:
                     [str(v).strip() for v in (yandex.get("values") or []) if str(v).strip()] or None,
                     bool(yandex.get("required") or False),
                     bool(yandex.get("export") or False),
+                    json.dumps(_provider_bindings_payload(yandex), ensure_ascii=False) if _provider_bindings_payload(yandex) else None,
                     str(ozon.get("id") or "").strip() or None,
                     str(ozon.get("name") or "").strip() or None,
                     str(ozon.get("kind") or "").strip() or None,
                     [str(v).strip() for v in (ozon.get("values") or []) if str(v).strip()] or None,
                     bool(ozon.get("required") or False),
                     bool(ozon.get("export") or False),
+                    json.dumps(_provider_bindings_payload(ozon), ensure_ascii=False) if _provider_bindings_payload(ozon) else None,
                 )
             )
+
+    binding_rows = _collect_attribute_provider_binding_rows(doc)
 
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
             cur.execute("DELETE FROM attribute_mappings_rel")
+            cur.execute("DELETE FROM attribute_provider_bindings_rel")
             if rows:
                 cur.executemany(
                     """
                     INSERT INTO attribute_mappings_rel (
                       catalog_category_id, row_id, catalog_name, param_group, confirmed,
-                      yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
-                      ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                      yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export, yandex_bindings_json,
+                      ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export, ozon_bindings_json,
                       updated_at
                     ) VALUES (
                       %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s::jsonb,
+                      %s, %s, %s, %s, %s, %s, %s::jsonb,
                       NOW()
                     )
                     """,
                     rows,
                 )
+            if binding_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO attribute_provider_bindings_rel (
+                      catalog_category_id, row_id, provider, position,
+                      provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                      updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s,
+                      NOW()
+                    )
+                    """,
+                    binding_rows,
+                )
 
     _with_pg_retry(_run)
+
+
+def _provider_binding_payload(raw: Any) -> Dict[str, Any]:
+    cur = raw if isinstance(raw, dict) else {}
+    return {
+        "id": str(cur.get("id") or "").strip(),
+        "name": str(cur.get("name") or "").strip(),
+        "kind": str(cur.get("kind") or "").strip(),
+        "values": [str(v).strip() for v in (cur.get("values") or []) if str(v).strip()][:200],
+        "required": bool(cur.get("required") or False),
+        "export": bool(cur.get("export") or False),
+    }
+
+
+def _provider_bindings_payload(raw: Any) -> List[Dict[str, Any]]:
+    cur = raw if isinstance(raw, dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(item: Any) -> None:
+        payload = _provider_binding_payload(item)
+        if not payload["id"] and not payload["name"]:
+            return
+        key = payload["id"] or f"name:{payload['name'].strip().lower()}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(payload)
+
+    _add(cur)
+    for item in cur.get("bindings") if isinstance(cur.get("bindings"), list) else []:
+        _add(item)
+    return out
+
+
+def _provider_doc_from_row(
+    *,
+    param_id: Any,
+    param_name: Any,
+    kind: Any,
+    values: Any,
+    required: Any,
+    export: Any,
+    bindings: Any,
+) -> Dict[str, Any]:
+    base = {
+        "id": str(param_id or "").strip(),
+        "name": str(param_name or "").strip(),
+        "kind": str(kind or "").strip(),
+        "values": list(values or []),
+        "required": bool(required or False),
+        "export": bool(export or False),
+    }
+    if isinstance(bindings, list):
+        base["bindings"] = _provider_bindings_payload({"bindings": bindings, **base})
+    else:
+        base["bindings"] = _provider_bindings_payload(base)
+    return base
+
+
+def _collect_attribute_provider_binding_rows(doc: Dict[str, Any]) -> List[tuple[Any, ...]]:
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    if not isinstance(items, dict):
+        items = {}
+    out: List[tuple[Any, ...]] = []
+    for catalog_category_id, payload in items.items():
+        cid = str(catalog_category_id or "").strip()
+        if not cid or not isinstance(payload, dict):
+            continue
+        for row in payload.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            row_id = str(row.get("id") or "").strip()
+            if not row_id:
+                continue
+            provider_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+            for provider in ("yandex_market", "ozon"):
+                provider_payload = provider_map.get(provider) if isinstance(provider_map.get(provider), dict) else {}
+                for position, binding in enumerate(_provider_bindings_payload(provider_payload)):
+                    out.append(
+                        (
+                            cid,
+                            row_id,
+                            provider,
+                            position,
+                            str(binding.get("id") or "").strip() or None,
+                            str(binding.get("name") or "").strip() or None,
+                            str(binding.get("kind") or "").strip() or None,
+                            [str(v).strip() for v in (binding.get("values") or []) if str(v).strip()] or None,
+                            bool(binding.get("required") or False),
+                            bool(binding.get("export") or False),
+                        )
+                    )
+    return out
 
 
 def _collect_attribute_mapping_rows(doc: Dict[str, Any]) -> List[tuple[Any, ...]]:
@@ -1657,12 +1995,14 @@ def _collect_attribute_mapping_rows(doc: Dict[str, Any]) -> List[tuple[Any, ...]
                     [str(v).strip() for v in (yandex.get("values") or []) if str(v).strip()] or None,
                     bool(yandex.get("required") or False),
                     bool(yandex.get("export") or False),
+                    json.dumps(_provider_bindings_payload(yandex), ensure_ascii=False) if _provider_bindings_payload(yandex) else None,
                     str(ozon.get("id") or "").strip() or None,
                     str(ozon.get("name") or "").strip() or None,
                     str(ozon.get("kind") or "").strip() or None,
                     [str(v).strip() for v in (ozon.get("values") or []) if str(v).strip()] or None,
                     bool(ozon.get("required") or False),
                     bool(ozon.get("export") or False),
+                    json.dumps(_provider_bindings_payload(ozon), ensure_ascii=False) if _provider_bindings_payload(ozon) else None,
                 )
             )
     return rows
@@ -1671,27 +2011,44 @@ def _collect_attribute_mapping_rows(doc: Dict[str, Any]) -> List[tuple[Any, ...]
 def _replace_attribute_mappings_tenant_table(doc: Dict[str, Any], organization_id: Optional[str]) -> None:
     org_id = _resolve_organization_id(organization_id)
     rows = _collect_attribute_mapping_rows(doc)
+    binding_rows = _collect_attribute_provider_binding_rows(doc)
 
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
             cur.execute("DELETE FROM attribute_mappings_tenant_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM attribute_provider_bindings_tenant_rel WHERE organization_id = %s", [org_id])
             if rows:
                 cur.executemany(
                     """
                     INSERT INTO attribute_mappings_tenant_rel (
                       organization_id, catalog_category_id, row_id, catalog_name, param_group, confirmed,
-                      yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export,
-                      ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export,
+                      yandex_param_id, yandex_param_name, yandex_kind, yandex_values, yandex_required, yandex_export, yandex_bindings_json,
+                      ozon_param_id, ozon_param_name, ozon_kind, ozon_values, ozon_required, ozon_export, ozon_bindings_json,
                       updated_at
                     ) VALUES (
                       %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s::jsonb,
+                      %s, %s, %s, %s, %s, %s, %s::jsonb,
                       NOW()
                     )
                     """,
                     [(org_id, *row) for row in rows],
+                )
+            if binding_rows:
+                cur.executemany(
+                    """
+                    INSERT INTO attribute_provider_bindings_tenant_rel (
+                      organization_id, catalog_category_id, row_id, provider, position,
+                      provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                      updated_at
+                    ) VALUES (
+                      %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s,
+                      NOW()
+                    )
+                    """,
+                    [(org_id, *row) for row in binding_rows],
                 )
 
     _with_pg_retry(_run)
@@ -2310,12 +2667,14 @@ def load_attribute_mapping_doc(organization_id: Optional[str] = None) -> Dict[st
                   yandex_values,
                   yandex_required,
                   yandex_export,
+                  yandex_bindings_json,
                   ozon_param_id,
                   ozon_param_name,
                   ozon_kind,
                   ozon_values,
                   ozon_required,
                   ozon_export,
+                  ozon_bindings_json,
                   updated_at
                 FROM attribute_mappings_tenant_rel
                 WHERE organization_id = %s
@@ -2324,14 +2683,51 @@ def load_attribute_mapping_doc(organization_id: Optional[str] = None) -> Dict[st
                 [org_id],
             )
             db_rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT
+                  catalog_category_id,
+                  row_id,
+                  provider,
+                  provider_param_id,
+                  provider_param_name,
+                  provider_kind,
+                  provider_values,
+                  provider_required,
+                  provider_export
+                FROM attribute_provider_bindings_tenant_rel
+                WHERE organization_id = %s
+                ORDER BY catalog_category_id, row_id, provider, position
+                """,
+                [org_id],
+            )
+            binding_rows = cur.fetchall() or []
 
         items: Dict[str, Dict[str, Any]] = {}
+        bindings_by_key: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
+        for binding_row in binding_rows:
+            cid = str(binding_row[0] or "").strip()
+            row_id = str(binding_row[1] or "").strip()
+            provider = str(binding_row[2] or "").strip()
+            if not cid or not row_id or not provider:
+                continue
+            bindings_by_key.setdefault((cid, row_id, provider), []).append(
+                {
+                    "id": str(binding_row[3] or "").strip(),
+                    "name": str(binding_row[4] or "").strip(),
+                    "kind": str(binding_row[5] or "").strip(),
+                    "values": list(binding_row[6] or []),
+                    "required": bool(binding_row[7] or False),
+                    "export": bool(binding_row[8] or False),
+                }
+            )
         for row in db_rows:
             cid = str(row[0] or "").strip()
+            row_id = str(row[1] or "").strip()
             if not cid:
                 continue
             items.setdefault(cid, {"rows": [], "updated_at": None})
-            updated_at = row[17].isoformat() if row[17] else None
+            updated_at = row[19].isoformat() if row[19] else None
             if updated_at and (items[cid].get("updated_at") or "") < updated_at:
                 items[cid]["updated_at"] = updated_at
             items[cid]["rows"].append(
@@ -2341,22 +2737,24 @@ def load_attribute_mapping_doc(organization_id: Optional[str] = None) -> Dict[st
                     "group": str(row[3] or "").strip(),
                     "confirmed": bool(row[4] or False),
                     "provider_map": {
-                        "yandex_market": {
-                            "id": str(row[5] or "").strip(),
-                            "name": str(row[6] or "").strip(),
-                            "kind": str(row[7] or "").strip(),
-                            "values": list(row[8] or []),
-                            "required": bool(row[9] or False),
-                            "export": bool(row[10] or False),
-                        },
-                        "ozon": {
-                            "id": str(row[11] or "").strip(),
-                            "name": str(row[12] or "").strip(),
-                            "kind": str(row[13] or "").strip(),
-                            "values": list(row[14] or []),
-                            "required": bool(row[15] or False),
-                            "export": bool(row[16] or False),
-                        },
+                        "yandex_market": _provider_doc_from_row(
+                            param_id=row[5],
+                            param_name=row[6],
+                            kind=row[7],
+                            values=row[8],
+                            required=row[9],
+                            export=row[10],
+                            bindings=bindings_by_key.get((cid, row_id, "yandex_market")) or row[11],
+                        ),
+                        "ozon": _provider_doc_from_row(
+                            param_id=row[12],
+                            param_name=row[13],
+                            kind=row[14],
+                            values=row[15],
+                            required=row[16],
+                            export=row[17],
+                            bindings=bindings_by_key.get((cid, row_id, "ozon")) or row[18],
+                        ),
                     },
                 }
             )

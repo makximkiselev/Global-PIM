@@ -229,6 +229,7 @@ def _is_retryable_pg_error(exc: Exception) -> bool:
         "connection already closed",
         "broken pipe",
         "ssl connection has been closed unexpectedly",
+        "pg_type_typname_nsp_index",
     )
     return any(marker in message for marker in markers)
 

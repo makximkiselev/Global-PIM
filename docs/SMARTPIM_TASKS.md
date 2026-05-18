@@ -194,7 +194,11 @@ Audit findings to verify/fix:
          - search in parameter queue must switch to `Все`, otherwise useful fields such as `Встроенная память` are hidden behind the active `Внимание` filter;
          - backend matcher must keep `Встроенная память / ROM / storage` separate from `Оперативная память / RAM / ОЗУ`;
          - current production mapping was corrected: `Встроенная память` now maps to Ozon `Встроенная память`, not Ozon `Оперативная память`;
-         - P0 data-model gap: one PIM parameter can map to multiple marketplace fields. Example: `Оперативная память` may need both regular Ozon field and Ozon naming-template field. Current `provider_map[provider]` stores one binding only; replace it with relational multi-bind support before final export hardening.
+         - 2026-05-18 multi-bind implementation started: keep legacy `provider_map[provider].id/name` as primary binding and add `provider_map[provider].bindings[]`;
+         - storage target v2: source of truth for several marketplace fields is relational table `attribute_provider_bindings_tenant_rel`; JSONB `*_bindings_json` remains only as fallback/compatibility layer;
+         - compatibility target: keep old `attribute_mappings_*` primary columns for existing readers and for the primary binding shown first in UI;
+         - UI target: show several marketplace fields as chips in one matrix cell and allow add/remove per provider from the inspector;
+         - export target: Ozon/Yandex export and product parameter-flow must read every binding in `bindings[]`, falling back to primary binding for old data.
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
