@@ -613,7 +613,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             </div>
 
             <div className="paramsQueueToolbar">
-              <input value={fieldQuery} onChange={(event) => setFieldQuery(event.target.value)} placeholder="Поиск: память, цвет, SIM..." />
+              <input
+                value={fieldQuery}
+                onChange={(event) => {
+                  setFieldQuery(event.target.value);
+                  if (event.target.value.trim()) setQueueFilter("all");
+                }}
+                placeholder="Поиск: память, цвет, SIM..."
+              />
               {[
                 ["attention", "Внимание", stats.attention],
                 ["unmapped", "Без связки", stats.unmapped],
@@ -665,6 +672,11 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             </div>
 
             <div className="paramsQueueList">
+              <div className="paramsMatrixHead" aria-hidden="true">
+                <span>Поле PIM</span>
+                <span>Статус</span>
+                {codes.map((code) => <span key={code}>{PROVIDER_LABEL[code] || code}</span>)}
+              </div>
               {initialParamsLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <div className="paramsParamCard paramsParamCardSkeleton" key={`params-loading-${index}`}>
@@ -692,10 +704,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                         <span>{paramGroupLabel(row)}</span>
                       </div>
                       <div className="paramsParamMeta">
-                        <span>{coverage}/{codes.length} источников</span>
-                        <span>{rowStatusLabel(row, codes)}</span>
                         {rowHasValues(row, codes) ? <span>есть значения</span> : null}
                       </div>
+                    </div>
+                    <div className="paramsParamStatus">
+                      <span>{coverage}/{codes.length}</span>
+                      <strong>{rowStatusLabel(row, codes)}</strong>
                     </div>
                     <div className="paramsParamProviders">
                       {codes.map((code) => {

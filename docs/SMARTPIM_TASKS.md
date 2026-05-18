@@ -189,6 +189,12 @@ Audit findings to verify/fix:
          - grouping is based on existing `group/param_group` plus field-name inference, not a new table;
          - the group strip must show ready/total or percent by group and filter the field queue;
          - this grouping becomes the basis for product-card and export readiness percentages.
+       - 2026-05-18 parameter matrix follow-up:
+         - `/sources?tab=params` now needs a dense horizontal-scroll matrix for PIM field -> status -> marketplace fields, because card layout hides too much at once;
+         - search in parameter queue must switch to `Все`, otherwise useful fields such as `Встроенная память` are hidden behind the active `Внимание` filter;
+         - backend matcher must keep `Встроенная память / ROM / storage` separate from `Оперативная память / RAM / ОЗУ`;
+         - current production mapping was corrected: `Встроенная память` now maps to Ozon `Встроенная память`, not Ozon `Оперативная память`;
+         - P0 data-model gap: one PIM parameter can map to multiple marketplace fields. Example: `Оперативная память` may need both regular Ozon field and Ozon naming-template field. Current `provider_map[provider]` stores one binding only; replace it with relational multi-bind support before final export hardening.
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:

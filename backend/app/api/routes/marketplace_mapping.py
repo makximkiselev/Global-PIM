@@ -1947,6 +1947,14 @@ def _pair_score(
     o: Dict[str, Any],
     feedback_doc: Optional[Dict[str, Any]] = None,
 ) -> float:
+    y_name = _norm_name(str(y.get("name") or ""))
+    o_name = _norm_name(str(o.get("name") or ""))
+    y_is_ram = bool(re.search(r"\b(оперативная|ram|озу)\b", y_name))
+    o_is_ram = bool(re.search(r"\b(оперативная|ram|озу)\b", o_name))
+    y_is_storage = bool(re.search(r"\b(встроенная|внутренняя|storage|rom|накопител)\b", y_name))
+    o_is_storage = bool(re.search(r"\b(встроенная|внутренняя|storage|rom|накопител)\b", o_name))
+    if (y_is_ram and o_is_storage) or (y_is_storage and o_is_ram):
+        return 0.0
     yt = _tokens(str(y.get("name") or ""))
     ot = _tokens(str(o.get("name") or ""))
     if not yt or not ot:
@@ -1954,8 +1962,6 @@ def _pair_score(
     inter = len(yt & ot)
     union = max(1, len(yt | ot))
     j = inter / union
-    y_name = _norm_name(str(y.get("name") or ""))
-    o_name = _norm_name(str(o.get("name") or ""))
     sub = 0.2 if (y_name and o_name and (y_name in o_name or o_name in y_name)) else 0.0
     kind_bonus = 0.1 if _kind_group(str(y.get("kind") or "")) == _kind_group(str(o.get("kind") or "")) else 0.0
     feedback = _feedback_bonus(y, o, feedback_doc)
