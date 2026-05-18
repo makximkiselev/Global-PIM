@@ -3,12 +3,12 @@
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  min-width: 1180px;
+  min-width: 0;
   padding-top: 0;
 }
 
 .shellContent:has(.sourcesMappingPage) {
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .sourcesMappingHero,

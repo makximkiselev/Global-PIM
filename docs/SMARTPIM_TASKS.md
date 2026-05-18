@@ -180,6 +180,10 @@ Audit findings to verify/fix:
        - `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`: no old `.page-header`, product table remains visible, no horizontal overflow;
        - `/sources?tab=sources|params|values&category=bb40de87-254b-4170-84d7-8e5d3925b251`: no old `.sourcesMappingHero`, shared tabs render through `WorkspaceHeader`, no horizontal overflow;
        - `WorkspaceTaskQueue` was compacted after Browser QA: height is `76-84px`, not a tall dashboard block, and work areas start at `y=233` for catalog and `y=291` for sources routes at the current browser pane;
+       - 2026-05-18 follow-up after user review:
+         - `WorkspaceTaskQueue` now behaves as a stepper: all steps show short labels, while only the active step shows the full explanation/action;
+         - `/sources` no longer forces `min-width:1180px`; production Browser check shows `document.scrollWidth == clientWidth` and `.shellContent { overflow-x: hidden; }`;
+         - verified on `/sources?tab=sources` and `/sources?tab=values`: task route remains visible, active-step text is readable, and the page does not move horizontally.
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:

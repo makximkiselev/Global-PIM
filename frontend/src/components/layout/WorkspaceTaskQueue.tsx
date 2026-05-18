@@ -32,6 +32,7 @@ export default function WorkspaceTaskQueue({
   className = "",
 }: WorkspaceTaskQueueProps) {
   if (!items.length) return null;
+  const activeItem = items.find((item) => item.status === "active" || item.status === "blocked") || items[0];
 
   return (
     <section className={`workspaceTaskQueue${className ? ` ${className}` : ""}`} aria-label={title}>
@@ -53,7 +54,6 @@ export default function WorkspaceTaskQueue({
                   <strong>{item.label}</strong>
                   <span className={`workspaceTaskQueueStatus is-${status}`}>{STATUS_LABEL[status]}</span>
                 </div>
-                <p>{item.description}</p>
                 {item.meta ? <small>{item.meta}</small> : null}
               </div>
               {item.href ? <span className="workspaceTaskQueueAction">{item.actionLabel || "Открыть"}</span> : null}
@@ -71,6 +71,18 @@ export default function WorkspaceTaskQueue({
           );
         })}
       </div>
+      {activeItem ? (
+        <div className={`workspaceTaskQueueFocus is-${activeItem.status || "active"}`}>
+          <span>Сейчас</span>
+          <strong>{activeItem.label}</strong>
+          <p>{activeItem.description}</p>
+          {activeItem.href ? (
+            <Link to={activeItem.href} className="workspaceTaskQueueFocusAction">
+              {activeItem.actionLabel || "Открыть"}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
