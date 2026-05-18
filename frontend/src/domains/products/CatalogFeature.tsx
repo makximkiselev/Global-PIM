@@ -547,11 +547,18 @@ export default function CatalogFeature() {
   async function doCreate() {
     const name = createName.trim();
     if (!name) return;
-    await api<NodeT>("/catalog/nodes", {
+    const created = await api<NodeT>("/catalog/nodes", {
       method: "POST",
       body: JSON.stringify({ name, parent_id: createParentId }),
     });
     setCreateOpen(false);
+    setSelectedId(created.id);
+    const next = new URLSearchParams(searchParams);
+    next.set("category", created.id);
+    setSearchParams(next, { replace: true });
+    if (created.parent_id) {
+      setExpanded((state) => ({ ...state, [String(created.parent_id)]: true }));
+    }
     await refresh();
   }
 
@@ -806,6 +813,11 @@ export default function CatalogFeature() {
             controls={
               <>
                 <div className="catalogTreeToolbarActions">
+                  {selected ? (
+                    <Button className="sm" variant="primary" onClick={() => openCreateChild(selected.id)}>
+                      Новая подкатегория
+                    </Button>
+                  ) : null}
                   <Button
                     className="sm"
                     onClick={() => setSortMode((value) => !value)}
@@ -888,7 +900,6 @@ export default function CatalogFeature() {
                       Добавить SKU
                     </Link>
                     <Link className="btn" to={openProductsHref}>Полный список</Link>
-                    <Button onClick={() => openCreateChild(selected.id)}>Подкатегория</Button>
                     <Button onClick={() => openRename(selected.id)}>Переименовать</Button>
                     <Button variant="danger" onClick={() => openDelete(selected.id)}>
                       Удалить

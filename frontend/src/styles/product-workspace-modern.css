@@ -1294,13 +1294,51 @@
 
 .productCompetitorManual{
   display:grid;
-  grid-template-columns:minmax(0, .75fr) minmax(320px, 1fr);
   gap:14px;
-  align-items:end;
   padding:14px;
   border:1px dashed rgba(var(--brand-rgb), .34);
   border-radius:18px;
   background:rgba(var(--brand-rgb), .055);
+}
+
+.productCompetitorManual:not([open]){
+  display:block;
+  padding:0;
+  border-color:rgba(var(--line-rgb), .62);
+  background:rgba(var(--card-rgb), .72);
+}
+
+.productCompetitorManual summary{
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 14px;
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+}
+
+.productCompetitorManual summary::-webkit-details-marker{
+  display:none;
+}
+
+.productCompetitorManual summary em{
+  color:var(--muted);
+  font-size:12px;
+  font-style:normal;
+  font-weight:750;
+}
+
+.productCompetitorManual[open]{
+  grid-template-columns:minmax(0, .75fr) minmax(320px, 1fr);
+  align-items:end;
+}
+
+.productCompetitorManual[open] summary{
+  grid-column:1 / -1;
+  padding:0;
 }
 
 .productCompetitorManual p{

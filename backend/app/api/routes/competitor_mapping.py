@@ -1031,6 +1031,60 @@ def _source_value_key(value: Any) -> str:
     return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").lower()).strip()
 
 
+_COMPETITOR_SPEC_ALIASES: Dict[str, List[str]] = {
+    "тип sim карты": ["количество sim карт", "sim карта", "тип sim", "sim"],
+    "sim карта": ["количество sim карт", "тип sim карты", "sim"],
+    "объем оперативной памяти": ["оперативная память", "ram", "озу"],
+    "объем встроенной памяти": ["встроенная память", "память", "накопитель", "rom"],
+    "диагональ": ["диагональ экрана"],
+    "размер изображения": ["разрешение экрана"],
+    "число пикселей на дюйм ppi": ["число пикселей на дюйм"],
+    "тип экрана": ["тип матрицы экрана", "тип экрана"],
+    "интерфейсы": ["беспроводные интерфейсы"],
+    "спутниковая навигация": ["навигационная система"],
+    "стандарт": ["стандарт связи"],
+    "тыловая фотокамера": ["разрешение основной камеры", "характеристики основной камеры"],
+    "функции тыловой фотокамеры": ["функции камеры"],
+    "разрешение видео": ["максимальное разрешение видеосъемки", "видеосъемка основная камера"],
+    "разъем": ["тип разъема для зарядки"],
+    "зарядка": ["функции зарядки"],
+    "комплектация": ["подробная комплектация"],
+    "уровень защиты от влаги": ["степень защиты"],
+}
+
+
+def _feature_lookup_keys(name: Any) -> List[str]:
+    base = _source_value_key(name)
+    if not base:
+        return []
+    keys = [base]
+    keys.extend(_COMPETITOR_SPEC_ALIASES.get(base, []))
+    # Store77 and re-store often omit the "экрана/устройства" suffix.
+    if base.endswith(" экрана"):
+        keys.append(base.removesuffix(" экрана").strip())
+    if base.endswith(" устройства"):
+        keys.append(base.removesuffix(" устройства").strip())
+    out: List[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        normalized = _source_value_key(key)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            out.append(normalized)
+    return out
+
+
+def _find_feature_for_source_name(
+    feature_by_key: Dict[str, Dict[str, Any]],
+    source_name: Any,
+) -> Optional[Dict[str, Any]]:
+    for key in _feature_lookup_keys(source_name):
+        feature = feature_by_key.get(key)
+        if feature:
+            return feature
+    return None
+
+
 def _confirmed_links_for_product(discovery: Dict[str, Any], product_id: str) -> List[Dict[str, Any]]:
     normalized_product_id = str(product_id or "").strip()
     out: List[Dict[str, Any]] = []
@@ -1413,9 +1467,9 @@ async def _merge_competitor_content_into_product(
     feature_by_key: Dict[str, Dict[str, Any]] = {}
     for feature in features:
         for key in (feature.get("code"), feature.get("name")):
-            normalized = _source_value_key(key)
-            if normalized:
-                feature_by_key[normalized] = feature
+            for normalized in _feature_lookup_keys(key):
+                if normalized:
+                    feature_by_key[normalized] = feature
 
     source_evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
     competitors_evidence = source_evidence.get("competitors") if isinstance(source_evidence.get("competitors"), dict) else {}
@@ -1494,12 +1548,44 @@ async def _merge_competitor_content_into_product(
             raw_text = str(raw_value or "").strip()
             if not normalized_name or not raw_text:
                 continue
-            feature = feature_by_key.get(normalized_name)
+            if normalized_name == "размеры":
+                nums = re.findall(r"\d+(?:[,.]\d+)?", raw_text)
+                if len(nums) >= 3:
+                    dimensions = {
+                        "высота устройства мм": nums[0].replace(",", "."),
+                        "длина устройства мм": nums[0].replace(",", "."),
+                        "ширина устройства мм": nums[1].replace(",", "."),
+                        "толщина": nums[2].replace(",", "."),
+                    }
+                    dimension_matched = False
+                    for dim_name, dim_value in dimensions.items():
+                        dim_feature = _find_feature_for_source_name(feature_by_key, dim_name)
+                        if not dim_feature:
+                            continue
+                        dimension_matched = True
+                        if not str(dim_feature.get("value") or "").strip():
+                            dim_feature["value"] = dim_value
+                        dim_source_values = dim_feature.get("source_values") if isinstance(dim_feature.get("source_values"), dict) else {}
+                        dim_competitor_values = dim_source_values.get("competitor") if isinstance(dim_source_values.get("competitor"), dict) else {}
+                        dim_competitor_values[source_id] = {
+                            "raw_value": raw_text,
+                            "resolved_value": dim_value,
+                            "canonical_value": str(dim_feature.get("value") or "").strip(),
+                        }
+                        dim_source_values["competitor"] = dim_competitor_values
+                        dim_feature["source_values"] = dim_source_values
+                        matched_specs[f"{spec_name} → {dim_name}"] = dim_value
+                        matched_count += 1
+                    if dimension_matched:
+                        continue
+            feature = _find_feature_for_source_name(feature_by_key, spec_name)
             if not feature:
                 unmatched_specs[str(spec_name)] = raw_text
                 unmatched_count += 1
                 continue
 
+            if not str(feature.get("value") or "").strip():
+                feature["value"] = raw_text
             feature_source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
             competitor_values = feature_source_values.get("competitor") if isinstance(feature_source_values.get("competitor"), dict) else {}
             competitor_values[source_id] = {

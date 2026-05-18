@@ -206,6 +206,12 @@ Audit findings to verify/fix:
            - inspector explains that one PIM parameter will be passed to several marketplace fields and labels them as `основное поле` / `доп. поле`;
            - production Browser QA for `Смартфоны` confirmed: `Сложные 1`, row `Оперативная память`, Ozon fields `Оперативная память` + `Оперативная память, ГБ для Шаблона наименования`, and no page-level horizontal overflow.
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
+     - 2026-05-18 next vertical QA path:
+       - verify similar multi-field parameters beyond `Оперативная память`, especially memory/storage/SIM/color/model fields;
+       - pass the full product-manager path from creating a new subcategory to creating SKU variants, competitor pickup, parameter enrichment, marketplace mapping, and export readiness;
+       - delete the test subcategory named like `шзрщту 17e` if it exists, then create it again and record where the create-subcategory action is hidden or illogical;
+       - product competitor block must become an action flow: user clicks `Подобрать`, backend searches/collects competitor product cards for this SKU from confirmed competitor/category context, then user confirms candidates; manual URL insertion is fallback only;
+       - enrichment must write real product parameter/media evidence from confirmed re-store/store77 cards into product data and make it visible in the product card and marketplace preparation screens.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
    - Browser status: in-app Browser pane was unavailable (`No active Codex browser pane available`), so visual QA was done through authenticated Playwright fallback against production as owner in `Global Trade`.
@@ -544,6 +550,19 @@ Progress:
     - export run responses and persisted run rows now include aggregate summary fields: product count, target count, ready/blocked batches, ready/blocked target rows, and blocker count;
     - export UI uses this summary for the visible batch metrics instead of forcing the user to infer run state from nested raw rows.
     - ready export state now shows a separate `Batch готов к выгрузке` panel with a neutral message that SmartPim prepared product-card data for selected marketplaces.
+21. 2026-05-18 category/product path QA:
+    - verified `/sources?tab=params` for `Смартфоны`: Ozon can bind one PIM parameter to multiple marketplace fields, for example `Оперативная память -> Оперативная память` and `Оперативная память, ГБ для Шаблона наименования`;
+    - verified `/catalog?category=bb40de87-254b-4170-84d7-8e5d3925b251`: temporary subcategory `QA iPhone 17e 20260518c` can be created, becomes the selected category immediately, and can be deleted again;
+    - checked bad keyboard-layout category name `шзрщту 17e`: not present after QA cleanup;
+    - moved `Новая подкатегория` to the category-tree control area and removed the duplicate local action from product-list commands;
+    - product competitor panel now treats manual URL as fallback only: primary user action is `Найти карточки`, then moderation/confirmation, then `Загрузить параметры и медиа`;
+    - verified `product_70 / SKU GT 50001`: confirmed Store77 link enriches product features from `8/67` to `28/67` after backend enrichment and reload;
+    - remaining UX issue: after enrichment, product card should show clearer completion feedback and offer a direct transition to the `Параметры` tab.
+22. 2026-05-18 creation flow gap:
+    - `/products/new?category_id=bb40de87-254b-4170-84d7-8e5d3925b251` opens without horizontal overflow;
+    - variant mode is functional at a basic level, but the parameter picker exposes the full info-model field list, including fields that cannot be meaningful variant axes;
+    - next required cleanup: restrict variant axes to a curated set such as `Название цвета от производителя`, `Встроенная память`, `Оперативная память`, `Количество SIM-карт`, `Размер/диагональ` where relevant, and keep the full field list out of the first creation flow;
+    - creation must remain short: create SKU/family first, then move the user into the product card for competitor pickup, enrichment, marketplace mapping, media, validation, and export.
 
 ### P1 DB Consolidation
 

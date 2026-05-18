@@ -493,10 +493,14 @@ export default function ProductCompetitorPanel({
           <EmptyState title="Карточки пока не найдены" description="Запустите поиск по re-store и store77 для этого SKU." />
         )}
 
-        <div className="productCompetitorManual">
+        <details className="productCompetitorManual">
+          <summary>
+            <span>Ручная ссылка</span>
+            <em>только если подбор ничего не нашел</em>
+          </summary>
           <div>
-            <div className="productWorkspaceMiniTitle">Ручная ссылка</div>
-            <p>Если все варианты отклонены, контент-менеджер вставляет точную карточку. Неподтвержденные варианты этого источника будут отклонены автоматически.</p>
+            <div className="productWorkspaceMiniTitle">Fallback для контент-менеджера</div>
+            <p>Основной сценарий — нажать «Найти карточки» и выбрать кандидата. Ссылку вручную добавляем только когда все варианты отклонены.</p>
           </div>
           <div className="productCompetitorManualForm">
             <select value={manualSource} onChange={(event) => setManualSource(event.target.value as "restore" | "store77")}>
@@ -512,7 +516,7 @@ export default function ProductCompetitorPanel({
               {manualSubmitting ? "Сохраняю…" : "Добавить"}
             </Button>
           </div>
-        </div>
+        </details>
 
         {context?.confirmed_links.length ? (
           <div className="productCompetitorConfirmed">
