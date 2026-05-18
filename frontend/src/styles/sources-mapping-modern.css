@@ -2487,6 +2487,21 @@
   white-space: nowrap;
 }
 
+.paramsProviderBindings small {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--brand) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand-strong);
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .paramsInspector {
   position: sticky;
   top: 10px;
@@ -2640,6 +2655,17 @@
   padding: 5px 6px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.paramsComplexNote {
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.35;
 }
 
 .paramsCurrentBindings em {

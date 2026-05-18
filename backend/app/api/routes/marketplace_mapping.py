@@ -81,6 +81,7 @@ _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 86400.0
 _IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 86400.0
 _VALUE_DETAILS_CACHE_TTL_SECONDS = 86400.0
 _AI_MATCH_OLLAMA_TIMEOUT_SECONDS = float(os.getenv("AI_MATCH_OLLAMA_TIMEOUT_SECONDS", "3.0") or "3.0")
+_ATTR_DETAILS_CACHE_SCHEMA_VERSION = "v2"
 
 
 def _ai_match_timeout_seconds() -> float:
@@ -131,7 +132,7 @@ def _invalidate_import_categories_cache() -> None:
 
 def _attr_details_cache_path(catalog_category_id: str) -> Path:
     safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(catalog_category_id or "").strip()) or "unknown"
-    return ATTR_DETAILS_CACHE_DIR / f"{_current_org_cache_key()}_{safe}.json"
+    return ATTR_DETAILS_CACHE_DIR / f"{_current_org_cache_key()}_{_ATTR_DETAILS_CACHE_SCHEMA_VERSION}_{safe}.json"
 
 
 def _persistent_cache_read(path: Path, ttl_seconds: float) -> Optional[Dict[str, Any]]:

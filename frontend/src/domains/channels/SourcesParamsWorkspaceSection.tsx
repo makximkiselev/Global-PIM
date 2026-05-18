@@ -86,7 +86,7 @@ type Props = {
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
 };
 
-type QueueFilter = "attention" | "unmapped" | "ready" | "all";
+type QueueFilter = "attention" | "unmapped" | "complex" | "ready" | "all";
 type ParamGroupKey = "all" | "product" | "technical" | "logistics" | "media" | "service" | "other";
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -187,6 +187,10 @@ function rowNeedsAttention(row: AttrRow, codes: string[]) {
 function rowHasValues(row: AttrRow, codes: string[]) {
   if (providerBindings(row.provider_map?.yandex_market).some((item) => ["select", "enum", "list", "multiselect"].some((part) => qnorm(item.kind || "").includes(part)))) return true;
   return codes.some((code) => providerBindings(row.provider_map?.[code]).some((item) => Array.isArray(item.values) && (item.values || []).length > 0));
+}
+
+function rowHasComplexBindings(row: AttrRow, codes: string[]) {
+  return codes.some((code) => providerBindings(row.provider_map?.[code]).length > 1);
 }
 
 function rowStatusLabel(row: AttrRow, codes: string[]) {
@@ -355,8 +359,9 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     const ready = paramRows.filter((row) => !!row.confirmed && rowProviderCoverage(row, codes) > 0).length;
     const unmapped = paramRows.filter((row) => rowProviderCoverage(row, codes) === 0).length;
     const attention = paramRows.filter((row) => rowNeedsAttention(row, codes)).length;
+    const complex = paramRows.filter((row) => rowHasComplexBindings(row, codes)).length;
     const values = paramRows.filter((row) => rowHasValues(row, codes)).length;
-    return { total, ready, unmapped, attention, values };
+    return { total, ready, unmapped, attention, complex, values };
   }, [paramRows, codes]);
   const groupStats = useMemo(() => {
     const base = new Map(
@@ -394,6 +399,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         if (groupFilter !== "all" && paramGroupKey(row) !== groupFilter) return false;
         if (queueFilter === "attention" && !rowNeedsAttention(row, codes)) return false;
         if (queueFilter === "unmapped" && rowProviderCoverage(row, codes) > 0) return false;
+        if (queueFilter === "complex" && !rowHasComplexBindings(row, codes)) return false;
         if (queueFilter === "ready" && (!row.confirmed || rowProviderCoverage(row, codes) === 0)) return false;
         if (!q) return true;
         const hay = [
@@ -679,6 +685,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               {[
                 ["attention", "Внимание", stats.attention],
                 ["unmapped", "Без связки", stats.unmapped],
+                ["complex", "Сложные", stats.complex],
                 ["ready", "Готово", stats.ready],
                 ["all", "Все", stats.total],
               ].map(([key, label, count]) => (
@@ -760,6 +767,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       </div>
                       <div className="paramsParamMeta">
                         {rowHasValues(row, codes) ? <span>есть значения</span> : null}
+                        {rowHasComplexBindings(row, codes) ? <span>несколько полей площадки</span> : null}
                       </div>
                     </div>
                     <div className="paramsParamStatus">
@@ -777,6 +785,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                             {bindings.length ? (
                               <div className="paramsProviderBindings">
                                 {bindings.map((item) => <b key={`${code}-${item.id || item.name}`}>{item.name || item.id}</b>)}
+                                {bindings.length > 1 ? <small>{bindings.length} поля площадки</small> : null}
                               </div>
                             ) : (
                               <strong>не связано</strong>
@@ -836,10 +845,15 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                         <div className="paramsProviderCurrent">
                           {bindings.length ? (
                             <div className="paramsCurrentBindings">
+                              {bindings.length > 1 ? (
+                                <div className="paramsComplexNote">
+                                  Один параметр PIM будет передан в несколько полей площадки.
+                                </div>
+                              ) : null}
                               {bindings.map((item, index) => (
                                 <span key={`${code}-current-${item.id || item.name}`}>
                                   <strong>{item.name || item.id}</strong>
-                                  <em>{index === 0 ? "основное" : "доп. поле"}</em>
+                                  <em>{index === 0 ? "основное поле" : "доп. поле"}</em>
                                   <button
                                     type="button"
                                     disabled={savingRowId === String(selectedRow.id)}

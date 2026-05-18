@@ -199,6 +199,12 @@ Audit findings to verify/fix:
          - compatibility target: keep old `attribute_mappings_*` primary columns for existing readers and for the primary binding shown first in UI;
          - UI target: show several marketplace fields as chips in one matrix cell and allow add/remove per provider from the inspector;
          - export target: Ozon/Yandex export and product parameter-flow must read every binding in `bindings[]`, falling back to primary binding for old data.
+         - 2026-05-18 follow-up completed:
+           - parameter details cache is versioned as `v2`, so the API no longer serves stale pre-`bindings[]` snapshots after schema/contract changes;
+           - `/sources?tab=params` has a separate `Сложные` queue filter for rows where one PIM field is linked to several marketplace fields;
+           - row cards show `несколько полей площадки` and provider cells show `2 поля площадки`;
+           - inspector explains that one PIM parameter will be passed to several marketplace fields and labels them as `основное поле` / `доп. поле`;
+           - production Browser QA for `Смартфоны` confirmed: `Сложные 1`, row `Оперативная память`, Ozon fields `Оперативная память` + `Оперативная память, ГБ для Шаблона наименования`, and no page-level horizontal overflow.
      - next: move catalog/source tree, toolbar/search/filter, inspector, and next-action queue into shared primitives.
 
 0. 2026-05-17 product-manager UX audit, route `создать товар -> наполнить -> проверить -> выгрузить`:
