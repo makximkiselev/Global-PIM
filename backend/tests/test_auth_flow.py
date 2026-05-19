@@ -2394,6 +2394,27 @@ class AuthFlowTests(unittest.TestCase):
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
         self.assertTrue(any("проверь SIM" in reason for reason in candidates[0]["confidence_reasons"]))
 
+    def test_restore_search_html_candidates_surface_variant_conflict_for_review(self) -> None:
+        html = r'''
+          <script>
+          window.__payload = {\"skuCode\":\"AG_10116MAX1TBDSTN\",\"brandName\":\"Apple\",
+          \"name\":\"Apple iPhone 16 Pro Max 1TB, Desert Titanium\",
+          \"link\":\"/catalog/AG_10116MAX1TBDSTN/\"};
+          </script>
+        '''
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/AG_10116MAX1TBDSTN/")
+        self.assertEqual(candidates[0]["confidence_score"], 0.5)
+        self.assertTrue(any("конфликт памяти" in reason for reason in candidates[0]["confidence_reasons"]))
+
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''
           <script>

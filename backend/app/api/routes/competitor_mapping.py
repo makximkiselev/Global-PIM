@@ -56,6 +56,7 @@ _BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
 _DISCOVERY_SOURCE_TIMEOUT_SECONDS = 32.0
 _STORE77_CATEGORY_HTML_CACHE_TTL_SECONDS = 180.0
 _ACTIONABLE_DISCOVERY_CONFIDENCE_SCORE = 0.78
+_VISIBLE_DISCOVERY_CONFIDENCE_SCORE = 0.45
 _bootstrap_cache: Dict[str, Dict[str, Any]] = {}
 _discovery_run_cache: Dict[str, Dict[str, Any]] = {}
 _store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
@@ -1032,6 +1033,45 @@ def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku
     return 0.79, [f"проверь SIM: у карточки re-store не указан {'/'.join(sim_missing)}", f"название похоже на {round(overlap * 100)}%"]
 
 
+def _manual_review_confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, brand: str = "") -> Tuple[float, List[str]]:
+    product_profile = _variant_profile(product.get("title"))
+    candidate_profile = _variant_profile(f"{brand} {title}")
+    product_model = product_profile.get("model")
+    candidate_model = candidate_profile.get("model")
+    if not product_model or not candidate_model or product_model != candidate_model:
+        return 0.0, ["другая модель"]
+
+    product_tokens = _match_tokens(_norm_match_text(product.get("title")))
+    candidate_tokens = _match_tokens(f"{brand} {title}")
+    line_conflict = _apple_line_conflict(product_tokens, candidate_tokens)
+    if line_conflict:
+        return 0.0, [line_conflict]
+    product_brand_tokens = _brand_tokens(product.get("title"))
+    candidate_brand_tokens = _brand_tokens(brand) | _brand_tokens(title)
+    if product_brand_tokens and candidate_brand_tokens and product_brand_tokens.isdisjoint(candidate_brand_tokens):
+        return 0.0, ["конфликт бренда"]
+
+    conflicts: List[str] = []
+    for key, label in (
+        ("memory", "памяти"),
+        ("color", "цвета"),
+        ("sim", "SIM"),
+        ("region", "региона"),
+    ):
+        product_value = product_profile.get(key)
+        candidate_value = candidate_profile.get(key)
+        if product_value and candidate_value and product_value != candidate_value:
+            conflicts.append(f"конфликт {label}: PIM={product_value}, candidate={candidate_value}")
+    if not conflicts:
+        return 0.0, ["нет отличий для ручной проверки"]
+
+    comparable_product_tokens = {token for token in product_tokens if len(token) > 1}
+    overlap = len(comparable_product_tokens & candidate_tokens) / max(1, len(comparable_product_tokens))
+    if overlap < 0.48:
+        return 0.0, [f"название похоже только на {round(overlap * 100)}%"]
+    return 0.5, conflicts + [f"похожая карточка требует решения, совпадение {round(overlap * 100)}%"]
+
+
 def _source_value_key(value: Any) -> str:
     return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").lower()).strip()
 
@@ -1222,6 +1262,15 @@ def _is_actionable_product_candidate(candidate: Dict[str, Any]) -> bool:
     return False
 
 
+def _is_visible_product_candidate(candidate: Dict[str, Any]) -> bool:
+    status = str(candidate.get("status") or "").strip()
+    if status == "approved":
+        return True
+    if status == "needs_review":
+        return _candidate_confidence_score(candidate) >= _VISIBLE_DISCOVERY_CONFIDENCE_SCORE
+    return False
+
+
 def _persist_product_source_scan_state(
     product_id: str,
     source_id: str,
@@ -1313,9 +1362,10 @@ def _product_discovery_source_summaries(
             if str(link.get("source_id") or "").strip() == source_id
         ]
         actionable = [item for item in source_candidates if _is_actionable_product_candidate(item)]
+        visible = [item for item in source_candidates if _is_visible_product_candidate(item)]
         best = max(source_candidates, key=_candidate_confidence_score, default=None)
         best_score = _candidate_confidence_score(best) if best else None
-        hidden_count = max(0, len(source_candidates) - len(actionable))
+        hidden_count = max(0, len(source_candidates) - len(visible))
         if source_links:
             status = "confirmed"
             label = "Подтверждено"
@@ -1324,6 +1374,10 @@ def _product_discovery_source_summaries(
             status = "review"
             label = "Нужен выбор"
             message = "Есть кандидаты с достаточной точностью, их нужно подтвердить или отклонить."
+        elif visible:
+            status = "review"
+            label = "Есть кандидаты"
+            message = "Источник нашел похожие карточки. Их нужно подтвердить или отклонить вручную."
         elif best:
             status = "no_exact_match"
             label = "Нет точного товара"
@@ -1846,6 +1900,8 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
         if confidence_score < 0.78:
             confidence_score, reasons = _near_miss_confidence_for_candidate(product, title_clean, sku_clean, brand_clean)
         if confidence_score < 0.78:
+            confidence_score, reasons = _manual_review_confidence_for_candidate(product, title_clean, sku_clean, brand_clean)
+        if confidence_score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
             return
         seen.add(url)
         candidates.append(
@@ -3178,7 +3234,7 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
         if str(item.get("product_id") or "").strip() != normalized_product_id:
             continue
         all_product_candidates.append(dict(item))
-        if not _is_actionable_product_candidate(item):
+        if not _is_visible_product_candidate(item):
             continue
         items.append(dict(item))
     items.sort(key=lambda row: (str(row.get("status") or ""), -float(row.get("confidence_score") or 0), str(row.get("last_seen_at") or "")))

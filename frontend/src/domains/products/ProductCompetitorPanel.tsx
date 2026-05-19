@@ -97,7 +97,7 @@ type EnrichResp = {
   errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
 };
 
-const MIN_ACTIONABLE_COMPETITOR_SCORE = 0.78;
+const MIN_REVIEW_COMPETITOR_SCORE = 0.45;
 
 function scoreLabel(candidate: CompetitorCandidate): string {
   const raw = Number(candidate.confidence_score || 0);
@@ -112,7 +112,7 @@ function confirmedLinkTime(link: CompetitorLink): string {
 function isReviewCandidate(candidate: CompetitorCandidate): boolean {
   if (candidate.status !== "needs_review") return false;
   const score = Number(candidate.confidence_score || 0);
-  return Number.isFinite(score) && score >= MIN_ACTIONABLE_COMPETITOR_SCORE;
+  return Number.isFinite(score) && score >= MIN_REVIEW_COMPETITOR_SCORE;
 }
 
 function statusTone(status: string): "active" | "pending" | "danger" | "neutral" {

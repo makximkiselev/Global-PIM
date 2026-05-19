@@ -574,7 +574,8 @@ Progress:
     - fixed on 2026-05-19: Я.Маркет and Ozon export previews use provider-specific value details and block controlled values without a valid provider mapping instead of silently falling back to raw competitor text;
     - production verification on 2026-05-19: `product_70 / Степень защиты` now stores Store77 raw text `IP68 допускается погружение...`, resolves PIM canonical value `IP68`, and prepares separate Я.Маркет/Ozon outputs from the mapping layer;
     - fixed on 2026-05-19: competitor discovery now persists per-product/per-source scan state even when a source returns zero candidates or errors, and product competitor UI no longer shows `Не сканировали` after a completed empty scan;
-    - remaining issue: re-store exact-match quality still needs data/parser work where the site has the item but discovery returns no candidate; source cards must keep showing the honest state until the parser finds or rejects the exact product.
+    - fixed on 2026-05-19: re-store variant-conflict cards now remain visible as `needs_review` candidates instead of being dropped before persistence; for example `product_70` now shows 1TB re-store candidates as blocking manual-review candidates with memory/color conflict reasons;
+    - remaining issue: exact-match quality still needs parser/data work where re-store has the exact SKU but search returns only nearby variants; until then those variants must block the source and require explicit approve/reject.
 
 ### P1 DB Consolidation
 
