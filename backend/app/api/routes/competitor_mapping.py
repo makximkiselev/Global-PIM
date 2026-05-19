@@ -1027,13 +1027,12 @@ def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku
     sim_missing = [token for token in missing_required if token in {"esim", "sim"}]
     if missing_required and missing_required != sim_missing:
         return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
-    if not sim_missing:
-        return 0.0, ["нет причины для ручной проверки"]
-
     product_sim = product_profile.get("sim") or "unknown"
     candidate_sim = candidate_profile.get("sim") or "unknown"
     if product_sim != "unknown" and candidate_sim != "unknown" and product_sim != candidate_sim:
         return 0.79, [f"проверь SIM: PIM={product_sim}, candidate={candidate_sim}"]
+    if not sim_missing:
+        return 0.0, ["нет причины для ручной проверки"]
 
     comparable_product_tokens = {token for token in product_tokens if token not in {"esim", "sim"} and len(token) > 1}
     overlap = len(comparable_product_tokens & candidate_tokens) / max(1, len(comparable_product_tokens))
@@ -2027,14 +2026,88 @@ async def _enrich_restore_candidates_for_review(product: Dict[str, Any], candida
     ]
 
 
+def _restore_iphone_direct_url(product: Dict[str, Any]) -> str:
+    profile = _variant_profile(product.get("title"))
+    model = str(profile.get("model") or "")
+    memory = str(profile.get("memory") or "")
+    color = str(profile.get("color") or "")
+    model_match = re.fullmatch(r"iphone_(\d{1,2})(?:_(pro_max|pro|plus|mini))?", model)
+    memory_match = re.fullmatch(r"(\d+)(gb|tb)", memory)
+    model_codes = {
+        "pro_max": "MAX",
+        "pro": "PRO",
+        "plus": "PLUS",
+        "mini": "MINI",
+        "": "",
+    }
+    color_codes = {
+        "desert_titanium": "DSTN",
+        "natural_titanium": "NATN",
+        "white_titanium": "WHTN",
+        "black_titanium": "BLKT",
+        "blue": "BLUE",
+        "silver": "SLVN",
+        "orange": "ORNG",
+    }
+    if not model_match or not memory_match or color not in color_codes:
+        return ""
+    generation = model_match.group(1)
+    suffix = model_match.group(2) or ""
+    memory_code = memory_match.group(1) if memory_match.group(2) == "gb" else f"{memory_match.group(1)}TB"
+    code = f"101{generation}{model_codes.get(suffix, '')}{memory_code}{color_codes[color]}"
+    return f"https://re-store.ru/catalog/{code}/"
+
+
+async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
+    url = _restore_iphone_direct_url(product)
+    if not url:
+        return []
+    try:
+        html = await _fetch_search_html(url)
+        _, specs, _ = extract_restore_product_content_from_html(html, base_url=url)
+    except Exception:
+        return []
+    if not isinstance(specs, dict) or not specs:
+        return []
+    title = str(product.get("title") or "").strip()
+    profile_text = _restore_candidate_profile_text({"brand": "Apple", "title": title}, specs)
+    score, reasons = _confidence_for_candidate(product, profile_text, "", "Apple")
+    if score < 0.78:
+        score, reasons = _near_miss_confidence_for_candidate(product, profile_text, "", "Apple")
+    if score < 0.78:
+        return []
+    return [
+        {
+            "url": url,
+            "title": title,
+            "brand": "Apple",
+            "sku": url.rstrip("/").split("/")[-1],
+            "confidence_score": min(0.98, max(score, 0.89)),
+            "confidence_reasons": [*reasons, "re-store URL собран из модели, памяти и цвета"],
+            "profile_text": profile_text,
+            "profile_specs": {
+                key: str(specs.get(key) or "").strip()
+                for key in ("Память", "Цвет", "SIM-карта")
+                if str(specs.get(key) or "").strip()
+            },
+            "discovery_strategy": "restore_direct_sku_seed",
+            "match_group_key": _model_memory_color_group_key(profile_text),
+        }
+    ]
+
+
 async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     if os.getenv("ENABLE_HTTP_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
         # Hard kill switch for production incidents. re-store serves the product
         # payload in the first HTML response, so this does not require browser
         # automation and should work by default for per-SKU discovery.
         return []
-    out: List[Dict[str, Any]] = []
+    out: List[Dict[str, Any]] = await _restore_seed_candidates_for_product(product)
     seen: set[str] = set()
+    for candidate in out:
+        candidate_url = str(candidate.get("url") or "")
+        if candidate_url:
+            seen.add(candidate_url)
     for term in _query_terms_for_product(product):
         url = f"https://re-store.ru/search/?q={quote_plus(term)}"
         try:

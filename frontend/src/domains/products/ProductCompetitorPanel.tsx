@@ -138,6 +138,12 @@ function simProfileLabel(value?: string): string {
   return "SIM не распознан";
 }
 
+function reasonCaption(candidate: CompetitorCandidate): string {
+  const reasons = (candidate.confidence_reasons || []).join(" ").toLowerCase();
+  if (reasons.includes("конфликт") || reasons.includes("проверь")) return "Что проверить";
+  return "Почему подходит";
+}
+
 function sourceLabel(value?: string): string {
   if (value === "restore") return "re-store";
   if (value === "store77") return "store77";
@@ -474,7 +480,7 @@ export default function ProductCompetitorPanel({
                   <div><span>SIM в PIM</span><strong>{simProfileLabel(selected.product_sim_profile)}</strong></div>
                   <div><span>SIM у конкурента</span><strong>{simProfileLabel(selected.candidate_sim_profile)}</strong></div>
                   <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
-                  <div><span>Почему подходит</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
+                  <div><span>{reasonCaption(selected)}</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
                 </div>
                 {selected.status === "needs_review" ? (
                   <div className="productCompetitorModeration">

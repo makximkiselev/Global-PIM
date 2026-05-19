@@ -461,6 +461,31 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["source"], "store77")
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["storage"], "s3")
 
+    def test_competitor_specs_auto_map_without_saved_template_mapping(self) -> None:
+        attrs = {
+            "встроенная_память": {"code": "встроенная_память", "name": "Встроенная память"},
+            "название_цвета_от_производителя": {
+                "code": "название_цвета_от_производителя",
+                "name": "Название цвета от производителя",
+            },
+            "количество_sim_карт": {"code": "количество_sim_карт", "name": "Количество SIM-карт"},
+            "подробная_комплектация": {"code": "подробная_комплектация", "name": "Подробная комплектация"},
+        }
+        specs = {
+            "Память": "256 ГБ",
+            "Цвет": "песчаный титановый",
+            "SIM-карта": "SIM + eSIM",
+            "В комплекте": "кабель USB-C",
+        }
+
+        with patch.object(catalog_exchange, "_template_attr_defs", return_value=attrs):
+            mapped = catalog_exchange._auto_map_competitor_specs("tpl-phone", specs, {})
+
+        self.assertEqual(mapped["встроенная_память"], "256 ГБ")
+        self.assertEqual(mapped["название_цвета_от_производителя"], "песчаный титановый")
+        self.assertEqual(mapped["количество_sim_карт"], "SIM + eSIM")
+        self.assertEqual(mapped["подробная_комплектация"], "кабель USB-C")
+
     def test_content_source_summary_detects_competitor_media_after_storage_import(self) -> None:
         product = {
             "id": "product_1",

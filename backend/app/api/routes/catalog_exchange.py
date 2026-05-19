@@ -178,6 +178,67 @@ def _template_attr_defs(template_id: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def _field_key(value: Any) -> str:
+    return re.sub(r"[^a-zа-я0-9]+", " ", str(value or "").lower()).strip()
+
+
+_COMPETITOR_SPEC_TO_PIM_ALIASES: Dict[str, List[str]] = {
+    "встроенная память": ["память", "объем встроенной памяти", "объём встроенной памяти", "накопитель", "rom"],
+    "оперативная память": ["объем оперативной памяти", "объём оперативной памяти", "ram", "озу"],
+    "название цвета от производителя": ["цвет", "цвет товара", "цвет корпуса"],
+    "количество sim карт": ["sim карта", "sim-карта", "тип sim карты", "тип sim-карты", "количество sim карт"],
+    "линейка": ["серия", "модельный ряд"],
+    "подробная комплектация": ["в комплекте", "комплектация"],
+    "страна производства": ["страна производителя", "производитель страна"],
+    "гарантийный срок": ["гарантия", "гарантия мес", "гарантия, мес"],
+    "аутентификация": ["тип разблокировки", "разблокировка"],
+    "функции зарядки": ["поддержка magsafe", "беспроводная зарядка", "быстрая зарядка"],
+    "беспроводные интерфейсы": ["интерфейсы", "беспроводные технологии"],
+    "навигационная система": ["спутниковая навигация", "навигация"],
+    "степень защиты": ["защита от воды", "уровень защиты от влаги", "влагозащита"],
+    "тип разъема для зарядки": ["разъем", "разъём", "порт зарядки", "интерфейс зарядки"],
+    "разрешение экрана": ["размер изображения", "разрешение дисплея"],
+    "тип матрицы экрана": ["тип экрана", "технология экрана"],
+    "число пикселей на дюйм": ["число пикселей на дюйм ppi", "ppi"],
+    "стандарт связи": ["стандарт", "сети", "мобильная связь"],
+    "характеристики основной камеры": ["тыловая фотокамера", "основная камера"],
+    "функции камеры": ["функции тыловой фотокамеры", "функции основной камеры"],
+    "максимальное разрешение видеосъемки": ["разрешение видео", "видеосъемка"],
+}
+
+
+def _auto_map_competitor_specs(template_id: str, specs: Dict[str, Any], explicit_mapping: Dict[str, Any]) -> Dict[str, str]:
+    attr_defs = _template_attr_defs(template_id)
+    if not attr_defs or not isinstance(specs, dict):
+        return {}
+    spec_by_key = {
+        _field_key(key): str(value or "").strip()
+        for key, value in specs.items()
+        if str(key or "").strip() and str(value or "").strip()
+    }
+    mapped: Dict[str, str] = {}
+    for code, field in (explicit_mapping or {}).items():
+        code_s = str(code or "").strip()
+        fkey = _field_key(field)
+        if code_s and fkey and spec_by_key.get(fkey):
+            mapped[code_s] = spec_by_key[fkey]
+
+    attr_lookup: Dict[str, str] = {}
+    for code, attr in attr_defs.items():
+        name = str(attr.get("name") or code).strip()
+        for key in {_field_key(code), _field_key(name)}:
+            if key:
+                attr_lookup.setdefault(key, code)
+        for alias in _COMPETITOR_SPEC_TO_PIM_ALIASES.get(_field_key(name), []):
+            attr_lookup.setdefault(_field_key(alias), code)
+
+    for spec_key, value in spec_by_key.items():
+        code = attr_lookup.get(spec_key)
+        if code and code not in mapped:
+            mapped[code] = value
+    return mapped
+
+
 def _resolve_products(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int = 0) -> List[Dict[str, Any]]:
     nodes = _load_nodes()
     target_product_ids = {str(x or "").strip() for x in product_ids if str(x or "").strip()}
@@ -1046,14 +1107,8 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
                     competitor_results[site] = {"ok": False, "error": str(e) or "EXTRACT_FAILED", "url": url}
                     continue
                 specs = raw_result.get("specs") if isinstance(raw_result.get("specs"), dict) else {}
-                mapped_raw: Dict[str, str] = {}
-                if isinstance(mapping_by_site.get(site), dict):
-                    norm_specs = {" ".join(str(k or "").split()).lower(): str(v or "").strip() for k, v in specs.items() if str(k or "").strip()}
-                    for code, field in mapping_by_site.get(site, {}).items():
-                        fkey = " ".join(str(field or "").split()).lower()
-                        value = norm_specs.get(fkey, "")
-                        if value:
-                            mapped_raw[str(code or "").strip()] = value
+                explicit_mapping = mapping_by_site.get(site) if isinstance(mapping_by_site.get(site), dict) else {}
+                mapped_raw = _auto_map_competitor_specs(template_id, specs, explicit_mapping)
                 normalized = _normalize_mapped_specs(template_id, mapped_raw) if mapped_raw else {}
                 comp_payload = {
                     "ok": True,

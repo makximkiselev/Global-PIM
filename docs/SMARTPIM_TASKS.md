@@ -436,6 +436,7 @@ Progress:
    - 2026-05-16: HTTP discovery for re-store is enabled by default, with kill switch `ENABLE_HTTP_COMPETITOR_DISCOVERY=0`; real-site check for `Смартфон Apple iPhone 17 Pro 256Gb eSIM Blue (Global)` returns `https://re-store.ru/catalog/10117PRO256BLUE/` with confidence `0.95`.
    - when exact `eSIM` is absent from the server-side re-store response, the same model/memory/color card without explicit SIM is surfaced as a manual-review near match with `проверь SIM`, not silently discarded and not auto-confirmed.
    - 2026-05-19 correction: hard variant conflicts such as `256Gb` SKU vs `1 ТБ` re-store card are no longer surfaced as confirmable candidates; they can only be diagnostic evidence, otherwise the user can accidentally approve the wrong SKU.
+   - 2026-05-19 correction: re-store discovery now builds and verifies direct iPhone variant URLs from model/memory/color before falling back to search; for `product_70` it checks `10116MAX256DSTN` instead of relying on search returning a neighboring `1TB` card.
 16. Product competitor moderation must not show historical low-confidence garbage as actionable candidates:
    - production audit on `/products/product_2?tab=competitors` showed `35-39%` candidates for unrelated Apple Watch, Samsung vacuum and organization pages;
    - API context now exposes only approved candidates and `needs_review` candidates with confidence at least `0.78`;
@@ -578,6 +579,7 @@ Progress:
     - fixed on 2026-05-19: competitor discovery now persists per-product/per-source scan state even when a source returns zero candidates or errors, and product competitor UI no longer shows `Не сканировали` after a completed empty scan;
     - fixed on 2026-05-19: re-store variant-conflict cards now remain visible as `needs_review` candidates instead of being dropped before persistence; for example `product_70` now shows 1TB re-store candidates as blocking manual-review candidates with memory/color conflict reasons;
     - fixed on 2026-05-19: re-store candidate scoring now enriches candidates from the product-card specs before persistence, especially `Память`, `Цвет`, and `SIM-карта`, so `eSIM` and `SIM + eSIM` are separated by real card data instead of only by search-result title;
+    - fixed on 2026-05-19: competitor enrichment no longer depends only on saved `mapping_by_site`; when mapping is missing it auto-maps common source spec names to PIM fields, for example `Память -> Встроенная память`, `Цвет -> Название цвета от производителя`, `SIM-карта -> Количество SIM-карт`, `В комплекте -> Подробная комплектация`;
     - remaining issue: exact-match quality still needs parser/data work where re-store has the exact SKU but search returns only nearby variants; until then those variants must block the source and require explicit approve/reject.
 
 ### P1 DB Consolidation

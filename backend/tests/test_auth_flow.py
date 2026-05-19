@@ -2471,6 +2471,24 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(enriched["profile_specs"]["SIM-карта"], "SIM + eSIM")
         self.assertEqual(competitor_mapping_routes._sim_profile(enriched["profile_text"]), "nano_sim_esim")
 
+    def test_restore_seed_candidate_builds_exact_iphone_url(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+        html = r''':[{\"property\":\"Память\",\"values\":[{\"value\":\"256 ГБ\"}],\"hint\":\"\"},{\"property\":\"Цвет\",\"values\":[{\"value\":\"песчаный титановый\"}],\"hint\":\"\"},{\"property\":\"SIM-карта\",\"values\":[{\"value\":\"SIM + eSIM\"}],\"hint\":\"\"}]'''
+
+        with patch.object(competitor_mapping_routes, "_fetch_search_html", new=AsyncMock(return_value=html)):
+            candidates = asyncio.run(competitor_mapping_routes._restore_seed_candidates_for_product(product))
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/10116MAX256DSTN/")
+        self.assertEqual(candidates[0]["profile_specs"]["Память"], "256 ГБ")
+        self.assertEqual(candidates[0]["profile_specs"]["SIM-карта"], "SIM + eSIM")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
+        self.assertTrue(any("проверь SIM" in reason for reason in candidates[0]["confidence_reasons"]))
+
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''
           <script>
