@@ -398,6 +398,7 @@ Required behavior:
    - Candidate scoring rejects explicit conflicts by color, region, memory, model, or SIM profile.
    - `match_group_key` includes SIM profile, so approving one candidate does not auto-reject another SIM variant.
 4. If multiple close candidates exist, UI shows them as selectable variants.
+   - Close candidates are only selectable when the SKU identity still matches; memory/color/SIM/region conflicts must not appear as confirmable candidates.
 5. If all candidates are rejected, user can add exact competitor URL manually.
 6. Approved/rejected decisions persist to `pim_channel_links`.
 
@@ -433,7 +434,8 @@ Progress:
    - real-site check for `Apple iPhone 17 Pro 256GB Silver` returns `https://re-store.ru/catalog/10117PRO256SLVN/` in about 2 seconds;
    - `Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)` correctly does not match the available physical-SIM `re-store` SKU, because SIM profile conflicts must not collapse.
    - 2026-05-16: HTTP discovery for re-store is enabled by default, with kill switch `ENABLE_HTTP_COMPETITOR_DISCOVERY=0`; real-site check for `Смартфон Apple iPhone 17 Pro 256Gb eSIM Blue (Global)` returns `https://re-store.ru/catalog/10117PRO256BLUE/` with confidence `0.95`.
-   - when exact `eSIM` is absent from the server-side re-store response, the same model/memory/color physical-SIM card is now surfaced as a manual-review near match with `проверь SIM`, not silently discarded and not auto-confirmed.
+   - when exact `eSIM` is absent from the server-side re-store response, the same model/memory/color card without explicit SIM is surfaced as a manual-review near match with `проверь SIM`, not silently discarded and not auto-confirmed.
+   - 2026-05-19 correction: hard variant conflicts such as `256Gb` SKU vs `1 ТБ` re-store card are no longer surfaced as confirmable candidates; they can only be diagnostic evidence, otherwise the user can accidentally approve the wrong SKU.
 16. Product competitor moderation must not show historical low-confidence garbage as actionable candidates:
    - production audit on `/products/product_2?tab=competitors` showed `35-39%` candidates for unrelated Apple Watch, Samsung vacuum and organization pages;
    - API context now exposes only approved candidates and `needs_review` candidates with confidence at least `0.78`;

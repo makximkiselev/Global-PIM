@@ -2394,7 +2394,7 @@ class AuthFlowTests(unittest.TestCase):
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
         self.assertTrue(any("проверь SIM" in reason for reason in candidates[0]["confidence_reasons"]))
 
-    def test_restore_search_html_candidates_surface_variant_conflict_for_review(self) -> None:
+    def test_restore_search_html_candidates_reject_variant_conflict(self) -> None:
         html = r'''
           <script>
           window.__payload = {\"skuCode\":\"AG_10116MAX1TBDSTN\",\"brandName\":\"Apple\",
@@ -2410,10 +2410,7 @@ class AuthFlowTests(unittest.TestCase):
 
         candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
 
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/AG_10116MAX1TBDSTN/")
-        self.assertEqual(candidates[0]["confidence_score"], 0.5)
-        self.assertTrue(any("конфликт памяти" in reason for reason in candidates[0]["confidence_reasons"]))
+        self.assertEqual(candidates, [])
 
     def test_restore_candidate_review_enrichment_uses_card_specs_for_sim(self) -> None:
         product = {
@@ -2449,7 +2446,6 @@ class AuthFlowTests(unittest.TestCase):
 
         self.assertEqual(enriched["profile_specs"]["SIM-карта"], "SIM + eSIM")
         self.assertEqual(competitor_mapping_routes._sim_profile(enriched["profile_text"]), "nano_sim_esim")
-        self.assertTrue(any("конфликт SIM" in reason for reason in enriched["confidence_reasons"]))
         normalized = competitor_mapping_routes._normalize_candidate(product, {"id": "restore", "name": "re-store"}, enriched)
         self.assertEqual(normalized["candidate_sim_profile"], "nano_sim_esim")
         self.assertEqual(normalized["profile_specs"]["SIM-карта"], "SIM + eSIM")

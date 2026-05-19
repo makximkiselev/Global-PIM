@@ -1071,14 +1071,9 @@ def _manual_review_confidence_for_candidate(product: Dict[str, Any], title: str,
         candidate_value = candidate_profile.get(key)
         if product_value and candidate_value and product_value != candidate_value:
             conflicts.append(f"конфликт {label}: PIM={product_value}, candidate={candidate_value}")
-    if not conflicts:
-        return 0.0, ["нет отличий для ручной проверки"]
-
-    comparable_product_tokens = {token for token in product_tokens if len(token) > 1}
-    overlap = len(comparable_product_tokens & candidate_tokens) / max(1, len(comparable_product_tokens))
-    if overlap < 0.48:
-        return 0.0, [f"название похоже только на {round(overlap * 100)}%"]
-    return 0.5, conflicts + [f"похожая карточка требует решения, совпадение {round(overlap * 100)}%"]
+    if conflicts:
+        return 0.0, conflicts
+    return 0.0, ["нет отличий для ручной проверки"]
 
 
 def _source_value_key(value: Any) -> str:
