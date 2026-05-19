@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 import unittest
@@ -585,6 +586,108 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(features["battery_capacity"]["value"], "")
         self.assertEqual(features["battery_mount"]["value"], "Несъемный")
         self.assertEqual(features["video_time"]["value"], "до 33 часов")
+
+    def test_competitor_ai_suggestions_fallback_sorts_unmatched_specs(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Смартфон Apple iPhone 16 Pro 256GB",
+            "content": {
+                "features": [
+                    {"code": "material", "name": "Материал корпуса", "value": ""},
+                    {"code": "brightness", "name": "Максимальная яркость", "value": ""},
+                    {"code": "battery_mount", "name": "Крепление аккумулятора", "value": ""},
+                ],
+                "source_evidence": {
+                    "competitors": {
+                        "restore": {
+                            "unmatched_specs": {
+                                "Материал": "титан",
+                                "Яркость": "2000 кд/м²",
+                                "Отзывы": "123",
+                            }
+                        },
+                        "store77": {
+                            "unmatched_specs": {
+                                "Страна производства": "Китай",
+                            }
+                        },
+                    }
+                },
+            },
+        }
+
+        response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
+        items = response["items"]
+        by_name = {item["source_name"]: item for item in items}
+
+        self.assertEqual(response["mode"], "rules")
+        self.assertEqual(by_name["Материал"]["action"], "map_existing")
+        self.assertEqual(by_name["Материал"]["target_code"], "material")
+        self.assertEqual(by_name["Яркость"]["action"], "map_existing")
+        self.assertEqual(by_name["Яркость"]["target_code"], "brightness")
+        self.assertEqual(by_name["Отзывы"]["action"], "ignore")
+        self.assertEqual(by_name["Страна производства"]["action"], "create_attribute")
+
+    def test_competitor_ai_suggestions_validates_llm_targets(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Смартфон Apple iPhone 16 Pro 256GB",
+            "content": {
+                "features": [{"code": "brightness", "name": "Максимальная яркость", "value": ""}],
+                "source_evidence": {
+                    "competitors": {
+                        "restore": {
+                            "unmatched_specs": {
+                                "Яркость": "2000 кд/м²",
+                                "Гарантия": "1 год",
+                            }
+                        }
+                    }
+                },
+            },
+        }
+
+        async def fake_llm_chat_text(**kwargs):
+            return {
+                "model": "test-model",
+                "content": json.dumps(
+                    {
+                        "items": [
+                            {
+                                "source_id": "restore",
+                                "source_name": "Яркость",
+                                "raw_value": "2000 кд/м²",
+                                "action": "map_existing",
+                                "target_code": "brightness",
+                                "target_name": "Максимальная яркость",
+                                "confidence": 0.91,
+                                "reason": "это яркость дисплея",
+                            },
+                            {
+                                "source_id": "restore",
+                                "source_name": "Гарантия",
+                                "raw_value": "1 год",
+                                "action": "map_existing",
+                                "target_code": "unknown",
+                                "target_name": "Несуществующее поле",
+                                "confidence": 0.8,
+                                "reason": "ошибочная цель",
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+
+        with patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text):
+            response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
+
+        items = {item["source_name"]: item for item in response["items"]}
+        self.assertEqual(response["mode"], "llm")
+        self.assertEqual(items["Яркость"]["action"], "map_existing")
+        self.assertEqual(items["Яркость"]["target_code"], "brightness")
+        self.assertEqual(items["Гарантия"]["action"], "create_attribute")
+        self.assertEqual(items["Гарантия"]["target_code"], "гарантия")
 
     def test_content_source_summary_detects_competitor_media_after_storage_import(self) -> None:
         product = {

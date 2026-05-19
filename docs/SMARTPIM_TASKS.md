@@ -127,6 +127,13 @@ Audit findings to verify/fix:
      - `Число пикселей на дюйм` remains correctly `460`.
    - remaining issue: many donor specs still stay unmatched because the current smartphone info-model does not contain corresponding canonical fields (`Датчики`, `Материал корпуса`, `Максимальная яркость`, `Гарантийный срок`, `Страна производства`, device dimensions, advanced camera/video fields) or because those fields are not approved in the model for this product;
    - next task: info-model builder must surface `unmatched_specs` from confirmed competitors as suggestions to add/reuse global attributes, not leave them hidden in evidence JSON.
+   - 2026-05-19 AI review queue requirement:
+     - add an AI-assisted review step on product competitor tab after competitor enrichment;
+     - input: `source_evidence.competitors.*.unmatched_specs` from confirmed re-store/store77 product cards;
+     - output: human-review suggestions with actions `map_existing`, `create_attribute`, `ignore`;
+     - AI must not auto-apply changes to the product or info-model in the first slice;
+     - fallback must work without an LLM by deterministic matching rules;
+     - next iteration after UI validation: add apply actions that create/reuse global attributes and update the info-model under explicit user confirmation.
 
 0. 2026-05-17 async/layout audit, routes `/catalog`, `/sources?tab=sources`, `/sources?tab=params`:
    - Browser visual proof: in-app Browser opened the current production `params` route, and the page collapsed into a narrow column although the product is desktop-only;

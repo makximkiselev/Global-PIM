@@ -20,6 +20,7 @@ import httpx
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.llm import LlmError, llm_chat_text
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
 from app.core.products.parameter_flow import dict_id_for_product_feature
 from app.core.tenant_context import (
@@ -61,6 +62,8 @@ _VISIBLE_DISCOVERY_CONFIDENCE_SCORE = 0.45
 _bootstrap_cache: Dict[str, Dict[str, Any]] = {}
 _discovery_run_cache: Dict[str, Dict[str, Any]] = {}
 _store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
+
+_AI_SPEC_ACTIONS = {"map_existing", "create_attribute", "ignore"}
 
 
 # =========================
@@ -1939,6 +1942,298 @@ async def _merge_competitor_content_into_product(
         "unmatched_count": unmatched_count,
         "enriched_sources": enriched_sources,
     }
+
+
+def _compact_ai_text(value: Any, limit: int = 240) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _product_ai_targets(product: Dict[str, Any]) -> List[Dict[str, Any]]:
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    features = content.get("features") if isinstance(content.get("features"), list) else []
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _append(code: Any, name: Any, source: str) -> None:
+        title = str(name or code or "").strip()
+        if not title:
+            return
+        normalized_code = str(code or _source_value_key(title) or title).strip()
+        key = _source_value_key(normalized_code) or _source_value_key(title)
+        if not key or key in seen:
+            return
+        seen.add(key)
+        out.append(
+            {
+                "code": normalized_code,
+                "name": title,
+                "source": source,
+                "keys": _feature_lookup_keys(title) + _feature_lookup_keys(normalized_code),
+            }
+        )
+
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        _append(feature.get("code"), feature.get("name") or feature.get("code"), "product")
+
+    category_id = str(product.get("category_id") or "").strip()
+    template_id, _template_category_id = _resolve_template_for_category(category_id)
+    if template_id:
+        for field in _master_fields(template_id):
+            if not isinstance(field, dict):
+                continue
+            _append(field.get("code"), field.get("name") or field.get("code"), "model")
+
+    return out
+
+
+def _collect_unmatched_competitor_specs(product: Dict[str, Any]) -> List[Dict[str, str]]:
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    source_evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
+    competitors = source_evidence.get("competitors") if isinstance(source_evidence.get("competitors"), dict) else {}
+    out: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    for source_id, payload in competitors.items():
+        if str(source_id or "").strip() not in ALLOWED_SITES or not isinstance(payload, dict):
+            continue
+        unmatched = payload.get("unmatched_specs") if isinstance(payload.get("unmatched_specs"), dict) else {}
+        for source_name, raw_value in unmatched.items():
+            name = _compact_ai_text(source_name, 120)
+            value = _compact_ai_text(raw_value, 260)
+            if not name or not value:
+                continue
+            key = f"{source_id}:{_source_value_key(name)}:{_source_value_key(value)}"
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"source_id": str(source_id), "source_name": name, "raw_value": value})
+    return out
+
+
+def _noise_spec_name(name: str) -> bool:
+    key = _source_value_key(name)
+    if not key:
+        return True
+    noise_tokens = {
+        "акции",
+        "доставка",
+        "доступность",
+        "избранное",
+        "кредит",
+        "отзывы",
+        "похожие товары",
+        "покупатели",
+        "рассрочка",
+        "скидка",
+        "цена",
+    }
+    return any(token in key for token in noise_tokens)
+
+
+def _target_match_score(source_name: str, target: Dict[str, Any]) -> float:
+    source_keys = set(_feature_lookup_keys(source_name))
+    target_keys = {_source_value_key(item) for item in (target.get("keys") or []) if _source_value_key(item)}
+    target_keys.add(_source_value_key(target.get("name")))
+    target_keys.add(_source_value_key(target.get("code")))
+    target_keys.discard("")
+    if source_keys & target_keys:
+        return 0.98
+
+    source_tokens = {token for token in (_source_value_key(source_name) or "").split() if len(token) >= 3}
+    target_tokens = {token for token in (_source_value_key(target.get("name")) or "").split() if len(token) >= 3}
+    if not source_tokens or not target_tokens:
+        return 0.0
+
+    if "упаковк" in " ".join(target_tokens) and "упаковк" not in " ".join(source_tokens):
+        return 0.0
+    overlap = len(source_tokens & target_tokens)
+    if overlap <= 0:
+        return 0.0
+    return min(0.92, overlap / max(len(source_tokens), len(target_tokens)) + 0.25)
+
+
+def _rule_ai_suggestion(spec: Dict[str, str], targets: List[Dict[str, Any]]) -> Dict[str, Any]:
+    source_name = spec["source_name"]
+    if _noise_spec_name(source_name):
+        action = "ignore"
+        best: Optional[Dict[str, Any]] = None
+        score = 0.3
+        reason = "похоже на служебный или маркетинговый блок, не характеристика товара"
+    else:
+        scored = sorted(
+            ((_target_match_score(source_name, target), target) for target in targets),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        score, best = scored[0] if scored else (0.0, None)
+        if best and score >= 0.72:
+            action = "map_existing"
+            reason = "название похоже на существующее поле модели или товара"
+        else:
+            action = "create_attribute"
+            reason = "похожего глобального поля не найдено, нужно рассмотреть создание атрибута"
+
+    source_id = spec["source_id"]
+    item: Dict[str, Any] = {
+        "id": hashlib.sha1(f"{source_id}:{source_name}:{spec['raw_value']}".encode("utf-8")).hexdigest()[:16],
+        "source_id": source_id,
+        "source_name": source_name,
+        "raw_value": spec["raw_value"],
+        "action": action,
+        "confidence": round(float(score or 0.0), 2),
+        "reason": reason,
+        "status": "draft",
+    }
+    if action == "map_existing" and best:
+        item["target_code"] = best.get("code")
+        item["target_name"] = best.get("name")
+        item["target_source"] = best.get("source")
+    if action == "create_attribute":
+        item["target_name"] = source_name
+        item["target_code"] = _source_value_key(source_name).replace(" ", "_")
+    return item
+
+
+def _json_object_from_text(text: str) -> Dict[str, Any]:
+    raw = str(text or "").strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?", "", raw, flags=re.I).strip()
+        raw = re.sub(r"```$", "", raw).strip()
+    try:
+        obj = json.loads(raw)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        pass
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            obj = json.loads(raw[start : end + 1])
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _validate_llm_suggestions(
+    *,
+    raw_items: Any,
+    rule_items: List[Dict[str, Any]],
+    targets: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not isinstance(raw_items, list):
+        return rule_items
+
+    target_by_name = {_source_value_key(target.get("name")): target for target in targets}
+    target_by_code = {_source_value_key(target.get("code")): target for target in targets}
+    rule_by_key = {
+        f"{item.get('source_id')}:{_source_value_key(item.get('source_name'))}:{_source_value_key(item.get('raw_value'))}": item
+        for item in rule_items
+    }
+    out: List[Dict[str, Any]] = []
+    used: set[str] = set()
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        source_id = str(raw.get("source_id") or "").strip()
+        source_name = _compact_ai_text(raw.get("source_name"), 120)
+        raw_value = _compact_ai_text(raw.get("raw_value"), 260)
+        key = f"{source_id}:{_source_value_key(source_name)}:{_source_value_key(raw_value)}"
+        base = rule_by_key.get(key)
+        if not base:
+            continue
+        used.add(key)
+        action = str(raw.get("action") or base.get("action") or "").strip()
+        if action not in _AI_SPEC_ACTIONS:
+            action = str(base.get("action") or "create_attribute")
+        next_item = dict(base)
+        next_item["action"] = action
+        next_item["reason"] = _compact_ai_text(raw.get("reason") or base.get("reason"), 180)
+        try:
+            next_item["confidence"] = max(0.0, min(1.0, float(raw.get("confidence"))))
+        except Exception:
+            next_item["confidence"] = base.get("confidence", 0.0)
+
+        if action == "map_existing":
+            target_key = _source_value_key(raw.get("target_code"))
+            target = target_by_code.get(target_key) if target_key else None
+            if not target:
+                target = target_by_name.get(_source_value_key(raw.get("target_name")))
+            if not target:
+                target = target_by_code.get(_source_value_key(base.get("target_code"))) or target_by_name.get(_source_value_key(base.get("target_name")))
+            if not target:
+                next_item["action"] = "create_attribute"
+                next_item["target_name"] = source_name
+                next_item["target_code"] = _source_value_key(source_name).replace(" ", "_")
+            else:
+                next_item["target_code"] = target.get("code")
+                next_item["target_name"] = target.get("name")
+                next_item["target_source"] = target.get("source")
+        elif action == "create_attribute":
+            next_item["target_name"] = _compact_ai_text(raw.get("target_name") or source_name, 120)
+            next_item["target_code"] = _source_value_key(next_item["target_name"]).replace(" ", "_")
+            next_item.pop("target_source", None)
+        else:
+            next_item.pop("target_code", None)
+            next_item.pop("target_name", None)
+            next_item.pop("target_source", None)
+        out.append(next_item)
+
+    for key, item in rule_by_key.items():
+        if key not in used:
+            out.append(item)
+    return out
+
+
+async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, Any]:
+    targets = _product_ai_targets(product)
+    specs = _collect_unmatched_competitor_specs(product)
+    rule_items = [_rule_ai_suggestion(spec, targets) for spec in specs]
+    warnings: List[str] = []
+    if not specs:
+        return {"mode": "empty", "items": [], "warnings": warnings}
+
+    product_title = _compact_ai_text(product.get("title") or product.get("name") or product.get("sku_gt") or product.get("id"), 160)
+    target_payload = [{"code": item["code"], "name": item["name"]} for item in targets[:90]]
+    spec_payload = specs[:45]
+    system_prompt = (
+        "Ты PIM-ассистент для контент-менеджера. Нужно разобрать характеристики конкурентов, "
+        "которые не попали в поля товара. Ничего не придумывай сверх входных данных. "
+        "Верни только JSON без Markdown."
+    )
+    user_prompt = (
+        "Задача: для каждой характеристики конкурента выбери действие:\n"
+        "map_existing — если это то же самое, что существующее поле PIM;\n"
+        "create_attribute — если полезная товарная характеристика, но поля еще нет;\n"
+        "ignore — если это цена, доставка, отзывы, промо или не характеристика товара.\n\n"
+        f"Товар: {product_title}\n"
+        f"Существующие поля PIM JSON:\n{json.dumps(target_payload, ensure_ascii=False)}\n\n"
+        f"Незамапленные характеристики JSON:\n{json.dumps(spec_payload, ensure_ascii=False)}\n\n"
+        "Ответ строго в формате: "
+        '{"items":[{"source_id":"restore","source_name":"...","raw_value":"...","action":"map_existing|create_attribute|ignore","target_code":"...","target_name":"...","confidence":0.0,"reason":"коротко"}]}'
+    )
+    try:
+        llm_response = await llm_chat_text(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            profile="fast",
+            temperature=0.1,
+            timeout_seconds=45.0,
+        )
+        parsed = _json_object_from_text(llm_response["content"])
+        items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
+        return {"mode": "llm", "model": llm_response.get("model"), "items": items, "warnings": warnings}
+    except LlmError as exc:
+        warnings.append(str(exc))
+    except Exception as exc:
+        warnings.append(f"AI_PARSE_ERROR:{exc.__class__.__name__}")
+    return {"mode": "rules", "items": rule_items, "warnings": warnings}
 
 
 def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -3955,6 +4250,36 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
         "matched_count": merged["matched_count"],
         "unmatched_count": merged["unmatched_count"],
         "errors": errors,
+    }
+
+
+@router.post("/discovery/products/{product_id}/ai-suggestions")
+async def competitor_product_ai_suggestions(product_id: str) -> Dict[str, Any]:
+    normalized_product_id = str(product_id or "").strip()
+    if not normalized_product_id:
+        raise HTTPException(status_code=400, detail="product_id required")
+
+    products = query_products_full(ids=[normalized_product_id])
+    product = products[0] if products else None
+    if not isinstance(product, dict):
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    result = await _competitor_ai_suggestion_items(product)
+    items = result.get("items") if isinstance(result.get("items"), list) else []
+    summary = {
+        "total": len(items),
+        "map_existing": sum(1 for item in items if item.get("action") == "map_existing"),
+        "create_attribute": sum(1 for item in items if item.get("action") == "create_attribute"),
+        "ignore": sum(1 for item in items if item.get("action") == "ignore"),
+    }
+    return {
+        "ok": True,
+        "product_id": normalized_product_id,
+        "mode": result.get("mode") or "rules",
+        "model": result.get("model"),
+        "summary": summary,
+        "items": items,
+        "warnings": result.get("warnings") or [],
     }
 
 

@@ -1052,6 +1052,130 @@
   background:rgba(180, 35, 24, .08);
 }
 
+.productCompetitorAiQueue{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:14px;
+  border:1px solid rgba(var(--brand-rgb), .24);
+  border-radius:20px;
+  background:
+    linear-gradient(135deg, rgba(var(--brand-rgb), .08), transparent 38%),
+    rgba(var(--surface-rgb), .72);
+}
+
+.productCompetitorAiHead{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:flex-start;
+}
+
+.productCompetitorAiHead p{
+  margin:7px 0 0;
+  max-width:74ch;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+  font-weight:750;
+}
+
+.productCompetitorAiStats{
+  flex:0 0 auto;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.productCompetitorAiStats span{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:8px 10px;
+  border:1px solid rgba(var(--line-rgb), .66);
+  border-radius:999px;
+  background:rgba(var(--card-rgb), .74);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+}
+
+.productCompetitorAiStats b{
+  color:var(--text);
+  font-size:13px;
+  font-weight:950;
+}
+
+.productCompetitorAiWarning{
+  padding:10px 12px;
+  border:1px solid rgba(var(--brand-rgb), .22);
+  border-radius:14px;
+  background:rgba(var(--brand-rgb), .07);
+  color:var(--muted);
+  font-size:12px;
+  font-weight:800;
+}
+
+.productCompetitorAiList{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.productCompetitorAiItem{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(190px, .72fr);
+  gap:12px;
+  padding:12px;
+  border:1px solid rgba(var(--line-rgb), .64);
+  border-radius:16px;
+  background:rgba(var(--card-rgb), .78);
+}
+
+.productCompetitorAiItem.is-map_existing{
+  border-color:rgba(36, 143, 88, .24);
+}
+
+.productCompetitorAiItem.is-create_attribute{
+  border-color:rgba(var(--brand-rgb), .24);
+}
+
+.productCompetitorAiSource,
+.productCompetitorAiTarget{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+
+.productCompetitorAiSource > span,
+.productCompetitorAiTarget > span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+
+.productCompetitorAiSource strong,
+.productCompetitorAiTarget strong{
+  min-width:0;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.productCompetitorAiSource em,
+.productCompetitorAiTarget em{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-style:normal;
+  font-weight:720;
+}
+
 .productCompetitorWorkspace{
   display:grid;
   grid-template-columns:minmax(0, 1.1fr) minmax(320px, .9fr);
@@ -1780,6 +1904,7 @@
   .productWorkspaceValidationGrid,
   .productCompetitorMetrics,
   .productCompetitorSourceGrid,
+  .productCompetitorAiList,
   .productWorkflowStrip,
   .productCreateFlowPreview{
     grid-template-columns:repeat(2, minmax(0, 1fr));

@@ -97,6 +97,36 @@ type EnrichResp = {
   errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
 };
 
+type AiSuggestionAction = "map_existing" | "create_attribute" | "ignore";
+
+type AiSuggestion = {
+  id: string;
+  source_id: "restore" | "store77";
+  source_name: string;
+  raw_value: string;
+  action: AiSuggestionAction;
+  target_code?: string;
+  target_name?: string;
+  target_source?: string;
+  confidence?: number;
+  reason?: string;
+  status?: string;
+};
+
+type AiSuggestionsResp = {
+  ok: boolean;
+  mode: "llm" | "rules" | "empty" | string;
+  model?: string;
+  summary: {
+    total: number;
+    map_existing: number;
+    create_attribute: number;
+    ignore: number;
+  };
+  items: AiSuggestion[];
+  warnings?: string[];
+};
+
 const MIN_REVIEW_COMPETITOR_SCORE = 0.45;
 
 function scoreLabel(candidate: CompetitorCandidate): string {
@@ -177,6 +207,24 @@ function sourceScanTime(summary: CompetitorSourceSummary): string {
   return value ? new Date(value).toLocaleString("ru-RU") : "";
 }
 
+function aiActionLabel(action: AiSuggestionAction): string {
+  if (action === "map_existing") return "Связать";
+  if (action === "create_attribute") return "Создать поле";
+  return "Игнорировать";
+}
+
+function aiActionTone(action: AiSuggestionAction): "active" | "pending" | "neutral" {
+  if (action === "map_existing") return "active";
+  if (action === "create_attribute") return "pending";
+  return "neutral";
+}
+
+function aiConfidenceLabel(value?: number): string {
+  const raw = Number(value || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return "—";
+  return `${Math.round(raw * 100)}%`;
+}
+
 export default function ProductCompetitorPanel({
   productId,
   onEnriched,
@@ -195,6 +243,8 @@ export default function ProductCompetitorPanel({
   const [manualUrl, setManualUrl] = useState("");
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestionsResp | null>(null);
 
   const candidates = useMemo(() => (context?.items || []).filter(isReviewCandidate), [context?.items]);
   const candidateGroups = useMemo(() => {
@@ -304,12 +354,28 @@ export default function ProductCompetitorPanel({
       setEnrichNotice(
         `Источники: ${sources}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsText}`,
       );
+      setAiSuggestions(null);
       await load();
       await onEnriched?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить данные из подтвержденных ссылок");
     } finally {
       setEnriching(false);
+    }
+  }
+
+  async function loadAiSuggestions() {
+    setError("");
+    setAiLoading(true);
+    try {
+      const response = await api<AiSuggestionsResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}/ai-suggestions`, {
+        method: "POST",
+      });
+      setAiSuggestions(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось разобрать незамапленные характеристики");
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -353,6 +419,11 @@ export default function ProductCompetitorPanel({
             {context?.counts.confirmed_links ? (
               <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || running || enriching || !productId}>
                 {enriching ? "Загружаю…" : "Загрузить параметры и медиа"}
+              </Button>
+            ) : null}
+            {context?.counts.confirmed_links ? (
+              <Button onClick={() => void loadAiSuggestions()} disabled={loading || running || enriching || aiLoading || !productId}>
+                {aiLoading ? "Разбираю…" : "AI разобрать остатки"}
               </Button>
             ) : null}
             <Button variant="primary" onClick={() => void runDiscovery()} disabled={loading || running || !productId}>
@@ -414,6 +485,48 @@ export default function ProductCompetitorPanel({
         ) : null}
         {enrichNotice ? <div className="productCompetitorNotice">{enrichNotice}</div> : null}
         {error ? <div className="productCompetitorError">{error}</div> : null}
+
+        {aiSuggestions ? (
+          <div className="productCompetitorAiQueue">
+            <div className="productCompetitorAiHead">
+              <div>
+                <div className="productWorkspaceMiniTitle">AI-разбор незамапленных характеристик</div>
+                <p>Это черновик для контент-менеджера: AI предлагает связать поле, создать глобальный атрибут или игнорировать мусор. Автоматически ничего не применяется.</p>
+              </div>
+              <div className="productCompetitorAiStats">
+                <span><b>{aiSuggestions.summary.map_existing}</b> связать</span>
+                <span><b>{aiSuggestions.summary.create_attribute}</b> создать</span>
+                <span><b>{aiSuggestions.summary.ignore}</b> игнор</span>
+              </div>
+            </div>
+            {aiSuggestions.warnings?.length ? (
+              <div className="productCompetitorAiWarning">
+                AI сейчас недоступен. Показаны безопасные предложения по правилам; их можно использовать как черновик для модели.
+              </div>
+            ) : null}
+            {aiSuggestions.items.length ? (
+              <div className="productCompetitorAiList">
+                {aiSuggestions.items.slice(0, 10).map((item) => (
+                  <div key={item.id} className={`productCompetitorAiItem is-${item.action}`}>
+                    <div className="productCompetitorAiSource">
+                      <Badge tone={aiActionTone(item.action)}>{aiActionLabel(item.action)}</Badge>
+                      <span>{sourceLabel(item.source_id)}</span>
+                      <strong>{item.source_name}</strong>
+                      <em>{item.raw_value}</em>
+                    </div>
+                    <div className="productCompetitorAiTarget">
+                      <span>{item.action === "ignore" ? "Решение" : "Цель"}</span>
+                      <strong>{item.action === "ignore" ? "Не переносить в модель" : item.target_name || "Новое поле"}</strong>
+                      <em>{item.reason || "—"} · уверенность {aiConfidenceLabel(item.confidence)}</em>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="Незамапленных характеристик нет" description="После загрузки конкурентов все найденные параметры уже связаны или данных нет." />
+            )}
+          </div>
+        ) : null}
 
         {loading ? (
           <EmptyState title="Загружаем конкурентов" description="Получаем найденные карточки и подтвержденные ссылки для SKU." />

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import os
 import time
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
-import httpx
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
+from app.core.llm import LlmError, llm_chat_text, llm_model_for_profile
 from app.core.products.service import (
     create_product_family_service,
     create_product_service,
@@ -673,14 +672,7 @@ async def products_seo_description(req: SeoDescriptionReq):
     if not src_a and not src_b and not (req.use_features and features_block):
         raise HTTPException(status_code=400, detail="SOURCES_REQUIRED")
 
-    api_base = os.getenv("LLM_API_BASE", "http://localhost:11434/v1").strip().rstrip("/")
-    default_model = os.getenv("LLM_MODEL", "llama3.1:8b-instruct").strip()
-    profile = (req.profile or "balanced").strip().lower()
-    if profile not in {"fast", "balanced", "quality"}:
-        profile = "balanced"
-    profile_model_env = os.getenv(f"LLM_MODEL_{profile.upper()}", "").strip()
-    model = (req.model or "").strip() or profile_model_env or default_model
-    api_key = os.getenv("LLM_API_KEY", "").strip()
+    model, profile = llm_model_for_profile(req.profile or "balanced", req.model)
 
     use_features = bool(req.use_features and features_block)
 
@@ -725,42 +717,20 @@ async def products_seo_description(req: SeoDescriptionReq):
     )
 
     temperature = 0.35 if profile == "fast" else (0.5 if profile == "balanced" else 0.6)
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": temperature,
-    }
-
-    headers: Dict[str, str] = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0)) as client:
-            res = await client.post(f"{api_base}/chat/completions", json=payload, headers=headers)
-            if res.status_code == 404:
-                native_base = api_base[:-3] if api_base.endswith("/v1") else api_base
-                native_payload = {
-                    "model": model,
-                    "messages": payload["messages"],
-                    "stream": False,
-                    "options": {"temperature": temperature},
-                }
-                res = await client.post(f"{native_base}/api/chat", json=native_payload, headers=headers)
-        if not res.is_success:
-            raise HTTPException(status_code=502, detail=f"LLM_HTTP_{res.status_code}")
-
-        body = res.json()
-        description = (
-            (((body.get("choices") or [{}])[0] or {}).get("message") or {}).get("content")
-            or ((body.get("message") or {}).get("content"))
-            or ""
-        ).strip()
-        if not description:
-            raise HTTPException(status_code=502, detail="LLM_EMPTY_RESPONSE")
+        llm_response = await llm_chat_text(
+            messages=messages,
+            profile=profile,
+            model=model,
+            temperature=temperature,
+            timeout_seconds=180.0,
+        )
+        description = llm_response["content"].strip()
 
         if len(description) > req.max_chars:
             description = description[: req.max_chars].rstrip() + "…"
@@ -768,6 +738,13 @@ async def products_seo_description(req: SeoDescriptionReq):
         return {"description": description, "model": model, "profile": profile}
     except HTTPException:
         raise
+    except LlmError as e:
+        error_name = e.__class__.__name__
+        error_message = str(e).strip()
+        detail = f"LLM_ERROR:{error_name}"
+        if error_message:
+            detail = f"{detail}: {error_message}"
+        raise HTTPException(status_code=502, detail=detail)
     except Exception as e:
         error_name = e.__class__.__name__
         error_message = str(e).strip()
