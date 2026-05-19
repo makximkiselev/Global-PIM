@@ -573,7 +573,8 @@ Progress:
     - fixed on 2026-05-19: product parameter flow shows source raw evidence, PIM canonical value, and per-provider output status; unmapped controlled values now show `Нужно сопоставить значение`;
     - fixed on 2026-05-19: Я.Маркет and Ozon export previews use provider-specific value details and block controlled values without a valid provider mapping instead of silently falling back to raw competitor text;
     - production verification on 2026-05-19: `product_70 / Степень защиты` now stores Store77 raw text `IP68 допускается погружение...`, resolves PIM canonical value `IP68`, and prepares separate Я.Маркет/Ozon outputs from the mapping layer;
-    - remaining issue: re-store discovery still must run for every SKU and expose an honest per-source state in the product competitor panel, so users see why re-store did or did not participate.
+    - fixed on 2026-05-19: competitor discovery now persists per-product/per-source scan state even when a source returns zero candidates or errors, and product competitor UI no longer shows `Не сканировали` after a completed empty scan;
+    - remaining issue: re-store exact-match quality still needs data/parser work where the site has the item but discovery returns no candidate; source cards must keep showing the honest state until the parser finds or rejects the exact product.
 
 ### P1 DB Consolidation
 

@@ -533,6 +533,10 @@ def _candidate_id(product_id: str, source_id: str, url: str) -> str:
     return "cand_" + hashlib.sha1(raw).hexdigest()[:16]
 
 
+def _source_scan_link_id(product_id: str, source_id: str) -> str:
+    return f"{product_id}:{source_id}:scan"
+
+
 def _run_id() -> str:
     return "run_" + hashlib.sha1(now_iso().encode("utf-8")).hexdigest()[:16]
 
@@ -1141,9 +1145,14 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
     if provider not in ALLOWED_SITES or not product_id:
         return None
     link_id = str(row.get("link_id") or "").strip()
+    if link_id.endswith(":scan") or str(row.get("source") or "").strip() == "discovery_scan":
+        return None
     if str(row.get("status") or "").strip() == "confirmed" and link_id == f"{product_id}:{provider}":
         # Product-source confirmed links are the accepted result, not another
         # candidate row. Candidate rows keep their discovery candidate id.
+        return None
+    url = str(row.get("url") or "").strip()
+    if not url:
         return None
     source_name = next((str(item.get("name") or "") for item in DISCOVERY_SOURCES if item.get("id") == provider), provider)
     payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
@@ -1154,7 +1163,6 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
         "rejected": "rejected",
         "stale": "stale",
     }.get(str(row.get("status") or "").strip(), str(payload.get("raw_status") or row.get("status") or "needs_review"))
-    url = str(row.get("url") or "").strip()
     return {
         "id": str(payload.get("candidate_id") or link_id or "").strip(),
         "product_id": product_id,
@@ -1214,12 +1222,82 @@ def _is_actionable_product_candidate(candidate: Dict[str, Any]) -> bool:
     return False
 
 
+def _persist_product_source_scan_state(
+    product_id: str,
+    source_id: str,
+    *,
+    status: str,
+    run_id: str,
+    message: str = "",
+    error: Optional[str] = None,
+    candidates_count: int = 0,
+) -> None:
+    normalized_product_id = str(product_id or "").strip()
+    normalized_source_id = str(source_id or "").strip()
+    if not normalized_product_id or normalized_source_id not in ALLOWED_SITES:
+        return
+    payload = {
+        "source_id": normalized_source_id,
+        "run_id": str(run_id or "").strip(),
+        "last_scanned_at": now_iso(),
+        "message": str(message or "").strip(),
+        "error": str(error or "").strip(),
+        "candidates_count": max(0, int(candidates_count or 0)),
+    }
+    upsert_pim_channel_link(
+        {
+            "link_id": _source_scan_link_id(normalized_product_id, normalized_source_id),
+            "scope": "competitor_product",
+            "entity_type": "product",
+            "entity_id": normalized_product_id,
+            "provider": normalized_source_id,
+            "status": status,
+            "source": "discovery_scan",
+            "payload": payload,
+        }
+    )
+
+
+def _product_source_scan_states(product_id: str) -> Dict[str, Dict[str, Any]]:
+    normalized_product_id = str(product_id or "").strip()
+    if not normalized_product_id:
+        return {}
+    states: Dict[str, Dict[str, Any]] = {}
+    try:
+        rows = list_pim_channel_links(
+            scope="competitor_product",
+            entity_type="product",
+            entity_id=normalized_product_id,
+        )
+    except Exception:
+        return states
+    for row in rows:
+        if str(row.get("source") or "").strip() != "discovery_scan":
+            continue
+        source_id = str(row.get("provider") or "").strip()
+        if source_id not in ALLOWED_SITES:
+            continue
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        states[source_id] = {
+            "source_id": source_id,
+            "status": str(row.get("status") or "").strip(),
+            "updated_at": row.get("updated_at"),
+            "last_scanned_at": payload.get("last_scanned_at") or row.get("updated_at"),
+            "message": str(payload.get("message") or "").strip(),
+            "error": str(payload.get("error") or "").strip(),
+            "run_id": str(payload.get("run_id") or "").strip(),
+            "candidates_count": int(payload.get("candidates_count") or 0),
+        }
+    return states
+
+
 def _product_discovery_source_summaries(
     product_id: str,
     candidates: List[Dict[str, Any]],
     confirmed_links: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     normalized_product_id = str(product_id or "").strip()
+    scan_states = _product_source_scan_states(normalized_product_id)
     summaries: List[Dict[str, Any]] = []
     for source in DISCOVERY_SOURCES:
         source_id = str(source.get("id") or "").strip()
@@ -1250,6 +1328,14 @@ def _product_discovery_source_summaries(
             status = "no_exact_match"
             label = "Нет точного товара"
             message = "Найденные карточки скрыты: точность ниже порога или товар не совпадает."
+        elif scan_states.get(source_id, {}).get("status") == "scan_error":
+            status = "scan_error"
+            label = "Ошибка источника"
+            message = scan_states[source_id].get("message") or "Источник не ответил или вернул ошибку. Можно повторить поиск."
+        elif scan_states.get(source_id, {}).get("status") == "scanned_empty":
+            status = "no_exact_match"
+            label = "Нет точного товара"
+            message = "Источник проверен: точной карточки для этого SKU не найдено."
         else:
             status = "empty"
             label = "Не сканировали"
@@ -1271,6 +1357,8 @@ def _product_discovery_source_summaries(
                 "best_reasons": (best or {}).get("confidence_reasons")
                 if isinstance((best or {}).get("confidence_reasons"), list)
                 else [],
+                "last_scanned_at": scan_states.get(source_id, {}).get("last_scanned_at"),
+                "scan_error": scan_states.get(source_id, {}).get("error"),
             }
         )
     return summaries
@@ -3207,6 +3295,14 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                     timeout=_DISCOVERY_SOURCE_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError:
+                _persist_product_source_scan_state(
+                    product_id,
+                    source_id,
+                    status="scan_error",
+                    run_id=run_id,
+                    message="Источник долго отвечает, можно повторить поиск.",
+                    error="DISCOVERY_SOURCE_TIMEOUT",
+                )
                 errors.append(
                     {
                         "product_id": product.get("id"),
@@ -3216,15 +3312,32 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                 )
                 continue
             except Exception as exc:
+                error_text = str(exc) or "DISCOVERY_FAILED"
+                _persist_product_source_scan_state(
+                    product_id,
+                    source_id,
+                    status="scan_error",
+                    run_id=run_id,
+                    message="Источник вернул ошибку, можно повторить поиск.",
+                    error=error_text,
+                )
                 errors.append(
                     {
                         "product_id": product.get("id"),
                         "source_id": source.get("id"),
-                        "error": str(exc) or "DISCOVERY_FAILED",
+                        "error": error_text,
                     }
                 )
                 continue
             if not isinstance(raw_candidates, list):
+                _persist_product_source_scan_state(
+                    product_id,
+                    source_id,
+                    status="scan_error",
+                    run_id=run_id,
+                    message="Источник вернул некорректный ответ, можно повторить поиск.",
+                    error="INVALID_DISCOVERY_RESPONSE",
+                )
                 continue
             for raw in raw_candidates:
                 candidate = _normalize_candidate(product, source, raw)
@@ -3260,6 +3373,14 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                 candidates[existing_id] = existing
                 _persist_competitor_channel_candidate(existing)
                 updated_count += 1
+            _persist_product_source_scan_state(
+                product_id,
+                source_id,
+                status="scanned_empty" if not seen_candidate_ids else "scanned",
+                run_id=run_id,
+                message="Источник проверен, точной карточки не найдено." if not seen_candidate_ids else "Источник проверен, кандидаты обновлены.",
+                candidates_count=len(seen_candidate_ids),
+            )
 
     run = _run_payload(
         run_id,

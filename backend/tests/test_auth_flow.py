@@ -2114,6 +2114,43 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(store77_summary["status"], "review")
         self.assertEqual(store77_summary["actionable_count"], 1)
 
+    def test_competitor_product_discovery_source_summary_uses_scan_state_without_candidate(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        store = {"version": 2, "categories": {}, "templates": {}, "discovery": {"candidates": {}, "links": {}, "runs": {}}}
+        scan_row = {
+            "link_id": "product_1:restore:scan",
+            "entity_id": "product_1",
+            "provider": "restore",
+            "url": "",
+            "title": "",
+            "status": "scanned_empty",
+            "source": "discovery_scan",
+            "updated_at": "2026-05-19T08:00:00+00:00",
+            "payload": {
+                "source_id": "restore",
+                "last_scanned_at": "2026-05-19T08:00:00+00:00",
+                "message": "Источник проверен, точной карточки не найдено.",
+                "candidates_count": 0,
+            },
+        }
+
+        with (
+            patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", return_value=[scan_row]),
+        ):
+            response = self.client.get("/api/competitor-mapping/discovery/products/product_1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["items"], [])
+        self.assertEqual(payload["confirmed_links"], [])
+        restore_summary = next(item for item in payload["source_summaries"] if item["source_id"] == "restore")
+        self.assertEqual(restore_summary["status"], "no_exact_match")
+        self.assertEqual(restore_summary["label"], "Нет точного товара")
+        self.assertEqual(restore_summary["last_scanned_at"], "2026-05-19T08:00:00+00:00")
+
     def test_competitor_candidate_moderation_reads_relational_candidate_without_json(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})

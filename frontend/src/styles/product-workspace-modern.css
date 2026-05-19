@@ -967,7 +967,8 @@
   background:linear-gradient(180deg, rgba(36, 143, 88, .09), rgba(var(--surface-rgb), .62));
 }
 
-.productCompetitorSourceCard.is-no_exact_match{
+.productCompetitorSourceCard.is-no_exact_match,
+.productCompetitorSourceCard.is-scan_error{
   border-color:rgba(180, 35, 24, .24);
   background:linear-gradient(180deg, rgba(180, 35, 24, .065), rgba(var(--surface-rgb), .62));
 }

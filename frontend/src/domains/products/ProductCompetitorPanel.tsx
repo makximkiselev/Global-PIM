@@ -47,7 +47,7 @@ type CompetitorSourceSummary = {
   source_id: "restore" | "store77";
   source_name: string;
   domain: string;
-  status: "confirmed" | "review" | "no_exact_match" | "empty" | string;
+  status: "confirmed" | "review" | "no_exact_match" | "scan_error" | "empty" | string;
   label: string;
   message: string;
   confirmed_count: number;
@@ -57,6 +57,8 @@ type CompetitorSourceSummary = {
   best_title?: string;
   best_url?: string;
   best_reasons?: string[];
+  last_scanned_at?: string;
+  scan_error?: string;
 };
 
 type ProductCompetitorResp = {
@@ -107,8 +109,7 @@ function confirmedLinkTime(link: CompetitorLink): string {
   return value ? new Date(value).toLocaleString("ru-RU") : "пока не загружали";
 }
 
-function isActionableCandidate(candidate: CompetitorCandidate): boolean {
-  if (candidate.status === "approved") return true;
+function isReviewCandidate(candidate: CompetitorCandidate): boolean {
   if (candidate.status !== "needs_review") return false;
   const score = Number(candidate.confidence_score || 0);
   return Number.isFinite(score) && score >= MIN_ACTIONABLE_COMPETITOR_SCORE;
@@ -146,7 +147,7 @@ function sourceLabel(value?: string): string {
 function sourceSummaryTone(status: string): "active" | "pending" | "danger" | "neutral" {
   if (status === "confirmed") return "active";
   if (status === "review") return "pending";
-  if (status === "no_exact_match") return "danger";
+  if (status === "no_exact_match" || status === "scan_error") return "danger";
   return "neutral";
 }
 
@@ -163,6 +164,11 @@ function enrichErrorLabel(error?: string): string {
   if (value.includes("NO_FIELDS")) return "в карточке не найдены параметры";
   if (value.includes("UNSUPPORTED")) return "сайт не поддерживается";
   return "не удалось загрузить данные";
+}
+
+function sourceScanTime(summary: CompetitorSourceSummary): string {
+  const value = summary.last_scanned_at;
+  return value ? new Date(value).toLocaleString("ru-RU") : "";
 }
 
 export default function ProductCompetitorPanel({
@@ -184,7 +190,7 @@ export default function ProductCompetitorPanel({
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
 
-  const candidates = useMemo(() => (context?.items || []).filter(isActionableCandidate), [context?.items]);
+  const candidates = useMemo(() => (context?.items || []).filter(isReviewCandidate), [context?.items]);
   const candidateGroups = useMemo(() => {
     const groups = new Map<string, CompetitorCandidate[]>();
     candidates.forEach((candidate) => {
@@ -369,6 +375,13 @@ export default function ProductCompetitorPanel({
                   <Badge tone={sourceSummaryTone(summary.status)}>{summary.label}</Badge>
                 </div>
                 <p>{summary.message}</p>
+                {summary.last_scanned_at ? (
+                  <div className="productCompetitorSourceBest">
+                    <span>Последняя проверка</span>
+                    <strong>{sourceScanTime(summary)}</strong>
+                    {summary.scan_error ? <em>{enrichErrorLabel(summary.scan_error)}</em> : null}
+                  </div>
+                ) : null}
                 {summary.status === "no_exact_match" && summary.best_title ? (
                   <div className="productCompetitorSourceBest">
                     <span>Лучший скрытый вариант</span>
