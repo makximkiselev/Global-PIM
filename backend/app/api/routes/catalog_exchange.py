@@ -349,6 +349,34 @@ def _feature_index(features: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def _media_identity_keys(item: Dict[str, Any]) -> Set[str]:
+    keys: Set[str] = set()
+    for field in ("external_url", "source_image_url", "url"):
+        value = str(item.get(field) or "").strip()
+        if value:
+            keys.add(value)
+    source_url = str(item.get("source_url") or "").strip()
+    source_host = str(item.get("source_host") or "").strip()
+    source_type = str(item.get("source_type") or "").strip()
+    if source_url and (source_type == "external_import" or source_host or Path(urlparse(source_url).path).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}):
+        keys.add(source_url)
+    return keys
+
+
+def _dedupe_media_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        keys = _media_identity_keys(item)
+        if keys and seen.intersection(keys):
+            continue
+        out.append(item)
+        seen.update(keys)
+    return out
+
+
 def _content_source_summary(product: Dict[str, Any]) -> Dict[str, Any]:
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
     features = content.get("features") if isinstance(content.get("features"), list) else []
@@ -560,8 +588,14 @@ async def _apply_competitor_result_to_product(
     images = result.get("images") if isinstance(result.get("images"), list) else []
     if images:
         current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        current_images = _dedupe_media_items([item for item in current_images if isinstance(item, dict)])
         existing_urls = {str(x.get("url") or "").strip() for x in current_images if isinstance(x, dict)}
-        existing_external_urls = {str(x.get("external_url") or "").strip() for x in current_images if isinstance(x, dict) and str(x.get("external_url") or "").strip()}
+        existing_external_urls = {
+            key
+            for item in current_images
+            if isinstance(item, dict)
+            for key in _media_identity_keys(item)
+        }
         browser_image_payloads = await _fetch_store77_images_with_browser([str(x or "").strip() for x in images], url) if site == "store77" else {}
         appended = False
         for img in images:
@@ -588,10 +622,11 @@ async def _apply_competitor_result_to_product(
             next_image = {**imported, "source": site, "source_url": url}
             current_images.append(next_image)
             existing_urls.add(str(next_image.get("url") or "").strip())
+            existing_external_urls.update(_media_identity_keys(next_image))
             existing_external_urls.add(url_s)
             appended = True
         if appended:
-            content["media_images"] = current_images
+            content["media_images"] = _dedupe_media_items(current_images)
             content.pop("media", None)
             changed = True
         source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}

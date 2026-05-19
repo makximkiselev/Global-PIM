@@ -13,7 +13,7 @@ import re
 import subprocess
 import sys
 from time import monotonic
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, Optional, List, Tuple, Set
 from urllib.parse import quote, quote_plus, urljoin, urlparse
 
 import httpx
@@ -105,6 +105,34 @@ def _is_internal_upload_url(url: str) -> bool:
     parsed = urlparse(str(url or "").strip())
     path_value = parsed.path or str(url or "").strip()
     return path_value.startswith("/api/uploads/")
+
+
+def _media_identity_keys(item: Dict[str, Any]) -> Set[str]:
+    keys: Set[str] = set()
+    for field in ("external_url", "source_image_url", "url"):
+        value = str(item.get(field) or "").strip()
+        if value:
+            keys.add(value)
+    source_url = str(item.get("source_url") or "").strip()
+    source_host = str(item.get("source_host") or "").strip()
+    source_type = str(item.get("source_type") or "").strip()
+    if source_url and (source_type == "external_import" or source_host or Path(urlparse(source_url).path).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}):
+        keys.add(source_url)
+    return keys
+
+
+def _dedupe_media_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        keys = _media_identity_keys(item)
+        if keys and seen.intersection(keys):
+            continue
+        out.append(item)
+        seen.update(keys)
+    return out
 
 
 def _store77_js_challenge_hash(code: int) -> int:
@@ -1748,11 +1776,13 @@ async def _merge_competitor_content_into_product(
         if imported_existing:
             existing_image.update(imported_existing)
 
+    existing_images = _dedupe_media_items(existing_images)
     image_urls = {str(item.get("url") or "").strip() for item in existing_images if isinstance(item, dict) and str(item.get("url") or "").strip()}
     image_external_urls = {
-        str(item.get("external_url") or item.get("source_image_url") or "").strip()
+        key
         for item in existing_images
-        if isinstance(item, dict) and str(item.get("external_url") or item.get("source_image_url") or "").strip()
+        if isinstance(item, dict)
+        for key in _media_identity_keys(item)
     }
 
     for source_id, result in extracted.items():
@@ -1855,9 +1885,10 @@ async def _merge_competitor_content_into_product(
             ]
             image_urls = {str(item.get("url") or "").strip() for item in existing_images if isinstance(item, dict) and str(item.get("url") or "").strip()}
             image_external_urls = {
-                str(item.get("external_url") or item.get("source_image_url") or "").strip()
+                key
                 for item in existing_images
-                if isinstance(item, dict) and str(item.get("external_url") or item.get("source_image_url") or "").strip()
+                if isinstance(item, dict)
+                for key in _media_identity_keys(item)
             }
         browser_image_payloads: Dict[str, Tuple[bytes, str]] = {}
         if source_id == "store77" and source_url and s3_enabled():
@@ -1876,7 +1907,8 @@ async def _merge_competitor_content_into_product(
             else:
                 image_url = str(image or "").strip()
                 next_image = {"url": image_url}
-            if not image_url or image_url in image_urls or image_url in image_external_urls:
+            next_keys = _media_identity_keys(next_image) | {image_url}
+            if not image_url or image_url in image_urls or image_external_urls.intersection(next_keys):
                 continue
             imported_image = await _import_competitor_image_to_storage(
                 image_url=image_url,
@@ -1906,6 +1938,7 @@ async def _merge_competitor_content_into_product(
             existing_images.append(next_image)
             image_urls.add(image_url)
             image_urls.add(str(next_image.get("url") or "").strip())
+            image_external_urls.update(_media_identity_keys(next_image))
             image_external_urls.add(image_url)
             appended_images += 1
         if appended_images:
@@ -1931,7 +1964,7 @@ async def _merge_competitor_content_into_product(
     _cleanup_misplaced_competitor_values(features)
     content["features"] = features
     if existing_images:
-        content["media_images"] = existing_images
+        content["media_images"] = _dedupe_media_items(existing_images)
         content.pop("media", None)
     if source_values:
         content["source_values"] = source_values

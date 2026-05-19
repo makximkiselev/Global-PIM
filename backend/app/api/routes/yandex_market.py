@@ -817,19 +817,33 @@ def _merge_media_items(existing: Any, urls: List[str], overwrite_existing: bool)
     current = existing if isinstance(existing, list) else []
     out: List[Dict[str, str]] = []
     seen: Set[str] = set()
+
+    def identity_keys(item: Dict[str, Any]) -> Set[str]:
+        keys: Set[str] = set()
+        for field in ("external_url", "source_image_url", "url"):
+            value = str(item.get(field) or "").strip()
+            if value:
+                keys.add(value)
+        source_url = str(item.get("source_url") or "").strip()
+        source_host = str(item.get("source_host") or "").strip()
+        source_type = str(item.get("source_type") or "").strip()
+        if source_url and (source_type == "external_import" or source_host or Path(urlparse(source_url).path).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}):
+            keys.add(source_url)
+        return keys
+
     for item in current:
         if not isinstance(item, dict):
             continue
-        url = str(item.get("url") or "").strip()
-        if not url or url in seen:
+        keys = identity_keys(item)
+        if not keys or seen.intersection(keys):
             continue
-        seen.add(url)
+        seen.update(keys)
         out.append(item)
     for item in fresh:
-        url = str(item.get("url") or "").strip()
-        if not url or url in seen:
+        keys = identity_keys(item)
+        if not keys or seen.intersection(keys):
             continue
-        seen.add(url)
+        seen.update(keys)
         out.append(item)
     return out
 

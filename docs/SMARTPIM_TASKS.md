@@ -622,6 +622,9 @@ Progress:
     - fixed on 2026-05-19: competitor enrichment no longer depends only on saved `mapping_by_site`; when mapping is missing it auto-maps common source spec names to PIM fields, for example `Память -> Встроенная память`, `Цвет -> Название цвета от производителя`, `SIM-карта -> Количество SIM-карт`, `В комплекте -> Подробная комплектация`;
     - fixed on 2026-05-19: product media storage is canonicalized to `content.media_images`; legacy `content.media` is no longer written with the same image list by competitor enrichment, marketplace imports, or product-card edits;
     - production verification on 2026-05-19: `product_1092 / SKU GT 53425` stores 4 media images, 4 distinct internal URLs, 4 distinct external URLs, and `content.media=0`; browser verification on the media tab shows 4 visible images with no duplicate `src`;
+    - fixed on 2026-05-19: media deduplication now compares external image identity (`external_url`, `source_image_url`, image CDN `source_url`) instead of only local upload URL, so the same marketplace image cannot be stored twice under different local paths;
+    - production cleanup on 2026-05-19: removed legacy media mirrors from 465 products, removed 1919 duplicate media entries caused by Yandex/import-vs-competitor local path duplication, restored 40 unique competitor images from `source_evidence`, and verified `legacy_rows=0`, `duplicate_identity_rows=0`;
+    - browser spot-check on 2026-05-19: `product_70` shows 17 images / 17 unique `src`, `product_1` shows 18 / 18, `product_280` shows 30 / 30, `product_1092` shows 4 / 4;
     - remaining issue: exact-match quality still needs parser/data work where re-store has the exact SKU but search returns only nearby variants; until then those variants must block the source and require explicit approve/reject.
 
 ### P1 DB Consolidation
