@@ -17,6 +17,7 @@ type ProductFeatureValue = {
   value?: string;
   values?: string[];
   required?: boolean;
+  param_group?: string;
   source_values?: Record<string, unknown>;
 };
 
@@ -197,6 +198,14 @@ function featureValue(feature: ProductFeatureValue): string {
 
 function featureKey(feature: ProductFeatureValue, index: number): string {
   return normalizeText(feature.code) || normalizeText(feature.name) || `feature-${index}`;
+}
+
+function featureLabel(feature: ProductFeatureValue): string {
+  return normalizeText(feature.name) || normalizeText(feature.code) || "Параметр";
+}
+
+function featureGroup(feature: ProductFeatureValue): string {
+  return normalizeText(feature.param_group) || "Без группы";
 }
 
 function sourceEntriesForFeature(feature: ProductFeatureValue) {
@@ -630,6 +639,138 @@ function ProductSourcesWorkbench({ features }: { features: ProductFeatureValue[]
   );
 }
 
+function ProductValidationWorkbench({
+  features,
+  media,
+  description,
+  onOpenFeature,
+  onOpenMedia,
+  onOpenCompetitors,
+}: {
+  features: ProductFeatureValue[];
+  media: ProductMedia[];
+  description: string;
+  onOpenFeature: (feature: ProductFeatureValue) => void;
+  onOpenMedia: () => void;
+  onOpenCompetitors: () => void;
+}) {
+  const missing = features.filter((feature) => !featureValue(feature));
+  const requiredMissing = missing.filter((feature) => feature.required);
+  const optionalMissing = missing.filter((feature) => !feature.required);
+  const filled = features.length - missing.length;
+  const blockers = [
+    ...requiredMissing.map((feature) => ({
+      key: `field:${featureKey(feature, features.indexOf(feature))}`,
+      title: featureLabel(feature),
+      meta: featureGroup(feature),
+      action: "Заполнить параметр",
+      onClick: () => onOpenFeature(feature),
+    })),
+    ...(!media.length
+      ? [{
+          key: "media",
+          title: "Медиа товара",
+          meta: "нет изображений в S3",
+          action: "Открыть медиа",
+          onClick: onOpenMedia,
+        }]
+      : []),
+    ...(!normalizeText(description)
+      ? [{
+          key: "description",
+          title: "Описание товара",
+          meta: "нет текста для карточки",
+          action: "Найти источник",
+          onClick: onOpenCompetitors,
+        }]
+      : []),
+  ];
+
+  const optionalByGroup = optionalMissing.reduce((acc, feature) => {
+    const group = featureGroup(feature);
+    acc.set(group, [...(acc.get(group) || []), feature]);
+    return acc;
+  }, new Map<string, ProductFeatureValue[]>());
+  const groups = Array.from(optionalByGroup.entries())
+    .map(([group, items]) => ({ group, items }))
+    .sort((a, b) => b.items.length - a.items.length);
+
+  return (
+    <div className="productValidationWorkbench">
+      <div className="productWorkspaceValidationGrid">
+        <div className="productWorkspaceValidationCard">
+          <span>Готовность полей</span>
+          <strong>{features.length ? `${filled}/${features.length}` : "0/0"}</strong>
+        </div>
+        <div className={`productWorkspaceValidationCard${requiredMissing.length ? " isDanger" : " isReady"}`}>
+          <span>Обязательные</span>
+          <strong>{requiredMissing.length ? `${requiredMissing.length} заполнить` : "Готово"}</strong>
+        </div>
+        <div className={`productWorkspaceValidationCard${media.length ? " isReady" : " isDanger"}`}>
+          <span>Медиа</span>
+          <strong>{media.length ? `${media.length} фото` : "Пусто"}</strong>
+        </div>
+        <div className={`productWorkspaceValidationCard${normalizeText(description) ? " isReady" : " isPending"}`}>
+          <span>Описание</span>
+          <strong>{normalizeText(description) ? "Готово" : "Пусто"}</strong>
+        </div>
+      </div>
+
+      <div className="productValidationColumns">
+        <section className="productValidationPanel">
+          <div className="productValidationPanelHead">
+            <div>
+              <span>Что блокирует выгрузку</span>
+              <strong>{blockers.length ? `${blockers.length} задач` : "Блокеров нет"}</strong>
+            </div>
+            <Badge tone={blockers.length ? "danger" : "active"}>{blockers.length ? "нужно исправить" : "готово"}</Badge>
+          </div>
+          {blockers.length ? (
+            <div className="productValidationTaskList">
+              {blockers.slice(0, 8).map((item) => (
+                <article key={item.key} className="productValidationTask">
+                  <div>
+                    <strong>{item.title}</strong>
+                    <span>{item.meta}</span>
+                  </div>
+                  <Button onClick={item.onClick}>{item.action}</Button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Критичных блокеров нет" description="Можно переходить к проверке площадок и экспортной готовности." />
+          )}
+        </section>
+
+        <section className="productValidationPanel">
+          <div className="productValidationPanelHead">
+            <div>
+              <span>Пустые необязательные поля</span>
+              <strong>{optionalMissing.length}</strong>
+            </div>
+            <Badge tone={optionalMissing.length ? "pending" : "active"}>{optionalMissing.length ? "можно улучшить" : "готово"}</Badge>
+          </div>
+          {groups.length ? (
+            <div className="productValidationGroupList">
+              {groups.slice(0, 7).map(({ group, items }) => (
+                <article key={group} className="productValidationGroup">
+                  <div>
+                    <strong>{group}</strong>
+                    <span>{items.slice(0, 4).map(featureLabel).join(", ")}</span>
+                  </div>
+                  <Badge tone="neutral">{items.length}</Badge>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Дополнительные поля заполнены" description="По необязательным параметрам нет явных пропусков." />
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function ProductCreateFlowPreview() {
   const steps = [
     ["01", "Базовые данные", "название, SKU, бренд, статус"],
@@ -966,8 +1107,6 @@ function ProductWorkspaceFeature() {
     return (product?.content?.analogs || []).filter((item) => normalizeText(item.name) || normalizeText(item.sku) || normalizeText(item.sku_gt));
   }, [product]);
 
-  const missingAttributes = useMemo(() => features.filter((feature) => !featureValue(feature)), [features]);
-
   useEffect(() => {
     if (!features.length) {
       setSelectedFeatureKey("");
@@ -990,6 +1129,12 @@ function ProductWorkspaceFeature() {
       }
       return next;
     }, { replace: true });
+  }
+
+  function handleOpenFeature(feature: ProductFeatureValue) {
+    const index = features.indexOf(feature);
+    setSelectedFeatureKey(featureKey(feature, index >= 0 ? index : 0));
+    handleSectionSelect("attributes");
   }
 
   if (loading) {
@@ -1170,20 +1315,14 @@ function ProductWorkspaceFeature() {
 
             {activeSection === "validation" ? (
               <Card title="Валидация перед экспортом">
-                <div className="productWorkspaceValidationGrid">
-                  <div className="productWorkspaceValidationCard">
-                    <span>Пустые параметры</span>
-                    <strong>{missingAttributes.length}</strong>
-                  </div>
-                  <div className="productWorkspaceValidationCard">
-                    <span>Описание</span>
-                    <strong>{normalizeText(product.content?.description) ? "Готово" : "Пусто"}</strong>
-                  </div>
-                  <div className="productWorkspaceValidationCard">
-                    <span>Медиа</span>
-                    <strong>{media.length ? "Готово" : "Пусто"}</strong>
-                  </div>
-                </div>
+                <ProductValidationWorkbench
+                  features={features}
+                  media={media}
+                  description={normalizeText(product.content?.description)}
+                  onOpenFeature={handleOpenFeature}
+                  onOpenMedia={() => handleSectionSelect("media")}
+                  onOpenCompetitors={() => handleSectionSelect("competitors")}
+                />
               </Card>
             ) : null}
 

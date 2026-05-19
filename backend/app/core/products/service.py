@@ -147,6 +147,17 @@ def _content_payload(value: Any) -> Dict[str, Any]:
     return {**base, **incoming}
 
 
+def _infer_brand_from_title(title: Any) -> str:
+    normalized = _norm(title).lower()
+    if not normalized:
+        return ""
+    brands = ["Apple", "Samsung", "Google", "Huawei", "Sony", "Dyson", "Nintendo", "Microsoft", "Meta", "Oculus", "Oura", "Яндекс"]
+    for brand in brands:
+        if brand.lower() in normalized:
+            return brand
+    return ""
+
+
 def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
     cid = _norm(category_id)
     if not cid:
@@ -181,7 +192,20 @@ def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
 
 def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, Any]:
     content = _content_payload(product.get("content"))
-    if content.get("features"):
+    existing_features = content.get("features") if isinstance(content.get("features"), list) else []
+    if existing_features:
+        for feature in existing_features:
+            if not isinstance(feature, dict) or _norm(feature.get("value")):
+                continue
+            code_key = _norm_lower(feature.get("code") or feature.get("name"))
+            if code_key == "бренд" or code_key == "brand":
+                feature["value"] = _infer_brand_from_title(product.get("title"))
+            elif code_key == "sku_gt":
+                feature["value"] = _norm(product.get("sku_gt"))
+            elif code_key == "sku_pim":
+                feature["value"] = _norm(product.get("sku_pim"))
+            elif code_key in {"наименование_товара", "title"}:
+                feature["value"] = _norm(product.get("title"))
         product["content"] = content
         return product
 
@@ -201,6 +225,8 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
             value = _norm(product.get("sku_pim"))
         elif system_key == "title":
             value = _norm(product.get("title"))
+        elif system_key == "brand":
+            value = _infer_brand_from_title(product.get("title"))
         elif system_key == "description":
             value = _norm(content.get("description"))
 

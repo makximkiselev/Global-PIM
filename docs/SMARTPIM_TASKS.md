@@ -123,6 +123,10 @@ Audit findings to verify/fix:
    - fixed: after redeploy and re-enrichment, `product_1092` changed from `0` fields to `84` fields, with `32/84` filled, `30` matched competitor specs, `21` unmatched specs, description length `12748`;
    - media verification: `product_1092` has `4` selected ready S3-backed gallery images from re-store in both `content.media_images` and `content.media`;
    - UX fixed: long values in the parameter queue are visually truncated so the re-store description no longer breaks the parameter list;
+   - fixed: product validation tab is now an actionable workbench instead of three counters; it shows field readiness, required blockers, media/description readiness, blocker actions, and optional empty fields grouped by parameter group;
+   - fixed: brand is inferred from product title during model-field seeding, so `Смартфон Apple...` fills `Бренд = Apple`;
+   - fixed: competitor spec `Тип объектива = основной` maps into required field `Тип основных камер`;
+   - production verification after re-enrichment of `product_1092`: readiness changed to `34/84`, required fields are `Готово`, media `4 фото`, description `Готово`, critical blockers `0`;
    - remaining P0 product-card UX issue: the full competitor description is too noisy as a canonical field; the product card needs a separate short SEO/marketplace description field and source-description evidence should live in a detail panel, not as a huge visible parameter value.
 
 0. 2026-05-19 product competitor enrichment audit, route `/products/product_70?tab=competitors`:

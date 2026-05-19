@@ -590,6 +590,21 @@
   line-height:1.05;
 }
 
+.productWorkspaceValidationCard.isReady{
+  border-color:rgba(36, 159, 87, .28);
+  background:rgba(36, 159, 87, .08);
+}
+
+.productWorkspaceValidationCard.isDanger{
+  border-color:rgba(229, 87, 62, .34);
+  background:rgba(229, 87, 62, .08);
+}
+
+.productWorkspaceValidationCard.isPending{
+  border-color:rgba(var(--brand-rgb), .32);
+  background:rgba(var(--brand-rgb), .08);
+}
+
 .productWorkspaceSection{
   scroll-margin-top:126px;
 }
@@ -607,6 +622,95 @@
   display:grid;
   grid-template-columns:repeat(4, minmax(0, 1fr));
   gap:12px;
+}
+
+.productValidationWorkbench{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.productValidationColumns{
+  display:grid;
+  grid-template-columns:minmax(0, 1.1fr) minmax(0, .9fr);
+  gap:14px;
+  align-items:start;
+}
+
+.productValidationPanel{
+  min-width:0;
+  padding:14px;
+  border:1px solid rgba(var(--line-rgb), .7);
+  border-radius:20px;
+  background:rgba(var(--surface-rgb), .78);
+}
+
+.productValidationPanelHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.productValidationPanelHead span{
+  display:block;
+  margin-bottom:5px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+.productValidationPanelHead strong{
+  display:block;
+  color:var(--text);
+  font-size:18px;
+  font-weight:950;
+  letter-spacing:-.02em;
+}
+
+.productValidationTaskList,
+.productValidationGroupList{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+}
+
+.productValidationTask,
+.productValidationGroup{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:12px;
+  align-items:center;
+  padding:11px;
+  border:1px solid rgba(var(--line-rgb), .62);
+  border-radius:16px;
+  background:rgba(var(--bg-rgb), .44);
+}
+
+.productValidationTask strong,
+.productValidationGroup strong{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+}
+
+.productValidationTask span,
+.productValidationGroup span{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
 }
 
 .productWorkspaceOverviewGrid .productWorkspaceSummaryCard strong{
@@ -1900,6 +2004,7 @@
 @media (max-width: 1180px){
   .productWorkspaceHeroGrid,
   .productWorkspaceRelationsSplit,
+  .productValidationColumns,
   .productCompetitorWorkspace,
   .productCompetitorManual,
   .productCockpitGrid,
