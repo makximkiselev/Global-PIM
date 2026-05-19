@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
-from app.core.value_mapping import provider_export_value, provider_import_value
+from app.core.value_mapping import provider_export_value_details, provider_import_value
 from app.storage.relational_pim_store import (
     bulk_upsert_product_items,
     load_attribute_mapping_doc,
@@ -1945,7 +1945,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     ready_count = 0
     dict_id_cache: Dict[Tuple[str, str], str] = {}
-    export_value_cache: Dict[Tuple[str, str, str], str] = {}
+    export_value_cache: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     required_param_ids_cache: Dict[str, Set[str]] = {}
 
     def dict_id_for(category_id: str, catalog_name: str) -> str:
@@ -1954,14 +1954,14 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             dict_id_cache[key] = _dict_id_for_catalog_param(category_id, catalog_name, attr_value_refs_by_cid, parent_by_id)
         return dict_id_cache[key]
 
-    def export_value_for(category_id: str, catalog_name: str, value: Any) -> str:
+    def export_value_for(category_id: str, catalog_name: str, value: Any) -> Dict[str, Any]:
         raw_value = str(value or "").strip()
         dict_id = dict_id_for(category_id, catalog_name)
         if not dict_id or not raw_value:
-            return raw_value
+            return {"value": raw_value, "mapped": True, "reason": "free_text" if raw_value else "empty"}
         key = (dict_id, "yandex_market", raw_value)
         if key not in export_value_cache:
-            export_value_cache[key] = provider_export_value(dict_id, "yandex_market", raw_value)
+            export_value_cache[key] = provider_export_value_details(dict_id, "yandex_market", raw_value)
         return export_value_cache[key]
 
     for p in selected:
@@ -1981,8 +1981,10 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         name = _extract_product_value(p, str((name_row or {}).get("catalog_name") or "Наименование товара")) or str(p.get("title") or "").strip()
         description = _extract_product_value(p, str((description_row or {}).get("catalog_name") or "Описание товара"))
         vendor = _extract_product_value(p, str((vendor_row or {}).get("catalog_name") or "Бренд"))
-        vendor = export_value_for(category_id, str((vendor_row or {}).get("catalog_name") or "Бренд"), vendor)
+        vendor_details = export_value_for(category_id, str((vendor_row or {}).get("catalog_name") or "Бренд"), vendor)
+        vendor = str(vendor_details.get("value") or "").strip()
         barcode = _extract_product_value(p, str((barcode_row or {}).get("catalog_name") or "Штрихкод"))
+        value_mapping_missing: List[str] = []
         content = p.get("content") if isinstance(p.get("content"), dict) else {}
         media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
         media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
@@ -2005,7 +2007,10 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             value = _extract_product_value(p, pname)
             if not value:
                 continue
-            value = export_value_for(category_id, pname, value)
+            value_details = export_value_for(category_id, pname, value)
+            value = str(value_details.get("value") or "").strip()
+            if not bool(value_details.get("mapped", True)):
+                value_mapping_missing.append(pname)
             if not value:
                 continue
             for binding in _provider_bindings(ym):
@@ -2036,8 +2041,12 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             missing.append("Нет изображений (pictures)")
         if not vendor:
             missing.append("Бренд обязателен")
+        if not bool(vendor_details.get("mapped", True)):
+            missing.append("Бренд: значение не сопоставлено с Я.Маркет")
         if description_enabled and not description:
             missing.append("Описание (аннотация) не заполнено")
+        for pname in sorted(set(value_mapping_missing)):
+            missing.append(f"{pname}: значение не сопоставлено с Я.Маркет")
 
         if yandex_category_id and yandex_category_id not in required_param_ids_cache:
             required_param_ids_cache[yandex_category_id] = _yandex_required_param_ids(yandex_category_id)

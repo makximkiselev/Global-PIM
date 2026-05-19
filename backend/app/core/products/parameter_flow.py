@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set
 
-from app.core.value_mapping import provider_export_value
+from app.core.value_mapping import provider_export_value_details
 from app.storage.relational_pim_store import (
     load_attribute_mapping_doc,
     load_attribute_value_refs_doc,
@@ -135,6 +135,19 @@ def _dict_id_for_catalog_name(category_id: str, catalog_name: str, refs_by_categ
     return ""
 
 
+def dict_id_for_product_feature(product: Dict[str, Any], feature_name: Any) -> str:
+    category_id = str(product.get("category_id") or "").strip()
+    if not category_id:
+        return ""
+    nodes = load_catalog_nodes()
+    return _dict_id_for_catalog_name(
+        category_id,
+        str(feature_name or "").strip(),
+        _load_value_refs_by_category(),
+        _parent_map(nodes),
+    )
+
+
 def _features(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
     raw = content.get("features") if isinstance(content.get("features"), list) else []
@@ -209,14 +222,15 @@ def _marketplace_outputs(
             target_id = str(binding.get("id") or "").strip()
             target_name = str(binding.get("name") or "").strip()
             export_enabled = bool(binding.get("export")) if binding else False
-            output_value = provider_export_value(dict_id, provider, canonical_value) if canonical_value else ""
+            output_details = provider_export_value_details(dict_id, provider, canonical_value) if canonical_value else {"value": "", "mapped": False, "reason": "empty"}
+            output_value = str(output_details.get("value") or "").strip()
             if not export_enabled:
                 status = "not_exported"
                 label = "не выгружается"
             elif not canonical_value:
                 status = "empty"
                 label = "нет значения"
-            elif not output_value:
+            elif not output_value or not bool(output_details.get("mapped", True)):
                 status = "value_missing"
                 label = "значение не сопоставлено"
             else:
@@ -233,6 +247,7 @@ def _marketplace_outputs(
                     "output_value": output_value,
                     "status": status,
                     "label": label,
+                    "mapping_reason": str(output_details.get("reason") or "").strip(),
                     "binding_index": index,
                     "primary": index == 0,
                 }

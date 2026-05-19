@@ -103,6 +103,20 @@ def canonicalize_dictionary_value(dict_id: str, raw_value: Any) -> str:
                 canonical = item_value
                 break
     if not canonical:
+        # Competitor cards often append explanatory text to a controlled value:
+        # "IP68 допускается..." should normalize to the dictionary value "IP68".
+        matching_items: List[str] = []
+        padded_value_key = f" {value_key} "
+        for item in items:
+            item_value = str(item.get("value") or "").strip()
+            item_key = normalize_value_key(item_value)
+            if not item_key or len(item_key) < 3:
+                continue
+            if padded_value_key.startswith(f" {item_key} ") or f" {item_key} " in padded_value_key:
+                matching_items.append(item_value)
+        if matching_items:
+            canonical = sorted(matching_items, key=len, reverse=True)[0]
+    if not canonical:
         canonical = value
 
     changed = False
@@ -133,43 +147,54 @@ def canonicalize_dictionary_value(dict_id: str, raw_value: Any) -> str:
     return canonical
 
 
-def provider_export_value(dict_id: Optional[str], provider: str, canonical_value: Any) -> str:
+def provider_export_value_details(dict_id: Optional[str], provider: str, canonical_value: Any) -> Dict[str, Any]:
     value = _coerce_text(canonical_value)
     did = str(dict_id or "").strip()
     if not did or not value:
-        return value
+        return {
+            "value": value,
+            "mapped": True,
+            "reason": "free_text" if value else "empty",
+        }
 
     doc = load_dict(did)
     key = normalize_value_key(value)
     if not key:
-        return value
+        return {"value": value, "mapped": False, "reason": "empty"}
 
     provider_map = _export_map(doc, provider)
     if key in provider_map:
-        return provider_map[key]
+        return {"value": provider_map[key], "mapped": True, "reason": "export_map"}
 
     ref = _source_reference(doc, provider)
     allowed = ref.get("allowed_values") if isinstance(ref.get("allowed_values"), list) else []
     for candidate in allowed:
         source_value = str(candidate or "").strip()
-        if not source_value:
-            continue
-        if normalize_value_key(source_value) == key:
-            return source_value
+        if source_value and normalize_value_key(source_value) == key:
+            return {"value": source_value, "mapped": True, "reason": "allowed_exact"}
 
     aliases = _normalized_aliases(doc)
     canonical = aliases.get(key, value)
     canonical_key = normalize_value_key(canonical)
     if canonical_key in provider_map:
-        return provider_map[canonical_key]
+        return {"value": provider_map[canonical_key], "mapped": True, "reason": "alias_export_map"}
     for candidate in allowed:
         source_value = str(candidate or "").strip()
-        if not source_value:
-            continue
-        if normalize_value_key(source_value) == canonical_key:
-            return source_value
+        if source_value and normalize_value_key(source_value) == canonical_key:
+            return {"value": source_value, "mapped": True, "reason": "alias_allowed_exact"}
 
-    return canonical
+    # Providers with an allowed-value list are controlled dictionaries. Falling
+    # back to PIM canonical value would make the UI/export look ready while the
+    # marketplace value is actually unmapped.
+    if allowed:
+        return {"value": "", "mapped": False, "reason": "value_missing"}
+
+    return {"value": canonical, "mapped": True, "reason": "free_text"}
+
+
+def provider_export_value(dict_id: Optional[str], provider: str, canonical_value: Any) -> str:
+    details = provider_export_value_details(dict_id, provider, canonical_value)
+    return str(details.get("value") or "").strip() or _coerce_text(canonical_value)
 
 
 def provider_import_value(dict_id: Optional[str], provider: str, source_value: Any) -> str:

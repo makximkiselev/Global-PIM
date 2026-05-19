@@ -569,8 +569,11 @@ Progress:
     - competitor raw values must not become marketplace values directly;
     - required value pipeline: competitor raw value -> normalized PIM canonical value -> provider-specific export value for Я.Маркет/Ozon -> export payload;
     - example: `Степень защиты` from Store77 raw text `IP68 допускается...` must normalize to PIM value `IP68`, then be mapped separately to Я.Маркет/Ozon accepted values or block export with `значение не сопоставлено`;
-    - current gap: if no provider-specific export map exists, some flows fallback to canonical value, which makes Я.Маркет/Ozon look identical and hides missing value mappings;
-    - UI requirement: product parameter row must show source raw value, PIM canonical value, Я.Маркет output/status, Ozon output/status, and an action to map/approve values.
+    - fixed on 2026-05-19: competitor enrichment canonicalizes explanatory raw values against PIM dictionaries before writing feature values and keeps `raw_value -> canonical_value` evidence in product source values;
+    - fixed on 2026-05-19: product parameter flow shows source raw evidence, PIM canonical value, and per-provider output status; unmapped controlled values now show `Нужно сопоставить значение`;
+    - fixed on 2026-05-19: Я.Маркет and Ozon export previews use provider-specific value details and block controlled values without a valid provider mapping instead of silently falling back to raw competitor text;
+    - production verification on 2026-05-19: `product_70 / Степень защиты` now stores Store77 raw text `IP68 допускается погружение...`, resolves PIM canonical value `IP68`, and prepares separate Я.Маркет/Ozon outputs from the mapping layer;
+    - remaining issue: re-store discovery still must run for every SKU and expose an honest per-source state in the product competitor panel, so users see why re-store did or did not participate.
 
 ### P1 DB Consolidation
 

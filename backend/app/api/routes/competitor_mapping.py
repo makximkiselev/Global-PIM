@@ -21,6 +21,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
+from app.core.products.parameter_flow import dict_id_for_product_feature
 from app.core.tenant_context import (
     current_tenant_organization_id,
     reset_current_tenant_organization_id,
@@ -1584,14 +1585,18 @@ async def _merge_competitor_content_into_product(
                 unmatched_count += 1
                 continue
 
-            if not str(feature.get("value") or "").strip():
-                feature["value"] = raw_text
+            dict_id = dict_id_for_product_feature(product, feature.get("name") or feature.get("code") or spec_name)
+            canonical_text = canonicalize_dictionary_value(dict_id, raw_text) if dict_id else raw_text
+            current_feature_value = str(feature.get("value") or "").strip()
+            current_canonical = canonicalize_dictionary_value(dict_id, current_feature_value) if dict_id and current_feature_value else current_feature_value
+            if not current_feature_value or current_feature_value == raw_text or (canonical_text and current_canonical == canonical_text):
+                feature["value"] = canonical_text
             feature_source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
             competitor_values = feature_source_values.get("competitor") if isinstance(feature_source_values.get("competitor"), dict) else {}
             competitor_values[source_id] = {
                 "raw_value": raw_text,
-                "resolved_value": raw_text,
-                "canonical_value": str(feature.get("value") or "").strip(),
+                "resolved_value": canonical_text,
+                "canonical_value": canonical_text,
             }
             feature_source_values["competitor"] = competitor_values
             feature["source_values"] = feature_source_values

@@ -14,6 +14,7 @@ from app.api.routes import catalog_exchange, competitor_mapping, templates, yand
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
+from app.core import value_mapping
 
 
 class OperatingWorkflowTests(unittest.TestCase):
@@ -78,8 +79,12 @@ class OperatingWorkflowTests(unittest.TestCase):
             ),
             patch.object(
                 parameter_flow,
-                "provider_export_value",
-                side_effect=lambda dict_id, provider, value: "256" if provider == "ozon" else str(value),
+                "provider_export_value_details",
+                side_effect=lambda dict_id, provider, value: {
+                    "value": "256" if provider == "ozon" else str(value),
+                    "mapped": True,
+                    "reason": "test",
+                },
             ),
         ):
             payload = parameter_flow.build_product_parameter_flow(product)
@@ -95,6 +100,38 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(outputs["yandex_market"]["output_value"], "256 ГБ")
         self.assertEqual(outputs["ozon"]["output_value"], "256")
         self.assertEqual(outputs["ozon"]["status"], "ready")
+
+    def test_dictionary_canonicalizes_competitor_explanatory_value(self) -> None:
+        dictionary = {
+            "id": "dict_степень_защиты",
+            "items": [{"value": "IP48"}, {"value": "IP67"}, {"value": "IP68"}],
+            "aliases": {},
+            "meta": {
+                "source_reference": {
+                    "yandex_market": {
+                        "allowed_values": ["IP48", "IP67", "IP68", "погружение в воду"],
+                    },
+                    "ozon": {"allowed_values": []},
+                },
+                "export_map": {},
+            },
+        }
+        saved: dict[str, object] = {}
+
+        with (
+            patch.object(value_mapping, "load_dict", return_value=deepcopy(dictionary)),
+            patch.object(value_mapping, "save_dict", side_effect=lambda doc: saved.update(deepcopy(doc))),
+        ):
+            canonical = value_mapping.canonicalize_dictionary_value(
+                "dict_степень_защиты",
+                "IP68 допускается погружение в воду на глубину до 6 метров",
+            )
+            details = value_mapping.provider_export_value_details("dict_степень_защиты", "yandex_market", canonical)
+
+        self.assertEqual(canonical, "IP68")
+        self.assertEqual(details["value"], "IP68")
+        self.assertEqual(details["mapped"], True)
+        self.assertEqual(saved["aliases"]["ip68 допускается погружение в воду на глубину до 6 метров"], "IP68")
 
     def test_new_category_without_model_can_create_draft_template(self) -> None:
         db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
@@ -699,6 +736,101 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotIn("Описание (аннотация) не заполнено", missing)
         self.assertEqual(response["items"][0]["payload_item"]["pictures"], ["https://cdn.example.test/quest.jpg"])
         self.assertEqual(response["items"][0]["payload_item"]["description"], "VR headset")
+
+    def test_yandex_export_preview_blocks_unmapped_controlled_value(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Apple iPhone",
+            "sku_gt": "GT-1",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "protection", "name": "Степень защиты", "value": "IP68 допускается погружение"},
+                ],
+            },
+        }
+        rows = [
+            {
+                "catalog_name": "Степень защиты",
+                "provider_map": {
+                    "yandex_market": {"id": "14876852", "name": "Степень защиты", "export": True}
+                },
+            }
+        ]
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-phone": {"yandex_market": "ym-phone"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(
+                yandex_market,
+                "_load_attr_value_refs",
+                return_value={
+                    "cat-phone": {
+                        "catalog_params": {
+                            "protection": {"catalog_name": "Степень защиты", "dict_id": "dict_protection"}
+                        }
+                    }
+                },
+            ),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+            patch.object(
+                yandex_market,
+                "provider_export_value_details",
+                return_value={"value": "", "mapped": False, "reason": "value_missing"},
+            ),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], False)
+        self.assertIn("Степень защиты: значение не сопоставлено с Я.Маркет", item["missing"])
+
+    def test_ozon_export_preview_blocks_unmapped_controlled_value(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "description": "Phone",
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "protection", "name": "Степень защиты", "value": "IP68 допускается погружение"},
+                ],
+            },
+        }
+        rows = [
+            {"catalog_name": "Бренд", "provider_map": {"ozon": {"id": "85", "name": "Бренд", "export": True}}},
+            {"catalog_name": "Степень защиты", "provider_map": {"ozon": {"id": "5269", "name": "Степень защиты", "export": True}}},
+        ]
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "oz-phone"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", side_effect=lambda product, name: "dict_protection" if name == "Степень защиты" else ""),
+            patch.object(
+                catalog_exchange,
+                "provider_export_value_details",
+                side_effect=lambda dict_id, provider, value: {"value": "", "mapped": False} if dict_id == "dict_protection" else {"value": str(value), "mapped": True},
+            ),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], False)
+        self.assertIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service

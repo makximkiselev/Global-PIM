@@ -38,6 +38,7 @@ type ParameterFlowMarketplace = {
   output_value?: string;
   status: string;
   label: string;
+  mapping_reason?: string;
 };
 
 type ParameterFlowSource = {
@@ -247,6 +248,15 @@ function marketplaceOutputText(item: ParameterFlowMarketplace): string {
   const target = item.target_name || item.target_id || "поле не выбрано";
   const value = item.output_value || item.label || "нет значения";
   return `${target}: ${value}`;
+}
+
+function sourceValueText(source: ParameterFlowSource): string {
+  const raw = String(source.raw_value || "").trim();
+  const canonical = String(source.canonical_value || source.resolved_value || "").trim();
+  if (raw && canonical && raw.toLowerCase() !== canonical.toLowerCase()) {
+    return `${raw} -> PIM: ${canonical}`;
+  }
+  return canonical || raw || "—";
 }
 type GroupProductItem = {
   id: string;
@@ -2096,7 +2106,7 @@ export default function ProductFeature() {
                           {flowRow.sources.slice(0, 3).map((source, idx) => (
                             <span key={`${source.source_id}-${idx}`}>
                               <strong>{source.source_label}</strong>
-                              {source.resolved_value || source.raw_value || "—"}
+                              {sourceValueText(source)}
                             </span>
                           ))}
                         </div>
@@ -2111,6 +2121,7 @@ export default function ProductFeature() {
                           <span key={`${f.key}-${item.provider}`} className={`is-${parameterFlowTone(item.status)}`}>
                             <strong>{item.provider_label}</strong>
                             {marketplaceOutputText(item)}
+                            {item.status === "value_missing" ? <em>Нужно сопоставить значение</em> : null}
                           </span>
                         ))}
                         {!flowRow?.marketplaces?.length ? <em>Нет сопоставления с площадками</em> : null}

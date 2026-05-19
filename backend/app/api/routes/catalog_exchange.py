@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
+from app.core.products.parameter_flow import dict_id_for_product_feature
+from app.core.value_mapping import provider_export_value_details
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
 from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
 from app.api.routes.yandex_market import (
@@ -744,14 +746,23 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         model_group = model_group or inferred_model_group
 
         attributes: List[Dict[str, Any]] = []
+        value_mapping_missing: List[str] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
+            catalog_name = str(row.get("catalog_name") or "").strip()
             pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
             oz = pmap.get("ozon") if isinstance(pmap.get("ozon"), dict) else {}
             if not isinstance(oz, dict):
                 continue
-            value = _extract_product_value(product, str(row.get("catalog_name") or ""))
+            value = _extract_product_value(product, catalog_name)
+            if not value:
+                continue
+            dict_id = dict_id_for_product_feature(product, catalog_name)
+            value_details = provider_export_value_details(dict_id, "ozon", value) if dict_id else {"value": value, "mapped": True}
+            value = str(value_details.get("value") or "").strip()
+            if not bool(value_details.get("mapped", True)):
+                value_mapping_missing.append(catalog_name)
             if not value:
                 continue
             for binding in _provider_bindings(oz):
@@ -765,7 +776,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                         "id": attr_id,
                         "name": str(binding.get("name") or row.get("catalog_name") or "").strip(),
                         "values": [{"value": value}],
-                        "sourceCatalogName": str(row.get("catalog_name") or "").strip(),
+                        "sourceCatalogName": catalog_name,
                     }
                 )
         _upsert_ozon_attribute(attributes, "8229", "Тип", type_value, "Системное поле")
@@ -788,6 +799,8 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             missing.append("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст")
         if not model_group:
             missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
+        for pname in sorted(set(value_mapping_missing)):
+            missing.append(f"{pname}: значение не сопоставлено с Ozon")
 
         ready = len(missing) == 0
         if ready:
