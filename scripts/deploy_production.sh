@@ -187,7 +187,10 @@ rsync -a \
 
 cp "${DB_CA_CERT_PATH}" "${LOCAL_TMP_DIR}/certs/ca.crt"
 
-tar -C "${LOCAL_TMP_DIR}" -czf "${LOCAL_ARCHIVE}" .
+if command -v xattr >/dev/null 2>&1; then
+  xattr -cr "${LOCAL_TMP_DIR}" 2>/dev/null || true
+fi
+COPYFILE_DISABLE=1 tar -C "${LOCAL_TMP_DIR}" -czf "${LOCAL_ARCHIVE}" .
 
 cat > "${REMOTE_SCRIPT_LOCAL}" <<EOF
 set -euo pipefail

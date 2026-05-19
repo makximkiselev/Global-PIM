@@ -112,6 +112,22 @@ Checklist:
 
 Audit findings to verify/fix:
 
+0. 2026-05-19 product competitor enrichment audit, route `/products/product_70?tab=competitors`:
+   - root finding: re-store and store77 did return exact product-card data, but product enrichment still lost valid specs because source names were not normalized enough;
+   - fixed: source-name normalization now folds `ё -> е`, so `Разъём` and `Разъем` behave as the same field;
+   - fixed: product-card enrichment and catalog-import enrichment now share broader real-world aliases for memory, SIM, color, комплект, country/warranty, charge, protection, display, navigation, camera, connector, material, brightness, dimensions, and playback time;
+   - fixed: Store77 candidate SIM parser no longer treats explanatory text like `eSim (электронная SIM-карта)` as physical `SIM + eSIM`;
+   - fixed: battery mount values such as `Несъемный` no longer remain in `Емкость аккумулятора (точно)`; they are moved to `Крепление аккумулятора` when that field exists;
+   - production verification after deploy and re-enrichment of `product_70`:
+     - confirmed sources used: `restore`, `store77`;
+     - filled feature count changed from `33/67` to `34/67`;
+     - `Емкость аккумулятора (точно)` is now empty instead of the wrong `Несъемный`;
+     - `Крепление аккумулятора` is now `несъемный`;
+     - `Время в режиме воспроизведения видео` is now `до 33 часов`;
+     - `Число пикселей на дюйм` remains correctly `460`.
+   - remaining issue: many donor specs still stay unmatched because the current smartphone info-model does not contain corresponding canonical fields (`Датчики`, `Материал корпуса`, `Максимальная яркость`, `Гарантийный срок`, `Страна производства`, device dimensions, advanced camera/video fields) or because those fields are not approved in the model for this product;
+   - next task: info-model builder must surface `unmatched_specs` from confirmed competitors as suggestions to add/reuse global attributes, not leave them hidden in evidence JSON.
+
 0. 2026-05-17 async/layout audit, routes `/catalog`, `/sources?tab=sources`, `/sources?tab=params`:
    - Browser visual proof: in-app Browser opened the current production `params` route, and the page collapsed into a narrow column although the product is desktop-only;
    - root cause: sources mapping CSS used viewport breakpoints that stacked the command/header/cards at narrow browser-pane widths instead of preserving a desktop workspace with horizontal scroll;

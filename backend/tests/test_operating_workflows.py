@@ -486,6 +486,106 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(mapped["количество_sim_карт"], "SIM + eSIM")
         self.assertEqual(mapped["подробная_комплектация"], "кабель USB-C")
 
+    def test_competitor_specs_auto_map_normalizes_restore_device_specs(self) -> None:
+        attrs = {
+            "тип_разъема": {"code": "тип_разъема", "name": "Тип разъема для зарядки"},
+            "вес": {"code": "вес", "name": "Вес устройства, г"},
+            "материал": {"code": "материал", "name": "Материал корпуса"},
+            "яркость": {"code": "яркость", "name": "Максимальная яркость"},
+            "навигация": {"code": "навигация", "name": "Навигационная система"},
+            "крепление": {"code": "крепление", "name": "Крепление аккумулятора"},
+            "видео": {"code": "видео", "name": "Время в режиме воспроизведения видео"},
+        }
+        specs = {
+            "Разъём": "USB Type-C",
+            "Вес, г": "227",
+            "Материал": "титан",
+            "Яркость": "2000 кд/м²",
+            "Навигация": "GPS; ГЛОНАСС",
+            "Аккумулятор": "Несъемный",
+            "Воспроизведение видео": "до 33 часов",
+        }
+
+        with patch.object(catalog_exchange, "_template_attr_defs", return_value=attrs):
+            mapped = catalog_exchange._auto_map_competitor_specs("tpl-phone", specs, {})
+
+        self.assertEqual(mapped["тип_разъема"], "USB Type-C")
+        self.assertEqual(mapped["вес"], "227")
+        self.assertEqual(mapped["материал"], "титан")
+        self.assertEqual(mapped["яркость"], "2000 кд/м²")
+        self.assertEqual(mapped["навигация"], "GPS; ГЛОНАСС")
+        self.assertEqual(mapped["крепление"], "Несъемный")
+        self.assertEqual(mapped["видео"], "до 33 часов")
+
+    def test_product_competitor_enrichment_maps_restore_device_specs(self) -> None:
+        product = {
+            "id": "product_1",
+            "content": {
+                "features": [
+                    {"code": "connector", "name": "Тип разъема для зарядки", "value": ""},
+                    {"code": "device_weight", "name": "Вес устройства, г", "value": ""},
+                    {"code": "material", "name": "Материал корпуса", "value": ""},
+                    {"code": "brightness", "name": "Максимальная яркость", "value": ""},
+                    {"code": "nav", "name": "Навигационная система", "value": ""},
+                    {"code": "height", "name": "Высота устройства, мм", "value": ""},
+                    {"code": "width", "name": "Ширина устройства, мм", "value": ""},
+                    {"code": "thickness", "name": "Толщина", "value": ""},
+                    {
+                        "code": "battery_capacity",
+                        "name": "Емкость аккумулятора (точно)",
+                        "value": "Несъемный",
+                        "source_values": {
+                            "competitor": {
+                                "store77": {
+                                    "raw_value": "Несъемный",
+                                    "resolved_value": "Несъемный",
+                                    "canonical_value": "Несъемный",
+                                }
+                            }
+                        },
+                    },
+                    {"code": "battery_mount", "name": "Крепление аккумулятора", "value": ""},
+                    {"code": "video_time", "name": "Время в режиме воспроизведения видео", "value": ""},
+                ],
+            },
+        }
+
+        result = asyncio.run(
+            competitor_mapping._merge_competitor_content_into_product(
+                product,
+                extracted={
+                    "restore": {
+                        "ok": True,
+                        "specs": {
+                            "Разъём": "USB Type-C",
+                            "Вес, г": "227",
+                            "Материал": "титан",
+                            "Яркость": "2000 кд/м²",
+                            "Навигация": "GPS; ГЛОНАСС",
+                            "Размеры": "163x77.6x8.25 мм",
+                            "Аккумулятор": "Несъемный",
+                            "Воспроизведение видео": "до 33 часов",
+                        },
+                        "images": [],
+                    }
+                },
+                links={"restore": {"url": "https://re-store.ru/catalog/test/"}},
+            )
+        )
+
+        features = {item["code"]: item for item in result["product"]["content"]["features"]}
+        self.assertEqual(features["connector"]["value"], "USB Type-C")
+        self.assertEqual(features["device_weight"]["value"], "227")
+        self.assertEqual(features["material"]["value"], "титан")
+        self.assertEqual(features["brightness"]["value"], "2000 кд/м²")
+        self.assertEqual(features["nav"]["value"], "GPS; ГЛОНАСС")
+        self.assertEqual(features["height"]["value"], "163")
+        self.assertEqual(features["width"]["value"], "77.6")
+        self.assertEqual(features["thickness"]["value"], "8.25")
+        self.assertEqual(features["battery_capacity"]["value"], "")
+        self.assertEqual(features["battery_mount"]["value"], "Несъемный")
+        self.assertEqual(features["video_time"]["value"], "до 33 часов")
+
     def test_content_source_summary_detects_competitor_media_after_storage_import(self) -> None:
         product = {
             "id": "product_1",
