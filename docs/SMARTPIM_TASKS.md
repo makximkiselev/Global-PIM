@@ -344,8 +344,14 @@ Audit findings to verify/fix:
    - `/products/new` must be a short SKU creation workflow, not a full product-card editor;
    - single product creation creates one real product row and opens its product card;
    - variant creation creates one real product row per SKU, creates a product group, assigns all variant SKU rows to that group, and opens the first SKU on the `Варианты` tab;
+   - approved variant UX rule on 2026-05-19: user enters the first/base product data, selects variant axes, picks values from the parameter dictionaries, then the system generates the SKU matrix automatically;
+   - variant axes must be a small curated list, not the full info-model: `Название цвета от производителя`, `Цвет`, `Встроенная память`, `Оперативная память`, `Количество SIM-карт`, `SIM-карта`, `Конфигурация памяти`, and category-specific size/diagonal fields only when relevant;
+   - generated SKU matrix must allow disabling extra combinations, editing generated title/SKU labels, and then creating one product row per enabled combination;
+   - after variant-family creation the next screen must be bulk competitor matching: `SKU x source`, with `Найти карточки` as primary action, candidate confirmation per SKU, and manual URL only as fallback after all candidates are rejected;
+   - enrichment must run after competitor confirmation for every SKU in the group: competitor raw values -> PIM canonical values -> marketplace-specific values -> validation/export readiness;
    - 2026-05-17 implemented `/api/products/create-family`: single SKU and variant families are now created through one backend operation; frontend wizard sends one payload and navigates to the first created SKU;
    - backend test coverage exists for the single-operation family creation path;
+   - 2026-05-19 frontend cleanup: variant picker in `/products/new` is limited to curated SKU axes instead of the full info-model, and the creation wizard no longer asks for manual re-store/store77 URLs as the primary path;
    - 2026-05-17 product card now has a next-action panel after creation/current load: `подобрать карточки конкурентов`, `проверить параметры`, `проверить медиа`, `подготовить выгрузку`;
    - competitor matching is now a first-class product-card tab, so the next-action card opens the real moderation/enrichment workspace instead of scattered external-link fields;
    - enrichment, media, description, analogs, related products, and export readiness belong in the product card after creation, not in the creation wizard;
@@ -603,8 +609,11 @@ Progress:
     - remaining UX issue: after enrichment, product card should show clearer completion feedback and offer a direct transition to the `Параметры` tab.
 22. 2026-05-18 creation flow gap:
     - `/products/new?category_id=bb40de87-254b-4170-84d7-8e5d3925b251` opens without horizontal overflow;
-    - variant mode is functional at a basic level, but the parameter picker exposes the full info-model field list, including fields that cannot be meaningful variant axes;
-    - next required cleanup: restrict variant axes to a curated set such as `Название цвета от производителя`, `Встроенная память`, `Оперативная память`, `Количество SIM-карт`, `Размер/диагональ` where relevant, and keep the full field list out of the first creation flow;
+   - fixed on 2026-05-19: variant mode no longer exposes the full info-model field list; the selector shows only curated variant axes such as color, memory/RAM, SIM and relevant size/diagonal fields;
+   - fixed on 2026-05-19: manual competitor URL fields were removed from the creation wizard as the primary path; competitor work starts after SKU/family creation in the product card;
+   - verified on production with in-app browser on 2026-05-19: the variant-axis modal no longer shows `SKU GT` or video-resolution fields, and the competitor step explains the post-create matching route instead of rendering URL inputs;
+   - next required cleanup: generated variants must show a compact matrix with axes as columns, SKU GT/SKU PIM/status, and per-row enable/disable before creation;
+    - next required cleanup: after family creation, open a group-level bulk competitor matching workspace where each SKU row has `Найти карточки`, candidates, approve/reject and manual URL fallback;
     - creation must remain short: create SKU/family first, then move the user into the product card for competitor pickup, enrichment, marketplace mapping, media, validation, and export.
 23. 2026-05-18 competitor enrichment/value-normalization gap:
     - verified `product_70`: only Store77 has a confirmed product link; re-store is shown as `Не сканировали`, so it cannot participate in product enrichment yet;

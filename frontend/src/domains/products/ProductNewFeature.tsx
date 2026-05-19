@@ -9,8 +9,6 @@ function apiBase() {
 
 const API_TEMPLATES_BY_CATEGORY = `${apiBase()}/templates/by-category`;
 const API_TEMPLATE_GET = `${apiBase()}/templates`;
-const API_COMP_MAPPING = `${apiBase()}/competitor-mapping/template`;
-const API_COMP_CONTENT_BATCH = `${apiBase()}/competitor-mapping/competitor-content-batch`;
 const API_ALLOCATE_SKUS = `${apiBase()}/products/allocate-skus`;
 const API_PRODUCT_CREATE_FAMILY = `${apiBase()}/products/create-family`;
 const API_DICT_GET = (dictId: string) => `${apiBase()}/dictionaries/${encodeURIComponent(dictId)}`;
@@ -142,6 +140,54 @@ function uniqTrim(arr: string[]) {
 
 function _normKey(v: string) {
   return normStr(v).toLowerCase();
+}
+
+const VARIANT_AXIS_PATTERNS = [
+  /название цвета/,
+  /^цвет$/,
+  /встроенн.*пам/,
+  /оперативн.*пам/,
+  /конфигурац.*пам/,
+  /sim|сим|количество sim|сим-карт/i,
+  /(?:^|\s)размер(?:\s|$)|диагонал/i,
+];
+
+const VARIANT_AXIS_PRIORITY = [
+  /название цвета/,
+  /^цвет$/,
+  /встроенн.*пам/,
+  /оперативн.*пам/,
+  /количество sim|sim-карт|sim|сим/i,
+  /конфигурац.*пам/,
+  /(?:^|\s)размер(?:\s|$)|диагонал/i,
+];
+
+const VARIANT_AXIS_DENY_PATTERNS = [
+  /^sku\b/i,
+  /\bsku\b/i,
+  /артикул/,
+  /штрих.?код/,
+  /barcode/,
+  /разрешени.*видео/,
+  /разрешени.*съем/,
+  /разрешени.*съём/,
+];
+
+function variantAxisLabelKey(value: string) {
+  return _normKey(value).replace(/ё/g, "е");
+}
+
+function isVariantAxisCandidate(title: string, code: string, scope?: string | null) {
+  const scopeKey = _normKey(scope || "");
+  const text = variantAxisLabelKey(`${title} ${code}`);
+  if (VARIANT_AXIS_DENY_PATTERNS.some((pattern) => pattern.test(text))) return false;
+  return scopeKey === "variant" || scopeKey === "both" || VARIANT_AXIS_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function variantAxisRank(title: string, code: string) {
+  const text = variantAxisLabelKey(`${title} ${code}`);
+  const index = VARIANT_AXIS_PRIORITY.findIndex((pattern) => pattern.test(text));
+  return index === -1 ? 999 : index;
 }
 
 // ===== modals
@@ -485,7 +531,7 @@ function ParamPickerModal(props: {
     <div className="pn-modalOverlay" onMouseDown={onClose} role="dialog" aria-modal="true">
       <div className="pn-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 1020 }}>
         <div className="pn-modalHead">
-          <div className="pn-modalTitle">Параметры вариантов</div>
+          <div className="pn-modalTitle">Оси вариантов</div>
           <button className="pn-iconBtn" onClick={onClose} aria-label="close" type="button">
             ✕
           </button>
@@ -494,12 +540,12 @@ function ParamPickerModal(props: {
         <div className="pn-modalBody" style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 14 }}>
           <div>
             <div className="pn-catSearchBlock">
-              <div className="pn-catSearchLabel">Поиск параметра</div>
+              <div className="pn-catSearchLabel">Поиск оси</div>
               <input
                 className="pn-catSearchInput"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="например: память, цвет…"
+                placeholder="память, цвет, SIM…"
                 autoFocus
               />
             </div>
@@ -536,14 +582,14 @@ function ParamPickerModal(props: {
             </div>
 
             <div className="pn-hint" style={{ marginTop: 10 }}>
-              Отметьте параметры и выберите значения справа.
+              Здесь только параметры, по которым реально строятся SKU-варианты.
             </div>
           </div>
 
           <div>
             <div className="pn-card pn-cardInner" style={{ margin: 0 }}>
               <div className="pn-cardTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <span>{activeParam ? activeParam.title : "Выберите параметр"} — значения</span>
+                <span>{activeParam ? activeParam.title : "Выберите ось"} — значения</span>
                 {activeParam && !isSelected(activeParam.attr_id) && (
                   <span className="pn-muted">сначала включите слева</span>
                 )}
@@ -594,7 +640,7 @@ function ParamPickerModal(props: {
               </div>
 
               <div className="pn-hint" style={{ marginTop: 10 }}>
-                Ctrl/⌘ для мультивыбора.
+                Выберите значения из словаря. Каждая комбинация станет отдельным SKU.
               </div>
             </div>
 
@@ -630,51 +676,6 @@ type TemplateAttr = {
 type TemplatesByCategoryResp = {
   template: { id: string; category_id: string; name: string } | null;
   attributes: TemplateAttr[];
-};
-
-type MasterField = {
-  code: string;
-  name?: string | null;
-  type?: string | null;
-  scope?: string | null;
-  required?: boolean;
-};
-
-type TemplateMappingResp = {
-  ok: boolean;
-  template_id: string;
-  master_fields: MasterField[];
-  data: {
-    priority_site?: "restore" | "store77" | null;
-    mapping_by_site?: {
-      restore?: Record<string, string>;
-      store77?: Record<string, string>;
-    };
-  };
-};
-
-type CompetitorContentResp = {
-  ok: boolean;
-  results: {
-    restore: {
-      ok: boolean;
-      specs?: Record<string, string>;
-      mapped_specs?: Record<string, string>;
-      images?: string[];
-      description?: string;
-      error?: string;
-      skipped?: boolean;
-    };
-    store77: {
-      ok: boolean;
-      specs?: Record<string, string>;
-      mapped_specs?: Record<string, string>;
-      images?: string[];
-      description?: string;
-      error?: string;
-      skipped?: boolean;
-    };
-  };
 };
 
 type SkuTriplet = { sku_pim: string; sku_gt: string };
@@ -743,20 +744,6 @@ function buildVariantTitle(baseTitle: string, order: string[], params: Record<st
   const tokens = order.map((id) => normStr(params[id] || "")).filter(Boolean);
   const base = normStr(baseTitle);
   return tokens.length ? `${base} ${tokens.join(" ")}` : base || "Товар";
-}
-
-function normalizeSpecMap(specs: Record<string, string>) {
-  const out = new Map<string, string>();
-  for (const [k, v] of Object.entries(specs || {})) {
-    out.set(_normKey(k), v);
-  }
-  return out;
-}
-
-function pickSpecValue(specs: Record<string, string>, fieldName: string) {
-  const map = normalizeSpecMap(specs || {});
-  const val = map.get(_normKey(fieldName));
-  return val || "";
 }
 
 function BadgeLike({ label }: { label: string }) {
@@ -852,9 +839,6 @@ export default function ProductNewFeature() {
   const [variants, setVariants] = useState<Variant[]>([]);
   const [variantErr, setVariantErr] = useState<string | null>(null);
   const [activeVariantKey, setActiveVariantKey] = useState<string>("v1");
-
-  const [loadingData, setLoadingData] = useState(false);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -966,22 +950,73 @@ export default function ProductNewFeature() {
 
   const variantParams = useMemo(() => {
     if (productType !== "multi") return [];
-    return (dictionaryItems || [])
-      .filter((item) => !item?.meta?.service)
-      .map((item) => {
+    const byDict = new Map<string, VariantParam>();
+    const addParam = (dictId: string, title: string, code: string, scope?: string | null) => {
+      const id = dictId.trim();
+      const normalizedCode = code.trim() || id;
+      const normalizedTitle = title.trim() || normalizedCode;
+      if (!id || byDict.has(id)) return;
+      if (!isVariantAxisCandidate(normalizedTitle, normalizedCode, scope)) return;
+      byDict.set(id, {
+        attr_id: id,
+        title: normalizedTitle,
+        code: normalizedCode,
+        dict_id: id,
+        options: [],
+      });
+    };
+
+    for (const attr of templateAttrs || []) {
+      const global = attr.attribute_id ? globalAttrById.get(attr.attribute_id) : null;
+      const options = attr.options || {};
+      const dictId =
+        options.dict_id ||
+        options.dictId ||
+        global?.dict_id ||
+        (options.attribute_id && globalAttrById.get(options.attribute_id || "")?.dict_id) ||
+        "";
+      const title = attr.name || global?.title || attr.code || global?.code || "";
+      const code = attr.code || global?.code || title;
+      const scope = attr.scope || global?.scope || "";
+      addParam(String(dictId || ""), title, code, scope);
+    }
+
+    if (!byDict.size) {
+      for (const item of dictionaryItems || []) {
+        if (item?.meta?.service) continue;
         const id = (item.id || "").trim();
+        const title = (item.title || item.code || id || "").trim();
         const code = (item.code || id || "").trim();
-        if (!id || !code) return null;
-        return {
-          attr_id: id,
-          title: item.title || code,
-          code,
-          dict_id: id,
-          options: [],
-        } as VariantParam;
-      })
-      .filter(Boolean) as VariantParam[];
-  }, [dictionaryItems, productType]);
+        addParam(id, title, code, "");
+      }
+    }
+
+    return Array.from(byDict.values())
+      .sort((a, b) => {
+        const rankA = variantAxisRank(a.title, a.code);
+        const rankB = variantAxisRank(b.title, b.code);
+        if (rankA !== rankB) return rankA - rankB;
+        return a.title.localeCompare(b.title, "ru");
+      });
+  }, [dictionaryItems, globalAttrById, productType, templateAttrs]);
+
+  useEffect(() => {
+    if (productType !== "multi") return;
+    const allowedIds = new Set(variantParams.map((param) => param.attr_id));
+    setSelectedOrder((prev) => prev.filter((id) => allowedIds.has(id)));
+    setSelectedValues((prev) => {
+      let changed = false;
+      const next: Record<string, string[]> = {};
+      for (const [id, values] of Object.entries(prev)) {
+        if (!allowedIds.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = values;
+      }
+      return changed ? next : prev;
+    });
+  }, [productType, variantParams]);
 
   useEffect(() => {
     (async () => {
@@ -1163,14 +1198,6 @@ export default function ProductNewFeature() {
     setVariants(next);
   }
 
-  function updateVariantLink(key: string, idx: number, value: string) {
-    setVariants((prev) =>
-      prev.map((v) =>
-        v.key === key ? { ...v, links: v.links.map((l, i) => (i === idx ? { ...l, url: value } : l)) } : v
-      )
-    );
-  }
-
   function activeVariant() {
     return variants.find((v) => v.key === activeVariantKey) || variants[0];
   }
@@ -1193,125 +1220,6 @@ export default function ProductNewFeature() {
           : row
       )
     );
-  }
-
-  async function onLoadData() {
-    setLoadErr(null);
-    if (!templateId) {
-      setLoadErr("Для категории нет мастер-шаблона.");
-      return;
-    }
-    if (!variants.length) {
-      setLoadErr("Сначала создайте варианты.");
-      return;
-    }
-
-    setLoadingData(true);
-    try {
-      const mapping = await getJson<TemplateMappingResp>(`${API_COMP_MAPPING}/${encodeURIComponent(templateId)}`);
-      const mapBySite = mapping.data?.mapping_by_site || { restore: {}, store77: {} };
-      const priority = mapping.data?.priority_site || null;
-
-      const results = await Promise.all(
-        variants.map((v) =>
-          postJson<CompetitorContentResp>(API_COMP_CONTENT_BATCH, {
-            template_id: templateId,
-            links: {
-              restore: v.links.find((l) => l.source === "restore")?.url || "",
-              store77: v.links.find((l) => l.source === "store77")?.url || "",
-            },
-          })
-        )
-      );
-
-      setVariants((prev) =>
-        prev.map((v, idx) => {
-          const res = results[idx];
-          const restore = res?.results?.restore || {};
-          const store77 = res?.results?.store77 || {};
-
-          const restoreSpecs = restore.specs || {};
-          const storeSpecs = store77.specs || {};
-          const restoreMapped = restore.mapped_specs || {};
-          const storeMapped = store77.mapped_specs || {};
-
-          const baseFields = mapping.master_fields?.length
-            ? mapping.master_fields
-            : templateAttrs.map((a) => ({
-                code: a.code || "",
-                name: a.name || a.code || "",
-              }));
-
-          const features = baseFields.reduce((acc, f) => {
-            const code = (f.code || "").trim();
-            if (!code) return acc;
-            const rField = (mapBySite.restore || {})[code];
-            const sField = (mapBySite.store77 || {})[code];
-            const rVal = restoreMapped[code] || (rField ? pickSpecValue(restoreSpecs, rField) : "");
-            const sVal = storeMapped[code] || (sField ? pickSpecValue(storeSpecs, sField) : "");
-            const selected =
-              priority === "store77"
-                ? sVal
-                  ? "store77"
-                  : rVal
-                  ? "restore"
-                  : "custom"
-                : rVal
-                ? "restore"
-                : sVal
-                ? "store77"
-                : "custom";
-            const value = selected === "store77" ? sVal : selected === "restore" ? rVal : "";
-            acc.push({
-              code,
-              name: f.name || code,
-              restore: rVal,
-              store77: sVal,
-              selected,
-              value,
-            });
-            return acc;
-          }, [] as VariantContent["features"]);
-
-          const images = uniqTrim([...(restore.images || []), ...(store77.images || [])]);
-          const media = images.map((url) => ({ url }));
-
-          const restoreDesc = restore.description || "";
-          const storeDesc = store77.description || "";
-          const selectedSource =
-            priority === "store77"
-              ? storeDesc
-                ? "store77"
-                : restoreDesc
-                ? "restore"
-                : "custom"
-              : restoreDesc
-              ? "restore"
-              : storeDesc
-              ? "store77"
-              : "custom";
-          const picked = selectedSource === "store77" ? storeDesc : selectedSource === "restore" ? restoreDesc : "";
-
-          return {
-            ...v,
-            content: {
-              features,
-              media,
-              description: {
-                restore: restoreDesc,
-                store77: storeDesc,
-                selected: selectedSource,
-                custom: picked || v.content.description.custom,
-              },
-            },
-          };
-        })
-      );
-    } catch (e: any) {
-      setLoadErr(e?.message || "LOAD_FAILED");
-    } finally {
-      setLoadingData(false);
-    }
   }
 
   function validateBeforeSave() {
@@ -1393,15 +1301,11 @@ export default function ProductNewFeature() {
   const wizardSteps = [
     { label: "Основа", meta: "название, категория, тип" },
     { label: "SKU и варианты", meta: "один SKU или группа" },
-    { label: "Источники", meta: "ссылки для насыщения" },
+    { label: "Конкуренты", meta: "подбор после создания" },
     { label: "Проверка", meta: "создать реальные SKU" },
   ];
   const activeStep = Math.min(currentStep, wizardSteps.length - 1);
   const filledFeatures = active?.content.features.filter((feature) => normStr(feature.value)).length || 0;
-  const sourceLinksCount = variants.reduce(
-    (count, variant) => count + variant.links.filter((link) => normStr(link.url)).length,
-    0,
-  );
   const selectedParamLabels = selectedOrder.map((id) => {
     const param = paramDefs.find((item) => item.attr_id === id);
     const values = selectedValues[id] || [];
@@ -1451,8 +1355,8 @@ export default function ProductNewFeature() {
               <strong>{variants.length || 0}</strong>
             </div>
             <div>
-              <span>Источники</span>
-              <strong>{sourceLinksCount}</strong>
+              <span>Конкуренты</span>
+              <strong>{variants.length ? "после создания" : "—"}</strong>
             </div>
           </div>
           <div className="pnWizardRailHint">
@@ -1550,7 +1454,7 @@ export default function ProductNewFeature() {
                     <button className="btn" type="button" onClick={() => void ensureSingleSkus()}>Выделить SKU</button>
                   ) : (
                     <div className="pnWizardInlineActions">
-                      <button className="btn" onClick={() => setParamModalOpen(true)} type="button" disabled={!hasVariantParams}>Выбрать параметры</button>
+                      <button className="btn" onClick={() => setParamModalOpen(true)} type="button" disabled={!hasVariantParams}>Выбрать оси</button>
                       <button className="btn primary" onClick={onGenerateVariants} type="button" disabled={!canGenerateVariants || !hasVariantParams}>Собрать SKU</button>
                     </div>
                   )}
@@ -1607,27 +1511,28 @@ export default function ProductNewFeature() {
               <div className="pnWizardFormStack">
                 <div className="pnWizardSectionHead">
                   <div>
-                    <strong>Источники конкурентов</strong>
-                    <span>Опционально. Можно создать SKU сейчас, а ссылки подтянуть позже через карточку товара.</span>
+                    <strong>Подбор конкурентов после создания</strong>
+                    <span>Сначала создаем реальные SKU. Затем система откроет карточку первого SKU, где запускается поиск кандидатов по re-store и store77.</span>
                   </div>
-                  <button className="btn" onClick={onLoadData} type="button" disabled={loadingData || !variants.length || !templateId}>
-                    {loadingData ? "Загружаем..." : "Проверить ссылки"}
-                  </button>
                 </div>
-                {loadErr ? <div className="pn-hint pn-hintWarn">{loadErr}</div> : null}
-                <div className="pnWizardSourceList">
+                <div className="pnWizardNotice">
+                  Ручные ссылки не являются основным сценарием. После создания откройте вкладку «Конкуренты»: там для каждого SKU будет
+                  подбор карточек, подтверждение кандидата и массовое насыщение параметрами/медиа.
+                </div>
+                <div className="pnVariantMatrix">
+                  <div className="pnVariantMatrixHead">
+                    <span>SKU</span>
+                    <span>Вариант</span>
+                    <span>Конкуренты</span>
+                    <span>Следующее действие</span>
+                  </div>
                   {variants.map((variant) => (
-                    <article key={variant.key} className="pnWizardSourceCard">
+                    <div key={variant.key} className="pnVariantMatrixRow">
                       <strong>{variant.title}</strong>
-                      <label>
-                        <span>re-store</span>
-                        <input className="pn-input" value={variant.links.find((link) => link.source === "restore")?.url || ""} onChange={(e) => updateVariantLink(variant.key, 0, e.target.value)} placeholder="https://re-store.ru/..." />
-                      </label>
-                      <label>
-                        <span>store77</span>
-                        <input className="pn-input" value={variant.links.find((link) => link.source === "store77")?.url || ""} onChange={(e) => updateVariantLink(variant.key, 1, e.target.value)} placeholder="https://store77.net/..." />
-                      </label>
-                    </article>
+                      <span>{Object.values(variant.params).filter(Boolean).join(" / ") || "один SKU"}</span>
+                      <span>re-store / store77</span>
+                      <span>Найти карточки</span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1643,7 +1548,7 @@ export default function ProductNewFeature() {
                 <div className="pnWizardReviewGrid">
                   <div><span>Тип</span><strong>{productType === "single" ? "Один SKU" : "С вариантами"}</strong></div>
                   <div><span>Варианты</span><strong>{variants.length}</strong></div>
-                  <div><span>Ссылки</span><strong>{sourceLinksCount}</strong></div>
+                  <div><span>Конкуренты</span><strong>после создания</strong></div>
                   <div><span>Параметры</span><strong>{filledFeatures}</strong></div>
                 </div>
                 <div className="pnWizardNotice">
