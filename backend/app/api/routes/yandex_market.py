@@ -1762,7 +1762,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                     merged_images = _merge_media_items(current_images, imported_pictures, bool(req.overwrite_existing))
                     if merged_images != current_images:
                         content["media_images"] = merged_images
-                        content["media"] = merged_images
+                        content.pop("media", None)
                         mapping_changed = True
                     media_sources = source_meta.get("media_images") if isinstance(source_meta.get("media_images"), dict) else {}
                     media_sources["yandex_market"] = {

@@ -1932,7 +1932,7 @@ async def _merge_competitor_content_into_product(
     content["features"] = features
     if existing_images:
         content["media_images"] = existing_images
-        content["media"] = existing_images
+        content.pop("media", None)
     if source_values:
         content["source_values"] = source_values
     source_evidence["competitors"] = competitors_evidence

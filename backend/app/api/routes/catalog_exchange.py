@@ -592,7 +592,7 @@ async def _apply_competitor_result_to_product(
             appended = True
         if appended:
             content["media_images"] = current_images
-            content["media"] = current_images
+            content.pop("media", None)
             changed = True
         source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
         media_sources = source_meta.get("media_images") if isinstance(source_meta.get("media_images"), dict) else {}

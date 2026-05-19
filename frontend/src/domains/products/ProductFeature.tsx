@@ -1122,7 +1122,6 @@ export default function ProductFeature() {
     const nextContent = normalizeContent({
       ...content,
       media_images: [...(content.media_images || []), ...mapped],
-      media: [...(content.media_images || []), ...mapped],
     });
     await persistContent(nextContent);
   }
@@ -1239,7 +1238,6 @@ export default function ProductFeature() {
         status: autoStatus,
         content: {
           ...content,
-          media: content.media_images || [],
           links: linksSanitized,
           features: [...featuresSanitized, ...extraFeatures],
         },
@@ -1867,7 +1865,6 @@ export default function ProductFeature() {
                             normalizeContent({
                               ...c,
                               media_images: updateList(c.media_images, idx, { caption: e.target.value }),
-                              media: updateList(c.media_images, idx, { caption: e.target.value }),
                             })
                           )
                         }
@@ -1875,7 +1872,6 @@ export default function ProductFeature() {
                           const nextContent = normalizeContent({
                             ...content,
                             media_images: updateList(content.media_images, idx, { caption: e.target.value }),
-                            media: updateList(content.media_images, idx, { caption: e.target.value }),
                           });
                           await persistContent(nextContent);
                         }}
