@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException
 from app.core.llm import LlmError, llm_chat_text
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
 from app.core.products.parameter_flow import dict_id_for_product_feature
+from app.core.products.service import seed_product_features_from_category
 from app.core.tenant_context import (
     current_tenant_organization_id,
     reset_current_tenant_organization_id,
@@ -1658,6 +1659,7 @@ async def _merge_competitor_content_into_product(
     extracted: Dict[str, Dict[str, Any]],
     links: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
+    seed_product_features_from_category(product)
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
     competitor_links = content.get("competitor_links") if isinstance(content.get("competitor_links"), dict) else {}
     for source_id, link in links.items():

@@ -112,6 +112,19 @@ Checklist:
 
 Audit findings to verify/fix:
 
+0. 2026-05-19 end-to-end new SKU audit, route `/products/new?category_id=882fff99-63a1-4cff-8a65-ecc1d341fb34`:
+   - test category: existing empty branch `iPhone 17e` (`882fff99-63a1-4cff-8a65-ecc1d341fb34`), path `Смартфоны / Apple / iPhone 17 / iPhone 17e`;
+   - created real test SKU: `product_1092`, SKU GT `53425`, title `Смартфон Apple iPhone 17e 256Gb Pink SIM+eSIM`;
+   - creation functionality score: `8/10`; category stays preselected, wizard is short, created SKU opens directly on `Конкуренты`;
+   - creation UX score: `7/10`; still too many product-card tabs visible immediately and two `Создать SKU` buttons on review step;
+   - competitor discovery found exact re-store card `https://re-store.ru/catalog/10117E256PNKN/` with `95%`, memory/color/SIM matched; wrong nearby `iPhone Air 256GB eSIM` candidate was correctly left for rejection because SIM/model conflict was visible;
+   - store77 state: `Ошибка источника / источник долго отвечает`; this is acceptable as a source-state message, but next iteration must show retry timing and not make the user think the whole workflow failed;
+   - fixed: new products and existing products with empty `content.features` now seed fields from the inherited category info-model before enrichment;
+   - fixed: after redeploy and re-enrichment, `product_1092` changed from `0` fields to `84` fields, with `32/84` filled, `30` matched competitor specs, `21` unmatched specs, description length `12748`;
+   - media verification: `product_1092` has `4` selected ready S3-backed gallery images from re-store in both `content.media_images` and `content.media`;
+   - UX fixed: long values in the parameter queue are visually truncated so the re-store description no longer breaks the parameter list;
+   - remaining P0 product-card UX issue: the full competitor description is too noisy as a canonical field; the product card needs a separate short SEO/marketplace description field and source-description evidence should live in a detail panel, not as a huge visible parameter value.
+
 0. 2026-05-19 product competitor enrichment audit, route `/products/product_70?tab=competitors`:
    - root finding: re-store and store77 did return exact product-card data, but product enrichment still lost valid specs because source names were not normalized enough;
    - fixed: source-name normalization now folds `ё -> е`, so `Разъём` and `Разъем` behave as the same field;
