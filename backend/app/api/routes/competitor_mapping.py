@@ -49,6 +49,7 @@ from app.core.competitors.extract_competitor_fields import (
     extract_competitor_fields,
     extract_competitor_content,
 )
+from app.core.competitors.restore_specs import extract_restore_product_content_from_html
 
 router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
 
@@ -673,9 +674,11 @@ def _normalize_candidate(product: Dict[str, Any], source: Dict[str, Any], raw: D
         "url": url,
         "normalized_url": url,
         "title": str(raw.get("title") or "").strip(),
-        "match_group_key": str(raw.get("match_group_key") or _model_memory_color_group_key(raw.get("title") or product.get("title"))),
+        "match_group_key": str(raw.get("match_group_key") or _model_memory_color_group_key(raw.get("profile_text") or raw.get("title") or product.get("title"))),
         "product_sim_profile": _sim_profile(product.get("title")),
-        "candidate_sim_profile": _sim_profile(raw.get("title")),
+        "candidate_sim_profile": _sim_profile(raw.get("profile_text") or raw.get("title")),
+        "profile_text": str(raw.get("profile_text") or "").strip(),
+        "profile_specs": raw.get("profile_specs") if isinstance(raw.get("profile_specs"), dict) else {},
         "brand": str(raw.get("brand") or "").strip(),
         "model": str(raw.get("model") or "").strip(),
         "sku": str(raw.get("sku") or "").strip(),
@@ -830,8 +833,14 @@ def _sim_profile(value: Any) -> str:
     normalized = _norm_match_text(value)
     if not normalized:
         return "unknown"
-    has_esim = "esim" in normalized or "e sim" in normalized
-    has_nano = "nano sim" in normalized or "nanosim" in normalized or "nano" in normalized
+    tokens = normalized.split()
+    has_esim = "esim" in tokens or any(tokens[idx] == "e" and idx + 1 < len(tokens) and tokens[idx + 1] == "sim" for idx in range(len(tokens)))
+    has_standalone_sim = any(
+        token in {"sim", "сим"}
+        and not (idx > 0 and tokens[idx - 1] == "e")
+        for idx, token in enumerate(tokens)
+    )
+    has_nano = "nano sim" in normalized or "nanosim" in normalized or "nano" in tokens
     has_dual = (
         "dual sim" in normalized
         or "2sim" in normalized
@@ -842,11 +851,11 @@ def _sim_profile(value: Any) -> str:
     )
     if has_dual:
         return "dual_sim"
-    if has_nano and has_esim:
+    if has_esim and (has_nano or has_standalone_sim):
         return "nano_sim_esim"
     if has_esim:
         return "esim_only"
-    if has_nano or "sim" in normalized or "сим" in normalized:
+    if has_nano or has_standalone_sim:
         return "physical_sim"
     return "unknown"
 
@@ -1219,6 +1228,8 @@ def _candidate_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]
         "match_group_key": str(payload.get("match_group_key") or "").strip(),
         "product_sim_profile": str(payload.get("product_sim_profile") or "").strip(),
         "candidate_sim_profile": str(payload.get("candidate_sim_profile") or "").strip(),
+        "profile_text": str(payload.get("profile_text") or "").strip(),
+        "profile_specs": payload.get("profile_specs") if isinstance(payload.get("profile_specs"), dict) else {},
         "last_seen_at": payload.get("last_seen_at") or row.get("updated_at"),
         "reviewed_at": payload.get("reviewed_at"),
         "rejection_reason": payload.get("rejection_reason"),
@@ -1499,6 +1510,8 @@ def _persist_competitor_channel_candidate(candidate: Dict[str, Any]) -> None:
                     "match_group_key": candidate.get("match_group_key"),
                     "product_sim_profile": candidate.get("product_sim_profile"),
                     "candidate_sim_profile": candidate.get("candidate_sim_profile"),
+                    "profile_text": candidate.get("profile_text"),
+                    "profile_specs": candidate.get("profile_specs") if isinstance(candidate.get("profile_specs"), dict) else {},
                     "confidence_reasons": candidate.get("confidence_reasons") if isinstance(candidate.get("confidence_reasons"), list) else [],
                     "raw_status": status,
                     "reviewed_at": candidate.get("reviewed_at"),
@@ -1961,6 +1974,64 @@ async def _fetch_search_html(url: str) -> str:
         return response.text
 
 
+def _restore_candidate_profile_text(candidate: Dict[str, Any], specs: Dict[str, Any]) -> str:
+    values = [
+        candidate.get("brand"),
+        candidate.get("title"),
+        specs.get("Память"),
+        specs.get("Цвет"),
+        specs.get("SIM-карта"),
+    ]
+    return " ".join(str(item or "").strip() for item in values if str(item or "").strip())
+
+
+async def _enrich_restore_candidate_for_review(product: Dict[str, Any], candidate: Dict[str, Any]) -> Dict[str, Any]:
+    url = str(candidate.get("url") or "").strip()
+    if not url:
+        return candidate
+    try:
+        html = await _fetch_search_html(url)
+        _, specs, _ = extract_restore_product_content_from_html(html, base_url=url)
+    except Exception:
+        return candidate
+    if not isinstance(specs, dict) or not specs:
+        return candidate
+
+    profile_text = _restore_candidate_profile_text(candidate, specs)
+    if not profile_text:
+        return candidate
+    score, reasons = _confidence_for_candidate(product, profile_text, str(candidate.get("sku") or ""), str(candidate.get("brand") or ""))
+    if score < 0.78:
+        score, reasons = _near_miss_confidence_for_candidate(product, profile_text, str(candidate.get("sku") or ""), str(candidate.get("brand") or ""))
+    if score < 0.78:
+        score, reasons = _manual_review_confidence_for_candidate(product, profile_text, str(candidate.get("sku") or ""), str(candidate.get("brand") or ""))
+
+    enriched = dict(candidate)
+    enriched["profile_text"] = profile_text
+    enriched["profile_specs"] = {
+        key: str(specs.get(key) or "").strip()
+        for key in ("Память", "Цвет", "SIM-карта")
+        if str(specs.get(key) or "").strip()
+    }
+    if score >= _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+        enriched["confidence_score"] = score
+        enriched["confidence_reasons"] = reasons
+    return enriched
+
+
+async def _enrich_restore_candidates_for_review(product: Dict[str, Any], candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+    enriched = await asyncio.gather(
+        *(_enrich_restore_candidate_for_review(product, candidate) for candidate in candidates),
+        return_exceptions=True,
+    )
+    return [
+        item if isinstance(item, dict) else candidates[idx]
+        for idx, item in enumerate(enriched)
+    ]
+
+
 async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     if os.getenv("ENABLE_HTTP_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
         # Hard kill switch for production incidents. re-store serves the product
@@ -1982,8 +2053,8 @@ async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str
             seen.add(candidate_url)
             out.append(candidate)
             if len(out) >= 5:
-                return out
-    return out
+                return await _enrich_restore_candidates_for_review(product, out)
+    return await _enrich_restore_candidates_for_review(product, out)
 
 
 async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str, Any]]:

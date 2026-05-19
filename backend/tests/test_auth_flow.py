@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -2414,6 +2414,66 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/AG_10116MAX1TBDSTN/")
         self.assertEqual(candidates[0]["confidence_score"], 0.5)
         self.assertTrue(any("конфликт памяти" in reason for reason in candidates[0]["confidence_reasons"]))
+
+    def test_restore_candidate_review_enrichment_uses_card_specs_for_sim(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+        candidate = {
+            "url": "https://re-store.ru/catalog/AG_10116MAX1TBDSTN/",
+            "title": "Apple iPhone 16 Pro Max 1TB, Desert Titanium",
+            "brand": "Apple",
+            "sku": "AG_10116MAX1TBDSTN",
+            "confidence_score": 0.5,
+            "confidence_reasons": ["конфликт памяти: PIM=256gb, candidate=1tb"],
+        }
+        html = """
+          <div class="re-specs-table__row">
+            <span class="re-specs-table__text-property">Память</span>
+            <span class="re-specs-table__value">1 ТБ</span>
+          </div>
+          <div class="re-specs-table__row">
+            <span class="re-specs-table__text-property">Цвет</span>
+            <span class="re-specs-table__value">титановый бежевый</span>
+          </div>
+          <div class="re-specs-table__row">
+            <span class="re-specs-table__text-property">SIM-карта</span>
+            <span class="re-specs-table__value">SIM + eSIM</span>
+          </div>
+        """
+
+        with patch.object(competitor_mapping_routes, "_fetch_search_html", new=AsyncMock(return_value=html)):
+            enriched = asyncio.run(competitor_mapping_routes._enrich_restore_candidate_for_review(product, candidate))
+
+        self.assertEqual(enriched["profile_specs"]["SIM-карта"], "SIM + eSIM")
+        self.assertEqual(competitor_mapping_routes._sim_profile(enriched["profile_text"]), "nano_sim_esim")
+        self.assertTrue(any("конфликт SIM" in reason for reason in enriched["confidence_reasons"]))
+        normalized = competitor_mapping_routes._normalize_candidate(product, {"id": "restore", "name": "re-store"}, enriched)
+        self.assertEqual(normalized["candidate_sim_profile"], "nano_sim_esim")
+        self.assertEqual(normalized["profile_specs"]["SIM-карта"], "SIM + eSIM")
+
+    def test_restore_candidate_review_enrichment_reads_json_spec_payload(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+        candidate = {
+            "url": "https://re-store.ru/catalog/AG_10116MAX1TBDSTN/",
+            "title": "Apple iPhone 16 Pro Max 1TB, Desert Titanium",
+            "brand": "Apple",
+            "sku": "AG_10116MAX1TBDSTN",
+        }
+        html = r''':[{\"property\":\"Память\",\"values\":[{\"value\":\"1 ТБ\"}],\"hint\":\"\"},{\"property\":\"Цвет\",\"values\":[{\"value\":\"песчаный титановый\"}],\"hint\":\"\"},{\"property\":\"SIM-карта\",\"values\":[{\"value\":\"SIM + eSIM\"}],\"hint\":\"\"}]'''
+
+        with patch.object(competitor_mapping_routes, "_fetch_search_html", new=AsyncMock(return_value=html)):
+            enriched = asyncio.run(competitor_mapping_routes._enrich_restore_candidate_for_review(product, candidate))
+
+        self.assertEqual(enriched["profile_specs"]["Память"], "1 ТБ")
+        self.assertEqual(enriched["profile_specs"]["SIM-карта"], "SIM + eSIM")
+        self.assertEqual(competitor_mapping_routes._sim_profile(enriched["profile_text"]), "nano_sim_esim")
 
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''

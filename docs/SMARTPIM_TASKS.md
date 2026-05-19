@@ -575,6 +575,7 @@ Progress:
     - production verification on 2026-05-19: `product_70 / Степень защиты` now stores Store77 raw text `IP68 допускается погружение...`, resolves PIM canonical value `IP68`, and prepares separate Я.Маркет/Ozon outputs from the mapping layer;
     - fixed on 2026-05-19: competitor discovery now persists per-product/per-source scan state even when a source returns zero candidates or errors, and product competitor UI no longer shows `Не сканировали` after a completed empty scan;
     - fixed on 2026-05-19: re-store variant-conflict cards now remain visible as `needs_review` candidates instead of being dropped before persistence; for example `product_70` now shows 1TB re-store candidates as blocking manual-review candidates with memory/color conflict reasons;
+    - fixed on 2026-05-19: re-store candidate scoring now enriches candidates from the product-card specs before persistence, especially `Память`, `Цвет`, and `SIM-карта`, so `eSIM` and `SIM + eSIM` are separated by real card data instead of only by search-result title;
     - remaining issue: exact-match quality still needs parser/data work where re-store has the exact SKU but search returns only nearby variants; until then those variants must block the source and require explicit approve/reject.
 
 ### P1 DB Consolidation

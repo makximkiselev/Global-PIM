@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Dict, Tuple, List, Set, Optional
+import json
 import re
 from html import unescape
 from bs4 import BeautifulSoup
@@ -91,6 +92,18 @@ def _html_text(s: str) -> str:
     s = re.sub(r"(?is)</p>\s*<p[^>]*>", "\n\n", s)
     s = re.sub(r"(?is)<[^>]+>", " ", s)
     return _clean_text(s)
+
+
+def _jsonish_text(s: str) -> str:
+    if not s:
+        return ""
+    value = str(s)
+    try:
+        value = json.loads(f'"{value}"')
+    except Exception:
+        value = value.replace('\\"', '"').replace("\\/", "/")
+    value = value.replace("\\u0026nbsp;", " ").replace("&nbsp;", " ")
+    return _clean_text(value)
 
 
 # =========================
@@ -243,6 +256,10 @@ _SPECS_PAIR_FALLBACK_RES = [
     ),
 ]
 
+_JSON_SPEC_PAIR_RE = re.compile(
+    r'(?is)"property"\s*:\s*"(?P<key>[^"]+)"\s*,\s*"values"\s*:\s*\[\s*\{\s*"value"\s*:\s*"(?P<value>[^"]*)"',
+)
+
 
 def extract_restore_specs_from_html(html: str) -> Dict[str, str]:
     """
@@ -253,7 +270,7 @@ def extract_restore_specs_from_html(html: str) -> Dict[str, str]:
         return {}
 
     out: Dict[str, str] = {}
-    seen: Dict[str, int] = {}
+    seen: Set[str] = set()
 
     # DOM parse for dynamic markup (основной путь)
     try:
@@ -311,6 +328,21 @@ def extract_restore_specs_from_html(html: str) -> Dict[str, str]:
         key = _register_key(k, seen)
         if key:
             out[key] = v
+
+    if out:
+        return out
+
+    # Current re-store pages often render specs as escaped JSON payload:
+    # {"property":"SIM-карта","values":[{"value":"SIM + eSIM"}]}
+    for doc in (html, html.replace('\\"', '"').replace("\\/", "/")):
+        for match in _JSON_SPEC_PAIR_RE.finditer(doc):
+            k = _jsonish_text(match.group("key"))
+            v = _jsonish_text(match.group("value"))
+            if not k or not v:
+                continue
+            key = _register_key(k, seen)
+            if key:
+                out[key] = v
 
     return out
 
