@@ -169,6 +169,34 @@ curl_retry() {
   curl -fsS "${url}" >/dev/null
 }
 
+tar_supports_flag() {
+  local flag="$1"
+  local probe_dir
+  probe_dir="$(mktemp -d /tmp/global-pim-tar-probe.XXXXXX)"
+  printf "probe\n" > "${probe_dir}/probe.txt"
+  if tar "${flag}" -C "${probe_dir}" -cf /tmp/global-pim-tar-probe.tar . >/dev/null 2>&1; then
+    rm -rf "${probe_dir}" /tmp/global-pim-tar-probe.tar
+    return 0
+  fi
+  rm -rf "${probe_dir}" /tmp/global-pim-tar-probe.tar
+  return 1
+}
+
+create_release_archive() {
+  local source_dir="$1"
+  local archive_path="$2"
+  local extra_flags=()
+
+  if tar_supports_flag "--no-xattrs"; then
+    extra_flags+=("--no-xattrs")
+  fi
+  if tar_supports_flag "--no-mac-metadata"; then
+    extra_flags+=("--no-mac-metadata")
+  fi
+
+  COPYFILE_DISABLE=1 tar "${extra_flags[@]}" -C "${source_dir}" -czf "${archive_path}" .
+}
+
 echo "==> Preparing release bundle"
 mkdir -p "${LOCAL_TMP_DIR}/backend" "${LOCAL_TMP_DIR}/frontend" "${LOCAL_TMP_DIR}/certs"
 
@@ -190,7 +218,7 @@ cp "${DB_CA_CERT_PATH}" "${LOCAL_TMP_DIR}/certs/ca.crt"
 if command -v xattr >/dev/null 2>&1; then
   xattr -cr "${LOCAL_TMP_DIR}" 2>/dev/null || true
 fi
-COPYFILE_DISABLE=1 tar -C "${LOCAL_TMP_DIR}" -czf "${LOCAL_ARCHIVE}" .
+create_release_archive "${LOCAL_TMP_DIR}" "${LOCAL_ARCHIVE}"
 
 cat > "${REMOTE_SCRIPT_LOCAL}" <<EOF
 set -euo pipefail
@@ -238,7 +266,7 @@ fi
 
 systemctl restart "\${APP_SERVICE_NAME}"
 for attempt in {1..30}; do
-  if curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null; then
+  if curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null 2>&1; then
     break
   fi
   sleep 1
