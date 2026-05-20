@@ -617,6 +617,7 @@ Progress:
    - fixed on 2026-05-20: active product route `ProductWorkspaceFeature` now waits for catalog summary `group_id` and falls back to `/product-groups/{id}` when `/products/{id}` does not return variants, so grouped SKU context is not lost in the product card;
    - production browser verification on 2026-05-20: `/products/product_1052?tab=competitors` shows group workspace for `iPhone 17 Pro Max`, 36 SKU rows, one active SKU, and the competitor panel under the selected row;
    - fixed on 2026-05-20: group-level competitor workspace now loads per-SKU discovery summaries and shows `подтверждено`, `кандидат`, `нет точного`, `нет кандидатов`, `не сканировали`, or `ошибка` in each SKU row;
+   - fixed on 2026-05-20: group-level competitor workspace now has SKU search and status filters (`Все`, `Не сканировали`, `Кандидаты`, `Подтверждено`, `Проблемы`) so large variant groups do not become a long unmanaged list;
    - next required cleanup: make the per-SKU status table actionable in bulk: run discovery for selected SKU rows, filter rows by source status, and show confirmed source counts without opening every SKU;
     - creation must remain short: create SKU/family first, then move the user into the product card for competitor pickup, enrichment, marketplace mapping, media, validation, and export.
 23. 2026-05-18 competitor enrichment/value-normalization gap:

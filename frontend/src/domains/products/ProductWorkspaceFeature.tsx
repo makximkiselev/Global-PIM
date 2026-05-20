@@ -1011,6 +1011,8 @@ function ProductWorkspaceFeature() {
   const [selectedFeatureKey, setSelectedFeatureKey] = useState("");
   const [competitorProductId, setCompetitorProductId] = useState("");
   const [competitorSkuStatuses, setCompetitorSkuStatuses] = useState<Record<string, CompetitorSkuStatus>>({});
+  const [competitorSkuQuery, setCompetitorSkuQuery] = useState("");
+  const [competitorSkuFilter, setCompetitorSkuFilter] = useState<"all" | CompetitorSkuStatus["tone"]>("all");
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -1026,6 +1028,8 @@ function ProductWorkspaceFeature() {
       setChannelsLoading(false);
       setCompetitorProductId("");
       setCompetitorSkuStatuses({});
+      setCompetitorSkuQuery("");
+      setCompetitorSkuFilter("all");
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1147,6 +1151,23 @@ function ProductWorkspaceFeature() {
   const selectedCompetitorItem = useMemo(() => {
     return competitorGroupItems.find((item) => item.id === competitorProductId) || competitorGroupItems[0] || product;
   }, [competitorGroupItems, competitorProductId, product]);
+  const filteredCompetitorGroupItems = useMemo(() => {
+    const q = normalizeText(competitorSkuQuery).toLowerCase();
+    return competitorGroupItems.filter((item) => {
+      const status = competitorSkuStatuses[item.id];
+      if (competitorSkuFilter !== "all" && status?.tone !== competitorSkuFilter) return false;
+      if (!q) return true;
+      return [item.id, item.title, item.sku_gt, item.sku_pim].some((value) => normalizeText(value).toLowerCase().includes(q));
+    });
+  }, [competitorGroupItems, competitorSkuFilter, competitorSkuQuery, competitorSkuStatuses]);
+  const competitorSkuStatusCounts = useMemo(() => {
+    const counts = { all: competitorGroupItems.length, active: 0, pending: 0, danger: 0, neutral: 0 };
+    for (const item of competitorGroupItems) {
+      const tone = competitorSkuStatuses[item.id]?.tone || "neutral";
+      counts[tone] += 1;
+    }
+    return counts;
+  }, [competitorGroupItems, competitorSkuStatuses]);
 
   const accessories = useMemo(() => {
     return (product?.content?.related || []).filter((item) => normalizeText(item.name) || normalizeText(item.sku) || normalizeText(item.sku_gt));
@@ -1386,6 +1407,30 @@ function ProductWorkspaceFeature() {
                       Выберите SKU, затем запускайте поиск re-store/store77, подтверждайте кандидата или добавляйте точную ссылку вручную.
                       Насыщение параметров и медиа применяется только к выбранному SKU.
                     </div>
+                    <div className="pn-competitorSkuToolbar">
+                      <input
+                        className="pn-competitorSkuSearch"
+                        value={competitorSkuQuery}
+                        onChange={(event) => setCompetitorSkuQuery(event.target.value)}
+                        placeholder="Найти SKU, память, цвет, SIM..."
+                      />
+                      {[
+                        ["all", "Все", competitorSkuStatusCounts.all],
+                        ["neutral", "Не сканировали", competitorSkuStatusCounts.neutral],
+                        ["pending", "Кандидаты", competitorSkuStatusCounts.pending],
+                        ["active", "Подтверждено", competitorSkuStatusCounts.active],
+                        ["danger", "Проблемы", competitorSkuStatusCounts.danger],
+                      ].map(([key, label, count]) => (
+                        <button
+                          key={String(key)}
+                          type="button"
+                          className={`pn-competitorSkuFilter${competitorSkuFilter === key ? " isActive" : ""}`}
+                          onClick={() => setCompetitorSkuFilter(key as "all" | CompetitorSkuStatus["tone"])}
+                        >
+                          {label} <strong>{count}</strong>
+                        </button>
+                      ))}
+                    </div>
                     <div className="pn-competitorSkuTable">
                       <div className="pn-competitorSkuRow pn-competitorSkuHead">
                         <span>SKU GT</span>
@@ -1393,7 +1438,7 @@ function ProductWorkspaceFeature() {
                         <span>Статус</span>
                         <span>Действие</span>
                       </div>
-                      {competitorGroupItems.map((item) => {
+                      {filteredCompetitorGroupItems.map((item) => {
                         const isActive = item.id === selectedCompetitorItem?.id;
                         const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const };
                         return (
@@ -1415,6 +1460,9 @@ function ProductWorkspaceFeature() {
                           </button>
                         );
                       })}
+                      {!filteredCompetitorGroupItems.length ? (
+                        <div className="pn-competitorSkuEmpty">По этому фильтру SKU не найдены.</div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
