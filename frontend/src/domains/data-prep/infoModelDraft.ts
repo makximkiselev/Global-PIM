@@ -20,6 +20,17 @@ export type InfoModelCandidate = {
   status: "accepted" | "needs_review" | "rejected";
   examples: string[];
   sources: InfoModelCandidateSource[];
+  suggested_action?: "reuse_existing" | "create_attribute" | "ignore" | string;
+  global_match?: {
+    id?: string;
+    title?: string;
+    code?: string;
+    type?: string;
+    scope?: string;
+    dict_id?: string;
+    score?: number;
+    reason?: string;
+  };
 };
 
 export type InfoModelSummary = {

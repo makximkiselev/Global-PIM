@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from app.core.products.service import query_products_full
 from app.core.json_store import DATA_DIR, read_doc
-from app.storage.json_store import ensure_global_attribute, load_templates_db, new_id, save_templates_db
+from app.storage.json_store import ensure_global_attribute, load_templates_db, new_id, save_templates_db, suggest_attributes
 from app.storage.relational_pim_store import load_catalog_nodes, load_category_mappings
 
 
@@ -99,6 +99,81 @@ def _canonical_attribute_identity(name: str, code: str | None = None) -> Tuple[s
         if normalized in CANONICAL_ATTRIBUTE_ALIASES:
             return CANONICAL_ATTRIBUTE_ALIASES[normalized]
     return _text(name), raw_code or _slugify(name)
+
+
+def _norm_match_text(value: Any) -> str:
+    return " ".join(_text(value).lower().replace("_", " ").split())
+
+
+def _global_attribute_match(candidate: Dict[str, Any]) -> Dict[str, Any] | None:
+    canonical_name, canonical_code = _canonical_attribute_identity(
+        _text(candidate.get("name")),
+        _text(candidate.get("code")),
+    )
+    queries = [canonical_name, canonical_code, _text(candidate.get("name")), _text(candidate.get("code"))]
+    by_id: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+    for query in queries:
+        if not _text(query):
+            continue
+        try:
+            suggestions = suggest_attributes(query, limit=5)
+        except Exception:
+            suggestions = []
+        for suggestion in suggestions:
+            if not isinstance(suggestion, dict):
+                continue
+            suggestion_id = _text(suggestion.get("id") or suggestion.get("dict_id") or suggestion.get("code"))
+            if suggestion_id and suggestion_id not in by_id:
+                by_id[suggestion_id] = suggestion
+
+    if not by_id:
+        return None
+
+    target_title = _norm_match_text(canonical_name)
+    target_code = _text(canonical_code).lower()
+
+    def score(suggestion: Dict[str, Any]) -> Tuple[float, str]:
+        title = _norm_match_text(suggestion.get("title"))
+        code = _text(suggestion.get("code")).lower()
+        if code and target_code and code == target_code:
+            return 1.0, "same_code"
+        if title and target_title and title == target_title:
+            return 0.98, "same_title"
+        if code and target_code and (code in target_code or target_code in code):
+            return 0.86, "similar_code"
+        if title and target_title and (title in target_title or target_title in title):
+            return 0.82, "similar_title"
+        return 0.68, "suggested"
+
+    ranked = sorted(
+        ((score(suggestion), suggestion) for suggestion in by_id.values()),
+        key=lambda item: item[0][0],
+        reverse=True,
+    )
+    (match_score, reason), best = ranked[0]
+    return {
+        "id": best.get("id") or best.get("dict_id") or best.get("code"),
+        "title": best.get("title") or "",
+        "code": best.get("code") or "",
+        "type": best.get("type"),
+        "scope": best.get("scope"),
+        "dict_id": best.get("dict_id"),
+        "score": round(match_score, 2),
+        "reason": reason,
+    }
+
+
+def _attach_global_attribute_suggestions(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        match = _global_attribute_match(candidate)
+        if match:
+            candidate["global_match"] = match
+            candidate["suggested_action"] = "reuse_existing" if float(match.get("score") or 0) >= 0.82 else "create_attribute"
+        else:
+            candidate["suggested_action"] = "create_attribute"
+    return candidates
 
 
 def _infer_type(values: Iterable[str]) -> str:
@@ -514,6 +589,7 @@ def create_draft_from_sources(category_id: str, payload: Dict[str, Any] | None =
             existing = existing_by_code.get(code)
             existing_by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
         candidates = list(existing_by_code.values())
+    candidates = _attach_global_attribute_suggestions(candidates)
     info_model.update(
         {
             "status": "draft",

@@ -1143,6 +1143,17 @@ export default function TemplateEditor() {
                               <span>
                                 {candidate.group} · {typeLabel(candidate.type)} · {matchQualityLabel(candidate.confidence)}
                               </span>
+                              {candidate.global_match ? (
+                                <div className="tplDraftReuse">
+                                  <b>Уже есть в PIM</b>
+                                  <span>{candidate.global_match.title || candidate.global_match.code}</span>
+                                </div>
+                              ) : (
+                                <div className="tplDraftReuse is-new">
+                                  <b>Новое поле</b>
+                                  <span>Глобального параметра пока нет</span>
+                                </div>
+                              )}
                               <div className="tplDraftSources">
                                 {candidateSources(candidate).slice(0, 3).map((source) => (
                                   <small key={source}>{source}</small>
@@ -1154,7 +1165,7 @@ export default function TemplateEditor() {
                               <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
                               {candidate.status !== "accepted" ? (
                                 <Button onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
-                                  Добавить в модель
+                                  {candidate.global_match ? "Использовать поле" : "Создать поле"}
                                 </Button>
                               ) : null}
                               {candidate.status !== "rejected" ? (

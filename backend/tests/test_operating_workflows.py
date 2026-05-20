@@ -1210,12 +1210,28 @@ class OperatingWorkflowTests(unittest.TestCase):
             saved.clear()
             saved.update(deepcopy(next_db))
 
+        def suggest_attributes(query, limit=8):
+            normalized = str(query or "").strip().lower()
+            if normalized in {"встроенная память", "vstroennaya_pamyat"}:
+                return [
+                    {
+                        "id": "attr-global-storage",
+                        "title": "Встроенная память",
+                        "code": "vstroennaya_pamyat",
+                        "type": "select",
+                        "scope": "feature",
+                        "dict_id": "dict_vstroennaya_pamyat",
+                    }
+                ]
+            return []
+
         with (
             patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
             patch.object(draft_service, "save_templates_db", side_effect=save),
             patch.object(draft_service, "query_products_full", return_value=deepcopy(products)),
             patch.object(draft_service, "new_id", side_effect=["tpl-draft-phones", "cand-product-storage", "cand-brightness", "cand-storage", "cand-sensors"]),
             patch.object(draft_service, "now_iso", return_value="2026-05-20T00:00:00+00:00"),
+            patch.object(draft_service, "suggest_attributes", side_effect=suggest_attributes),
         ):
             response = draft_service.create_draft_from_sources("cat-phones", {"sources": ["products", "competitors"]})
 
@@ -1230,6 +1246,10 @@ class OperatingWorkflowTests(unittest.TestCase):
         storage = by_name["Встроенная память"]
         self.assertEqual(storage["code"], "vstroennaya_pamyat")
         self.assertTrue(any(source["kind"] == "competitor" for source in storage["sources"]))
+        self.assertEqual(storage["suggested_action"], "reuse_existing")
+        self.assertEqual(storage["global_match"]["id"], "attr-global-storage")
+        self.assertEqual(brightness["suggested_action"], "create_attribute")
+        self.assertNotIn("global_match", brightness)
         self.assertEqual(saved["templates"]["tpl-draft-phones"]["meta"]["info_model"]["draft_sources"], ["products", "competitors"])
 
     def test_info_model_draft_uses_nearest_ancestor_marketplace_mapping(self) -> None:

@@ -139,6 +139,8 @@ Current state:
 5. Draft collection now includes competitor unmatched specs when the UI calls `sources: ["products", "marketplaces", "competitors"]`.
 6. Competitor unmatched specs are review-only candidates with source provenance (`restore`/`store77`) and do not auto-approve.
 7. Synonyms such as `Объем встроенной памяти` continue to collapse into the global `Встроенная память` attribute during approval.
+8. Draft candidates now include `global_match` and `suggested_action`, so UI can show whether the field should reuse an existing global attribute or create a new one.
+9. Draft rows show duplicate prevention directly: `Уже есть в PIM` changes the action label to `Использовать поле`; new fields are labelled `Новое поле`.
 
 Known problems:
 
@@ -149,10 +151,9 @@ Known problems:
 
 Next tasks:
 
-1. Add deterministic fallback matching for competitor candidates to suggested global attributes.
-2. Show duplicate prevention in UI: when a field already exists globally, offer reuse, not create.
-3. Add explicit actions `reuse existing`, `create field`, `ignore` to draft rows.
-4. Re-run smartphone/tablet model rebuild comparison and verify no duplicate memory/RAM attributes are created.
+1. Re-run smartphone/tablet model rebuild comparison and verify no duplicate memory/RAM attributes are created.
+2. Improve draft source grouping so competitor-only fields can be reviewed separately from marketplace-required fields.
+3. Add a direct edit path for wrong `global_match` suggestions before approval.
 
 ### P0.4 Parameter And Value Mapping
 

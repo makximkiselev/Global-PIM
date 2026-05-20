@@ -1108,6 +1108,39 @@
   gap: 6px;
 }
 
+.tplDraftReuse {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid rgba(16, 185, 129, 0.26);
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tplDraftReuse b,
+.tplDraftReuse span {
+  display: inline;
+  min-width: 0;
+}
+
+.tplDraftReuse span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-soft);
+}
+
+.tplDraftReuse.is-new {
+  border-color: var(--line);
+  background: rgba(var(--card-rgb), 0.72);
+}
+
 .tplDraftSources small {
   max-width: 260px;
   overflow: hidden;
