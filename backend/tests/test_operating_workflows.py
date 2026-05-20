@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.routes import catalog_exchange, competitor_mapping, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
+from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
 from app.core import value_mapping
@@ -305,7 +306,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["candidate"]["status"], "approved")
         self.assertEqual(candidates, {})
         by_id = {row["link_id"]: row for row in saved_channel_links}
-        self.assertEqual(by_id["candidate-a"]["status"], "approved")
+        self.assertEqual(by_id["candidate-a"]["status"], "confirmed")
         self.assertEqual(by_id["candidate-b"]["status"], "rejected")
         self.assertEqual(by_id["candidate-b"]["payload"]["rejection_reason"], "sibling_not_selected")
         self.assertEqual(by_id["product_1:store77"]["url"], "https://store77.net/a")
@@ -487,6 +488,28 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(mapped["количество_sim_карт"], "SIM + eSIM")
         self.assertEqual(mapped["подробная_комплектация"], "кабель USB-C")
 
+    def test_competitor_specs_auto_map_never_maps_core_text_fields(self) -> None:
+        attrs = {
+            "title": {"code": "title", "name": "Наименование товара"},
+            "description": {"code": "description", "name": "Описание товара"},
+            "встроенная_память": {"code": "встроенная_память", "name": "Встроенная память"},
+        }
+        specs = {
+            "Память": "256 ГБ",
+            "Описание товара": "Длинный рекламный текст конкурента",
+        }
+
+        with patch.object(catalog_exchange, "_template_attr_defs", return_value=attrs):
+            mapped = catalog_exchange._auto_map_competitor_specs(
+                "tpl-phone",
+                specs,
+                {"title": "Память", "description": "Описание товара"},
+            )
+
+        self.assertNotIn("title", mapped)
+        self.assertNotIn("description", mapped)
+        self.assertEqual(mapped["встроенная_память"], "256 ГБ")
+
     def test_competitor_specs_auto_map_normalizes_restore_device_specs(self) -> None:
         attrs = {
             "тип_разъема": {"code": "тип_разъема", "name": "Тип разъема для зарядки"},
@@ -587,6 +610,52 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(features["battery_mount"]["value"], "Несъемный")
         self.assertEqual(features["video_time"]["value"], "до 33 часов")
 
+    def test_product_competitor_enrichment_keeps_core_text_fields_out_of_specs(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Смартфон Apple iPhone 17e 256Gb Pink SIM+eSIM",
+            "content": {
+                "features": [
+                    {"code": "title", "name": "Наименование товара", "value": "Исходное имя"},
+                    {"code": "description", "name": "Описание товара", "value": ""},
+                    {"code": "storage", "name": "Встроенная память", "value": ""},
+                ]
+            },
+        }
+        noisy_description = (
+            "Короткое описание товара для карточки. Похожие товары Apple iPhone 17e 512GB "
+            "В корзину С этим товаром покупают чехлы."
+        )
+
+        result = asyncio.run(
+            competitor_mapping._merge_competitor_content_into_product(
+                product,
+                extracted={
+                    "restore": {
+                        "ok": True,
+                        "specs": {
+                            "Память": "256 ГБ",
+                            "Наименование товара": "256 ГБ",
+                            "Описание товара": noisy_description,
+                        },
+                        "description": noisy_description,
+                        "images": [],
+                    }
+                },
+                links={"restore": {"url": "https://re-store.ru/catalog/test/"}},
+            )
+        )
+
+        features = {item["code"]: item for item in result["product"]["content"]["features"]}
+        self.assertEqual(features["title"]["value"], "Исходное имя")
+        self.assertEqual(features["description"]["value"], "")
+        self.assertEqual(features["storage"]["value"], "256 ГБ")
+        self.assertEqual(result["product"]["content"]["description"], "Короткое описание товара для карточки.")
+        self.assertEqual(
+            result["product"]["content"]["source_values"]["descriptions"]["restore"]["value"],
+            "Короткое описание товара для карточки.",
+        )
+
     def test_competitor_ai_suggestions_fallback_sorts_unmatched_specs(self) -> None:
         product = {
             "id": "product_1",
@@ -616,7 +685,11 @@ class OperatingWorkflowTests(unittest.TestCase):
             },
         }
 
-        response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
+        async def failing_llm_chat_text(**kwargs):
+            raise RuntimeError("llm unavailable")
+
+        with patch.object(competitor_mapping, "llm_chat_text", side_effect=failing_llm_chat_text):
+            response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
         items = response["items"]
         by_name = {item["source_name"]: item for item in items}
 
@@ -689,6 +762,62 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(items["Гарантия"]["action"], "create_attribute")
         self.assertEqual(items["Гарантия"]["target_code"], "гарантия")
 
+    def test_competitor_template_ai_mapping_uses_llm_but_rejects_core_fields(self) -> None:
+        fields = [
+            {"code": "title", "name": "Наименование товара"},
+            {"code": "description", "name": "Описание товара"},
+            {"code": "storage", "name": "Встроенная память"},
+            {"code": "color", "name": "Цвет"},
+        ]
+        specs = {
+            "Память": "256 ГБ",
+            "Описание товара": "Длинный текст конкурента",
+            "Цвет": "розовый",
+        }
+
+        async def fake_llm_chat_text(**kwargs):
+            return {
+                "model": "test-model",
+                "content": json.dumps(
+                    {
+                        "items": [
+                            {
+                                "source_id": "store77",
+                                "source_name": "Память",
+                                "raw_value": "256 ГБ",
+                                "action": "map_existing",
+                                "target_code": "title",
+                                "target_name": "Наименование товара",
+                                "confidence": 0.99,
+                                "reason": "ошибочная цель",
+                            },
+                            {
+                                "source_id": "store77",
+                                "source_name": "Цвет",
+                                "raw_value": "розовый",
+                                "action": "map_existing",
+                                "target_code": "color",
+                                "target_name": "Цвет",
+                                "confidence": 0.92,
+                                "reason": "цвет товара",
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+
+        with (
+            patch.object(competitor_mapping, "_master_fields", return_value=fields),
+            patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
+        ):
+            mapped = asyncio.run(competitor_mapping._ai_map_competitor_specs_to_template("tpl-phone", "store77", specs))
+
+        self.assertNotIn("title", mapped)
+        self.assertNotIn("description", mapped)
+        self.assertEqual(mapped["storage"], "256 ГБ")
+        self.assertEqual(mapped["color"], "розовый")
+
     def test_content_source_summary_detects_competitor_media_after_storage_import(self) -> None:
         product = {
             "id": "product_1",
@@ -724,7 +853,7 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "https://cdn.example.test/image.jpg",
             )
 
-    def test_store77_discovery_uses_exact_seed_before_browser_scan(self) -> None:
+    def test_store77_discovery_scans_real_category_before_seed_fallback(self) -> None:
         product = {
             "id": "product_1",
             "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
@@ -746,7 +875,8 @@ class OperatingWorkflowTests(unittest.TestCase):
             candidates = asyncio.run(competitor_mapping._discover_store77_candidates(product))
 
         self.assertEqual(candidates[0]["url"], "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/")
-        self.assertEqual(fetched_urls, [])
+        self.assertIn("apple_iphone_17_pro_1", fetched_urls[0])
+        self.assertEqual(len(fetched_urls), 1)
         self.assertTrue(all("/product/product_" not in item["url"] for item in candidates))
 
     def test_store77_seed_candidate_supports_iphone_17e_pink(self) -> None:
@@ -762,10 +892,21 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertEqual(
             candidates[0]["url"],
-            "https://store77.net/apple_iphone_17e/telefon_apple_iphone_17e_256gb_nano_sim_esim_pink/",
+            "https://store77.net/apple_iphone_17e/telefon_apple_iphone_17e_256_gb_esim_elektronnaya_sim_karta_tsvet_rozovyy_soft_pink/",
         )
         self.assertEqual(candidates[0]["product_sim_profile"], "nano_sim_esim")
-        self.assertEqual(candidates[0]["candidate_sim_profile"], "nano_sim_esim")
+        self.assertEqual(candidates[0]["candidate_sim_profile"], "esim_only")
+
+    def test_store77_title_fallback_extracts_specs_from_product_title(self) -> None:
+        specs = infer_store77_specs_from_title_or_url(
+            "Телефон Apple iPhone 17e 256 ГБ, eSim (электронная SIM-карта), цвет: розовый (Soft pink)",
+            "https://store77.net/apple_iphone_17e/telefon_apple_iphone_17e_256_gb_esim_elektronnaya_sim_karta_tsvet_rozovyy_soft_pink/",
+        )
+
+        self.assertEqual(specs["Память"], "256 ГБ")
+        self.assertEqual(specs["SIM-карта"], "eSIM")
+        self.assertEqual(specs["Цвет"], "розовый (Soft pink)")
+        self.assertEqual(specs["Модель"], "iPhone 17e")
 
     def test_store77_seed_candidate_requires_matching_product_page(self) -> None:
         candidate = {

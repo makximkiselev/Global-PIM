@@ -1109,9 +1109,97 @@ def _manual_review_confidence_for_candidate(product: Dict[str, Any], title: str,
     return 0.0, ["нет отличий для ручной проверки"]
 
 
+def _store77_review_confidence_for_candidate(product: Dict[str, Any], title: str, sku: str = "", brand: str = "") -> Tuple[float, List[str]]:
+    product_profile = _variant_profile(product.get("title"))
+    candidate_profile = _variant_profile(f"{brand} {title}")
+    for key, label in (("model", "модели"), ("memory", "памяти"), ("color", "цвета")):
+        product_value = product_profile.get(key)
+        candidate_value = candidate_profile.get(key)
+        if product_value and candidate_value and product_value != candidate_value:
+            return 0.0, [f"конфликт {label}: PIM={product_value}, candidate={candidate_value}"]
+
+    product_model = product_profile.get("model")
+    candidate_model = candidate_profile.get("model")
+    if not product_model or not candidate_model or product_model != candidate_model:
+        if not product_model and not candidate_model:
+            return _confidence_for_candidate(product, title, sku=sku, brand=brand)
+        return 0.0, ["другая модель"]
+    product_memory = product_profile.get("memory")
+    candidate_memory = candidate_profile.get("memory")
+    if product_memory and product_memory != candidate_memory:
+        return 0.0, ["другая память"]
+
+    product_tokens = {token for token in _match_tokens(product.get("title")) if token not in {"sim", "esim"} and len(token) > 1}
+    candidate_tokens = {token for token in _match_tokens(f"{brand} {title}") if token not in {"sim", "esim"} and len(token) > 1}
+    overlap = len(product_tokens & candidate_tokens) / max(1, len(product_tokens))
+    if overlap < 0.7:
+        return 0.0, [f"название похоже только на {round(overlap * 100)}%"]
+
+    product_sim = product_profile.get("sim") or "unknown"
+    candidate_sim = candidate_profile.get("sim") or "unknown"
+    if product_sim == candidate_sim:
+        return min(0.96, 0.58 + overlap * 0.36), ["обязательные токены совпали", f"название похоже на {round(overlap * 100)}%"]
+    if product_sim == "nano_sim_esim" and candidate_sim in {"esim_only", "unknown"}:
+        return 0.82, [f"проверь SIM: Store77={candidate_sim}, PIM={product_sim}", f"модель, память и цвет совпали; название похоже на {round(overlap * 100)}%"]
+    return 0.0, [f"конфликт SIM: PIM={product_sim}, candidate={candidate_sim}"]
+
+
 def _source_value_key(value: Any) -> str:
     normalized = str(value or "").lower().replace("ё", "е")
     return re.sub(r"[^a-zа-я0-9]+", " ", normalized).strip()
+
+
+_PROTECTED_PRODUCT_CONTENT_KEYS = {
+    "наименование товара",
+    "название товара",
+    "имя товара",
+    "title",
+    "name",
+    "product name",
+    "описание товара",
+    "описание",
+    "аннотация",
+    "description",
+}
+
+_DESCRIPTION_STOP_MARKERS = (
+    "похожие товары",
+    "с этим товаром покупают",
+    "вы недавно смотрели",
+    "характеристики все характеристики",
+    "все характеристики",
+    "почему стоит покупать технику",
+    "юридическая информация",
+    "гарантии",
+)
+
+
+def _is_protected_product_content_field(*values: Any) -> bool:
+    for value in values:
+        key = _source_value_key(value)
+        if key in _PROTECTED_PRODUCT_CONTENT_KEYS:
+            return True
+    return False
+
+
+def _clean_competitor_description_for_product(value: Any, *, limit: int = 3200) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return ""
+    lowered = text.lower().replace("ё", "е")
+    cut_at = len(text)
+    for marker in _DESCRIPTION_STOP_MARKERS:
+        idx = lowered.find(marker)
+        if idx >= 20:
+            cut_at = min(cut_at, idx)
+    text = text[:cut_at].strip(" —-·")
+    if len(text) <= limit:
+        return text
+    slice_text = text[:limit].rstrip()
+    sentence_end = max(slice_text.rfind("."), slice_text.rfind("!"), slice_text.rfind("?"))
+    if sentence_end >= int(limit * 0.65):
+        return slice_text[: sentence_end + 1].strip()
+    return slice_text.rstrip(" ,;:") + "…"
 
 
 _COMPETITOR_SPEC_ALIASES: Dict[str, List[str]] = {
@@ -1201,7 +1289,7 @@ def _cleanup_misplaced_competitor_values(features: List[Dict[str, Any]]) -> None
 
 def _feature_lookup_keys(name: Any) -> List[str]:
     base = _source_value_key(name)
-    if not base:
+    if not base or _is_protected_product_content_field(base):
         return []
     keys = [base]
     keys.extend(_COMPETITOR_SPEC_ALIASES.get(base, []))
@@ -1596,7 +1684,7 @@ def _persist_competitor_channel_candidate(candidate: Dict[str, Any]) -> None:
     status = str(candidate.get("status") or "needs_review").strip()
     channel_status = {
         "needs_review": "candidate",
-        "approved": "approved",
+        "approved": "confirmed",
         "rejected": "rejected",
         "stale": "stale",
     }.get(status, status or "candidate")
@@ -1735,6 +1823,8 @@ async def _merge_competitor_content_into_product(
 
     feature_by_key: Dict[str, Dict[str, Any]] = {}
     for feature in features:
+        if _is_protected_product_content_field(feature.get("code"), feature.get("name")):
+            continue
         for key in (feature.get("code"), feature.get("name")):
             for normalized in _feature_lookup_keys(key):
                 if normalized:
@@ -1819,6 +1909,10 @@ async def _merge_competitor_content_into_product(
             raw_text = str(raw_value or "").strip()
             if not normalized_name or not raw_text:
                 continue
+            if _is_protected_product_content_field(spec_name):
+                unmatched_specs[str(spec_name)] = raw_text
+                unmatched_count += 1
+                continue
             if normalized_name == "размеры":
                 nums = re.findall(r"\d+(?:[,.]\d+)?", raw_text)
                 if len(nums) >= 3:
@@ -1873,7 +1967,7 @@ async def _merge_competitor_content_into_product(
             matched_specs[str(spec_name)] = raw_text
             matched_count += 1
 
-        description = str(result.get("description") or "").strip()
+        description = _clean_competitor_description_for_product(result.get("description"))
         if description:
             descriptions = source_values.get("descriptions") if isinstance(source_values.get("descriptions"), dict) else {}
             descriptions[source_id] = {
@@ -1977,7 +2071,7 @@ async def _merge_competitor_content_into_product(
             "url": str((links.get(source_id) or {}).get("url") or "").strip(),
             "extracted_at": now_iso(),
             "images": result.get("images") if isinstance(result.get("images"), list) else [],
-            "description": str(result.get("description") or "").strip(),
+            "description": _clean_competitor_description_for_product(result.get("description")),
             "matched_specs": matched_specs,
             "unmatched_specs": unmatched_specs,
         }
@@ -2017,6 +2111,8 @@ def _product_ai_targets(product: Dict[str, Any]) -> List[Dict[str, Any]]:
         title = str(name or code or "").strip()
         if not title:
             return
+        if _is_protected_product_content_field(code, title):
+            return
         normalized_code = str(code or _source_value_key(title) or title).strip()
         key = _source_value_key(normalized_code) or _source_value_key(title)
         if not key or key in seen:
@@ -2047,6 +2143,31 @@ def _product_ai_targets(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def _template_ai_targets(template_id: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for field in _master_fields(template_id):
+        if not isinstance(field, dict):
+            continue
+        code = str(field.get("code") or "").strip()
+        name = str(field.get("name") or code).strip()
+        if not code or not name or _is_protected_product_content_field(code, name):
+            continue
+        key = _source_value_key(code) or _source_value_key(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "code": code,
+                "name": name,
+                "source": "model",
+                "keys": _feature_lookup_keys(name) + _feature_lookup_keys(code),
+            }
+        )
+    return out
+
+
 def _collect_unmatched_competitor_specs(product: Dict[str, Any]) -> List[Dict[str, str]]:
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
     source_evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
@@ -2073,6 +2194,8 @@ def _collect_unmatched_competitor_specs(product: Dict[str, Any]) -> List[Dict[st
 def _noise_spec_name(name: str) -> bool:
     key = _source_value_key(name)
     if not key:
+        return True
+    if _is_protected_product_content_field(key):
         return True
     noise_tokens = {
         "акции",
@@ -2290,6 +2413,84 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
     except Exception as exc:
         warnings.append(f"AI_PARSE_ERROR:{exc.__class__.__name__}")
     return {"mode": "rules", "items": rule_items, "warnings": warnings}
+
+
+def _mapped_specs_from_ai_items(items: List[Dict[str, Any]], specs: Dict[str, Any], targets: List[Dict[str, Any]]) -> Dict[str, str]:
+    target_codes = {str(target.get("code") or "").strip() for target in targets}
+    spec_by_key = {
+        _source_value_key(name): str(value or "").strip()
+        for name, value in (specs or {}).items()
+        if str(name or "").strip() and str(value or "").strip()
+    }
+    out: Dict[str, str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("action") or "").strip() != "map_existing":
+            continue
+        code = str(item.get("target_code") or "").strip()
+        if code not in target_codes or _is_protected_product_content_field(code, item.get("target_name")):
+            continue
+        try:
+            confidence = float(item.get("confidence") or 0.0)
+        except Exception:
+            confidence = 0.0
+        if confidence < 0.72:
+            continue
+        source_key = _source_value_key(item.get("source_name"))
+        value = spec_by_key.get(source_key)
+        if value:
+            out.setdefault(code, value)
+    return out
+
+
+async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str, specs: Dict[str, Any]) -> Dict[str, str]:
+    targets = _template_ai_targets(template_id)
+    spec_items = [
+        {
+            "source_id": source_id,
+            "source_name": _compact_ai_text(name, 120),
+            "raw_value": _compact_ai_text(value, 260),
+        }
+        for name, value in (specs or {}).items()
+        if str(name or "").strip()
+        and str(value or "").strip()
+        and not _noise_spec_name(str(name or ""))
+    ][:60]
+    if not targets or not spec_items:
+        return {}
+    rule_items = [_rule_ai_suggestion(spec, targets) for spec in spec_items]
+    mapped = _mapped_specs_from_ai_items(rule_items, specs, targets)
+
+    system_prompt = (
+        "Ты PIM-ассистент. Нужно сопоставить характеристики конкурента с полями инфо-модели. "
+        "Сопоставляй только одинаковый смысл. Не сопоставляй описание, наименование, цену, доставку, отзывы и промо. "
+        "Верни только JSON без Markdown."
+    )
+    user_prompt = (
+        f"Источник конкурента: {source_id}\n"
+        f"Поля PIM JSON:\n{json.dumps([{'code': t['code'], 'name': t['name']} for t in targets[:120]], ensure_ascii=False)}\n\n"
+        f"Характеристики конкурента JSON:\n{json.dumps(spec_items, ensure_ascii=False)}\n\n"
+        "Ответ строго в формате: "
+        '{"items":[{"source_id":"store77","source_name":"...","raw_value":"...","action":"map_existing|create_attribute|ignore","target_code":"...","target_name":"...","confidence":0.0,"reason":"коротко"}]}'
+    )
+    try:
+        llm_response = await llm_chat_text(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            profile="fast",
+            temperature=0.1,
+            timeout_seconds=45.0,
+        )
+        parsed = _json_object_from_text(llm_response["content"])
+        items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
+        mapped.update(_mapped_specs_from_ai_items(items, specs, targets))
+    except Exception:
+        # Deterministic rules remain the safe fallback when local LLM is unavailable.
+        pass
+    return mapped
 
 
 def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -2552,16 +2753,6 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
         return []
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    # Deterministic Apple URLs are cheap and give the content manager an exact
-    # review candidate even when Store77 search/catalog rendering is slow.
-    for candidate in _store77_seed_candidates_for_product(product):
-        candidate_url = str(candidate.get("url") or "")
-        if candidate_url and candidate_url not in seen:
-            seen.add(candidate_url)
-            out.append(candidate)
-    if out:
-        return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
-
     category_urls = _store77_category_urls_for_product(product)
     if not category_urls:
         # store77 search page is browser/ajax-backed and can consume one timeout
@@ -2590,6 +2781,17 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
         except Exception:
             continue
         for candidate in _extract_store77_search_candidates(html, product):
+            candidate_url = str(candidate.get("url") or "")
+            if not candidate_url or candidate_url in seen:
+                continue
+            seen.add(candidate_url)
+            out.append(candidate)
+            if len(out) >= 5:
+                return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    if not out:
+        # Deterministic Apple URLs are cheap and give the content manager a
+        # review candidate when Store77 category rendering is temporarily slow.
+        for candidate in _store77_seed_candidates_for_product(product):
             candidate_url = str(candidate.get("url") or "")
             if not candidate_url or candidate_url in seen:
                 continue
@@ -2661,7 +2863,11 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
     generation = model_match.group(1)
     model_suffix = re.sub(r"\s+", "_", ((model_match.group(3) or model_match.group(2) or "")).strip())
     model_slug = f"iphone_{generation}e" if model_suffix == "e" else "_".join(part for part in ("iphone", generation, model_suffix) if part)
-    memory_slug = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
+    is_store77_new_17e_slug = generation == "17" and model_suffix == "e"
+    if is_store77_new_17e_slug:
+        memory_slug = f"{memory_match.group(1)}_{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
+    else:
+        memory_slug = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
 
     sim_slug = ""
     sim_label = ""
@@ -2670,11 +2876,21 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
         sim_slug = "dual_sim"
         sim_label = " Dual Sim"
     elif sim_profile == "nano_sim_esim":
-        sim_slug = "nano_sim_esim"
-        sim_label = " nano SIM+eSIM"
+        if is_store77_new_17e_slug:
+            # Store77 names the current 17e card as eSim, while PIM keeps the
+            # stricter SIM+eSIM wording. Keep it as review, not auto-match.
+            sim_slug = "esim_elektronnaya_sim_karta"
+            sim_label = " eSim (электронная SIM-карта)"
+        else:
+            sim_slug = "nano_sim_esim"
+            sim_label = " nano SIM+eSIM"
     elif sim_profile == "esim_only":
-        sim_slug = "esim"
-        sim_label = " eSim"
+        if is_store77_new_17e_slug:
+            sim_slug = "esim_elektronnaya_sim_karta"
+            sim_label = " eSim (электронная SIM-карта)"
+        else:
+            sim_slug = "esim"
+            sim_label = " eSIM"
 
     color_options = [
         ("natural_titanium", "Natural Titanium", ("natural titanium", "натуральный титан")),
@@ -2682,7 +2898,7 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
         ("black_titanium", "Black Titanium", ("black titanium", "черный титан", "чёрный титан")),
         ("white_titanium", "White Titanium", ("white titanium", "белый титан")),
         ("cosmic_orange", "Cosmic Orange", ("cosmic orange", "космический оранжевый", "orange", "оранжевый", "оранжев")),
-        ("pink", "Pink", ("pink", "розовый", "розов")),
+        ("tsvet_rozovyy_soft_pink", "розовый (Soft pink)", ("pink", "soft pink", "розовый", "розов")),
     ]
     color_slug = ""
     color_label = ""
@@ -2706,21 +2922,22 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
         title += "e"
     elif model_suffix:
         title += " " + model_suffix.replace("_", " ").title().replace("Max", "Max")
-    title += f" {memory_match.group(1)}Gb{sim_label} ({color_label})"
-    confidence_score, reasons = _confidence_for_candidate(product, title, "")
-    if confidence_score < 0.78:
+    memory_label = f"{memory_match.group(1)} {'ТБ' if memory_match.group(2) in {'tb', 'тб'} else 'ГБ'}"
+    title += f" {memory_label},{sim_label}, цвет: {color_label}"
+    confidence_score, reasons = _store77_review_confidence_for_candidate(product, title)
+    if confidence_score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
         return []
     reasons = [*reasons, "store77 URL собран из модели, памяти, SIM и цвета"]
     return [
         {
             "url": url,
             "title": title,
-            "confidence_score": min(0.97, max(confidence_score, 0.93)),
+            "confidence_score": min(0.93, max(confidence_score, 0.82)),
             "confidence_reasons": reasons,
             "discovery_strategy": "store77_slug_seed",
             "match_group_key": _model_memory_color_group_key(raw_title),
             "product_sim_profile": sim_profile,
-            "candidate_sim_profile": sim_profile,
+            "candidate_sim_profile": _sim_profile(title),
         }
     ]
 
@@ -2771,8 +2988,8 @@ def _extract_store77_search_candidates(html: str, product: Dict[str, Any]) -> Li
             continue
         if not _store77_likely_product_link(href, text):
             continue
-        confidence_score, reasons = _confidence_for_candidate(product, text, "")
-        if confidence_score < 0.78:
+        confidence_score, reasons = _store77_review_confidence_for_candidate(product, text)
+        if confidence_score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
             continue
         seen.add(url)
         candidates.append(
@@ -3122,6 +3339,7 @@ def _template_attr_meta(template_id: str) -> Dict[str, Dict[str, str]]:
             continue
         options = a.get("options") if isinstance(a.get("options"), dict) else {}
         out[code] = {
+            "name": str(a.get("name") or code).strip(),
             "type": str(a.get("type") or "").strip(),
             "dict_id": str(options.get("dict_id") or "").strip(),
         }
@@ -3140,6 +3358,8 @@ def _normalize_mapped_specs(
         if not code_s or not value:
             continue
         meta = attr_meta.get(code_s) or {}
+        if _is_protected_product_content_field(code_s, meta.get("name")):
+            continue
         attr_type = str(meta.get("type") or "").strip().lower()
         dict_id = str(meta.get("dict_id") or "").strip()
         if dict_id and attr_type == "select":
@@ -4464,7 +4684,11 @@ async def competitor_content_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {}
         norm_specs = {_norm_key(k): v for k, v in specs.items() if k}
         out: Dict[str, str] = {}
+        target_meta = _template_attr_meta(template_id) if isinstance(template_id, str) and template_id else {}
         for code, field in (mapping or {}).items():
+            meta = target_meta.get(str(code or "").strip()) or {}
+            if _is_protected_product_content_field(code, meta.get("name")):
+                continue
             field_key = _norm_key(field)
             if not field_key:
                 continue
@@ -4491,6 +4715,10 @@ async def competitor_content_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         specs = result.get("specs") or {}
         mapped_specs_raw = _map_specs(specs, mapping_by_site.get(site_key, {}) or {})
+        if template_id:
+            ai_mapped = await _ai_map_competitor_specs_to_template(str(template_id), site_key, specs)
+            for code, value in ai_mapped.items():
+                mapped_specs_raw.setdefault(code, value)
         return {
             "ok": True,
             "site": site_key,

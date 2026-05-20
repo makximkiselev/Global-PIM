@@ -31,10 +31,13 @@ from app.api.routes.yandex_market import (
     _export_media_url,
 )
 from app.api.routes.competitor_mapping import (
+    _ai_map_competitor_specs_to_template,
     _confirmed_links_for_product,
+    _clean_competitor_description_for_product,
     _ensure_row_shape,
     _fetch_store77_images_with_browser,
     _import_competitor_image_to_storage,
+    _is_protected_product_content_field,
     _normalize_mapped_specs,
     _upload_competitor_image_bytes,
     _extract_competitor_content_with_retry,
@@ -233,6 +236,9 @@ def _auto_map_competitor_specs(template_id: str, specs: Dict[str, Any], explicit
     mapped: Dict[str, str] = {}
     for code, field in (explicit_mapping or {}).items():
         code_s = str(code or "").strip()
+        attr = attr_defs.get(code_s) or {}
+        if _is_protected_product_content_field(code_s, attr.get("name")):
+            continue
         fkey = _field_key(field)
         if code_s and fkey and spec_by_key.get(fkey):
             mapped[code_s] = spec_by_key[fkey]
@@ -240,6 +246,8 @@ def _auto_map_competitor_specs(template_id: str, specs: Dict[str, Any], explicit
     attr_lookup: Dict[str, str] = {}
     for code, attr in attr_defs.items():
         name = str(attr.get("name") or code).strip()
+        if _is_protected_product_content_field(code, name):
+            continue
         for key in {_field_key(code), _field_key(name)}:
             if key:
                 attr_lookup.setdefault(key, code)
@@ -490,6 +498,9 @@ async def _apply_competitor_result_to_product(
         value_s = str(candidate_value or "").strip()
         if not code_s or not value_s:
             continue
+        attr = attr_defs.get(code_s) or {}
+        if _is_protected_product_content_field(code_s, attr.get("name")):
+            continue
         feature = feature_by_code.get(code_s)
         if not feature:
             attr = attr_defs.get(code_s) or {"code": code_s, "name": code_s}
@@ -554,7 +565,7 @@ async def _apply_competitor_result_to_product(
                 changed = True
 
     description = str(content.get("description") or "").strip()
-    candidate_description = str(result.get("description") or "").strip()
+    candidate_description = _clean_competitor_description_for_product(result.get("description"))
     if candidate_description:
         source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
         descriptions = source_meta.get("descriptions") if isinstance(source_meta.get("descriptions"), dict) else {}
@@ -1158,6 +1169,9 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
                 specs = raw_result.get("specs") if isinstance(raw_result.get("specs"), dict) else {}
                 explicit_mapping = mapping_by_site.get(site) if isinstance(mapping_by_site.get(site), dict) else {}
                 mapped_raw = _auto_map_competitor_specs(template_id, specs, explicit_mapping)
+                ai_mapped = await _ai_map_competitor_specs_to_template(template_id, site, specs)
+                for code, value in ai_mapped.items():
+                    mapped_raw.setdefault(code, value)
                 normalized = _normalize_mapped_specs(template_id, mapped_raw) if mapped_raw else {}
                 comp_payload = {
                     "ok": True,

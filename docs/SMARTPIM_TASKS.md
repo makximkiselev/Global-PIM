@@ -112,6 +112,9 @@ Current state:
 9. re-store search parsing now reads product fields from the product object before the current link, so neighboring products in the same payload do not overwrite the current candidate.
 10. Explicit SIM conflicts remain blockers; only missing SIM details on a re-store card can be sent to manual review.
 11. Store77 deterministic candidate generation now understands `iPhone 17e`, `Pink`, and `SIM+eSIM`, and returns the exact review candidate before slow browser/category scans.
+12. Store77 category scan now runs before deterministic fallback, so real Store77 product pages are preferred over synthetic URLs.
+13. Store77 product-title fallback extracts basic specs (`Память`, `SIM-карта`, `Цвет`, `Модель`) when the page has no old specs table.
+14. Competitor enrichment now trims noisy donor descriptions before they can become product/export descriptions.
 
 Known problems:
 
@@ -119,6 +122,7 @@ Known problems:
 2. Store77 may intermittently timeout from production; exact seeded candidates reduce the UX impact, but enrichment still depends on fetching the confirmed page.
 3. Many donor specs remain unmatched because the current info-model does not yet contain every canonical field.
 4. UI still does not show enough source-specific scan evidence when a source returns no candidates.
+5. Product-level competitor matching still needs more visible evidence for exact Store77 misses and re-store blocked/partial responses.
 
 Next tasks:
 
@@ -170,6 +174,10 @@ Current state:
 6. Values workspace now opens in blocker mode by default and separates `Блокеры`, `Все`, and `Готово`.
 7. Selected value field now shows compact route `PIM поле -> Канон -> Я.Маркет -> Ozon -> Статус` above the dictionary editor.
 8. Backend value details now return provider `allowed_sample` and `mapped_sample` for compact evidence UI.
+9. Competitor parameter mapping now uses the local LLM path as a controlled suggestion layer after deterministic matching.
+10. LLM suggestions are validated against real model fields and cannot map competitor specs into protected core fields (`Наименование товара`, `Описание товара`).
+11. Explicit/manual competitor mappings into protected core fields are ignored by import/export enrichment.
+12. Production Ollama is configured for `qwen2.5:7b-instruct`; the same model is used by both the new competitor matching path and the legacy marketplace AI path.
 
 Known problems:
 
@@ -177,12 +185,14 @@ Known problems:
 2. Canonical PIM value, raw source value, marketplace output value, and allowed marketplace values are not compact enough in one row.
 3. Marketplace dictionary data quality still needs verification.
 4. Actual export payload must consistently read provider-specific output values, not raw competitor text.
+5. The frontend still needs clearer indication when AI was used, when fallback rules were used, and which mappings require human confirmation.
 
 Next tasks:
 
 1. Add actions: accept suggestion, edit mapping, mark not needed, reset.
 2. Add route tests for complex mappings and provider-specific export values.
 3. Add direct source-evidence snippets to value rows where competitor/raw source values differ from canonical PIM values.
+4. Show AI confidence/reason next to competitor field mapping suggestions in `/sources?tab=params`.
 
 ### P0.5 Product Creation And Variants
 

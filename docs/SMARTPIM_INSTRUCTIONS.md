@@ -268,6 +268,49 @@ scripts/backup_server_config.sh
 
 Production deploy/backup scripts must not interpolate `APP_SERVER_PASSWORD` into command strings. Pass it through environment variables into `expect` and use `send -- "$env(APP_SERVER_PASSWORD)\r"`.
 
+## Production LLM
+
+Local AI matching runs through Ollama on the production server.
+
+Required production service:
+
+```bash
+ollama.service
+```
+
+Required local model:
+
+```bash
+qwen2.5:7b-instruct
+```
+
+Backend runtime env must include these non-secret values in `/opt/projects/global-pim/backend/.env`:
+
+```bash
+LLM_API_BASE=http://localhost:11434/v1
+LLM_MODEL=qwen2.5:7b-instruct
+LLM_MODEL_FAST=qwen2.5:7b-instruct
+LLM_MODEL_BALANCED=qwen2.5:7b-instruct
+LLM_MODEL_QUALITY=qwen2.5:7b-instruct
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:7b-instruct
+```
+
+Use one model across the old marketplace AI path and the newer `app.core.llm` path. Do not point production to `llama3.1:*`, `qwen2.5:14b-instruct`, or `70b` models unless the model is installed and server resources are checked first.
+
+Verify LLM without printing secrets:
+
+```bash
+scripts/server_ops.sh exec "cd /opt/projects/global-pim && set -a && . /opt/projects/global-pim/backend/.env && set +a && PYTHONPATH=/opt/projects/global-pim/backend /opt/projects/global-pim/.venv/bin/python - <<'PY'
+import asyncio
+from app.core.llm import llm_chat_text
+async def main():
+    res = await llm_chat_text(messages=[{'role': 'user', 'content': 'Ответь одним словом: ok'}], profile='fast', timeout_seconds=60)
+    print('llm_ok', res.get('model'), str(res.get('content') or '')[:120])
+asyncio.run(main())
+PY"
+```
+
 ## Browser QA
 
 Use Browser Use / in-app browser when the user asks to inspect, test, or visually verify production/local UI.

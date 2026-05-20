@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 import re
 import html as _html
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 
@@ -100,6 +100,60 @@ def extract_store77_specs(soup: BeautifulSoup) -> Dict[str, str]:
         for k, v in kv.items():
             if k and k not in out:
                 out[k] = v
+    return out
+
+
+def extract_store77_title_from_html(html: str) -> str:
+    if not html:
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    for selector in ("h1", "meta[property='og:title']", "title"):
+        el = soup.select_one(selector)
+        if not el:
+            continue
+        value = str(el.get("content") or el.get_text(" ", strip=True) or "").strip()
+        value = re.sub(r"\s+", " ", value)
+        value = re.sub(r"^Купить\s+", "", value, flags=re.I).strip()
+        value = re.split(r"\s+в Москве\b|\s+\|\s*Store77\b", value, maxsplit=1, flags=re.I)[0].strip()
+        if value:
+            return value
+    return ""
+
+
+def infer_store77_specs_from_title_or_url(title: str, url: str | None = None) -> Dict[str, str]:
+    text = " ".join(part for part in (title, unquote(urlparse(url or "").path.replace("_", " "))) if part)
+    normalized = text.lower().replace("ё", "е")
+    out: Dict[str, str] = {}
+
+    memory = re.search(r"\b(\d+)\s*(?:gb|гб|гб\.|gb\.|г\s*б)\b", normalized)
+    if memory:
+        out["Память"] = f"{memory.group(1)} ГБ"
+    else:
+        memory_tb = re.search(r"\b(\d+)\s*(?:tb|тб|т\s*б)\b", normalized)
+        if memory_tb:
+            out["Память"] = f"{memory_tb.group(1)} ТБ"
+
+    color_match = re.search(r"цвет\s*:\s*([^,|]+)", title, re.I)
+    if color_match:
+        out["Цвет"] = color_match.group(1).strip()
+    elif "soft pink" in normalized or "rozovyy" in normalized or "розов" in normalized:
+        out["Цвет"] = "розовый (Soft pink)"
+    elif "white" in normalized or "belyy" in normalized or "бел" in normalized:
+        out["Цвет"] = "белый (White)"
+    elif "black" in normalized or "chernyy" in normalized or "черн" in normalized:
+        out["Цвет"] = "черный (Black)"
+
+    if "nano sim" in normalized and "esim" in normalized:
+        out["SIM-карта"] = "nano SIM + eSIM"
+    elif "esim" in normalized or "elektronnaya sim karta" in normalized or "электронная sim" in normalized:
+        out["SIM-карта"] = "eSIM"
+    elif "dual sim" in normalized:
+        out["SIM-карта"] = "Dual SIM"
+
+    model_match = re.search(r"\biphone\s+(\d{1,2}\s*e|\d{1,2}(?:\s+(?:pro\s+max|pro|plus|mini))?)\b", normalized)
+    if model_match:
+        model = re.sub(r"\s+", " ", model_match.group(1)).strip()
+        out["Модель"] = f"iPhone {model}"
     return out
 
 
@@ -211,5 +265,7 @@ def extract_store77_product_content_from_html(
     soup = BeautifulSoup(html, "html.parser")
     images = extract_store77_image_urls_from_html(html, base_url=base_url)
     specs = extract_store77_specs(soup)
+    inferred_specs = infer_store77_specs_from_title_or_url(extract_store77_title_from_html(html), base_url)
+    specs = {**inferred_specs, **specs}
     desc = extract_store77_description_from_html(html)
     return images, specs, desc
