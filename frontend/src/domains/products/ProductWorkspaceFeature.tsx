@@ -104,6 +104,9 @@ type CompetitorDiscoveryRunResp = {
   run?: {
     id?: string;
     status?: string;
+    scanned_products_count?: number;
+    created_count?: number;
+    updated_count?: number;
   };
 };
 
@@ -111,6 +114,11 @@ type CompetitorSkuStatus = {
   label: string;
   detail: string;
   tone: "active" | "pending" | "danger" | "neutral";
+  sources?: Array<{
+    id: string;
+    label: string;
+    tone: "active" | "pending" | "danger" | "neutral";
+  }>;
 };
 
 type CatalogNode = {
@@ -364,6 +372,14 @@ function toneForStatus(status: string): "active" | "pending" | "danger" | "neutr
   if (value.includes("ok") || value.includes("готов") || value.includes("active") || value.includes("опублик")) return "active";
   if (value.includes("ошиб") || value.includes("error") || value.includes("расхожд")) return "danger";
   if (value.includes("draft") || value.includes("чернов") || value.includes("pending") || value.includes("модерац")) return "pending";
+  return "neutral";
+}
+
+function toneForCompetitorSourceStatus(status: string): "active" | "pending" | "danger" | "neutral" {
+  const value = normalizeText(status);
+  if (value === "confirmed") return "active";
+  if (value === "review") return "pending";
+  if (value === "scan_error" || value === "no_exact_match") return "danger";
   return "neutral";
 }
 
@@ -1020,8 +1036,10 @@ function ProductWorkspaceFeature() {
   const [competitorSkuStatuses, setCompetitorSkuStatuses] = useState<Record<string, CompetitorSkuStatus>>({});
   const [competitorSkuQuery, setCompetitorSkuQuery] = useState("");
   const [competitorSkuFilter, setCompetitorSkuFilter] = useState<"all" | CompetitorSkuStatus["tone"]>("all");
+  const [competitorSelectedIds, setCompetitorSelectedIds] = useState<string[]>([]);
   const [competitorBulkRunning, setCompetitorBulkRunning] = useState(false);
   const [competitorBulkNotice, setCompetitorBulkNotice] = useState("");
+  const [competitorBulkRun, setCompetitorBulkRun] = useState<CompetitorDiscoveryRunResp["run"] | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -1039,8 +1057,10 @@ function ProductWorkspaceFeature() {
       setCompetitorSkuStatuses({});
       setCompetitorSkuQuery("");
       setCompetitorSkuFilter("all");
+      setCompetitorSelectedIds([]);
       setCompetitorBulkRunning(false);
       setCompetitorBulkNotice("");
+      setCompetitorBulkRun(null);
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1171,6 +1191,14 @@ function ProductWorkspaceFeature() {
       return [item.id, item.title, item.sku_gt, item.sku_pim].some((value) => normalizeText(value).toLowerCase().includes(q));
     });
   }, [competitorGroupItems, competitorSkuFilter, competitorSkuQuery, competitorSkuStatuses]);
+  const filteredCompetitorIds = useMemo(() => {
+    return filteredCompetitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean);
+  }, [filteredCompetitorGroupItems]);
+  const selectedCompetitorSet = useMemo(() => new Set(competitorSelectedIds), [competitorSelectedIds]);
+  const selectedVisibleCompetitorIds = useMemo(() => {
+    return filteredCompetitorIds.filter((id) => selectedCompetitorSet.has(id));
+  }, [filteredCompetitorIds, selectedCompetitorSet]);
+  const allVisibleCompetitorsSelected = filteredCompetitorIds.length > 0 && selectedVisibleCompetitorIds.length === filteredCompetitorIds.length;
   const competitorSkuStatusCounts = useMemo(() => {
     const counts = { all: competitorGroupItems.length, active: 0, pending: 0, danger: 0, neutral: 0 };
     for (const item of competitorGroupItems) {
@@ -1232,11 +1260,16 @@ function ProductWorkspaceFeature() {
             const detail = summaries.length
               ? summaries.map((item) => `${item.source_id === "restore" ? "re-store" : item.source_id || "источник"}: ${item.label || "нет статуса"}`).join(" · ")
               : "источники еще не проверялись";
-            if (confirmed > 0) return [id, { label: `${confirmed} подтверждено`, detail, tone: "active" as const }] as const;
-            if (review > 0) return [id, { label: `${review} кандидат`, detail, tone: "pending" as const }] as const;
-            if (hasError) return [id, { label: "нет точного", detail, tone: "danger" as const }] as const;
-            if (scanned) return [id, { label: "нет кандидатов", detail, tone: "neutral" as const }] as const;
-            return [id, { label: "не сканировали", detail, tone: "neutral" as const }] as const;
+            const sourceChips = summaries.map((item) => ({
+              id: normalizeText(item.source_id) || "source",
+              label: item.source_id === "restore" ? "re-store" : normalizeText(item.source_id) || "источник",
+              tone: toneForCompetitorSourceStatus(normalizeText(item.status)),
+            }));
+            if (confirmed > 0) return [id, { label: `${confirmed} подтверждено`, detail, tone: "active" as const, sources: sourceChips }] as const;
+            if (review > 0) return [id, { label: `${review} кандидат`, detail, tone: "pending" as const, sources: sourceChips }] as const;
+            if (hasError) return [id, { label: "нет точного", detail, tone: "danger" as const, sources: sourceChips }] as const;
+            if (scanned) return [id, { label: "нет кандидатов", detail, tone: "neutral" as const, sources: sourceChips }] as const;
+            return [id, { label: "не сканировали", detail, tone: "neutral" as const, sources: sourceChips }] as const;
           } catch {
             return [id, { label: "ошибка", detail: "не удалось получить статус", tone: "danger" as const }] as const;
           }
@@ -1250,6 +1283,52 @@ function ProductWorkspaceFeature() {
       cancelled = true;
     };
   }, [activeSection, competitorGroupItems, reloadVersion]);
+
+  useEffect(() => {
+    setCompetitorSelectedIds((prev) => {
+      if (!prev.length) return prev;
+      const allowed = new Set(competitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean));
+      const next = prev.filter((id) => allowed.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [competitorGroupItems]);
+
+  useEffect(() => {
+    const runId = normalizeText(competitorBulkRun?.id);
+    const status = normalizeText(competitorBulkRun?.status);
+    if (!runId || !["queued", "running"].includes(status)) return;
+
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void api<CompetitorDiscoveryRunResp>(`/competitor-mapping/discovery/runs/${encodeURIComponent(runId)}`)
+        .then((response) => {
+          if (cancelled) return;
+          const nextRun = response.run || null;
+          setCompetitorBulkRun(nextRun);
+          const nextStatus = normalizeText(nextRun?.status);
+          if (nextStatus && !["queued", "running"].includes(nextStatus)) {
+            window.clearInterval(timer);
+            setCompetitorBulkRunning(false);
+            setCompetitorBulkNotice(
+              nextStatus === "completed"
+                ? `Подбор завершен. Создано: ${Number(nextRun?.created_count || 0)}, обновлено: ${Number(nextRun?.updated_count || 0)}.`
+                : `Подбор остановлен со статусом: ${nextStatus}.`,
+            );
+            setReloadVersion((value) => value + 1);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCompetitorBulkNotice("Не удалось обновить статус подбора. Обновите страницу или повторите позже.");
+          }
+        });
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [competitorBulkRun?.id, competitorBulkRun?.status]);
 
   function handleSectionSelect(id: SectionId) {
     setActiveSection(id);
@@ -1270,11 +1349,32 @@ function ProductWorkspaceFeature() {
     handleSectionSelect("attributes");
   }
 
-  async function handleRunCompetitorDiscoveryForVisible() {
-    const ids = filteredCompetitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean);
+  function toggleCompetitorSelection(id: string) {
+    const normalized = normalizeText(id);
+    if (!normalized) return;
+    setCompetitorSelectedIds((prev) => {
+      if (prev.includes(normalized)) return prev.filter((item) => item !== normalized);
+      return [...prev, normalized];
+    });
+  }
+
+  function toggleVisibleCompetitorSelection() {
+    setCompetitorSelectedIds((prev) => {
+      const visible = new Set(filteredCompetitorIds);
+      if (!visible.size) return prev;
+      if (allVisibleCompetitorsSelected) return prev.filter((id) => !visible.has(id));
+      const next = new Set(prev);
+      for (const id of filteredCompetitorIds) next.add(id);
+      return Array.from(next);
+    });
+  }
+
+  async function handleRunCompetitorDiscoveryForSelected() {
+    const ids = selectedVisibleCompetitorIds;
     if (!ids.length || competitorBulkRunning) return;
     setCompetitorBulkRunning(true);
     setCompetitorBulkNotice("");
+    setCompetitorBulkRun(null);
     try {
       const response = await api<CompetitorDiscoveryRunResp>("/competitor-mapping/discovery/run", {
         method: "POST",
@@ -1286,11 +1386,14 @@ function ProductWorkspaceFeature() {
         }),
       });
       const status = normalizeText(response.run?.status) || "queued";
-      setCompetitorBulkNotice(`Запущен подбор по ${ids.length} SKU. Статус: ${status}.`);
-      window.setTimeout(() => setReloadVersion((value) => value + 1), 4500);
+      setCompetitorBulkRun(response.run || { status });
+      setCompetitorBulkNotice(`Запущен подбор по ${ids.length} выбранным SKU. Статус: ${status}.`);
+      if (!["queued", "running"].includes(status)) {
+        setCompetitorBulkRunning(false);
+        setReloadVersion((value) => value + 1);
+      }
     } catch (err) {
       setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось запустить подбор по SKU.");
-    } finally {
       setCompetitorBulkRunning(false);
     }
   }
@@ -1469,15 +1572,40 @@ function ProductWorkspaceFeature() {
                       <button
                         type="button"
                         className="pn-competitorSkuRun"
-                        onClick={handleRunCompetitorDiscoveryForVisible}
-                        disabled={competitorBulkRunning || !filteredCompetitorGroupItems.length}
+                        onClick={handleRunCompetitorDiscoveryForSelected}
+                        disabled={competitorBulkRunning || !selectedVisibleCompetitorIds.length}
                       >
-                        {competitorBulkRunning ? "Запускаем..." : `Найти по видимым ${filteredCompetitorGroupItems.length}`}
+                        {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
                       </button>
                     </div>
-                    {competitorBulkNotice ? <div className="pn-competitorSkuNotice">{competitorBulkNotice}</div> : null}
+                    <div className="pn-competitorSkuBulkBar">
+                      <button type="button" className="pn-competitorSkuSelectAll" onClick={toggleVisibleCompetitorSelection} disabled={!filteredCompetitorIds.length}>
+                        {allVisibleCompetitorsSelected ? "Снять выбор с видимых" : `Выбрать видимые ${filteredCompetitorIds.length}`}
+                      </button>
+                      <span>
+                        Выбрано {selectedVisibleCompetitorIds.length} из {filteredCompetitorIds.length} видимых SKU. Подбор запускается только по выбранным строкам.
+                      </span>
+                    </div>
+                    {competitorBulkNotice || competitorBulkRun ? (
+                      <div className="pn-competitorSkuNotice">
+                        <strong>{competitorBulkNotice || "Подбор конкурентов запущен."}</strong>
+                        {competitorBulkRun ? (
+                          <span>
+                            Run: {normalizeText(competitorBulkRun.id) || "—"} · статус {normalizeText(competitorBulkRun.status) || "queued"} · обработано {Number(competitorBulkRun.scanned_products_count || 0)}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="pn-competitorSkuTable">
                       <div className="pn-competitorSkuRow pn-competitorSkuHead">
+                        <span>
+                          <input
+                            type="checkbox"
+                            checked={allVisibleCompetitorsSelected}
+                            onChange={toggleVisibleCompetitorSelection}
+                            aria-label="Выбрать все видимые SKU"
+                          />
+                        </span>
                         <span>SKU GT</span>
                         <span>Товар</span>
                         <span>Статус</span>
@@ -1485,24 +1613,42 @@ function ProductWorkspaceFeature() {
                       </div>
                       {filteredCompetitorGroupItems.map((item) => {
                         const isActive = item.id === selectedCompetitorItem?.id;
-                        const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const };
+                        const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const, sources: [] };
+                        const itemId = normalizeText(item.id);
+                        const isSelected = selectedCompetitorSet.has(itemId);
                         return (
-                          <button
+                          <div
                             key={item.id}
-                            type="button"
                             className={`pn-competitorSkuRow${isActive ? " isActive" : ""}`}
-                            onClick={() => setCompetitorProductId(item.id)}
                           >
+                            <span>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleCompetitorSelection(itemId)}
+                                aria-label={`Выбрать SKU ${normalizeText(item.sku_gt) || itemId}`}
+                              />
+                            </span>
                             <span className="pn-competitorSkuCode">{normalizeText(item.sku_gt) || normalizeText(item.sku_pim) || "—"}</span>
                             <span className="pn-competitorSkuTitle">
                               <strong>{normalizeText(item.title) || item.id}</strong>
                             </span>
                             <span className={`pn-competitorSkuReadiness is-${skuStatus.tone}`}>
                               <strong>{skuStatus.label}</strong>
-                              <em>{skuStatus.detail}</em>
+                              {skuStatus.sources?.length ? (
+                                <span className="pn-competitorSourceChips">
+                                  {skuStatus.sources.map((source) => (
+                                    <em key={`${item.id}-${source.id}`} className={`is-${source.tone}`}>{source.label}</em>
+                                  ))}
+                                </span>
+                              ) : (
+                                <em>{skuStatus.detail}</em>
+                              )}
                             </span>
-                            <span className="pn-competitorSkuAction">{isActive ? "Открыт" : "Подобрать"}</span>
-                          </button>
+                            <button type="button" className="pn-competitorSkuAction" onClick={() => setCompetitorProductId(item.id)}>
+                              {isActive ? "Открыт" : "Открыть"}
+                            </button>
+                          </div>
                         );
                       })}
                       {!filteredCompetitorGroupItems.length ? (

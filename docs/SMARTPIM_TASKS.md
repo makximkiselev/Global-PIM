@@ -78,7 +78,11 @@ Current state:
 2. Active route is `ProductWorkspaceFeature`.
 3. If `/products/{id}` does not return variants, the route uses catalog summary `group_id` and falls back to `/product-groups/{id}`.
 4. Group workspace shows SKU rows, source statuses, search, status filters, and current filtered bulk discovery action.
-5. Production Browser verification on 2026-05-20:
+5. Group workspace now supports explicit row checkboxes and “select visible” bulk selection.
+6. Bulk discovery runs only for selected visible SKU rows, not for all category products.
+7. Group discovery shows a run/status drawer with run id, status, processed count, created count, and updated count.
+8. SKU rows show visual source chips for `re-store` and `store77` where source summary data exists.
+9. Production Browser verification on 2026-05-20:
    - `/products/product_1052?tab=competitors` shows group workspace for `iPhone 17 Pro Max`;
    - 36 SKU rows are visible behind a scrollable table;
    - one active SKU is selected;
@@ -88,11 +92,8 @@ Current state:
 
 Next tasks:
 
-1. Add explicit row checkboxes for bulk discovery instead of relying only on current filter/search subset.
-2. Add a background-run progress drawer for group discovery.
-3. After discovery completes, refresh per-SKU statuses automatically from run state.
-4. Add safe “scan selected only” copy so the user understands that all 400+ category products are not being scanned.
-5. Add visual source chips per SKU: `re-store`, `store77`, with independent states.
+1. Browser-verify row checkboxes, select-visible, disabled run button, and the run drawer without launching production scan unless explicitly needed.
+2. After a controlled single/SKU run, verify the polling refreshes per-SKU statuses automatically from run state.
 
 ### P0.2 Competitor Matching Quality
 
