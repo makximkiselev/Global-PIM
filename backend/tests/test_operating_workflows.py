@@ -762,6 +762,109 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(items["Гарантия"]["action"], "create_attribute")
         self.assertEqual(items["Гарантия"]["target_code"], "гарантия")
 
+    def test_competitor_ai_suggestions_use_confirmed_mapping_memory(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Смартфон Apple iPhone 16 Pro 256GB",
+            "content": {
+                "features": [
+                    {"code": "storage", "name": "Встроенная память", "value": ""},
+                    {"code": "ram", "name": "Оперативная память", "value": ""},
+                ],
+                "source_evidence": {
+                    "competitors": {
+                        "store77": {
+                            "unmatched_specs": {
+                                "Память": "256 ГБ",
+                            }
+                        }
+                    }
+                },
+            },
+        }
+        memory_rows = [
+            {
+                "provider": "store77",
+                "title": "Память",
+                "external_id": "storage",
+                "status": "confirmed",
+                "payload": {
+                    "source_name": "Память",
+                    "target_code": "storage",
+                    "target_name": "Встроенная память",
+                },
+            }
+        ]
+
+        async def bad_llm_chat_text(**kwargs):
+            return {
+                "model": "test-model",
+                "content": json.dumps(
+                    {
+                        "items": [
+                            {
+                                "source_id": "store77",
+                                "source_name": "Память",
+                                "raw_value": "256 ГБ",
+                                "action": "map_existing",
+                                "target_code": "ram",
+                                "target_name": "Оперативная память",
+                                "confidence": 0.99,
+                                "reason": "ошибка модели",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+
+        with (
+            patch.object(competitor_mapping, "list_pim_channel_links", return_value=memory_rows),
+            patch.object(competitor_mapping, "llm_chat_text", side_effect=bad_llm_chat_text),
+        ):
+            response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
+
+        item = response["items"][0]
+        self.assertEqual(response["mode"], "llm")
+        self.assertEqual(item["target_code"], "storage")
+        self.assertEqual(item["target_name"], "Встроенная память")
+        self.assertEqual(item["source"], "memory")
+        self.assertIn("подтвержден", item["reason"])
+
+    def test_save_category_mapping_persists_ai_mapping_memory(self) -> None:
+        saved_links: list[dict] = []
+        with (
+            patch.object(competitor_mapping, "_resolve_template_for_category", return_value=("tpl-phone", "cat-phone")),
+            patch.object(competitor_mapping, "_get_category_row_with_fallback", return_value=({}, "tpl-phone", "cat-phone")),
+            patch.object(competitor_mapping, "_valid_master_codes", return_value={"storage", "ram"}),
+            patch.object(
+                competitor_mapping,
+                "_master_fields",
+                return_value=[
+                    {"code": "storage", "name": "Встроенная память"},
+                    {"code": "ram", "name": "Оперативная память"},
+                ],
+            ),
+            patch.object(competitor_mapping, "_persist_competitor_mapping_row"),
+            patch.object(competitor_mapping, "_remove_legacy_competitor_mapping_row"),
+            patch.object(competitor_mapping, "upsert_pim_channel_link", side_effect=lambda row: saved_links.append(deepcopy(row)) or row),
+        ):
+            response = competitor_mapping.save_category_mapping(
+                "cat-phone",
+                {"mapping_by_site": {"store77": {"storage": "Память"}}},
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(len(saved_links), 1)
+        row = saved_links[0]
+        self.assertEqual(row["scope"], "ai_mapping_memory")
+        self.assertEqual(row["entity_type"], "template")
+        self.assertEqual(row["entity_id"], "tpl-phone")
+        self.assertEqual(row["provider"], "store77")
+        self.assertEqual(row["external_id"], "storage")
+        self.assertEqual(row["title"], "Память")
+        self.assertEqual(row["payload"]["target_name"], "Встроенная память")
+
     def test_competitor_template_ai_mapping_uses_llm_but_rejects_core_fields(self) -> None:
         fields = [
             {"code": "title", "name": "Наименование товара"},

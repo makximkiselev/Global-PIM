@@ -65,6 +65,7 @@ _discovery_run_cache: Dict[str, Dict[str, Any]] = {}
 _store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
 
 _AI_SPEC_ACTIONS = {"map_existing", "create_attribute", "ignore"}
+_AI_MAPPING_MEMORY_SCOPE = "ai_mapping_memory"
 
 
 # =========================
@@ -2277,6 +2278,133 @@ def _rule_ai_suggestion(spec: Dict[str, str], targets: List[Dict[str, Any]]) -> 
     return item
 
 
+def _target_by_code(targets: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    return {str(target.get("code") or "").strip(): target for target in targets if str(target.get("code") or "").strip()}
+
+
+def _ai_mapping_memory_link_id(source_id: str, source_name: str, target_code: str) -> str:
+    digest = hashlib.sha1(f"{source_id}:{_source_value_key(source_name)}:{target_code}".encode("utf-8")).hexdigest()[:18]
+    return f"ai_map:{digest}"
+
+
+def _load_ai_mapping_memory_examples(
+    *,
+    source_id: Optional[str],
+    targets: List[Dict[str, Any]],
+    limit: int = 30,
+) -> List[Dict[str, Any]]:
+    target_by_code = _target_by_code(targets)
+    rows = list_pim_channel_links(
+        scope=_AI_MAPPING_MEMORY_SCOPE,
+        entity_type="template",
+        provider=str(source_id or "").strip() or None,
+        status="confirmed",
+    )
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        source_name = str(payload.get("source_name") or row.get("title") or "").strip()
+        target_code = str(payload.get("target_code") or row.get("external_id") or "").strip()
+        if not source_name or not target_code or target_code not in target_by_code:
+            continue
+        target = target_by_code[target_code]
+        if _is_protected_product_content_field(source_name, target_code, target.get("name")):
+            continue
+        key = f"{row.get('provider')}:{_source_value_key(source_name)}:{target_code}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "source_id": str(row.get("provider") or payload.get("source_id") or source_id or "").strip(),
+                "source_name": _compact_ai_text(source_name, 120),
+                "target_code": target_code,
+                "target_name": str(payload.get("target_name") or target.get("name") or target_code).strip(),
+                "confidence": 1.0,
+                "reason": "подтверждено пользователем ранее",
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _apply_ai_mapping_memory(
+    items: List[Dict[str, Any]],
+    memory_examples: List[Dict[str, Any]],
+    targets: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not items or not memory_examples:
+        return items
+    target_by_code = _target_by_code(targets)
+    memory_by_source_name = {
+        f"{item.get('source_id')}:{_source_value_key(item.get('source_name'))}": item
+        for item in memory_examples
+        if str(item.get("source_id") or "").strip() and _source_value_key(item.get("source_name"))
+    }
+    out: List[Dict[str, Any]] = []
+    for item in items:
+        key = f"{item.get('source_id')}:{_source_value_key(item.get('source_name'))}"
+        memory = memory_by_source_name.get(key)
+        target_code = str((memory or {}).get("target_code") or "").strip()
+        target = target_by_code.get(target_code)
+        if memory and target:
+            next_item = dict(item)
+            next_item["action"] = "map_existing"
+            next_item["target_code"] = target_code
+            next_item["target_name"] = str(memory.get("target_name") or target.get("name") or target_code).strip()
+            next_item["target_source"] = target.get("source") or "memory"
+            next_item["confidence"] = 1.0
+            next_item["reason"] = str(memory.get("reason") or "подтверждено пользователем ранее")
+            next_item["source"] = "memory"
+            out.append(next_item)
+        else:
+            out.append(item)
+    return out
+
+
+def _persist_ai_mapping_memory(template_id: str, mapping_by_site: Any, *, context_type: str, context_id: str) -> None:
+    if not template_id or not isinstance(mapping_by_site, dict):
+        return
+    target_by_code = {str(field.get("code") or "").strip(): field for field in _master_fields(template_id) if isinstance(field, dict)}
+    for source_id in ALLOWED_SITES:
+        mapping = mapping_by_site.get(source_id) if isinstance(mapping_by_site.get(source_id), dict) else {}
+        for target_code_raw, source_name_raw in mapping.items():
+            target_code = str(target_code_raw or "").strip()
+            source_name = str(source_name_raw or "").strip()
+            target = target_by_code.get(target_code)
+            if not target or not source_name:
+                continue
+            target_name = str(target.get("name") or target_code).strip()
+            if _is_protected_product_content_field(source_name, target_code, target_name):
+                continue
+            upsert_pim_channel_link(
+                {
+                    "link_id": _ai_mapping_memory_link_id(source_id, source_name, target_code),
+                    "scope": _AI_MAPPING_MEMORY_SCOPE,
+                    "entity_type": "template",
+                    "entity_id": template_id,
+                    "provider": source_id,
+                    "external_id": target_code,
+                    "title": source_name,
+                    "status": "confirmed",
+                    "score": 1.0,
+                    "source": "user_mapping",
+                    "payload": {
+                        "template_id": template_id,
+                        "context_type": context_type,
+                        "context_id": context_id,
+                        "source_id": source_id,
+                        "source_name": source_name,
+                        "source_name_key": _source_value_key(source_name),
+                        "target_code": target_code,
+                        "target_name": target_name,
+                    },
+                }
+            )
+
+
 def _json_object_from_text(text: str) -> Dict[str, Any]:
     raw = str(text or "").strip()
     if raw.startswith("```"):
@@ -2372,6 +2500,8 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
     targets = _product_ai_targets(product)
     specs = _collect_unmatched_competitor_specs(product)
     rule_items = [_rule_ai_suggestion(spec, targets) for spec in specs]
+    memory_examples = _load_ai_mapping_memory_examples(source_id=None, targets=targets)
+    rule_items = _apply_ai_mapping_memory(rule_items, memory_examples, targets)
     warnings: List[str] = []
     if not specs:
         return {"mode": "empty", "items": [], "warnings": warnings}
@@ -2391,6 +2521,7 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
         "ignore — если это цена, доставка, отзывы, промо или не характеристика товара.\n\n"
         f"Товар: {product_title}\n"
         f"Существующие поля PIM JSON:\n{json.dumps(target_payload, ensure_ascii=False)}\n\n"
+        f"Подтвержденные ранее примеры сопоставления JSON:\n{json.dumps(memory_examples[:30], ensure_ascii=False)}\n\n"
         f"Незамапленные характеристики JSON:\n{json.dumps(spec_payload, ensure_ascii=False)}\n\n"
         "Ответ строго в формате: "
         '{"items":[{"source_id":"restore","source_name":"...","raw_value":"...","action":"map_existing|create_attribute|ignore","target_code":"...","target_name":"...","confidence":0.0,"reason":"коротко"}]}'
@@ -2407,6 +2538,7 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
         )
         parsed = _json_object_from_text(llm_response["content"])
         items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
+        items = _apply_ai_mapping_memory(items, memory_examples, targets)
         return {"mode": "llm", "model": llm_response.get("model"), "items": items, "warnings": warnings}
     except LlmError as exc:
         warnings.append(str(exc))
@@ -2460,6 +2592,8 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
     if not targets or not spec_items:
         return {}
     rule_items = [_rule_ai_suggestion(spec, targets) for spec in spec_items]
+    memory_examples = _load_ai_mapping_memory_examples(source_id=source_id, targets=targets)
+    rule_items = _apply_ai_mapping_memory(rule_items, memory_examples, targets)
     mapped = _mapped_specs_from_ai_items(rule_items, specs, targets)
 
     system_prompt = (
@@ -2470,6 +2604,7 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
     user_prompt = (
         f"Источник конкурента: {source_id}\n"
         f"Поля PIM JSON:\n{json.dumps([{'code': t['code'], 'name': t['name']} for t in targets[:120]], ensure_ascii=False)}\n\n"
+        f"Подтвержденные ранее примеры сопоставления JSON:\n{json.dumps(memory_examples[:30], ensure_ascii=False)}\n\n"
         f"Характеристики конкурента JSON:\n{json.dumps(spec_items, ensure_ascii=False)}\n\n"
         "Ответ строго в формате: "
         '{"items":[{"source_id":"store77","source_name":"...","raw_value":"...","action":"map_existing|create_attribute|ignore","target_code":"...","target_name":"...","confidence":0.0,"reason":"коротко"}]}'
@@ -2486,6 +2621,7 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
         )
         parsed = _json_object_from_text(llm_response["content"])
         items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
+        items = _apply_ai_mapping_memory(items, memory_examples, targets)
         mapped.update(_mapped_specs_from_ai_items(items, specs, targets))
     except Exception:
         # Deterministic rules remain the safe fallback when local LLM is unavailable.
@@ -3721,6 +3857,7 @@ def save_template_mapping(template_id: str, payload: Dict[str, Any]) -> Dict[str
     current["updated_at"] = now_iso()
 
     _persist_competitor_mapping_row("template", template_id, current)
+    _persist_ai_mapping_memory(template_id, current.get("mapping_by_site") or {}, context_type="template", context_id=template_id)
     _remove_legacy_competitor_mapping_row("template", template_id)
     cache_entry = _bootstrap_cache_entry()
     cache_entry["payload"] = None
@@ -3763,6 +3900,8 @@ def save_category_mapping(category_id: str, payload: Dict[str, Any]) -> Dict[str
     current["updated_at"] = now_iso()
 
     _persist_competitor_mapping_row("category", category_id, current)
+    if template_id:
+        _persist_ai_mapping_memory(template_id, current.get("mapping_by_site") or {}, context_type="category", context_id=category_id)
     _remove_legacy_competitor_mapping_row("category", category_id)
     cache_entry = _bootstrap_cache_entry()
     cache_entry["payload"] = None

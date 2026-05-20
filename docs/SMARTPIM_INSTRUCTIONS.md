@@ -298,6 +298,16 @@ OLLAMA_MODEL=qwen2.5:7b-instruct
 
 Use one model across the old marketplace AI path and the newer `app.core.llm` path. Do not point production to `llama3.1:*`, `qwen2.5:14b-instruct`, or `70b` models unless the model is installed and server resources are checked first.
 
+AI mapping must learn from user confirmations through data, not through ad-hoc prompt edits:
+
+1. confirmed category/template competitor mappings are saved in `pim_channel_links`;
+2. AI learning rows use `scope = ai_mapping_memory`, `entity_type = template`, `status = confirmed`;
+3. the row `provider` is the competitor source, `title` is the competitor/source field name, and `external_id` is the target PIM field code;
+4. `payload_json` must include `source_name`, `source_name_key`, `target_code`, `target_name`, `template_id`, `context_type`, and `context_id`;
+5. AI prompts must include recent confirmed examples before unmatched source fields;
+6. if a confirmed memory example matches the source field, it overrides later LLM/rule suggestions;
+7. protected fields such as product name/title and description must never be target fields for competitor parameter mapping.
+
 Verify LLM without printing secrets:
 
 ```bash

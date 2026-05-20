@@ -178,6 +178,8 @@ Current state:
 10. LLM suggestions are validated against real model fields and cannot map competitor specs into protected core fields (`Наименование товара`, `Описание товара`).
 11. Explicit/manual competitor mappings into protected core fields are ignored by import/export enrichment.
 12. Production Ollama is configured for `qwen2.5:7b-instruct`; the same model is used by both the new competitor matching path and the legacy marketplace AI path.
+13. Confirmed category/template competitor mappings are now stored as AI learning examples in `pim_channel_links` with scope `ai_mapping_memory`.
+14. AI prompt context now includes confirmed mapping examples, and confirmed memory overrides later LLM/rule suggestions for the same source field.
 
 Known problems:
 
@@ -185,14 +187,14 @@ Known problems:
 2. Canonical PIM value, raw source value, marketplace output value, and allowed marketplace values are not compact enough in one row.
 3. Marketplace dictionary data quality still needs verification.
 4. Actual export payload must consistently read provider-specific output values, not raw competitor text.
-5. The frontend still needs clearer indication when AI was used, when fallback rules were used, and which mappings require human confirmation.
+5. The frontend still needs clearer indication when AI was used, when fallback rules were used, when memory was used, and which mappings require human confirmation.
 
 Next tasks:
 
 1. Add actions: accept suggestion, edit mapping, mark not needed, reset.
 2. Add route tests for complex mappings and provider-specific export values.
 3. Add direct source-evidence snippets to value rows where competitor/raw source values differ from canonical PIM values.
-4. Show AI confidence/reason next to competitor field mapping suggestions in `/sources?tab=params`.
+4. Show AI confidence/reason/memory source next to competitor field mapping suggestions in `/sources?tab=params`.
 
 ### P0.5 Product Creation And Variants
 
