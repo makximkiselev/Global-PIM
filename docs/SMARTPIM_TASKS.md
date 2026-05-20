@@ -195,6 +195,8 @@ Current state:
 4. Variant axes are curated, not full info-model.
 5. Generated variant matrix supports enabled/disabled combinations before create.
 6. After create, user lands in product card on competitor workflow.
+7. Generated variant rows now allow editing title, SKU GT, and SKU PIM before creation.
+8. Creation blocks duplicate manual SKU GT inside the variant matrix before calling backend.
 
 Known problems:
 
@@ -206,7 +208,7 @@ Next tasks:
 
 1. Re-test full path for a real product family: base data -> axes -> matrix -> create -> group competitor scan -> enrichment -> validation.
 2. Improve group workspace after creation with immediate selected-SKU guidance.
-3. Ensure generated titles/SKU labels are editable before create.
+3. Add stronger preview of generated group title and variant axes before final create.
 
 ### P0.6 Catalog / Products / Export UX
 

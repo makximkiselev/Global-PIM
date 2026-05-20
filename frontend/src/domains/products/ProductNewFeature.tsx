@@ -1233,11 +1233,24 @@ export default function ProductNewFeature() {
     );
   }
 
+  function updateVariantRow(key: string, patch: Partial<Pick<Variant, "title" | "sku_gt" | "sku_pim">>) {
+    setVariants((prev) =>
+      prev.map((variant) => (variant.key === key ? { ...variant, ...patch } : variant))
+    );
+  }
+
   function validateBeforeSave() {
     if (!title.trim()) return "Заполните название товара.";
     if (!categoryId.trim()) return "Выберите категорию.";
     if (!variants.length) return "Нет вариантов товара.";
     if (!variants.some((variant) => variant.enabled !== false)) return "Включите хотя бы один SKU для создания.";
+    const seenSkuGt = new Set<string>();
+    for (const variant of variants.filter((item) => item.enabled !== false)) {
+      const skuGt = normStr(variant.sku_gt).toLowerCase();
+      if (!skuGt) continue;
+      if (seenSkuGt.has(skuGt)) return "SKU GT повторяется в матрице вариантов.";
+      seenSkuGt.add(skuGt);
+    }
     return "";
   }
 
@@ -1539,9 +1552,29 @@ export default function ProductNewFeature() {
                                 : variant.params[axis.id] || "—"}
                             </span>
                           ))}
-                          <strong>{variant.title}</strong>
-                          <span>{variant.sku_gt || "будет выделен"}</span>
-                          <span>{variant.sku_pim || "будет выделен"}</span>
+                          <input
+                            className="pnVariantInlineInput"
+                            value={variant.title}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => updateVariantRow(variant.key, { title: event.target.value })}
+                            aria-label="Название SKU"
+                          />
+                          <input
+                            className="pnVariantInlineInput isSku"
+                            value={variant.sku_gt}
+                            placeholder="будет выделен"
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => updateVariantRow(variant.key, { sku_gt: event.target.value })}
+                            aria-label="SKU GT"
+                          />
+                          <input
+                            className="pnVariantInlineInput isSku"
+                            value={variant.sku_pim}
+                            placeholder="будет выделен"
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => updateVariantRow(variant.key, { sku_pim: event.target.value })}
+                            aria-label="SKU PIM"
+                          />
                           <button
                             className="pnVariantToggle"
                             type="button"
