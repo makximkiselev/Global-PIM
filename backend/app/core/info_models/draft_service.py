@@ -218,6 +218,71 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _competitor_unmatched_candidates(category_id: str) -> List[Dict[str, Any]]:
+    products = [p for p in query_products_full() if isinstance(p, dict) and _text(p.get("category_id")) == category_id]
+    by_code: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+    source_indexes: Dict[str, Dict[Tuple[str, str], Dict[str, Any]]] = {}
+    for product in products:
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
+        competitors = evidence.get("competitors") if isinstance(evidence.get("competitors"), dict) else {}
+        for provider, payload in competitors.items():
+            if not isinstance(payload, dict):
+                continue
+            unmatched = payload.get("unmatched_specs")
+            items = unmatched.items() if isinstance(unmatched, dict) else []
+            for raw_name, raw_value in items:
+                name = _text(raw_name)
+                value = _text(raw_value)
+                if not name:
+                    continue
+                canonical_name, code = _canonical_attribute_identity(name)
+                row = by_code.get(code)
+                if not row:
+                    row = {
+                        "id": new_id(),
+                        "name": canonical_name,
+                        "code": code,
+                        "group": "Данные конкурентов",
+                        "required": False,
+                        "examples": [],
+                        "sources": [],
+                        "_count": 0,
+                    }
+                    by_code[code] = row
+                    source_indexes[code] = {}
+                row["_count"] += 1
+                if value and value not in row["examples"]:
+                    row["examples"].append(value)
+                source_key = (_text(provider) or "competitor", name)
+                source = source_indexes.setdefault(code, {}).get(source_key)
+                if not source:
+                    source = {
+                        "kind": "competitor",
+                        "provider": _text(provider) or "competitor",
+                        "source_name": _text(provider) or "Конкурент",
+                        "field_name": name,
+                        "examples": [],
+                        "count": 0,
+                    }
+                    source_indexes[code][source_key] = source
+                    row["sources"].append(source)
+                source["count"] = int(source.get("count") or 0) + 1
+                if value and value not in source["examples"]:
+                    source["examples"].append(value)
+
+    product_count = max(len(products), 1)
+    out: List[Dict[str, Any]] = []
+    for row in by_code.values():
+        examples = row.get("examples") if isinstance(row.get("examples"), list) else []
+        row["type"] = _infer_type(examples)
+        row["confidence"] = min(0.78, round(0.35 + (float(row.get("_count") or 0) / product_count) * 0.35, 2))
+        row["status"] = "needs_review"
+        row.pop("_count", None)
+        out.append(row)
+    return out
+
+
 def _load_yandex_params(provider_category_id: str) -> List[Dict[str, Any]]:
     if not provider_category_id:
         return []
@@ -438,6 +503,13 @@ def create_draft_from_sources(category_id: str, payload: Dict[str, Any] | None =
     if "marketplaces" in selected_sources:
         existing_by_code = OrderedDict((str(item.get("code") or ""), item) for item in candidates if isinstance(item, dict))
         for candidate in _marketplace_candidates(cid):
+            code = str(candidate.get("code") or "").strip()
+            existing = existing_by_code.get(code)
+            existing_by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
+        candidates = list(existing_by_code.values())
+    if "competitors" in selected_sources:
+        existing_by_code = OrderedDict((str(item.get("code") or ""), item) for item in candidates if isinstance(item, dict))
+        for candidate in _competitor_unmatched_candidates(cid):
             code = str(candidate.get("code") or "").strip()
             existing = existing_by_code.get(code)
             existing_by_code[code] = _merge_candidate(existing, candidate) if existing else candidate

@@ -136,21 +136,23 @@ Current state:
 2. Shared parameters such as `Встроенная память`, `Оперативная память`, `SIM`, `Цвет`, `Модель`, dimensions, OS, and dictionaries must be reused across categories.
 3. `draft_service.approve_draft` already calls `ensure_global_attribute` and collapses accepted synonyms into template attributes.
 4. Smartphone category model currently has marketplace/provider data and enough fields for initial workflow, but unmatched competitor specs still expose model gaps.
+5. Draft collection now includes competitor unmatched specs when the UI calls `sources: ["products", "marketplaces", "competitors"]`.
+6. Competitor unmatched specs are review-only candidates with source provenance (`restore`/`store77`) and do not auto-approve.
+7. Synonyms such as `Объем встроенной памяти` continue to collapse into the global `Встроенная память` attribute during approval.
 
 Known problems:
 
-1. Unmatched competitor specs are not yet first-class suggestions in the info-model UI.
-2. The template/model screen is still heavy for a new user.
-3. Product fields can outnumber approved model fields after resets/rebuilds.
-4. There is not enough UI clarity around “add field”, “reuse global field”, “ignore source field”, and “map to marketplace field”.
+1. The template/model screen is still heavy for a new user.
+2. Product fields can outnumber approved model fields after resets/rebuilds.
+3. There is not enough UI clarity around “add field”, “reuse global field”, “ignore source field”, and “map to marketplace field”.
+4. Competitor review candidates are present in the draft list, but the UI still needs clearer source grouping and “reuse existing global field” actions.
 
 Next tasks:
 
-1. Add an AI-assisted review queue from `source_evidence.competitors.*.unmatched_specs`.
-2. First slice must be review-only: actions `map_existing`, `create_attribute`, `ignore`; no auto-apply.
-3. Add deterministic fallback matching if LLM is unavailable.
-4. Show duplicate prevention: when a field already exists globally, UI must offer reuse, not create.
-5. Re-run smartphone/tablet model rebuild comparison and verify no duplicate memory/RAM attributes are created.
+1. Add deterministic fallback matching for competitor candidates to suggested global attributes.
+2. Show duplicate prevention in UI: when a field already exists globally, offer reuse, not create.
+3. Add explicit actions `reuse existing`, `create field`, `ignore` to draft rows.
+4. Re-run smartphone/tablet model rebuild comparison and verify no duplicate memory/RAM attributes are created.
 
 ### P0.4 Parameter And Value Mapping
 

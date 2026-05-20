@@ -1174,6 +1174,64 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})
         self.assertEqual(saved["templates"]["tpl-draft-rings"]["meta"]["info_model"]["draft_sources"], ["marketplaces"])
 
+    def test_info_model_draft_from_competitors_creates_review_candidates(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
+        products = [
+            {
+                "id": "product_iphone_1",
+                "category_id": "cat-phones",
+                "title": "Apple iPhone 17e 256Gb",
+                "content": {
+                    "features": [{"name": "Встроенная память", "value": "256 ГБ"}],
+                    "source_evidence": {
+                        "competitors": {
+                            "restore": {
+                                "unmatched_specs": {
+                                    "Яркость": "1200 нит",
+                                    "Объем встроенной памяти": "256 ГБ",
+                                }
+                            },
+                            "store77": {
+                                "unmatched_specs": {
+                                    "Яркость": "1200 нит",
+                                    "Датчики": "акселерометр",
+                                }
+                            },
+                        }
+                    },
+                },
+            }
+        ]
+        saved: dict[str, object] = {}
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "query_products_full", return_value=deepcopy(products)),
+            patch.object(draft_service, "new_id", side_effect=["tpl-draft-phones", "cand-product-storage", "cand-brightness", "cand-storage", "cand-sensors"]),
+            patch.object(draft_service, "now_iso", return_value="2026-05-20T00:00:00+00:00"),
+        ):
+            response = draft_service.create_draft_from_sources("cat-phones", {"sources": ["products", "competitors"]})
+
+        by_name = {candidate["name"]: candidate for candidate in response["candidates"]}
+        self.assertIn("Яркость", by_name)
+        self.assertIn("Датчики", by_name)
+        self.assertIn("Встроенная память", by_name)
+        brightness = by_name["Яркость"]
+        self.assertEqual(brightness["status"], "needs_review")
+        self.assertEqual(brightness["group"], "Данные конкурентов")
+        self.assertEqual({source["provider"] for source in brightness["sources"]}, {"restore", "store77"})
+        storage = by_name["Встроенная память"]
+        self.assertEqual(storage["code"], "vstroennaya_pamyat")
+        self.assertTrue(any(source["kind"] == "competitor" for source in storage["sources"]))
+        self.assertEqual(saved["templates"]["tpl-draft-phones"]["meta"]["info_model"]["draft_sources"], ["products", "competitors"])
+
     def test_info_model_draft_uses_nearest_ancestor_marketplace_mapping(self) -> None:
         from app.core.info_models import draft_service
 
