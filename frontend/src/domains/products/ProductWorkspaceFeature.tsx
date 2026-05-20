@@ -100,6 +100,13 @@ type ProductCompetitorContextResp = {
   source_summaries?: CompetitorSourceSummary[];
 };
 
+type CompetitorDiscoveryRunResp = {
+  run?: {
+    id?: string;
+    status?: string;
+  };
+};
+
 type CompetitorSkuStatus = {
   label: string;
   detail: string;
@@ -1013,6 +1020,8 @@ function ProductWorkspaceFeature() {
   const [competitorSkuStatuses, setCompetitorSkuStatuses] = useState<Record<string, CompetitorSkuStatus>>({});
   const [competitorSkuQuery, setCompetitorSkuQuery] = useState("");
   const [competitorSkuFilter, setCompetitorSkuFilter] = useState<"all" | CompetitorSkuStatus["tone"]>("all");
+  const [competitorBulkRunning, setCompetitorBulkRunning] = useState(false);
+  const [competitorBulkNotice, setCompetitorBulkNotice] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -1030,6 +1039,8 @@ function ProductWorkspaceFeature() {
       setCompetitorSkuStatuses({});
       setCompetitorSkuQuery("");
       setCompetitorSkuFilter("all");
+      setCompetitorBulkRunning(false);
+      setCompetitorBulkNotice("");
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1259,6 +1270,31 @@ function ProductWorkspaceFeature() {
     handleSectionSelect("attributes");
   }
 
+  async function handleRunCompetitorDiscoveryForVisible() {
+    const ids = filteredCompetitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean);
+    if (!ids.length || competitorBulkRunning) return;
+    setCompetitorBulkRunning(true);
+    setCompetitorBulkNotice("");
+    try {
+      const response = await api<CompetitorDiscoveryRunResp>("/competitor-mapping/discovery/run", {
+        method: "POST",
+        body: JSON.stringify({
+          background: true,
+          product_ids: ids,
+          sources: ["restore", "store77"],
+          limit: ids.length,
+        }),
+      });
+      const status = normalizeText(response.run?.status) || "queued";
+      setCompetitorBulkNotice(`Запущен подбор по ${ids.length} SKU. Статус: ${status}.`);
+      window.setTimeout(() => setReloadVersion((value) => value + 1), 4500);
+    } catch (err) {
+      setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось запустить подбор по SKU.");
+    } finally {
+      setCompetitorBulkRunning(false);
+    }
+  }
+
   if (loading) {
     return <ProductWorkspaceSkeleton />;
   }
@@ -1430,7 +1466,16 @@ function ProductWorkspaceFeature() {
                           {label} <strong>{count}</strong>
                         </button>
                       ))}
+                      <button
+                        type="button"
+                        className="pn-competitorSkuRun"
+                        onClick={handleRunCompetitorDiscoveryForVisible}
+                        disabled={competitorBulkRunning || !filteredCompetitorGroupItems.length}
+                      >
+                        {competitorBulkRunning ? "Запускаем..." : `Найти по видимым ${filteredCompetitorGroupItems.length}`}
+                      </button>
                     </div>
+                    {competitorBulkNotice ? <div className="pn-competitorSkuNotice">{competitorBulkNotice}</div> : null}
                     <div className="pn-competitorSkuTable">
                       <div className="pn-competitorSkuRow pn-competitorSkuHead">
                         <span>SKU GT</span>
