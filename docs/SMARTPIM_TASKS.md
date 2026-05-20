@@ -70,7 +70,7 @@ Success criteria:
 
 ### P0.1 Product Card Competitor Workspace
 
-Status: active.
+Status: done, keep for regression checks.
 
 Current state:
 
@@ -90,7 +90,7 @@ Current state:
    - filtering by `Sim+eSim` reduces visible rows to 12;
    - bulk button shows `Найти по видимым 12` without triggering scan during QA.
 
-Next tasks:
+Regression checks:
 
 1. Browser-verify row checkboxes, select-visible, disabled run button, and the run drawer without launching production scan unless explicitly needed.
 2. After a controlled single/SKU run, verify the polling refreshes per-SKU statuses automatically from run state.
@@ -107,21 +107,24 @@ Current state:
 4. Manual URL remains fallback only after candidates are absent or rejected.
 5. Confirmed links persist to `pim_channel_links`.
 6. Product enrichment writes competitor evidence, canonical values, and media references.
+7. `iPhone 17e` is now a separate model profile from `iPhone 17 eSIM`.
+8. re-store direct URL generation now supports `iPhone 17e 256Gb Pink` as `https://re-store.ru/catalog/10117E256PNKN/`.
+9. re-store search parsing now reads product fields from the product object before the current link, so neighboring products in the same payload do not overwrite the current candidate.
+10. Explicit SIM conflicts remain blockers; only missing SIM details on a re-store card can be sent to manual review.
 
 Known problems:
 
-1. `re-store` can still miss exact SKU even when the product exists on site.
-2. Some near matches are still too noisy and must remain manual-review, not auto-confirm.
-3. Store77 may intermittently timeout from production.
-4. Many donor specs remain unmatched because the current info-model does not yet contain every canonical field.
+1. Some near matches are still too noisy and must remain manual-review, not auto-confirm.
+2. Store77 may intermittently timeout from production.
+3. Many donor specs remain unmatched because the current info-model does not yet contain every canonical field.
+4. UI still does not show enough source-specific scan evidence when a source returns no candidates.
 
 Next tasks:
 
-1. Improve re-store direct URL generation and fallback search for exact iPhone variants.
-2. Add parser/audit evidence for why an exact SKU was missed.
-3. Show retry timing and source-specific failure reason in UI.
-4. Keep hard conflicts such as memory/color/SIM as blockers, not confirmable candidates.
-5. Add tests for exact matching around `256Gb`, `1Tb`, `eSIM`, `SIM+eSIM`, and color variants.
+1. Add parser/audit evidence for why an exact SKU was missed.
+2. Show retry timing and source-specific failure reason in UI.
+3. Add controlled production check for one `17e 256Gb Pink SIM+eSIM` SKU after candidate scan is safe.
+4. Continue tests for exact matching around `256Gb`, `1Tb`, `eSIM`, `SIM+eSIM`, and color variants as new variants appear.
 
 ### P0.3 Info-Model Builder And Global Attributes
 

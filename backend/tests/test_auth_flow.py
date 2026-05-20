@@ -2133,6 +2133,10 @@ class AuthFlowTests(unittest.TestCase):
                 "last_scanned_at": "2026-05-19T08:00:00+00:00",
                 "message": "Источник проверен, точной карточки не найдено.",
                 "candidates_count": 0,
+                "evidence": {
+                    "direct_url": "https://re-store.ru/catalog/10117E256PNKN/",
+                    "query_terms": ["Apple iPhone 17e 256Gb Pink"],
+                },
             },
         }
 
@@ -2150,6 +2154,7 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(restore_summary["status"], "no_exact_match")
         self.assertEqual(restore_summary["label"], "Нет точного товара")
         self.assertEqual(restore_summary["last_scanned_at"], "2026-05-19T08:00:00+00:00")
+        self.assertEqual(restore_summary["scan_evidence"]["direct_url"], "https://re-store.ru/catalog/10117E256PNKN/")
 
     def test_competitor_candidate_moderation_reads_relational_candidate_without_json(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
@@ -2308,6 +2313,46 @@ class AuthFlowTests(unittest.TestCase):
 
         self.assertEqual(candidates, [])
 
+    def test_variant_profile_keeps_iphone_17e_separate_from_iphone_17_esim(self) -> None:
+        iphone_17e = competitor_mapping_routes._variant_profile("Apple iPhone 17e 256GB, Soft Pink")
+        iphone_17_esim = competitor_mapping_routes._variant_profile("Apple iPhone 17 eSIM 256GB, Lavender")
+
+        self.assertEqual(iphone_17e["model"], "iphone_17_e")
+        self.assertEqual(iphone_17e["color"], "pink")
+        self.assertEqual(iphone_17_esim["model"], "iphone_17")
+        self.assertEqual(iphone_17_esim["sim"], "esim_only")
+
+    def test_restore_direct_url_builds_iphone_17e_pink_url(self) -> None:
+        product = {
+            "id": "product_17e",
+            "title": "Смартфон Apple iPhone 17e 256Gb nano SIM+eSIM Pink (Global)",
+            "sku_gt": "52517",
+        }
+
+        url = competitor_mapping_routes._restore_iphone_direct_url(product)
+
+        self.assertEqual(url, "https://re-store.ru/catalog/10117E256PNKN/")
+
+    def test_restore_search_rejects_iphone_17_esim_for_iphone_17e(self) -> None:
+        html = r'''
+          <script>
+          window.__payload = {\"linkedProducts\":[
+          {\"skuCode\":\"10117e256PNKn\",\"brandName\":\"Apple\",\"name\":\"Apple iPhone 17e 256GB, Soft Pink\",\"link\":\"/catalog/10117E256PNKN/\"},
+          {\"skuCode\":\"AG_10117256LVRe\",\"brandName\":\"Apple\",\"name\":\"Apple iPhone 17 eSIM 256GB, Lavender\",\"link\":\"/catalog/AG_10117256LVRE/\"}
+          ]};
+          </script>
+        '''
+        product = {
+            "id": "product_17e",
+            "title": "Смартфон Apple iPhone 17e 256Gb nano SIM+eSIM Pink (Global)",
+            "sku_gt": "52517",
+        }
+
+        candidates = competitor_mapping_routes._extract_restore_search_candidates(html, product)
+
+        self.assertEqual([item["url"] for item in candidates], ["https://re-store.ru/catalog/10117E256PNKN/"])
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
+
     def test_restore_search_html_candidates_require_close_variant_match(self) -> None:
         html = r'''
           <script>
@@ -2404,7 +2449,7 @@ class AuthFlowTests(unittest.TestCase):
         '''
         product = {
             "id": "product_70",
-            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb nano SIM+eSIM Desert Titanium (Global)",
             "sku_gt": "50001",
         }
 
@@ -2415,7 +2460,7 @@ class AuthFlowTests(unittest.TestCase):
     def test_restore_candidate_review_enrichment_uses_card_specs_for_sim(self) -> None:
         product = {
             "id": "product_70",
-            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb nano SIM+eSIM Desert Titanium (Global)",
             "sku_gt": "50001",
         }
         candidate = {
@@ -2453,7 +2498,7 @@ class AuthFlowTests(unittest.TestCase):
     def test_restore_candidate_review_enrichment_reads_json_spec_payload(self) -> None:
         product = {
             "id": "product_70",
-            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb nano SIM+eSIM Desert Titanium (Global)",
             "sku_gt": "50001",
         }
         candidate = {
@@ -2474,7 +2519,7 @@ class AuthFlowTests(unittest.TestCase):
     def test_restore_seed_candidate_builds_exact_iphone_url(self) -> None:
         product = {
             "id": "product_70",
-            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb nano SIM+eSIM Desert Titanium (Global)",
             "sku_gt": "50001",
         }
         html = r''':[{\"property\":\"Память\",\"values\":[{\"value\":\"256 ГБ\"}],\"hint\":\"\"},{\"property\":\"Цвет\",\"values\":[{\"value\":\"песчаный титановый\"}],\"hint\":\"\"},{\"property\":\"SIM-карта\",\"values\":[{\"value\":\"SIM + eSIM\"}],\"hint\":\"\"}]'''
@@ -2487,7 +2532,7 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(candidates[0]["profile_specs"]["Память"], "256 ГБ")
         self.assertEqual(candidates[0]["profile_specs"]["SIM-карта"], "SIM + eSIM")
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
-        self.assertTrue(any("проверь SIM" in reason for reason in candidates[0]["confidence_reasons"]))
+        self.assertTrue(any("обязательные токены совпали" in reason for reason in candidates[0]["confidence_reasons"]))
 
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''

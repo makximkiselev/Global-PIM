@@ -59,6 +59,11 @@ type CompetitorSourceSummary = {
   best_reasons?: string[];
   last_scanned_at?: string;
   scan_error?: string;
+  scan_evidence?: {
+    direct_url?: string;
+    query_terms?: string[];
+    category_urls?: string[];
+  };
 };
 
 type ProductCompetitorResp = {
@@ -464,6 +469,13 @@ export default function ProductCompetitorPanel({
                     <span>Лучший скрытый вариант</span>
                     <strong>{summary.best_title}</strong>
                     <em>Точность {sourceBestScoreLabel(summary)} · скрыто {summary.hidden_count}</em>
+                  </div>
+                ) : null}
+                {summary.scan_evidence?.direct_url || summary.scan_evidence?.query_terms?.length || summary.scan_evidence?.category_urls?.length ? (
+                  <div className="productCompetitorSourceBest">
+                    <span>Что проверяли</span>
+                    <strong>{summary.scan_evidence.direct_url || summary.scan_evidence.category_urls?.[0] || summary.scan_evidence.query_terms?.[0]}</strong>
+                    <em>{summary.scan_evidence.query_terms?.slice(0, 2).join(" · ")}</em>
                   </div>
                 ) : null}
                 {summary.status === "confirmed" ? (

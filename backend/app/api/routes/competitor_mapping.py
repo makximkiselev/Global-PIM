@@ -903,11 +903,11 @@ def _variant_profile(value: Any) -> Dict[str, str]:
     raw_lower = str(value or "").lower()
     profile: Dict[str, str] = {}
 
-    model_match = re.search(r"\biphone\s+(\d{1,2})(?:\s+(pro\s+max|pro|plus|mini))?", normalized)
+    model_match = re.search(r"\biphone\s+(\d{1,2})(e\b|(?:\s+(pro\s+max|pro|plus|mini)))?", normalized)
     memory_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized)
     if model_match:
         generation = model_match.group(1)
-        suffix = re.sub(r"\s+", "_", (model_match.group(2) or "").strip())
+        suffix = re.sub(r"\s+", "_", ((model_match.group(3) or model_match.group(2) or "")).strip())
         profile["model"] = "_".join(part for part in ("iphone", generation, suffix) if part)
     if memory_match:
         profile["memory"] = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
@@ -1063,7 +1063,7 @@ def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku
     product_sim = product_profile.get("sim") or "unknown"
     candidate_sim = candidate_profile.get("sim") or "unknown"
     if product_sim != "unknown" and candidate_sim != "unknown" and product_sim != candidate_sim:
-        return 0.79, [f"проверь SIM: PIM={product_sim}, candidate={candidate_sim}"]
+        return 0.0, [f"конфликт SIM: PIM={product_sim}, candidate={candidate_sim}"]
     if not sim_missing:
         return 0.0, ["нет причины для ручной проверки"]
 
@@ -1382,6 +1382,7 @@ def _persist_product_source_scan_state(
     message: str = "",
     error: Optional[str] = None,
     candidates_count: int = 0,
+    evidence: Optional[Dict[str, Any]] = None,
 ) -> None:
     normalized_product_id = str(product_id or "").strip()
     normalized_source_id = str(source_id or "").strip()
@@ -1394,6 +1395,7 @@ def _persist_product_source_scan_state(
         "message": str(message or "").strip(),
         "error": str(error or "").strip(),
         "candidates_count": max(0, int(candidates_count or 0)),
+        "evidence": evidence if isinstance(evidence, dict) else {},
     }
     upsert_pim_channel_link(
         {
@@ -1438,8 +1440,25 @@ def _product_source_scan_states(product_id: str) -> Dict[str, Dict[str, Any]]:
             "error": str(payload.get("error") or "").strip(),
             "run_id": str(payload.get("run_id") or "").strip(),
             "candidates_count": int(payload.get("candidates_count") or 0),
+            "evidence": payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {},
         }
     return states
+
+
+def _product_source_scan_evidence(product: Dict[str, Any], source_id: str) -> Dict[str, Any]:
+    normalized_source_id = str(source_id or "").strip()
+    evidence: Dict[str, Any] = {
+        "query_terms": _query_terms_for_product(product),
+    }
+    if normalized_source_id == "restore":
+        direct_url = _restore_iphone_direct_url(product)
+        if direct_url:
+            evidence["direct_url"] = direct_url
+    elif normalized_source_id == "store77":
+        category_urls = _store77_category_urls_for_product(product)
+        if category_urls:
+            evidence["category_urls"] = category_urls[:4]
+    return evidence
 
 
 def _product_discovery_source_summaries(
@@ -1515,6 +1534,7 @@ def _product_discovery_source_summaries(
                 else [],
                 "last_scanned_at": scan_states.get(source_id, {}).get("last_scanned_at"),
                 "scan_error": scan_states.get(source_id, {}).get("error"),
+                "scan_evidence": scan_states.get(source_id, {}).get("evidence") or {},
             }
         )
     return summaries
@@ -2336,11 +2356,12 @@ def _extract_restore_search_candidates(html: str, product: Dict[str, Any]) -> Li
             for match in link_rx.finditer(search_doc):
                 link = _json_string(match.group("link"))
                 url = urljoin("https://re-store.ru", link)
-                window = search_doc[max(0, match.start() - 5000) : min(len(search_doc), match.end() + 1000)]
-                title = _last_json_field(window, "name")
-                sku = _last_json_field(window, "skuCode")
-                brand = _last_json_field(window, "brandName") or _last_json_field(window, "brand")
-                price = _last_json_field(window, "price")
+                before_window = search_doc[max(0, match.start() - 5000) : match.end()]
+                after_window = search_doc[match.start() : min(len(search_doc), match.end() + 1000)]
+                title = _last_json_field(before_window, "name") or _last_json_field(after_window, "name")
+                sku = _last_json_field(before_window, "skuCode") or _last_json_field(after_window, "skuCode")
+                brand = _last_json_field(before_window, "brandName") or _last_json_field(before_window, "brand") or _last_json_field(after_window, "brandName") or _last_json_field(after_window, "brand")
+                price = _last_json_field(before_window, "price") or _last_json_field(after_window, "price")
                 _add_candidate(url, title, sku, brand, price)
                 if len(candidates) >= 5:
                     candidates.sort(key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
@@ -2427,13 +2448,14 @@ def _restore_iphone_direct_url(product: Dict[str, Any]) -> str:
     model = str(profile.get("model") or "")
     memory = str(profile.get("memory") or "")
     color = str(profile.get("color") or "")
-    model_match = re.fullmatch(r"iphone_(\d{1,2})(?:_(pro_max|pro|plus|mini))?", model)
+    model_match = re.fullmatch(r"iphone_(\d{1,2})(?:_(e|pro_max|pro|plus|mini))?", model)
     memory_match = re.fullmatch(r"(\d+)(gb|tb)", memory)
     model_codes = {
         "pro_max": "MAX",
         "pro": "PRO",
         "plus": "PLUS",
         "mini": "MINI",
+        "e": "E",
         "": "",
     }
     color_codes = {
@@ -2444,6 +2466,7 @@ def _restore_iphone_direct_url(product: Dict[str, Any]) -> str:
         "blue": "BLUE",
         "silver": "SLVN",
         "orange": "ORNG",
+        "pink": "PNKN",
     }
     if not model_match or not memory_match or color not in color_codes:
         return ""
@@ -3880,6 +3903,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
             product_id = str(product.get("id") or "").strip()
             source_id = str(source.get("id") or "").strip()
             seen_candidate_ids: set[str] = set()
+            scan_evidence = _product_source_scan_evidence(product, source_id)
             try:
                 raw_candidates = await asyncio.wait_for(
                     _discover_product_candidates_for_source(product, source),
@@ -3893,6 +3917,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                     run_id=run_id,
                     message="Источник долго отвечает, можно повторить поиск.",
                     error="DISCOVERY_SOURCE_TIMEOUT",
+                    evidence=scan_evidence,
                 )
                 errors.append(
                     {
@@ -3911,6 +3936,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                     run_id=run_id,
                     message="Источник вернул ошибку, можно повторить поиск.",
                     error=error_text,
+                    evidence=scan_evidence,
                 )
                 errors.append(
                     {
@@ -3928,6 +3954,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                     run_id=run_id,
                     message="Источник вернул некорректный ответ, можно повторить поиск.",
                     error="INVALID_DISCOVERY_RESPONSE",
+                    evidence=scan_evidence,
                 )
                 continue
             for raw in raw_candidates:
@@ -3971,6 +3998,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
                 run_id=run_id,
                 message="Источник проверен, точной карточки не найдено." if not seen_candidate_ids else "Источник проверен, кандидаты обновлены.",
                 candidates_count=len(seen_candidate_ids),
+                evidence=scan_evidence,
             )
 
     run = _run_payload(
