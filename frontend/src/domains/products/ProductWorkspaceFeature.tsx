@@ -83,6 +83,29 @@ type ProductWorkspaceSummaryResp = {
   }>;
 };
 
+type CompetitorSourceSummary = {
+  source_id?: string;
+  status?: string;
+  label?: string;
+  confirmed_count?: number;
+  actionable_count?: number;
+  last_scanned_at?: string;
+};
+
+type ProductCompetitorContextResp = {
+  counts?: {
+    needs_review?: number;
+    confirmed_links?: number;
+  };
+  source_summaries?: CompetitorSourceSummary[];
+};
+
+type CompetitorSkuStatus = {
+  label: string;
+  detail: string;
+  tone: "active" | "pending" | "danger" | "neutral";
+};
+
 type CatalogNode = {
   id: string;
   parent_id: string | null;
@@ -987,6 +1010,7 @@ function ProductWorkspaceFeature() {
   const [activeSection, setActiveSection] = useState<SectionId>(() => sectionFromTab(searchParams.get("tab")));
   const [selectedFeatureKey, setSelectedFeatureKey] = useState("");
   const [competitorProductId, setCompetitorProductId] = useState("");
+  const [competitorSkuStatuses, setCompetitorSkuStatuses] = useState<Record<string, CompetitorSkuStatus>>({});
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -1001,6 +1025,7 @@ function ProductWorkspaceFeature() {
       setChannels(null);
       setChannelsLoading(false);
       setCompetitorProductId("");
+      setCompetitorSkuStatuses({});
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1152,6 +1177,47 @@ function ProductWorkspaceFeature() {
       return product?.id || competitorGroupItems[0].id;
     });
   }, [competitorGroupItems, product?.id]);
+
+  useEffect(() => {
+    if (activeSection !== "competitors" || competitorGroupItems.length <= 1) {
+      setCompetitorSkuStatuses({});
+      return;
+    }
+    let cancelled = false;
+    const ids = competitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean);
+    setCompetitorSkuStatuses(Object.fromEntries(ids.map((id) => [id, { label: "Проверяем", detail: "загрузка статусов", tone: "neutral" as const }])));
+
+    async function run() {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const response = await api<ProductCompetitorContextResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(id)}`);
+            const summaries = response.source_summaries || [];
+            const confirmed = Number(response.counts?.confirmed_links || 0) || summaries.reduce((sum, item) => sum + Number(item.confirmed_count || 0), 0);
+            const review = Number(response.counts?.needs_review || 0) || summaries.reduce((sum, item) => sum + Number(item.actionable_count || 0), 0);
+            const scanned = summaries.some((item) => normalizeText(item.last_scanned_at));
+            const hasError = summaries.some((item) => ["scan_error", "no_exact_match"].includes(normalizeText(item.status)));
+            const detail = summaries.length
+              ? summaries.map((item) => `${item.source_id === "restore" ? "re-store" : item.source_id || "источник"}: ${item.label || "нет статуса"}`).join(" · ")
+              : "источники еще не проверялись";
+            if (confirmed > 0) return [id, { label: `${confirmed} подтверждено`, detail, tone: "active" as const }] as const;
+            if (review > 0) return [id, { label: `${review} кандидат`, detail, tone: "pending" as const }] as const;
+            if (hasError) return [id, { label: "нет точного", detail, tone: "danger" as const }] as const;
+            if (scanned) return [id, { label: "нет кандидатов", detail, tone: "neutral" as const }] as const;
+            return [id, { label: "не сканировали", detail, tone: "neutral" as const }] as const;
+          } catch {
+            return [id, { label: "ошибка", detail: "не удалось получить статус", tone: "danger" as const }] as const;
+          }
+        }),
+      );
+      if (!cancelled) setCompetitorSkuStatuses(Object.fromEntries(entries));
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, competitorGroupItems, reloadVersion]);
 
   function handleSectionSelect(id: SectionId) {
     setActiveSection(id);
@@ -1329,6 +1395,7 @@ function ProductWorkspaceFeature() {
                       </div>
                       {competitorGroupItems.map((item) => {
                         const isActive = item.id === selectedCompetitorItem?.id;
+                        const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const };
                         return (
                           <button
                             key={item.id}
@@ -1340,7 +1407,10 @@ function ProductWorkspaceFeature() {
                             <span className="pn-competitorSkuTitle">
                               <strong>{normalizeText(item.title) || item.id}</strong>
                             </span>
-                            <span className="pn-competitorSkuReadiness">{isActive ? "Открыт для подбора" : "Можно подобрать"}</span>
+                            <span className={`pn-competitorSkuReadiness is-${skuStatus.tone}`}>
+                              <strong>{skuStatus.label}</strong>
+                              <em>{skuStatus.detail}</em>
+                            </span>
                             <span className="pn-competitorSkuAction">{isActive ? "Открыт" : "Подобрать"}</span>
                           </button>
                         );

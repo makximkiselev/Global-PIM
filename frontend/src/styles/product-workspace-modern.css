@@ -2103,6 +2103,34 @@
   font-weight:850;
 }
 
+.pn-competitorSkuReadiness strong,
+.pn-competitorSkuReadiness em{
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pn-competitorSkuReadiness strong{
+  color:var(--text);
+  font-size:12px;
+  font-style:normal;
+  font-weight:950;
+}
+
+.pn-competitorSkuReadiness em{
+  margin-top:2px;
+  color:var(--muted);
+  font-size:10px;
+  font-style:normal;
+  font-weight:750;
+}
+
+.pn-competitorSkuReadiness.is-active strong{ color:#15803d; }
+.pn-competitorSkuReadiness.is-pending strong{ color:#b45309; }
+.pn-competitorSkuReadiness.is-danger strong{ color:#dc2626; }
+
 .pn-competitorSkuAction{
   display:inline-flex;
   justify-content:center;

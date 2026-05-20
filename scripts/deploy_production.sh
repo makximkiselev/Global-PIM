@@ -81,7 +81,6 @@ shell_quote() {
   printf "'"
 }
 
-require_cmd npm
 require_cmd tar
 require_cmd scp
 require_cmd ssh
@@ -102,6 +101,7 @@ if [[ "${SKIP_BUILD}" == "1" ]]; then
   require_file "${ROOT_DIR}/frontend/dist/index.html"
   echo "==> Skipping frontend build; using existing frontend/dist"
 else
+  require_cmd npm
   echo "==> Building frontend"
   ( cd "${ROOT_DIR}/frontend" && npm run build )
 fi

@@ -616,7 +616,8 @@ Progress:
    - fixed on 2026-05-20: product card `Конкуренты` tab now opens a group-level SKU workspace when the product belongs to a variant group; the user selects a SKU row, then uses the same competitor matching panel for `Найти карточки`, candidate approval/rejection, manual URL fallback and enrichment;
    - fixed on 2026-05-20: active product route `ProductWorkspaceFeature` now waits for catalog summary `group_id` and falls back to `/product-groups/{id}` when `/products/{id}` does not return variants, so grouped SKU context is not lost in the product card;
    - production browser verification on 2026-05-20: `/products/product_1052?tab=competitors` shows group workspace for `iPhone 17 Pro Max`, 36 SKU rows, one active SKU, and the competitor panel under the selected row;
-   - next required cleanup: improve the group-level competitor workspace with per-SKU source status counters (`не сканировали`, `кандидаты`, `подтверждено`, `ошибка`) instead of only opening one SKU at a time;
+   - fixed on 2026-05-20: group-level competitor workspace now loads per-SKU discovery summaries and shows `подтверждено`, `кандидат`, `нет точного`, `нет кандидатов`, `не сканировали`, or `ошибка` in each SKU row;
+   - next required cleanup: make the per-SKU status table actionable in bulk: run discovery for selected SKU rows, filter rows by source status, and show confirmed source counts without opening every SKU;
     - creation must remain short: create SKU/family first, then move the user into the product card for competitor pickup, enrichment, marketplace mapping, media, validation, and export.
 23. 2026-05-18 competitor enrichment/value-normalization gap:
     - verified `product_70`: only Store77 has a confirmed product link; re-store is shown as `Не сканировали`, so it cannot participate in product enrichment yet;
