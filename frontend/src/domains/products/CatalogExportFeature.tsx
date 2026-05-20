@@ -132,6 +132,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [loading, setLoading] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const initialCategoryId = String(searchParams.get("category") || "").trim();
   const initialProductIds = [
     ...String(searchParams.get("product") || "").split(","),
@@ -216,6 +217,25 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     () => activeTargets.reduce((sum, item) => sum + item.store_ids.length, 0),
     [activeTargets],
   );
+  const selectedTargetLabels = useMemo(() => {
+    const out: string[] = [];
+    for (const target of activeTargets) {
+      const provider = providers.find((item) => item.code === target.provider);
+      for (const storeId of target.store_ids || []) {
+        const store = (provider?.import_stores || []).find((item) => item.id === storeId);
+        out.push(`${provider?.title || providerTitle(target.provider)} / ${store?.title || storeId}`);
+      }
+    }
+    return out;
+  }, [activeTargets, providers]);
+  const selectedSkuEstimate = useMemo(() => {
+    if (selectedProductIds.length) return String(selectedProductIds.length);
+    if (selectedNodeIds.length) {
+      const directCount = selectedNodeIds.reduce((sum, id) => sum + Number(productCountsByCategory[id] || 0), 0);
+      if (directCount > 0) return includeDescendants ? `до ${Math.min(50, directCount)}+` : String(Math.min(50, directCount));
+    }
+    return "до 50";
+  }, [includeDescendants, productCountsByCategory, selectedNodeIds, selectedProductIds.length]);
   const totalBlocked = useMemo(
     () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
     [run],
@@ -249,7 +269,13 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     return Array.from(byKey.values()).slice(0, 12);
   }, [run]);
 
+  function requestExport() {
+    if (activeTargets.length === 0 || loading) return;
+    setConfirmOpen(true);
+  }
+
   async function startExport() {
+    setConfirmOpen(false);
     setLoading(true);
     setErr("");
     const runLimit = selectedProductIds.length ? Math.max(1, selectedProductIds.length) : 50;
@@ -328,7 +354,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
           actions={(
             <>
               <Link className="btn" to="/products">К товарам</Link>
-              <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>
+              <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
                 {loading ? "Готовлю…" : "Подготовить экспорт"}
               </Button>
             </>
@@ -365,7 +391,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   <Badge tone={initialLoading ? "pending" : activeTargets.length ? "active" : "neutral"}>
                     {initialLoading ? "Загружаю каналы" : activeTargets.length ? `${activeTargets.length} канала` : "Нет каналов"}
                   </Badge>
-                  <Button variant="primary" onClick={() => void startExport()} disabled={initialLoading || loading || activeTargets.length === 0}>
+                  <Button variant="primary" onClick={requestExport} disabled={initialLoading || loading || activeTargets.length === 0}>
                     {loading ? "Готовлю…" : "Подготовить"}
                   </Button>
                 </div>
@@ -533,13 +559,53 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <EmptyState
                 title="Выбери каналы и магазины"
                 description="Сначала задай цели экспорта, затем запусти batch-подготовку по текущей области каталога."
-                action={<Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>{loading ? "Готовлю…" : "Подготовить экспорт"}</Button>}
+                action={<Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>{loading ? "Готовлю…" : "Подготовить экспорт"}</Button>}
               />
             )}
           </div>
         )}
         inspector={inspector}
       />
+
+      {confirmOpen ? (
+        <div className="cx-confirmOverlay" role="dialog" aria-modal="true" aria-label="Подтверждение экспорта">
+          <div className="cx-confirmCard">
+            <div className="cx-confirmHead">
+              <div>
+                <span>Проверка перед экспортом</span>
+                <strong>Подтвердите область и магазины</strong>
+              </div>
+              <button className="btn" type="button" onClick={() => setConfirmOpen(false)}>Закрыть</button>
+            </div>
+            <div className="cx-confirmGrid">
+              <div>
+                <span>Область</span>
+                <strong>{selectedScope}</strong>
+              </div>
+              <div>
+                <span>SKU</span>
+                <strong>{selectedSkuEstimate}</strong>
+              </div>
+              <div>
+                <span>Целей</span>
+                <strong>{selectedTargetsCount}</strong>
+              </div>
+            </div>
+            <div className="cx-confirmTargets">
+              {selectedTargetLabels.map((label) => <span key={label}>{label}</span>)}
+            </div>
+            <div className="cx-confirmWarning">
+              Сейчас будет только batch-подготовка и проверка данных. Для безопасного теста активными должны быть GT USD и/или Ozon.
+            </div>
+            <div className="cx-confirmActions">
+              <Button onClick={() => setConfirmOpen(false)}>Отмена</Button>
+              <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>
+                {loading ? "Готовлю…" : "Подтвердить и подготовить"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

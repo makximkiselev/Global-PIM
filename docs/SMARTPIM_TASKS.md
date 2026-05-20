@@ -220,6 +220,7 @@ Current state:
 2. Product table is more usable and category context is retained.
 3. Export page must keep GT USD and Ozon as safe selected targets during tests.
 4. Product media deduplication was cleaned; S3-backed media renders for checked products.
+5. Export page now requires a confirmation dialog before batch preparation and explicitly lists selected scope, SKU estimate, target count, and store labels.
 
 Known problems:
 
@@ -232,8 +233,8 @@ Next tasks:
 
 1. Continue replacing page-specific workspace fragments with shared primitives.
 2. Add one persistent category/SKU next-action state across catalog, sources, product card, and export.
-3. Add export confirmation that explicitly lists selected stores and SKU count.
-4. Move long source descriptions into evidence/details panels, not visible canonical fields.
+3. Move long source descriptions into evidence/details panels, not visible canonical fields.
+4. Browser-check export confirmation on GT USD/Ozon with one SKU before real batch usage.
 
 ### P1 DB Consolidation
 
