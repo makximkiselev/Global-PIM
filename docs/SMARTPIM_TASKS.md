@@ -166,6 +166,9 @@ Current state:
 3. Example already handled: Ozon `Оперативная память` can map to multiple Ozon fields.
 4. `Встроенная память` and `Оперативная память` were separated after previous incorrect Ozon mapping.
 5. `/sources?tab=values` has a value mapping workspace, but it is still dense.
+6. Values workspace now opens in blocker mode by default and separates `Блокеры`, `Все`, and `Готово`.
+7. Selected value field now shows compact route `PIM поле -> Канон -> Я.Маркет -> Ozon -> Статус` above the dictionary editor.
+8. Backend value details now return provider `allowed_sample` and `mapped_sample` for compact evidence UI.
 
 Known problems:
 
@@ -176,10 +179,9 @@ Known problems:
 
 Next tasks:
 
-1. Make `/sources?tab=values` default to fields that block export.
-2. Add compact row: `PIM field -> source evidence -> canonical value -> Я.Маркет output -> Ozon output -> status`.
-3. Add actions: accept suggestion, edit mapping, mark not needed, reset.
-4. Add route tests for complex mappings and provider-specific export values.
+1. Add actions: accept suggestion, edit mapping, mark not needed, reset.
+2. Add route tests for complex mappings and provider-specific export values.
+3. Add direct source-evidence snippets to value rows where competitor/raw source values differ from canonical PIM values.
 
 ### P0.5 Product Creation And Variants
 

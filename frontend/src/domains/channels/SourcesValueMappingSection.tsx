@@ -18,6 +18,8 @@ type ValueItemProvider = {
   title: string;
   mapped_count: number;
   allowed_count: number;
+  mapped_sample?: Array<{ canonical: string; output: string }>;
+  allowed_sample?: string[];
   param_name?: string | null;
   required?: boolean;
 };
@@ -51,6 +53,7 @@ type Props = {
 };
 
 type ScopeFilter = "all" | "group" | "product" | "shared";
+type WorkFilter = "blockers" | "all" | "ready";
 
 const SERVICE_VALUE_GROUPS = new Set(["артикулы"]);
 const SERVICE_VALUE_FIELDS = ["sku", "артикул", "штрихкод", "партномер", "barcode", "offerid", "offer id"];
@@ -138,6 +141,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const [treeQuery, setTreeQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+  const [workFilter, setWorkFilter] = useState<WorkFilter>("blockers");
   const [fieldQuery, setFieldQuery] = useState("");
   const [data, setData] = useState<ValuesResp | null>(null);
   const [loadingValues, setLoadingValues] = useState(false);
@@ -213,6 +217,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     return list
       .filter((item) => needsValueMapping(item))
       .filter((item) => {
+        const providers = usefulProviders(item);
+        const hasGap = providers.some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0));
+        if (workFilter === "blockers") return hasGap;
+        if (workFilter === "ready") return providers.length > 0 && !hasGap;
+        return true;
+      })
+      .filter((item) => {
         if (scopeFilter !== "all" && item.scope !== scopeFilter) return false;
         if (!q) return true;
         const hay = `${item.catalog_name} ${item.group} ${item.providers.map((p) => p.title).join(" ")}`.toLowerCase();
@@ -224,7 +235,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
         if (aReady !== bReady) return aReady ? -1 : 1;
         return String(a.catalog_name || a.title || "").localeCompare(String(b.catalog_name || b.title || ""), "ru");
       });
-  }, [data, fieldQuery, scopeFilter]);
+  }, [data, fieldQuery, scopeFilter, workFilter]);
 
   const rawItemsCount = Array.isArray(data?.items) ? data!.items.length : 0;
   const mappingItemsCount = useMemo(() => {
@@ -298,8 +309,14 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   }
 
   const activeItem = filteredItems.find((item) => item.dict_id === activeDictId) || null;
-  const unresolvedCount = filteredItems.filter((item) => usefulProviders(item).some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0))).length;
-  const readyCount = filteredItems.filter((item) => {
+  const allMappingItems = useMemo(() => {
+    const list = Array.isArray(data?.items) ? data!.items : [];
+    return list.filter((item) => needsValueMapping(item));
+  }, [data]);
+  const allUnresolvedCount = allMappingItems.filter((item) =>
+    usefulProviders(item).some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0)),
+  ).length;
+  const allReadyCount = allMappingItems.filter((item) => {
     const providers = usefulProviders(item);
     return providers.length > 0 && providers.every((provider) => Number(provider.allowed_count || 0) <= Number(provider.mapped_count || 0));
   }).length;
@@ -356,8 +373,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
           <div className="sm-valuesSummary">
             <span>{data?.category?.path || "Категория не выбрана"}</span>
             <span>{mappingItemsCount} из {rawItemsCount} полей требуют сопоставления</span>
-            <span>{unresolvedCount} требуют работы</span>
-            <span>{readyCount} готовы</span>
+            <span>{allUnresolvedCount} требуют работы</span>
+            <span>{allReadyCount} готовы</span>
           </div>
 
           <div className="sm-valuesWorkbench">
@@ -368,6 +385,22 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                   onChange={(e) => setFieldQuery(e.target.value)}
                   placeholder="Память, цвет, тип SIM…"
                 />
+                <div className="sm-valuesScopeTabs">
+                  {[
+                    ["blockers", `Блокеры ${allUnresolvedCount}`],
+                    ["all", `Все ${mappingItemsCount}`],
+                    ["ready", `Готово ${allReadyCount}`],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`mm-tab ${workFilter === value ? "active" : ""}`}
+                      onClick={() => setWorkFilter(value as WorkFilter)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div className="sm-valuesScopeTabs">
                   {[
                     ["all", "Все"],
@@ -435,7 +468,37 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
 
             <div className="sm-valuesEditor">
               {activeItem ? (
-                <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
+                <>
+                  <div className="sm-valuesRouteCard">
+                    <div className="sm-valuesRouteStep">
+                      <span>PIM поле</span>
+                      <strong>{activeItem.catalog_name}</strong>
+                      <small>{activeItem.group || "Без группы"} · {activeItem.scope_label}</small>
+                    </div>
+                    <div className="sm-valuesRouteStep">
+                      <span>Канон</span>
+                      <strong>{activeItem.value_count || 0} знач.</strong>
+                      <small>редактируются ниже</small>
+                    </div>
+                    {["yandex_market", "ozon"].map((providerCode) => {
+                      const provider = activeItem.providers.find((item) => item.code === providerCode);
+                      const gap = provider ? Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0) : false;
+                      return (
+                        <div className={`sm-valuesRouteStep ${gap ? "is-gap" : provider ? "is-ready" : "is-muted"}`} key={providerCode}>
+                          <span>{provider?.title || (providerCode === "yandex_market" ? "Я.Маркет" : "Ozon")}</span>
+                          <strong>{provider ? `${provider.mapped_count}/${provider.allowed_count}` : "нет поля"}</strong>
+                          <small>{provider?.param_name || "справочник не подключен"}</small>
+                        </div>
+                      );
+                    })}
+                    <div className={`sm-valuesRouteStep is-status ${valueItemStatus(activeItem).tone === "warn" ? "is-gap" : "is-ready"}`}>
+                      <span>Статус</span>
+                      <strong>{valueItemStatus(activeItem).label}</strong>
+                      <small>{valueItemStatus(activeItem).tone === "warn" ? "сначала закрыть маппинг" : "можно проверять экспорт"}</small>
+                    </div>
+                  </div>
+                  <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
+                </>
               ) : (
                 <div className="sm-valuesEmpty">Выбери поле слева, чтобы открыть сопоставление значений.</div>
               )}

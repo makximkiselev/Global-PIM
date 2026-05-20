@@ -3302,6 +3302,11 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                     "title": PROVIDER_TITLES.get(provider, provider),
                     "mapped_count": len(mapped_values),
                     "allowed_count": len(allowed_values),
+                    "mapped_sample": [
+                        {"canonical": str(k), "output": str(v)}
+                        for k, v in list(mapped_values.items())[:4]
+                    ],
+                    "allowed_sample": allowed_values[:4],
                     "param_name": str(ref.get("name") or "").strip() or None,
                     "required": bool(ref.get("required") or False),
                 }
