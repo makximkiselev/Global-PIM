@@ -986,6 +986,7 @@ function ProductWorkspaceFeature() {
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>(() => sectionFromTab(searchParams.get("tab")));
   const [selectedFeatureKey, setSelectedFeatureKey] = useState("");
+  const [competitorProductId, setCompetitorProductId] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -999,6 +1000,7 @@ function ProductWorkspaceFeature() {
       setNodes([]);
       setChannels(null);
       setChannelsLoading(false);
+      setCompetitorProductId("");
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1045,7 +1047,7 @@ function ProductWorkspaceFeature() {
         const productResponse = await api<ProductResponse>(`/products/${productId}`);
         if (cancelled) return;
         fullProductResolved = true;
-        const summary = summaryProduct;
+        const summary = summaryProduct || await summaryPromise;
         const mergedProduct = {
           ...(summary || {}),
           ...productResponse.product,
@@ -1055,8 +1057,18 @@ function ProductWorkspaceFeature() {
           category_id: normalizeText(productResponse.product.category_id) || normalizeText(summary?.category_id) || undefined,
           group_id: normalizeText(productResponse.product.group_id) || normalizeText(summary?.group_id) || undefined,
         };
+        const mergedGroupId = normalizeText(mergedProduct.group_id);
         setProduct(mergedProduct);
-        setVariants(Array.isArray(productResponse.variants) ? productResponse.variants : []);
+        let nextVariants = Array.isArray(productResponse.variants) ? productResponse.variants : [];
+        if (mergedGroupId && nextVariants.length === 0) {
+          try {
+            const groupResponse = await api<{ items?: VariantData[] }>(`/product-groups/${encodeURIComponent(mergedGroupId)}`);
+            nextVariants = (groupResponse.items || []).filter((item) => normalizeText(item.id) !== normalizeText(mergedProduct.id));
+          } catch {
+            nextVariants = [];
+          }
+        }
+        setVariants(nextVariants);
         setLoading(false);
         try {
           if (!cancelled) setChannelsLoading(true);
@@ -1098,6 +1110,18 @@ function ProductWorkspaceFeature() {
   const features = useMemo(() => product?.content?.features || [], [product]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
   const categoryPath = useMemo(() => buildCategoryPath(nodes, product?.category_id), [nodes, product?.category_id]);
+  const competitorGroupItems = useMemo(() => {
+    if (!product || !normalizeText(product.group_id)) return [];
+    const byId = new Map<string, VariantData | ProductData>();
+    byId.set(product.id, product);
+    for (const variant of variants) {
+      if (normalizeText(variant.id)) byId.set(variant.id, variant);
+    }
+    return Array.from(byId.values());
+  }, [product, variants]);
+  const selectedCompetitorItem = useMemo(() => {
+    return competitorGroupItems.find((item) => item.id === competitorProductId) || competitorGroupItems[0] || product;
+  }, [competitorGroupItems, competitorProductId, product]);
 
   const accessories = useMemo(() => {
     return (product?.content?.related || []).filter((item) => normalizeText(item.name) || normalizeText(item.sku) || normalizeText(item.sku_gt));
@@ -1117,6 +1141,17 @@ function ProductWorkspaceFeature() {
       return featureKey(features[0], 0);
     });
   }, [features]);
+
+  useEffect(() => {
+    if (!competitorGroupItems.length) {
+      setCompetitorProductId("");
+      return;
+    }
+    setCompetitorProductId((prev) => {
+      if (prev && competitorGroupItems.some((item) => item.id === prev)) return prev;
+      return product?.id || competitorGroupItems[0].id;
+    });
+  }, [competitorGroupItems, product?.id]);
 
   function handleSectionSelect(id: SectionId) {
     setActiveSection(id);
@@ -1277,7 +1312,47 @@ function ProductWorkspaceFeature() {
             ) : null}
 
             {activeSection === "competitors" ? (
-              <ProductCompetitorPanel productId={product.id} onEnriched={() => setReloadVersion((value) => value + 1)} />
+              <div className="pn-competitorGroupWorkspace">
+                {competitorGroupItems.length > 1 ? (
+                  <div className="pn-card pn-competitorGroupCard">
+                    <div className="pn-cardTitle">Подбор конкурентов по SKU группы</div>
+                    <div className="pn-muted pn-competitorGroupLead">
+                      Выберите SKU, затем запускайте поиск re-store/store77, подтверждайте кандидата или добавляйте точную ссылку вручную.
+                      Насыщение параметров и медиа применяется только к выбранному SKU.
+                    </div>
+                    <div className="pn-competitorSkuTable">
+                      <div className="pn-competitorSkuRow pn-competitorSkuHead">
+                        <span>SKU GT</span>
+                        <span>Товар</span>
+                        <span>Статус</span>
+                        <span>Действие</span>
+                      </div>
+                      {competitorGroupItems.map((item) => {
+                        const isActive = item.id === selectedCompetitorItem?.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`pn-competitorSkuRow${isActive ? " isActive" : ""}`}
+                            onClick={() => setCompetitorProductId(item.id)}
+                          >
+                            <span className="pn-competitorSkuCode">{normalizeText(item.sku_gt) || normalizeText(item.sku_pim) || "—"}</span>
+                            <span className="pn-competitorSkuTitle">
+                              <strong>{normalizeText(item.title) || item.id}</strong>
+                            </span>
+                            <span className="pn-competitorSkuReadiness">{isActive ? "Открыт для подбора" : "Можно подобрать"}</span>
+                            <span className="pn-competitorSkuAction">{isActive ? "Открыт" : "Подобрать"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                <ProductCompetitorPanel
+                  productId={selectedCompetitorItem?.id || product.id}
+                  onEnriched={() => setReloadVersion((value) => value + 1)}
+                />
+              </div>
             ) : null}
 
             {activeSection === "media" ? (
