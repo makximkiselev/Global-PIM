@@ -832,7 +832,7 @@
   color:var(--muted);
   font-size:12px;
   line-height:1.45;
-  word-break:break-word;
+  font-weight:750;
 }
 
 .productWorkspaceEmptyActions{
@@ -1853,6 +1853,31 @@
   line-height:1.05;
   letter-spacing:-.04em;
   overflow-wrap:anywhere;
+}
+
+.productLongValue{
+  border-top:1px solid rgba(var(--line-rgb), .55);
+  padding-top:10px;
+}
+
+.productLongValue summary{
+  cursor:pointer;
+  color:rgba(var(--brand-rgb), .96);
+  font-size:12px;
+  font-weight:900;
+}
+
+.productLongValue p{
+  max-height:220px;
+  overflow:auto;
+  margin:10px 0 0;
+  padding:12px;
+  border-radius:14px;
+  background:rgba(var(--surface-rgb), .68);
+  color:var(--text);
+  font-size:13px;
+  line-height:1.5;
+  font-weight:700;
 }
 
 .productParamSectionGrid{

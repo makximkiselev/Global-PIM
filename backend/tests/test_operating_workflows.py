@@ -724,7 +724,7 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "https://cdn.example.test/image.jpg",
             )
 
-    def test_store77_discovery_scans_real_category_before_seed_fallback(self) -> None:
+    def test_store77_discovery_uses_exact_seed_before_browser_scan(self) -> None:
         product = {
             "id": "product_1",
             "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
@@ -746,9 +746,26 @@ class OperatingWorkflowTests(unittest.TestCase):
             candidates = asyncio.run(competitor_mapping._discover_store77_candidates(product))
 
         self.assertEqual(candidates[0]["url"], "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/")
-        self.assertIn("apple_iphone_17_pro_1", fetched_urls[0])
-        self.assertEqual(len(fetched_urls), 1)
+        self.assertEqual(fetched_urls, [])
         self.assertTrue(all("/product/product_" not in item["url"] for item in candidates))
+
+    def test_store77_seed_candidate_supports_iphone_17e_pink(self) -> None:
+        product = {
+            "id": "product_1092",
+            "title": "Смартфон Apple iPhone 17e 256Gb Pink SIM+eSIM",
+            "sku_gt": "53425",
+            "category_id": "phones",
+        }
+
+        candidates = competitor_mapping._store77_seed_candidates_for_product(product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0]["url"],
+            "https://store77.net/apple_iphone_17e/telefon_apple_iphone_17e_256gb_nano_sim_esim_pink/",
+        )
+        self.assertEqual(candidates[0]["product_sim_profile"], "nano_sim_esim")
+        self.assertEqual(candidates[0]["candidate_sim_profile"], "nano_sim_esim")
 
     def test_store77_seed_candidate_requires_matching_product_page(self) -> None:
         candidate = {

@@ -823,6 +823,7 @@ _MATCH_REQUIRED_TOKENS = {
     "blue",
     "green",
     "orange",
+    "pink",
 }
 
 _MATCH_STOP_TOKENS = {
@@ -2551,6 +2552,16 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
         return []
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
+    # Deterministic Apple URLs are cheap and give the content manager an exact
+    # review candidate even when Store77 search/catalog rendering is slow.
+    for candidate in _store77_seed_candidates_for_product(product):
+        candidate_url = str(candidate.get("url") or "")
+        if candidate_url and candidate_url not in seen:
+            seen.add(candidate_url)
+            out.append(candidate)
+    if out:
+        return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+
     category_urls = _store77_category_urls_for_product(product)
     if not category_urls:
         # store77 search page is browser/ajax-backed and can consume one timeout
@@ -2586,21 +2597,6 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
             out.append(candidate)
             if len(out) >= 5:
                 return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
-    if not out:
-        for candidate in _store77_seed_candidates_for_product(product):
-            candidate_url = str(candidate.get("url") or "")
-            if not candidate_url or candidate_url in seen:
-                continue
-            try:
-                html = await _fetch_store77_category_html(candidate_url)
-            except Exception:
-                continue
-            if not _store77_seed_candidate_matches_page(candidate, html):
-                continue
-            seen.add(candidate_url)
-            out.append(candidate)
-            if len(out) >= 5:
-                return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
     return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
 
 
@@ -2623,10 +2619,16 @@ async def _fetch_store77_category_html(url: str) -> str:
 def _store77_category_urls_for_product(product: Dict[str, Any]) -> List[str]:
     title = _norm_match_text(product.get("title"))
     urls: List[str] = []
-    match = re.search(r"\biphone\s+(\d{1,2})(?:\s+(pro\s+max|pro|plus|mini))?", title)
+    match = re.search(r"\biphone\s+(\d{1,2})(e\b|(?:\s+(pro\s+max|pro|plus|mini)))?", title)
     if match:
         generation = match.group(1)
-        suffix = re.sub(r"\s+", "_", (match.group(2) or "").strip())
+        suffix = re.sub(r"\s+", "_", ((match.group(3) or match.group(2) or "")).strip())
+        if suffix == "e":
+            compact_slug = f"apple_iphone_{generation}e"
+            for url in (f"https://store77.net/{compact_slug}/", "https://store77.net/telefony_apple/"):
+                if url not in urls:
+                    urls.append(url)
+            return urls
         slug = "_".join(part for part in ("apple", "iphone", generation, suffix) if part)
         if int(generation) >= 17:
             variants = [f"https://store77.net/{slug}_1/", f"https://store77.net/{slug}_2/", f"https://store77.net/{slug}/"]
@@ -2651,14 +2653,14 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
     category_urls = _store77_category_urls_for_product(product)
     if not category_urls:
         return []
-    model_match = re.search(r"\biphone\s+(\d{1,2})(?:\s+(pro\s+max|pro|plus|mini))?", normalized_title)
+    model_match = re.search(r"\biphone\s+(\d{1,2})(e\b|(?:\s+(pro\s+max|pro|plus|mini)))?", normalized_title)
     memory_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized_title)
     if not model_match or not memory_match:
         return []
 
     generation = model_match.group(1)
-    model_suffix = re.sub(r"\s+", "_", (model_match.group(2) or "").strip())
-    model_slug = "_".join(part for part in ("iphone", generation, model_suffix) if part)
+    model_suffix = re.sub(r"\s+", "_", ((model_match.group(3) or model_match.group(2) or "")).strip())
+    model_slug = f"iphone_{generation}e" if model_suffix == "e" else "_".join(part for part in ("iphone", generation, model_suffix) if part)
     memory_slug = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
 
     sim_slug = ""
@@ -2680,6 +2682,7 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
         ("black_titanium", "Black Titanium", ("black titanium", "черный титан", "чёрный титан")),
         ("white_titanium", "White Titanium", ("white titanium", "белый титан")),
         ("cosmic_orange", "Cosmic Orange", ("cosmic orange", "космический оранжевый", "orange", "оранжевый", "оранжев")),
+        ("pink", "Pink", ("pink", "розовый", "розов")),
     ]
     color_slug = ""
     color_label = ""
@@ -2699,7 +2702,9 @@ def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[s
     product_slug = "_".join(slug_parts)
     url = urljoin(category_urls[0], f"{product_slug}/")
     title = f"Телефон Apple iPhone {generation}"
-    if model_suffix:
+    if model_suffix == "e":
+        title += "e"
+    elif model_suffix:
         title += " " + model_suffix.replace("_", " ").title().replace("Max", "Max")
     title += f" {memory_match.group(1)}Gb{sim_label} ({color_label})"
     confidence_score, reasons = _confidence_for_candidate(product, title, "")

@@ -111,11 +111,12 @@ Current state:
 8. re-store direct URL generation now supports `iPhone 17e 256Gb Pink` as `https://re-store.ru/catalog/10117E256PNKN/`.
 9. re-store search parsing now reads product fields from the product object before the current link, so neighboring products in the same payload do not overwrite the current candidate.
 10. Explicit SIM conflicts remain blockers; only missing SIM details on a re-store card can be sent to manual review.
+11. Store77 deterministic candidate generation now understands `iPhone 17e`, `Pink`, and `SIM+eSIM`, and returns the exact review candidate before slow browser/category scans.
 
 Known problems:
 
 1. Some near matches are still too noisy and must remain manual-review, not auto-confirm.
-2. Store77 may intermittently timeout from production.
+2. Store77 may intermittently timeout from production; exact seeded candidates reduce the UX impact, but enrichment still depends on fetching the confirmed page.
 3. Many donor specs remain unmatched because the current info-model does not yet contain every canonical field.
 4. UI still does not show enough source-specific scan evidence when a source returns no candidates.
 
@@ -221,13 +222,20 @@ Current state:
 3. Export page must keep GT USD and Ozon as safe selected targets during tests.
 4. Product media deduplication was cleaned; S3-backed media renders for checked products.
 5. Export page now requires a confirmation dialog before batch preparation and explicitly lists selected scope, SKU estimate, target count, and store labels.
+6. Product card parameter values are now compacted in the queue/source evidence; long text opens through a details panel instead of stretching the workbench.
+7. Product media cards now show source and short object name instead of raw internal URLs.
+8. Vertical QA baseline for `product_1092 / 53425` on 2026-05-20:
+   - features: 34/84 filled, no critical blockers, very long restore description exists and must stay collapsed;
+   - media: 4 S3 images from re-store;
+   - competitors: re-store confirmed, store77 now shows a deterministic review candidate after single-SKU rescan;
+   - export-preview: one SKU only, selected safe targets are GT USD and Ozon.
 
 Known problems:
 
 1. Catalog/source/tree components are still not fully unified.
 2. Some screens still have local layout implementations.
 3. Export readiness needs stronger protection against accidental broad category exports.
-4. Product card description/source evidence can still be too noisy.
+4. Product card description/source evidence must be rechecked after deploy to confirm the compact UI is enough for real content work.
 
 Next tasks:
 

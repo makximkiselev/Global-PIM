@@ -234,6 +234,12 @@ function featureValue(feature: ProductFeatureValue): string {
   return values.join(", ");
 }
 
+function compactText(value: string, max = 96): string {
+  const normalized = normalizeText(value).replace(/\s+/g, " ");
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, max - 1).trim()}…`;
+}
+
 function featureKey(feature: ProductFeatureValue, index: number): string {
   return normalizeText(feature.code) || normalizeText(feature.name) || `feature-${index}`;
 }
@@ -346,6 +352,20 @@ function marketplaceProjections(value: string, channels: ChannelsSummary | null)
     value: normalizeForMarketplace(provider.toLowerCase(), value),
     status: value ? "готово" : "нет значения",
   }));
+}
+
+function mediaSourceLabel(url: string): string {
+  const normalized = normalizeText(url).toLowerCase();
+  if (normalized.includes("/competitors/restore/")) return "re-store";
+  if (normalized.includes("/competitors/store77/")) return "store77";
+  if (normalized.includes("/uploads/")) return "S3";
+  return "Медиа";
+}
+
+function mediaShortName(url: string): string {
+  const normalized = normalizeText(url);
+  const parts = normalized.split(/[/?#]/).filter(Boolean);
+  return compactText(parts[parts.length - 1] || normalized, 34);
 }
 
 function inferBrand(title: string, features: ProductFeatureValue[] = []): string {
@@ -570,7 +590,7 @@ function ProductAttributeWorkbench({
               >
                 <span>
                   <strong>{normalizeText(feature.name) || normalizeText(feature.code) || "Параметр"}</strong>
-                  <em>{value || "Не заполнено"}</em>
+                  <em title={value || undefined}>{value ? compactText(value, 78) : "Не заполнено"}</em>
                 </span>
                 <Badge tone={qualityTone(!!value)}>{sourceCount ? `${sourceCount} источн.` : "ручн."}</Badge>
               </button>
@@ -590,7 +610,13 @@ function ProductAttributeWorkbench({
               </div>
               <div className="productCanonicalValue">
                 <span>Значение в PIM</span>
-                <strong>{selectedValue || "Не заполнено"}</strong>
+                <strong title={selectedValue || undefined}>{selectedValue ? compactText(selectedValue, 180) : "Не заполнено"}</strong>
+                {selectedValue.length > 180 ? (
+                  <details className="productLongValue">
+                    <summary>Показать полный текст</summary>
+                    <p>{selectedValue}</p>
+                  </details>
+                ) : null}
               </div>
             </div>
 
@@ -609,9 +635,9 @@ function ProductAttributeWorkbench({
                           <span>{entry.store}</span>
                         </div>
                         <dl>
-                          <div><dt>Raw</dt><dd>{entry.raw || "—"}</dd></div>
-                          <div><dt>Resolved</dt><dd>{entry.resolved || "—"}</dd></div>
-                          <div><dt>Canonical</dt><dd>{entry.canonical || "—"}</dd></div>
+                          <div><dt>Raw</dt><dd title={entry.raw || undefined}>{entry.raw ? compactText(entry.raw, 140) : "—"}</dd></div>
+                          <div><dt>Resolved</dt><dd title={entry.resolved || undefined}>{entry.resolved ? compactText(entry.resolved, 140) : "—"}</dd></div>
+                          <div><dt>Canonical</dt><dd title={entry.canonical || undefined}>{entry.canonical ? compactText(entry.canonical, 140) : "—"}</dd></div>
                         </dl>
                       </article>
                     ))}
@@ -1668,12 +1694,12 @@ function ProductWorkspaceFeature() {
               <Card title="Медиа">
                 {media.length ? (
                   <div className="productWorkspaceMediaGrid">
-                    {media.map((item) => (
+                    {media.map((item, index) => (
                       <article key={item.url} className="productWorkspaceMediaCard">
                         <img src={toRenderableMediaUrl(item.url)} alt={item.caption || product.title} loading="lazy" />
                         <div className="productWorkspaceMediaMeta">
-                          <strong>{item.caption || "Изображение товара"}</strong>
-                          <span>{item.url}</span>
+                          <strong>{item.caption || `Фото ${index + 1}`}</strong>
+                          <span>{mediaSourceLabel(item.url)} · {mediaShortName(item.url)}</span>
                         </div>
                       </article>
                     ))}
