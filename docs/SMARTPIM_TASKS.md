@@ -612,8 +612,8 @@ Progress:
    - fixed on 2026-05-19: variant mode no longer exposes the full info-model field list; the selector shows only curated variant axes such as color, memory/RAM, SIM and relevant size/diagonal fields;
    - fixed on 2026-05-19: manual competitor URL fields were removed from the creation wizard as the primary path; competitor work starts after SKU/family creation in the product card;
    - verified on production with in-app browser on 2026-05-19: the variant-axis modal no longer shows `SKU GT` or video-resolution fields, and the competitor step explains the post-create matching route instead of rendering URL inputs;
-   - next required cleanup: generated variants must show a compact matrix with axes as columns, SKU GT/SKU PIM/status, and per-row enable/disable before creation;
-    - next required cleanup: after family creation, open a group-level bulk competitor matching workspace where each SKU row has `Найти карточки`, candidates, approve/reject and manual URL fallback;
+   - fixed on 2026-05-20: generated variants show a compact matrix with axes as columns, SKU GT/SKU PIM/status, and per-row enable/disable before creation; disabled combinations remain visible but are not sent to `/products/create-family`;
+   - next required cleanup: after family creation, open a group-level bulk competitor matching workspace where each SKU row has `Найти карточки`, candidates, approve/reject and manual URL fallback;
     - creation must remain short: create SKU/family first, then move the user into the product card for competitor pickup, enrichment, marketplace mapping, media, validation, and export.
 23. 2026-05-18 competitor enrichment/value-normalization gap:
     - verified `product_70`: only Store77 has a confirmed product link; re-store is shown as `Не сканировали`, so it cannot participate in product enrichment yet;

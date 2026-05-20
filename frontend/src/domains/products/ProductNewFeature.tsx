@@ -704,6 +704,7 @@ type Variant = {
   params: Record<string, string>;
   sku_pim: string;
   sku_gt: string;
+  enabled: boolean;
   links: { source: "restore" | "store77"; url: string }[];
   content: VariantContent;
 };
@@ -1088,6 +1089,7 @@ export default function ProductNewFeature() {
           params: {},
           sku_pim: "",
           sku_gt: "",
+          enabled: true,
           links: [
             { source: "restore", url: "" },
             { source: "store77", url: "" },
@@ -1175,6 +1177,7 @@ export default function ProductNewFeature() {
           params: p,
           sku_pim: "",
           sku_gt: "",
+          enabled: true,
           links: [
             { source: "restore", url: "" },
             { source: "store77", url: "" },
@@ -1222,10 +1225,19 @@ export default function ProductNewFeature() {
     );
   }
 
+  function toggleVariantEnabled(key: string) {
+    setVariants((prev) =>
+      prev.map((variant) =>
+        variant.key === key ? { ...variant, enabled: variant.enabled === false } : variant
+      )
+    );
+  }
+
   function validateBeforeSave() {
     if (!title.trim()) return "Заполните название товара.";
     if (!categoryId.trim()) return "Выберите категорию.";
     if (!variants.length) return "Нет вариантов товара.";
+    if (!variants.some((variant) => variant.enabled !== false)) return "Включите хотя бы один SKU для создания.";
     return "";
   }
 
@@ -1239,7 +1251,8 @@ export default function ProductNewFeature() {
     setSaveErr(null);
     setSaving(true);
     try {
-      const nextVariants = await ensureSkusForVariants(variants);
+      const enabledVariants = variants.filter((variant) => variant.enabled !== false);
+      const nextVariants = await ensureSkusForVariants(enabledVariants);
       const dictPairs: Array<{ dictId: string; value: string }> = [];
       const seenDictVals = new Set<string>();
       for (const v of nextVariants) {
@@ -1259,7 +1272,8 @@ export default function ProductNewFeature() {
           source: "pim",
         });
       }
-      setVariants(nextVariants);
+      const nextByKey = new Map(nextVariants.map((variant) => [variant.key, variant]));
+      setVariants((prev) => prev.map((variant) => nextByKey.get(variant.key) || variant));
 
       const sharedContent: ProductContent = { documents: [], analogs: [], related: [] };
       const createPayload = {
@@ -1315,12 +1329,15 @@ export default function ProductNewFeature() {
       values,
     };
   });
-  const readyToCreate = Boolean(normStr(title) && categoryId && variants.length);
+  const enabledVariantCount = variants.filter((variant) => variant.enabled !== false).length;
+  const disabledVariantCount = Math.max(0, variants.length - enabledVariantCount);
+  const variantAxisColumns = selectedParamLabels.length ? selectedParamLabels : [{ id: "__variant", label: "Вариант", values: [] }];
+  const readyToCreate = Boolean(normStr(title) && categoryId && enabledVariantCount);
   const canGoNext =
     activeStep === 0
       ? Boolean(normStr(title) && categoryId)
     : activeStep === 1
-      ? Boolean(variants.length)
+      ? Boolean(enabledVariantCount)
       : true;
 
   return (
@@ -1352,7 +1369,7 @@ export default function ProductNewFeature() {
             </div>
             <div>
               <span>SKU</span>
-              <strong>{variants.length || 0}</strong>
+              <strong>{variants.length ? `${enabledVariantCount}/${variants.length}` : 0}</strong>
             </div>
             <div>
               <span>Конкуренты</span>
@@ -1475,27 +1492,67 @@ export default function ProductNewFeature() {
                   </div>
                 ) : null}
                 {variantErr ? <div className="pn-hint pn-hintWarn">{variantErr}</div> : null}
-                <div className="pnVariantMatrix">
+                {variants.length && disabledVariantCount ? (
+                  <div className="pnWizardNotice">
+                    В создание попадут {enabledVariantCount} из {variants.length} SKU. Исключенные комбинации можно включить обратно до создания.
+                  </div>
+                ) : null}
+                <div
+                  className="pnVariantMatrix pnVariantMatrixWide"
+                  style={{
+                    ["--variant-axis-count" as any]: String(variantAxisColumns.length),
+                  }}
+                >
                   {variants.length ? (
                     <>
                       <div className="pnVariantMatrixHead">
-                        <span>Товар</span>
-                        <span>Параметры</span>
+                        <span>Статус</span>
+                        {variantAxisColumns.map((axis) => (
+                          <span key={axis.id}>{axis.label}</span>
+                        ))}
+                        <span>Название</span>
                         <span>SKU GT</span>
                         <span>SKU PIM</span>
+                        <span>Действие</span>
                       </div>
                       {variants.map((variant) => (
-                        <button
+                        <div
                           key={variant.key}
-                          type="button"
-                          className={`pnVariantMatrixRow${variant.key === activeVariantKey ? " isActive" : ""}`}
+                          className={`pnVariantMatrixRow${variant.key === activeVariantKey ? " isActive" : ""}${variant.enabled === false ? " isDisabled" : ""}`}
                           onClick={() => setActiveVariantKey(variant.key)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setActiveVariantKey(variant.key);
+                            }
+                          }}
                         >
+                          <span className={`pnVariantStatus${variant.enabled === false ? " isMuted" : ""}`}>
+                            {variant.enabled === false ? "исключен" : "создать"}
+                          </span>
+                          {variantAxisColumns.map((axis) => (
+                            <span key={axis.id}>
+                              {axis.id === "__variant"
+                                ? Object.values(variant.params).filter(Boolean).join(" / ") || "один SKU"
+                                : variant.params[axis.id] || "—"}
+                            </span>
+                          ))}
                           <strong>{variant.title}</strong>
-                          <span>{Object.values(variant.params).filter(Boolean).join(" / ") || "без вариантов"}</span>
                           <span>{variant.sku_gt || "будет выделен"}</span>
                           <span>{variant.sku_pim || "будет выделен"}</span>
-                        </button>
+                          <button
+                            className="pnVariantToggle"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleVariantEnabled(variant.key);
+                            }}
+                          >
+                            {variant.enabled === false ? "Включить" : "Исключить"}
+                          </button>
+                        </div>
                       ))}
                     </>
                   ) : (
@@ -1526,7 +1583,7 @@ export default function ProductNewFeature() {
                     <span>Конкуренты</span>
                     <span>Следующее действие</span>
                   </div>
-                  {variants.map((variant) => (
+                  {variants.filter((variant) => variant.enabled !== false).map((variant) => (
                     <div key={variant.key} className="pnVariantMatrixRow">
                       <strong>{variant.title}</strong>
                       <span>{Object.values(variant.params).filter(Boolean).join(" / ") || "один SKU"}</span>
@@ -1534,6 +1591,9 @@ export default function ProductNewFeature() {
                       <span>Найти карточки</span>
                     </div>
                   ))}
+                  {!enabledVariantCount ? (
+                    <div className="pnWizardEmpty">Включите хотя бы один SKU на предыдущем шаге.</div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -1547,7 +1607,7 @@ export default function ProductNewFeature() {
                 </div>
                 <div className="pnWizardReviewGrid">
                   <div><span>Тип</span><strong>{productType === "single" ? "Один SKU" : "С вариантами"}</strong></div>
-                  <div><span>Варианты</span><strong>{variants.length}</strong></div>
+                  <div><span>SKU к созданию</span><strong>{enabledVariantCount}</strong></div>
                   <div><span>Конкуренты</span><strong>после создания</strong></div>
                   <div><span>Параметры</span><strong>{filledFeatures}</strong></div>
                 </div>
