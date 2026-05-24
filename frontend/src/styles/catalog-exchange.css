@@ -151,6 +151,20 @@
   white-space:nowrap;
 }
 
+.cx-exportScopeGuard{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:16px 18px;
+  border-color:rgba(219, 132, 37, .26);
+  background:linear-gradient(180deg, rgba(var(--card-rgb),.96), rgba(219, 132, 37, .08));
+}
+
+.cx-exportScopeGuard .badge{
+  white-space:nowrap;
+}
+
 @keyframes cx-spin{
   to{ transform:rotate(360deg); }
 }

@@ -1060,6 +1060,37 @@
   color: rgba(var(--line-rgb), 0.42);
 }
 
+.tplDraftAuditGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  max-width: 780px;
+}
+
+.tplDraftAuditGrid span {
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--line-rgb), 0.72);
+  border-radius: 12px;
+  background: rgba(var(--surface-rgb), 0.62);
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 820;
+}
+
+.tplDraftAuditGrid b {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 950;
+}
+
 .tplDraftList {
   display: grid;
   gap: 8px;
@@ -1108,6 +1139,38 @@
   gap: 6px;
 }
 
+.tplDraftEvidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tplDraftEvidence span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--line-rgb), 0.74);
+  background: rgba(var(--card-rgb), 0.66);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.tplDraftEvidence b {
+  color: var(--text);
+  font-weight: 950;
+}
+
+.tplDraftEvidence .is-required {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+}
+
 .tplDraftReuse {
   display: inline-flex;
   width: fit-content;
@@ -1153,6 +1216,30 @@
   color: var(--text-soft);
   font-size: 11px;
   font-weight: 800;
+}
+
+.tplDraftFlags {
+  display: grid;
+  gap: 5px;
+}
+
+.tplDraftFlags small {
+  display: block;
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--line-rgb), 0.72);
+  background: rgba(var(--card-rgb), 0.72);
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 780;
+}
+
+.tplDraftFlags small.is-review,
+.tplDraftFlags small.is-warning {
+  border-color: rgba(245, 158, 11, 0.26);
+  background: rgba(245, 158, 11, 0.09);
+  color: #92400e;
 }
 
 .tplDraftActions {
@@ -1261,6 +1348,10 @@
 
   .tplDraftRow {
     grid-template-columns: 1fr;
+  }
+
+  .tplDraftAuditGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tplDraftActions {

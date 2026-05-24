@@ -104,12 +104,24 @@ type VariantT = {
   status: string;
 };
 
+type MediaItem = {
+  url: string;
+  caption?: string;
+  selected?: boolean;
+  export_order?: number;
+  external_url?: string;
+  source?: string;
+  status?: string;
+  source_product_id?: string;
+  [key: string]: unknown;
+};
+
 type ProductContent = {
   description: string;
-  media: { url: string; caption?: string }[]; // legacy fallback
-  media_images: { url: string; caption?: string }[];
-  media_videos: { url: string; caption?: string }[];
-  media_cover: { url: string; caption?: string }[];
+  media: MediaItem[]; // legacy fallback
+  media_images: MediaItem[];
+  media_videos: MediaItem[];
+  media_cover: MediaItem[];
   documents: { name: string; url: string }[];
   links: { label: string; url: string }[];
   features: ProductFeature[];
@@ -332,9 +344,14 @@ function normalizeMediaItems(list: any): { url: string; caption?: string }[] {
       const url = String((x as any).url || "").trim();
       if (!url) return null;
       const caption = String((x as any).caption || "").trim();
-      return caption ? { url, caption } : { url };
+      const item: MediaItem = { ...(x as Record<string, unknown>), url };
+      if (caption) item.caption = caption;
+      else delete item.caption;
+      if ((x as any).selected === false) item.selected = false;
+      if ((x as any).selected === true) item.selected = true;
+      return item;
     })
-    .filter(Boolean) as { url: string; caption?: string }[];
+    .filter(Boolean) as MediaItem[];
 }
 
 function normalizeContent(raw: Partial<ProductContent> | null | undefined): ProductContent {
@@ -691,7 +708,7 @@ export default function ProductFeature() {
         status: autoStatus === "active" ? "Можно проверять" : "Рано",
         tone: autoStatus === "active" ? "ok" : "muted",
         action: "Открыть экспорт",
-        href: `/catalog/export?category=${encodeURIComponent(product?.category_id || "")}&product=${encodeURIComponent(product?.id || "")}`,
+        href: `/catalog/exchange?tab=export&category=${encodeURIComponent(product?.category_id || "")}&product=${encodeURIComponent(product?.id || "")}`,
       },
     ];
   }, [normalizedLinks, parameterFlow, content.media_images, content.description, autoStatus, product?.category_id, product?.id]);
@@ -1111,6 +1128,32 @@ export default function ProductFeature() {
     return (data?.items || []) as Array<{ name: string; url: string; size?: number; content_type?: string }>;
   }
 
+  async function setImageExportSelected(index: number, selected: boolean) {
+    const nextImages = (content.media_images || []).map((item, idx) => (idx === index ? { ...item, selected } : item));
+    const nextContent = normalizeContent({ ...content, media_images: nextImages, media: nextImages });
+    await persistContent(nextContent);
+  }
+
+  async function moveImage(index: number, direction: -1 | 1) {
+    const nextIndex = index + direction;
+    const images = [...(content.media_images || [])];
+    if (nextIndex < 0 || nextIndex >= images.length) return;
+    const [item] = images.splice(index, 1);
+    images.splice(nextIndex, 0, item);
+    const ordered = images.map((image, idx) => ({ ...image, export_order: idx + 1 }));
+    const nextContent = normalizeContent({ ...content, media_images: ordered, media: ordered });
+    await persistContent(nextContent);
+    setSelectedImageIndexes((current) =>
+      current
+        .map((itemIdx) => {
+          if (itemIdx === index) return nextIndex;
+          if (itemIdx === nextIndex) return index;
+          return itemIdx;
+        })
+        .sort((a, b) => a - b)
+    );
+  }
+
   async function appendImageFiles(files: FileList | null) {
     if (!files?.length) return;
     const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
@@ -1118,7 +1161,7 @@ export default function ProductFeature() {
     const dt = new DataTransfer();
     for (const f of images) dt.items.add(f);
     const uploaded = await uploadFiles("media_images", dt.files);
-    const mapped = uploaded.map((x) => ({ url: x.url, caption: x.name }));
+    const mapped = uploaded.map((x) => ({ url: x.url, caption: x.name, selected: true }));
     const nextContent = normalizeContent({
       ...content,
       media_images: [...(content.media_images || []), ...mapped],
@@ -1856,6 +1899,24 @@ export default function ProductFeature() {
                       <button className="pn-imageCardPreview" type="button" onClick={() => setImageModalIndex(idx)}>
                         {m.url ? <img src={toRenderableMediaUrl(m.url)} alt={m.caption || `Изображение ${idx + 1}`} /> : <span>Нет</span>}
                       </button>
+                      <div className="pn-imageExportControls">
+                        <label className="pn-imageExportToggle">
+                          <input
+                            type="checkbox"
+                            checked={m.selected !== false}
+                            onChange={(event) => void setImageExportSelected(idx, event.target.checked)}
+                          />
+                          <span>Выгружать</span>
+                        </label>
+                        <div className="pn-imageOrderControls" aria-label="Порядок выгрузки">
+                          <button className="pn-editBtn" type="button" disabled={idx === 0} onClick={() => void moveImage(idx, -1)}>
+                            Выше
+                          </button>
+                          <button className="pn-editBtn" type="button" disabled={idx === (content.media_images || []).length - 1} onClick={() => void moveImage(idx, 1)}>
+                            Ниже
+                          </button>
+                        </div>
+                      </div>
                       <input
                         className="pn-input pn-imageCardCaption"
                         placeholder="Подпись"

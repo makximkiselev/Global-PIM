@@ -58,6 +58,7 @@ type CompetitorSourceSummary = {
   best_url?: string;
   best_reasons?: string[];
   last_scanned_at?: string;
+  retry_after_seconds?: number;
   scan_error?: string;
   scan_evidence?: {
     direct_url?: string;
@@ -100,6 +101,14 @@ type EnrichResp = {
   matched_count?: number;
   unmatched_count?: number;
   errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
+};
+type EnrichJobResp = EnrichResp & {
+  job_id: string;
+  product_id: string;
+  status: "queued" | "running" | "completed" | "failed" | string;
+  message?: string;
+  media_images_count?: number;
+  error?: string;
 };
 
 type AiSuggestionAction = "map_existing" | "create_attribute" | "ignore";
@@ -171,6 +180,13 @@ function simProfileLabel(value?: string): string {
   if (value === "dual_sim") return "Dual SIM";
   if (value === "physical_sim") return "SIM";
   return "SIM не распознан";
+}
+
+function hasBlockingSimConflict(candidate: CompetitorCandidate): boolean {
+  const productSim = String(candidate.product_sim_profile || "").trim();
+  const candidateSim = String(candidate.candidate_sim_profile || "").trim();
+  const knownProfiles = new Set(["nano_sim_esim", "esim_only", "dual_sim", "physical_sim"]);
+  return knownProfiles.has(productSim) && knownProfiles.has(candidateSim) && productSim !== candidateSim;
 }
 
 function reasonCaption(candidate: CompetitorCandidate): string {
@@ -348,16 +364,30 @@ export default function ProductCompetitorPanel({
     setEnrichNotice("");
     setEnriching(true);
     try {
-      const response = await api<EnrichResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}/enrich`, {
+      const started = await api<EnrichJobResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}/enrich/jobs`, {
         method: "POST",
       });
+      setEnrichNotice(started.message || "Насыщение товара поставлено в очередь.");
+      let response: EnrichJobResp = started;
+      const deadline = Date.now() + 140_000;
+      while (["queued", "running"].includes(response.status) && Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 4_000));
+        response = await api<EnrichJobResp>(`/competitor-mapping/discovery/products/enrich/jobs/${encodeURIComponent(started.job_id)}`);
+        if (response.message) setEnrichNotice(response.message);
+      }
+      if (["queued", "running"].includes(response.status)) {
+        throw new Error("Насыщение еще выполняется. Обновите карточку через несколько секунд.");
+      }
+      if (response.status === "failed") {
+        throw new Error(response.error || response.message || "Насыщение не завершилось");
+      }
       const sources = response.enriched_sources?.length ? response.enriched_sources.join(", ") : "нет";
       const errors = response.errors || [];
       const errorsText = errors.length
         ? ` Не загрузились: ${errors.map((item) => `${sourceLabel(item.source_id)} — ${enrichErrorLabel(item.error)}${item.retryable ? ", можно повторить" : ""}`).join("; ")}.`
         : "";
       setEnrichNotice(
-        `Источники: ${sources}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsText}`,
+        `Источники: ${sources}. Медиа: ${response.media_images_count || 0}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsText}`,
       );
       setAiSuggestions(null);
       await load();
@@ -468,7 +498,20 @@ export default function ProductCompetitorPanel({
                   <div className="productCompetitorSourceBest">
                     <span>Лучший скрытый вариант</span>
                     <strong>{summary.best_title}</strong>
-                    <em>Точность {sourceBestScoreLabel(summary)} · скрыто {summary.hidden_count}</em>
+                    <em>
+                      {[
+                        `Точность ${sourceBestScoreLabel(summary)}`,
+                        summary.hidden_count ? `скрыто ${summary.hidden_count}` : "",
+                        summary.best_reasons?.[0] || "",
+                      ].filter(Boolean).join(" · ")}
+                    </em>
+                  </div>
+                ) : null}
+                {summary.retry_after_seconds ? (
+                  <div className="productCompetitorSourceBest">
+                    <span>Повторный поиск</span>
+                    <strong>{summary.retry_after_seconds <= 300 ? "можно повторить через 5 минут" : "лучше повторить позже"}</strong>
+                    <em>Сначала проверьте, что модель, память, цвет и SIM указаны в SKU без ошибок.</em>
                   </div>
                 ) : null}
                 {summary.scan_evidence?.direct_url || summary.scan_evidence?.query_terms?.length || summary.scan_evidence?.category_urls?.length ? (
@@ -609,11 +652,15 @@ export default function ProductCompetitorPanel({
                 </div>
                 {selected.status === "needs_review" ? (
                   <div className="productCompetitorModeration">
-                    <Button variant="primary" onClick={() => void moderate(selected, "approve")}>
-                      Подтвердить
+                    <Button
+                      variant="primary"
+                      onClick={() => void moderate(selected, "approve")}
+                      disabled={hasBlockingSimConflict(selected)}
+                    >
+                      {hasBlockingSimConflict(selected) ? "SIM не совпадает" : `Подтвердить ${sourceLabel(selected.source_id)}`}
                     </Button>
                     <Button variant="danger" onClick={() => void moderate(selected, "reject")}>
-                      Отклонить
+                      Отклонить {sourceLabel(selected.source_id)}
                     </Button>
                   </div>
                 ) : null}

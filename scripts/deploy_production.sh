@@ -14,10 +14,13 @@ APP_SERVER_HOST="${APP_SERVER_HOST:-5.129.199.228}"
 APP_SERVER_USER="${APP_SERVER_USER:-root}"
 APP_SERVER_PATH="${APP_SERVER_PATH:-/opt/projects/global-pim}"
 APP_SERVICE_NAME="${APP_SERVICE_NAME:-global-pim.service}"
+APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME:-global-pim-ai-match-worker.service}"
+APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME:-global-pim-export-worker.service}"
 APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
 DB_CA_CERT_PATH="${DB_CA_CERT_PATH:-$HOME/Downloads/ca.crt}"
 APP_PUBLIC_BASE_URL="${APP_PUBLIC_BASE_URL:-https://pim.id-smart.ru}"
+APP_DEPLOY_BACKUP_KEEP="${APP_DEPLOY_BACKUP_KEEP:-20}"
 SSH_TARGET="${APP_SERVER_USER}@${APP_SERVER_HOST}"
 RELEASE_ID="$(date +%Y%m%d-%H%M%S)"
 REMOTE_TMP_ARCHIVE="/tmp/global-pim-${RELEASE_ID}.tgz"
@@ -95,6 +98,8 @@ require_file "${ROOT_DIR}/backend/main.py"
 require_file "${ROOT_DIR}/backend/.env.example"
 require_file "${ROOT_DIR}/frontend/package.json"
 require_file "${ROOT_DIR}/frontend/index.html"
+require_file "${ROOT_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}"
+require_file "${ROOT_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}"
 require_file "${DB_CA_CERT_PATH}"
 
 if [[ "${SKIP_BUILD}" == "1" ]]; then
@@ -198,7 +203,7 @@ create_release_archive() {
 }
 
 echo "==> Preparing release bundle"
-mkdir -p "${LOCAL_TMP_DIR}/backend" "${LOCAL_TMP_DIR}/frontend" "${LOCAL_TMP_DIR}/certs"
+mkdir -p "${LOCAL_TMP_DIR}/backend" "${LOCAL_TMP_DIR}/frontend" "${LOCAL_TMP_DIR}/certs" "${LOCAL_TMP_DIR}/deploy/systemd"
 
 rsync -a \
   --exclude '.env' \
@@ -214,6 +219,8 @@ rsync -a \
   "${ROOT_DIR}/frontend/dist/" "${LOCAL_TMP_DIR}/frontend/dist/"
 
 cp "${DB_CA_CERT_PATH}" "${LOCAL_TMP_DIR}/certs/ca.crt"
+cp "${ROOT_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}" "${LOCAL_TMP_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}"
+cp "${ROOT_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}" "${LOCAL_TMP_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}"
 
 if command -v xattr >/dev/null 2>&1; then
   xattr -cr "${LOCAL_TMP_DIR}" 2>/dev/null || true
@@ -224,9 +231,12 @@ cat > "${REMOTE_SCRIPT_LOCAL}" <<EOF
 set -euo pipefail
 APP_SERVER_PATH="${APP_SERVER_PATH}"
 APP_SERVICE_NAME="${APP_SERVICE_NAME}"
+APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME}"
+APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME}"
 REMOTE_TMP_ARCHIVE="${REMOTE_TMP_ARCHIVE}"
 REMOTE_TMP_EXTRACT="${REMOTE_TMP_EXTRACT}"
 RELEASE_ID="${RELEASE_ID}"
+APP_DEPLOY_BACKUP_KEEP="${APP_DEPLOY_BACKUP_KEEP}"
 
 mkdir -p "\${APP_SERVER_PATH}" "\${APP_SERVER_PATH}/backups"
 rm -rf "\${REMOTE_TMP_EXTRACT}"
@@ -241,6 +251,13 @@ if [[ -d "\${APP_SERVER_PATH}/backend" ]]; then
     backend frontend 2>/dev/null || true
 fi
 
+if [[ "\${APP_DEPLOY_BACKUP_KEEP}" =~ ^[0-9]+$ && "\${APP_DEPLOY_BACKUP_KEEP}" -gt 0 ]]; then
+  mapfile -t OLD_APP_BACKUPS < <(find "\${APP_SERVER_PATH}/backups" -maxdepth 1 -type f -name 'app-*.tgz' -printf '%T@ %p\n' | sort -nr | tail -n +"$((APP_DEPLOY_BACKUP_KEEP + 1))" | cut -d' ' -f2-)
+  if [[ "\${#OLD_APP_BACKUPS[@]}" -gt 0 ]]; then
+    rm -f -- "\${OLD_APP_BACKUPS[@]}"
+  fi
+fi
+
 mkdir -p "\${APP_SERVER_PATH}/backend" "\${APP_SERVER_PATH}/frontend" "\${APP_SERVER_PATH}/certs"
 rm -rf "\${APP_SERVER_PATH}/backend/app" "\${APP_SERVER_PATH}/backend/scripts" "\${APP_SERVER_PATH}/frontend/dist"
 
@@ -250,6 +267,20 @@ cp "\${REMOTE_TMP_EXTRACT}/backend/main.py" "\${APP_SERVER_PATH}/backend/main.py
 cp "\${REMOTE_TMP_EXTRACT}/backend/.env.example" "\${APP_SERVER_PATH}/backend/.env.example"
 cp -R "\${REMOTE_TMP_EXTRACT}/frontend/dist" "\${APP_SERVER_PATH}/frontend/dist"
 cp "\${REMOTE_TMP_EXTRACT}/certs/ca.crt" "\${APP_SERVER_PATH}/certs/ca.crt"
+
+if [[ -f "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_WORKER_SERVICE_NAME}" ]]; then
+  cp "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_WORKER_SERVICE_NAME}" "/etc/systemd/system/\${APP_WORKER_SERVICE_NAME}"
+fi
+if [[ -f "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_EXPORT_WORKER_SERVICE_NAME}" ]]; then
+  cp "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_EXPORT_WORKER_SERVICE_NAME}" "/etc/systemd/system/\${APP_EXPORT_WORKER_SERVICE_NAME}"
+fi
+systemctl daemon-reload
+if [[ -f "/etc/systemd/system/\${APP_WORKER_SERVICE_NAME}" ]]; then
+  systemctl enable "\${APP_WORKER_SERVICE_NAME}" >/dev/null
+fi
+if [[ -f "/etc/systemd/system/\${APP_EXPORT_WORKER_SERVICE_NAME}" ]]; then
+  systemctl enable "\${APP_EXPORT_WORKER_SERVICE_NAME}" >/dev/null
+fi
 
 if [[ ! -d "\${APP_SERVER_PATH}/.venv" ]]; then
   python3 -m venv "\${APP_SERVER_PATH}/.venv"
@@ -265,6 +296,12 @@ else
 fi
 
 systemctl restart "\${APP_SERVICE_NAME}"
+if systemctl list-unit-files "\${APP_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then
+  systemctl restart "\${APP_WORKER_SERVICE_NAME}"
+fi
+if systemctl list-unit-files "\${APP_EXPORT_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then
+  systemctl restart "\${APP_EXPORT_WORKER_SERVICE_NAME}"
+fi
 for attempt in {1..30}; do
   if curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null 2>&1; then
     break
@@ -284,7 +321,7 @@ echo "==> Deploying on server"
 ssh_run "bash /tmp/global-pim-${RELEASE_ID}.remote.sh"
 
 echo "==> Post-deploy smoke"
-ssh_run "systemctl is-active ${APP_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL}"
+ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WORKER_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL}"
 curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
 curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
 

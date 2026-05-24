@@ -18,6 +18,8 @@ type ConnectorsResp = { providers?: ProviderRow[] };
 type ExportRunResp = {
   ok: boolean;
   run_id: string;
+  id?: string;
+  created_at?: string;
   count: number;
   summary?: {
     product_count?: number;
@@ -42,6 +44,18 @@ type ExportRunResp = {
     blockers?: Array<{ product_id: string; offer_id?: string; product_title?: string; category_id?: string; missing: string[] }>;
   }>;
 };
+type LatestExportRunResp = { ok: boolean; run: ExportRunResp };
+type ExportJobResp = {
+  ok: boolean;
+  job_id: string;
+  run_id?: string;
+  status: "queued" | "running" | "completed" | "failed" | string;
+  phase?: string;
+  message?: string;
+  summary?: ExportRunResp["summary"];
+  error?: string;
+  run?: ExportRunResp | null;
+};
 
 type ExportBlocker = {
   provider: string;
@@ -59,11 +73,9 @@ type MetricItem = {
   accent?: boolean;
 };
 
-const EXPORT_PROVIDER_CODE = "yandex_market";
-const EXPORT_STORE_TITLE = "GT USD";
-
-function isAllowedExportStore(store: Store): boolean {
-  return String(store.title || "").trim().toLowerCase() === EXPORT_STORE_TITLE.toLowerCase();
+function defaultExportStoreIds(stores: Store[]): string[] {
+  const enabled = stores.filter((store) => store.enabled !== false).map((store) => store.id).filter(Boolean);
+  return enabled.length ? enabled : stores.map((store) => store.id).filter(Boolean);
 }
 
 function SummaryMetricRow({ items }: { items: MetricItem[] }) {
@@ -132,6 +144,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [loading, setLoading] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
+  const [preparingMessage, setPreparingMessage] = useState("");
+  const [jobId, setJobId] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const initialCategoryId = String(searchParams.get("category") || "").trim();
   const initialProductIds = [
@@ -156,21 +170,21 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             ...provider,
             import_stores: provider.import_stores || [],
           }))
-          .filter((provider) => provider.code !== EXPORT_PROVIDER_CODE || (provider.import_stores || []).some(isAllowedExportStore));
+          .filter((provider) => (provider.import_stores || []).length > 0);
         setProviders(exportProviders);
-        const gtUsd = exportProviders
-          .find((provider) => provider.code === EXPORT_PROVIDER_CODE)
-          ?.import_stores?.find(isAllowedExportStore)?.id;
-        const ozonStores = exportProviders.find((provider) => provider.code === "ozon")?.import_stores || [];
-        const defaultOzonStoreIds = ozonStores.filter((store) => store.enabled !== false).map((store) => store.id).filter(Boolean);
+        const nextSelectedProviders: Record<string, boolean> = {};
+        const nextSelectedStores: Record<string, string[]> = {};
+        for (const provider of exportProviders) {
+          const storeIds = defaultExportStoreIds(provider.import_stores || []);
+          nextSelectedProviders[provider.code] = storeIds.length > 0;
+          if (storeIds.length) nextSelectedStores[provider.code] = storeIds;
+        }
         setSelectedProviders({
-          [EXPORT_PROVIDER_CODE]: Boolean(gtUsd),
-          ozon: defaultOzonStoreIds.length > 0,
+          yandex_market: false,
+          ozon: false,
+          ...nextSelectedProviders,
         });
-        setSelectedStores({
-          ...(gtUsd ? { [EXPORT_PROVIDER_CODE]: [gtUsd] } : {}),
-          ...(defaultOzonStoreIds.length ? { ozon: defaultOzonStoreIds } : {}),
-        });
+        setSelectedStores(nextSelectedStores);
       } catch (e) {
         setErr((e as Error).message || "Не удалось загрузить данные экспорта");
       } finally {
@@ -236,6 +250,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return "до 50";
   }, [includeDescendants, productCountsByCategory, selectedNodeIds, selectedProductIds.length]);
+  const broadExportScope = selectedProductIds.length === 0 && (selectedNodeIds.length !== 1 || includeDescendants);
   const totalBlocked = useMemo(
     () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
     [run],
@@ -274,30 +289,92 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     setConfirmOpen(true);
   }
 
+  function latestRunPath() {
+    const params = new URLSearchParams();
+    if (selectedNodeIds.length === 1 && !selectedProductIds.length) params.set("category_id", selectedNodeIds[0]);
+    if (selectedProductIds.length === 1 && !selectedNodeIds.length) params.set("product_id", selectedProductIds[0]);
+    const query = params.toString();
+    return `/catalog/exchange/export/latest-run${query ? `?${query}` : ""}`;
+  }
+
+  async function waitForLatestRun(startedAt: number, deadlineMs = 180_000): Promise<ExportRunResp | null> {
+    const deadline = Date.now() + deadlineMs;
+    while (Date.now() < deadline) {
+      try {
+        const latest = await api<LatestExportRunResp>(latestRunPath());
+        const candidate = latest.run;
+        const createdAt = Date.parse(candidate?.created_at || "");
+        if (!Number.isFinite(createdAt) || createdAt >= startedAt - 2_000) return candidate;
+      } catch {
+        // The run may still be building. Keep polling until the bounded deadline.
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 4_000));
+    }
+    return null;
+  }
+
+  async function waitForExportJob(nextJobId: string, startedAt: number): Promise<ExportRunResp | null> {
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+      const job = await api<ExportJobResp>(`/catalog/exchange/export/jobs/${encodeURIComponent(nextJobId)}`);
+      setJobId(job.job_id || nextJobId);
+      setPreparingMessage(job.message || "Export batch считается в фоне.");
+      if (job.status === "completed" && job.run) return job.run;
+      if (job.status === "failed") {
+        throw new Error(job.error || job.message || "Export batch не завершился.");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 3_000));
+    }
+    return await waitForLatestRun(startedAt, 20_000);
+  }
+
   async function startExport() {
     setConfirmOpen(false);
     setLoading(true);
     setErr("");
+    setRun(null);
+    setPreparingMessage("");
+    setJobId("");
     const runLimit = selectedProductIds.length ? Math.max(1, selectedProductIds.length) : 50;
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 28_000);
+    const payload = {
+      selection: {
+        mode: selectedNodeIds.length || selectedProductIds.length ? "mixed" : "all",
+        node_ids: selectedNodeIds,
+        product_ids: selectedProductIds,
+        include_descendants: includeDescendants,
+      },
+      targets: activeTargets,
+      limit: runLimit,
+    };
     try {
-      const res = await api<ExportRunResp>("/catalog/exchange/export/run", {
+      const job = await api<ExportJobResp>("/catalog/exchange/export/jobs", {
         method: "POST",
-        body: JSON.stringify({
-          selection: {
-            mode: selectedNodeIds.length || selectedProductIds.length ? "mixed" : "all",
-            node_ids: selectedNodeIds,
-            product_ids: selectedProductIds,
-            include_descendants: includeDescendants,
-          },
-          targets: activeTargets,
-          limit: runLimit,
-        }),
+        signal: controller.signal,
+        body: JSON.stringify(payload),
       });
+      window.clearTimeout(timeoutId);
+      setJobId(job.job_id || "");
+      setPreparingMessage(job.message || "Export batch поставлен в очередь.");
+      const res = job.run || await waitForExportJob(job.job_id, startedAt);
+      if (!res) throw new Error("Export batch еще не вернул сохраненный результат.");
       setRun(res);
+      setPreparingMessage("");
     } catch (e) {
-      setErr((e as Error).message || "Ошибка подготовки экспорта");
+      window.clearTimeout(timeoutId);
+      setPreparingMessage(jobId ? "Batch еще считается на сервере. Проверяю статус job и сохраненный результат." : "Batch еще считается на сервере. Подхватываю сохраненный результат без перезапуска.");
+      const latest = await waitForLatestRun(startedAt);
+      if (latest) {
+        setRun(latest);
+        setErr("");
+      } else {
+        setErr((e as Error).message || "Ошибка подготовки экспорта");
+      }
     } finally {
       setLoading(false);
+      setPreparingMessage("");
     }
   }
 
@@ -336,7 +413,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       {run ? (
         <InspectorPanel title="Последний batch" subtitle="Итог текущей подготовки">
           <div className="cx-inspectorList">
-            <div className="cx-inspectorRow"><span>Run ID</span><strong>{run.run_id}</strong></div>
+            <div className="cx-inspectorRow"><span>Run ID</span><strong>{run.run_id || run.id}</strong></div>
             <div className="cx-inspectorRow"><span>Товаров</span><strong>{run.count}</strong></div>
             <div className="cx-inspectorRow"><span>Batch rows</span><strong>{run.batches.length}</strong></div>
           </div>
@@ -410,7 +487,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={(e) => setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }))}
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            setSelectedProviders((prev) => ({ ...prev, [provider.code]: enabled }));
+                            if (enabled && !(selectedStores[provider.code] || []).length) {
+                              const storeIds = defaultExportStoreIds(stores);
+                              if (storeIds.length) setSelectedStores((prev) => ({ ...prev, [provider.code]: storeIds }));
+                            }
+                          }}
                         />
                         <span>{provider.title}</span>
                       </label>
@@ -445,19 +529,32 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               ]}
             />
 
+            {broadExportScope ? (
+              <section className="card cx-exportScopeGuard">
+                <div>
+                  <div className="cx-paneTitle">Широкая область проверки</div>
+                  <div className="cx-paneSub">
+                    Для массовой области SmartPim готовит контрольный batch до 50 SKU. Для финальной отправки выберите конкретные SKU или узкую категорию без дочерних веток.
+                  </div>
+                </div>
+                <Badge tone="pending">guardrail</Badge>
+              </section>
+            ) : null}
+
             {loading && !run ? (
               <section className="card cx-exportPreparing">
                 <div className="cx-exportPreparingPulse" aria-hidden="true" />
                 <div>
                   <div className="cx-paneTitle">Готовлю выгрузку</div>
                   <div className="cx-paneSub">
-                    {selectedProductIds.length
+                    {preparingMessage || (selectedProductIds.length
                       ? "Проверяю только выбранные SKU: медиа, описание, категории, параметры и значения для выбранных площадок."
-                      : "Проверяю первые 50 SKU в выбранной области: медиа, описание, категории, параметры и значения для выбранных площадок."}
+                      : "Проверяю первые 50 SKU в выбранной области: медиа, описание, категории, параметры и значения для выбранных площадок.")}
                   </div>
                 </div>
                 <div className="cx-exportPreparingMeta">
                   <span>Область: <b>{selectedScope}</b></span>
+                  {jobId ? <span>Job: <b>{jobId}</b></span> : null}
                   <span>Каналов: <b>{activeTargets.length}</b></span>
                   <span>Целей: <b>{selectedTargetsCount}</b></span>
                 </div>
@@ -595,7 +692,9 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               {selectedTargetLabels.map((label) => <span key={label}>{label}</span>)}
             </div>
             <div className="cx-confirmWarning">
-              Сейчас будет только batch-подготовка и проверка данных. Для безопасного теста активными должны быть GT USD и/или Ozon.
+              {broadExportScope
+                ? "Это широкая проверка до 50 SKU. Для финальной отправки лучше выбрать конкретные SKU или узкую категорию."
+                : "Сейчас будет только batch-подготовка и проверка данных по выбранным магазинам. Проверь список целей перед запуском."}
             </div>
             <div className="cx-confirmActions">
               <Button onClick={() => setConfirmOpen(false)}>Отмена</Button>

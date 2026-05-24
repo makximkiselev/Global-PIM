@@ -11,15 +11,135 @@ from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.api.routes import catalog_exchange, competitor_mapping, templates, yandex_market
+from app.api.routes import catalog_exchange, competitor_mapping, ozon_market, products, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
 from app.core import value_mapping
+from app.workers import marketplace_attribute_ai_match
 
 
 class OperatingWorkflowTests(unittest.TestCase):
+    def test_marketplace_attribute_ai_match_worker_executes_saved_job(self) -> None:
+        saved_job = {
+            "id": "attr_ai_job_test",
+            "job_id": "attr_ai_job_test",
+            "catalog_category_id": "cat_phone",
+            "status": "queued",
+            "apply": False,
+        }
+        executed: list[tuple[str, bool]] = []
+
+        async def execute(job_id, catalog_category_id, req):
+            executed.append((catalog_category_id, bool(req.apply)))
+
+        with (
+            patch.object(
+                marketplace_attribute_ai_match.marketplace_mapping,
+                "_claim_attr_ai_job",
+                return_value=deepcopy(saved_job),
+            ),
+            patch.object(
+                marketplace_attribute_ai_match.marketplace_mapping,
+                "_run_attr_ai_match_job",
+                side_effect=execute,
+            ),
+        ):
+            result = asyncio.run(marketplace_attribute_ai_match.run_once("attr_ai_job_test", "org_default"))
+
+        self.assertEqual(result["job_id"], "attr_ai_job_test")
+        self.assertEqual(result["catalog_category_id"], "cat_phone")
+        self.assertEqual(executed, [("cat_phone", False)])
+
+    def test_marketplace_attribute_ai_match_worker_skips_already_claimed_job(self) -> None:
+        executed: list[str] = []
+
+        async def execute(job_id, catalog_category_id, req):
+            executed.append(job_id)
+
+        with (
+            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_claim_attr_ai_job", return_value=None),
+            patch.object(
+                marketplace_attribute_ai_match.marketplace_mapping,
+                "_run_attr_ai_match_job",
+                side_effect=execute,
+            ),
+        ):
+            result = asyncio.run(marketplace_attribute_ai_match.run_once("attr_ai_job_claimed", "org_default"))
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["skipped"], True)
+        self.assertEqual(executed, [])
+
+    def test_marketplace_attribute_ai_match_worker_runs_pending_jobs(self) -> None:
+        queued_jobs = [
+            {
+                "id": "attr_ai_job_1",
+                "job_id": "attr_ai_job_1",
+                "catalog_category_id": "cat_phone",
+                "status": "queued",
+                "apply": True,
+            },
+            {
+                "id": "attr_ai_job_2",
+                "job_id": "attr_ai_job_2",
+                "catalog_category_id": "cat_tablet",
+                "status": "queued",
+                "apply": False,
+            },
+        ]
+        executed: list[str] = []
+
+        async def execute(job_id, organization_id=None):
+            executed.append(job_id)
+            return {"ok": True, "job_id": job_id, "catalog_category_id": "cat"}
+
+        with (
+            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
+            patch.object(
+                marketplace_attribute_ai_match.marketplace_mapping,
+                "list_pim_workflow_runs",
+                return_value=deepcopy(queued_jobs),
+            ),
+            patch.object(marketplace_attribute_ai_match, "run_once", side_effect=execute),
+        ):
+            result = asyncio.run(marketplace_attribute_ai_match.run_pending_once("org_default", limit=10))
+
+        self.assertEqual(result["picked"], 2)
+        self.assertEqual(result["completed"], 2)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(executed, ["attr_ai_job_1", "attr_ai_job_2"])
+
+    def test_marketplace_attribute_ai_match_worker_counts_raced_claims_as_skipped(self) -> None:
+        queued_jobs = [
+            {
+                "id": "attr_ai_job_1",
+                "job_id": "attr_ai_job_1",
+                "catalog_category_id": "cat_phone",
+                "status": "queued",
+            }
+        ]
+
+        async def execute(job_id, organization_id=None):
+            return {"ok": False, "skipped": True, "job_id": job_id}
+
+        with (
+            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
+            patch.object(
+                marketplace_attribute_ai_match.marketplace_mapping,
+                "list_pim_workflow_runs",
+                return_value=deepcopy(queued_jobs),
+            ),
+            patch.object(marketplace_attribute_ai_match, "run_once", side_effect=execute),
+        ):
+            result = asyncio.run(marketplace_attribute_ai_match.run_pending_once("org_default", limit=10))
+
+        self.assertEqual(result["picked"], 1)
+        self.assertEqual(result["completed"], 0)
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["failed"], 0)
+
     def test_product_parameter_flow_connects_sources_pim_and_marketplace_outputs(self) -> None:
         product = {
             "id": "product_phone",
@@ -390,6 +510,41 @@ class OperatingWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(saved_db["discovery"]["links"], {})
 
+    def test_product_competitor_enrichment_keeps_external_media_for_review_when_import_fails(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "content": {"features": [], "description": ""},
+        }
+
+        with (
+            patch.object(competitor_mapping, "_import_competitor_image_to_storage", return_value=None),
+            patch.object(competitor_mapping, "now_iso", return_value="2026-04-27T12:00:00+00:00"),
+        ):
+            result = asyncio.run(
+                competitor_mapping._merge_competitor_content_into_product(
+                    product,
+                    extracted={
+                        "restore": {
+                            "ok": True,
+                            "specs": {},
+                            "description": "",
+                            "images": ["https://re-store.ru/images/meta-quest-3-128.jpg"],
+                        }
+                    },
+                    links={"restore": {"url": "https://re-store.ru/catalog/meta-quest-3-128/"}},
+                )
+            )
+
+        media = result["product"]["content"]["media_images"]
+        self.assertEqual(media[0]["url"], "https://re-store.ru/images/meta-quest-3-128.jpg")
+        self.assertEqual(media[0]["external_url"], "https://re-store.ru/images/meta-quest-3-128.jpg")
+        self.assertEqual(media[0]["source"], "restore")
+        self.assertEqual(media[0]["source_type"], "external_hotlink")
+        self.assertEqual(media[0]["status"], "needs_review")
+        self.assertEqual(media[0]["selected"], True)
+        self.assertEqual(result["product"]["content"]["source_values"]["media_images"]["restore"]["count"], 1)
+
     def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
         req = CatalogImportRunReq.model_validate(
             {
@@ -440,6 +595,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-vr"),
             patch.object(catalog_exchange, "load_competitor_mapping_db", return_value=deepcopy(competitor_db)),
             patch.object(catalog_exchange, "_extract_competitor_content_with_retry", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_fetch_store77_images_with_browser", return_value={}),
             patch.object(catalog_exchange, "_import_competitor_image_to_storage", return_value={
                 "url": "/api/uploads/media_images/product_1/competitors/store77/meta-quest-3-128.jpg",
                 "external_url": "https://store77.net/images/meta-quest-3-128.jpg",
@@ -462,6 +618,242 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["external_url"], "https://store77.net/images/meta-quest-3-128.jpg")
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["source"], "store77")
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["storage"], "s3")
+
+    def test_export_preparation_enriches_media_from_high_confidence_competitor_link(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "iPhone 17 Pro Max 256Gb Orange",
+            "category_id": "cat-phone",
+            "content": {"features": [], "description": ""},
+        }
+        saved_products: list[dict[str, object]] = []
+
+        async def fake_extract(url, **_kwargs):
+            self.assertEqual(url, "https://store77.net/iphone-orange")
+            return {
+                "description": "",
+                "images": ["https://store77.net/images/iphone-orange.jpg"],
+                "specs": {},
+            }
+
+        with (
+            patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50"}),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[]),
+            patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
+                {
+                    "scope": "competitor_product",
+                    "entity_type": "product",
+                    "entity_id": "product_1",
+                    "provider": "store77",
+                    "status": "confirmed",
+                    "url": "https://store77.net/iphone-orange",
+                    "score": 0.94,
+                }
+            ]),
+            patch.object(catalog_exchange, "_extract_competitor_content_with_retry", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_import_competitor_image_to_storage", return_value={
+                "url": "/api/uploads/media_images/product_1/competitors/store77/iphone-orange.jpg",
+                "external_url": "https://store77.net/images/iphone-orange.jpg",
+                "content_type": "image/jpeg",
+                "size": 123,
+                "storage": "s3",
+            }),
+            patch.object(catalog_exchange, "_save_products", side_effect=lambda items: saved_products.extend(deepcopy(items))),
+            patch.object(catalog_exchange, "_now_iso", return_value="2026-05-23T12:00:00+00:00"),
+        ):
+            changed = asyncio.run(catalog_exchange._enrich_export_products_from_candidate_media([product]))
+
+        self.assertEqual(changed, {"product_1"})
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["url"], "/api/uploads/media_images/product_1/competitors/store77/iphone-orange.jpg")
+        self.assertEqual(saved_products[0]["content"]["media_images"][0]["source"], "store77")
+        self.assertEqual(saved_products[0]["content"]["source_values"]["media_images"]["store77"]["count"], 1)
+
+    def test_export_preparation_does_not_enrich_media_from_unconfirmed_candidate_link(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "iPhone 17 Pro Max 256Gb Orange",
+            "category_id": "cat-phone",
+            "content": {"features": [], "description": ""},
+        }
+
+        with (
+            patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50"}),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[]),
+            patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
+                {
+                    "scope": "competitor_product",
+                    "entity_type": "product",
+                    "entity_id": "product_1",
+                    "provider": "store77",
+                    "status": "candidate",
+                    "url": "https://store77.net/iphone-orange",
+                    "score": 0.94,
+                }
+            ]),
+            patch.object(catalog_exchange, "_extract_competitor_content_with_retry") as extract_mock,
+            patch.object(catalog_exchange, "_save_products") as save_mock,
+        ):
+            changed = asyncio.run(catalog_exchange._enrich_export_products_from_candidate_media([product]))
+
+        self.assertEqual(changed, set())
+        extract_mock.assert_not_called()
+        save_mock.assert_not_called()
+
+    def test_export_preparation_keeps_competitor_media_url_when_storage_import_fails(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "iPhone 17 Pro Max 1Tb Silver",
+            "category_id": "cat-phone",
+            "content": {"features": [], "description": ""},
+        }
+        saved_products: list[dict[str, object]] = []
+
+        async def fake_extract(url, **_kwargs):
+            return {
+                "description": "",
+                "images": ["https://store77.net/images/iphone-silver.png"],
+                "specs": {},
+            }
+
+        with (
+            patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50"}),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[]),
+            patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
+                {
+                    "scope": "competitor_product",
+                    "entity_type": "product",
+                    "entity_id": "product_1",
+                    "provider": "store77",
+                    "status": "confirmed",
+                    "url": "https://store77.net/iphone-silver",
+                    "score": 0.94,
+                }
+            ]),
+            patch.object(catalog_exchange, "_extract_competitor_content_with_retry", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_fetch_store77_images_with_browser", return_value={}),
+            patch.object(catalog_exchange, "_import_competitor_image_to_storage", return_value=None),
+            patch.object(catalog_exchange, "_save_products", side_effect=lambda items: saved_products.extend(deepcopy(items))),
+            patch.object(catalog_exchange, "_now_iso", return_value="2026-05-23T12:00:00+00:00"),
+        ):
+            changed = asyncio.run(catalog_exchange._enrich_export_products_from_candidate_media([product]))
+
+        self.assertEqual(changed, {"product_1"})
+        image = saved_products[0]["content"]["media_images"][0]
+        self.assertEqual(image["url"], "https://store77.net/images/iphone-silver.png")
+        self.assertEqual(image["status"], "needs_review")
+        self.assertEqual(image["source"], "store77")
+
+    def test_product_channels_summary_reads_competitor_links_from_relational_store(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "iPhone 17 Pro Max",
+            "category_id": "cat-phone",
+            "content": {},
+        }
+
+        class FakeConnectors:
+            def import_stores(self, provider):
+                return []
+
+        with (
+            patch.object(products, "get_product_service", return_value={"product": product}),
+            patch.object(products, "ConnectorsStateReadAdapter", return_value=FakeConnectors()),
+            patch.object(products, "read_doc", return_value={"items": {}}),
+            patch.object(products, "_load_ozon_summary", return_value={
+                "title": "OZON",
+                "status": "Нет данных",
+                "content_rating": "Нет данных",
+                "stores_count": 0,
+                "stores": [],
+            }),
+            patch.object(products, "list_pim_channel_links", return_value=[
+                {
+                    "provider": "restore",
+                    "status": "confirmed",
+                    "url": "https://re-store.ru/catalog/iphone/",
+                    "score": 0.95,
+                },
+                {
+                    "provider": "store77",
+                    "status": "candidate",
+                    "url": "https://store77.net/iphone/",
+                    "score": 0.94,
+                },
+            ]),
+        ):
+            result = products.product_channels_summary("product_1")
+
+        by_key = {item["key"]: item for item in result["competitors"]}
+        self.assertEqual(by_key["restore"]["status"], "Подключен")
+        self.assertEqual(by_key["restore"]["url"], "https://re-store.ru/catalog/iphone/")
+        self.assertEqual(by_key["store77"]["status"], "На проверке")
+        self.assertEqual(by_key["store77"]["url"], "https://store77.net/iphone/")
+
+    def test_competitor_discovery_category_lists_all_branch_sku_for_manual_scan(self) -> None:
+        products_in_branch = [
+            {
+                "id": f"product_{idx}",
+                "title": f"iPhone Variant {idx:02d}",
+                "sku_gt": f"GT{idx:02d}",
+            }
+            for idx in range(12)
+        ]
+        product_ids = {str(item["id"]) for item in products_in_branch}
+
+        async def no_suggestions(*_args, **_kwargs):
+            return []
+
+        with (
+            patch.object(competitor_mapping, "_catalog_node_by_id", return_value={"id": "cat-phone", "name": "iPhone"}),
+            patch.object(competitor_mapping, "_product_ids_for_category_scope", return_value=(deepcopy(products_in_branch), product_ids)),
+            patch.object(competitor_mapping, "load_competitor_mapping_db", return_value={"discovery": {"candidates": {}, "links": {}}}),
+            patch.object(competitor_mapping, "_merge_relational_discovery_items", return_value=None),
+            patch.object(competitor_mapping, "_scan_competitor_catalog_suggestions", side_effect=no_suggestions),
+        ):
+            result = asyncio.run(competitor_mapping.discovery_category_context("cat-phone"))
+
+        self.assertEqual(result["category"]["products_count"], 12)
+        self.assertEqual(len(result["category"]["sample_products"]), 12)
+        self.assertEqual(result["category"]["sample_products"][-1]["sku_gt"], "GT11")
+
+    def test_latest_catalog_export_run_filters_by_category(self) -> None:
+        runs_doc = {
+            "runs": {
+                "export_old": {
+                    "id": "export_old",
+                    "created_at": "2026-05-23T10:00:00+00:00",
+                    "selection": {"node_ids": ["cat-phone"], "product_ids": []},
+                    "count": 1,
+                    "summary": {"product_count": 1},
+                    "batches": [],
+                },
+                "export_new": {
+                    "id": "export_new",
+                    "created_at": "2026-05-23T11:00:00+00:00",
+                    "selection": {"node_ids": ["cat-phone"], "product_ids": []},
+                    "count": 2,
+                    "summary": {"product_count": 2},
+                    "batches": [{"provider": "ozon"}],
+                },
+                "export_other": {
+                    "id": "export_other",
+                    "created_at": "2026-05-23T12:00:00+00:00",
+                    "selection": {"node_ids": ["cat-tablet"], "product_ids": []},
+                    "count": 3,
+                    "summary": {"product_count": 3},
+                    "batches": [],
+                },
+            }
+        }
+
+        with patch.object(catalog_exchange, "_load_runs", return_value=runs_doc):
+            result = catalog_exchange.get_latest_catalog_export_run(category_id="cat-phone")
+
+        self.assertEqual(result["run"]["id"], "export_new")
+        self.assertEqual(result["run"]["count"], 2)
 
     def test_competitor_specs_auto_map_without_saved_template_mapping(self) -> None:
         attrs = {
@@ -1029,6 +1421,14 @@ class OperatingWorkflowTests(unittest.TestCase):
             )
         )
 
+    def test_variant_profile_treats_deep_blue_as_blue_even_with_dark_blue_specs(self) -> None:
+        profile = competitor_mapping._variant_profile(
+            "Apple iPhone 17 Pro Max 256GB, Deep Blue Темно-синий nano SIM + eSIM"
+        )
+
+        self.assertEqual(profile["color"], "blue")
+        self.assertEqual(profile["sim"], "nano_sim_esim")
+
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}
         req = CatalogExportRunReq.model_validate(
@@ -1201,7 +1601,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             "status": "active",
             "content": {
                 "description": "VR headset",
-                "media_images": [{"url": "https://cdn.example.test/quest.jpg"}],
+                "media_images": [
+                    {"url": "https://cdn.example.test/skip.jpg", "selected": False, "export_order": 1},
+                    {"url": "https://cdn.example.test/quest.jpg", "selected": True, "export_order": 2},
+                ],
                 "features": [{"code": "brand", "name": "Бренд", "value": "Meta"}],
             },
         }
@@ -1225,6 +1628,145 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotIn("Описание (аннотация) не заполнено", missing)
         self.assertEqual(response["items"][0]["payload_item"]["pictures"], ["https://cdn.example.test/quest.jpg"])
         self.assertEqual(response["items"][0]["payload_item"]["description"], "VR headset")
+
+    def test_yandex_offer_cards_sync_imports_marketplace_media_without_media_row(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {"features": []},
+        }
+        saved_products: list[list[dict]] = []
+
+        class FakeResponse:
+            is_success = True
+            content = b"{}"
+
+            def json(self):
+                return {"result": {"offerCards": [{"offerId": "GT-1", "parameterValues": []}]}}
+
+        class FakeAsyncClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        async def fake_fetch_offer_mappings_once(**_kwargs):
+            return {
+                "ok": True,
+                "body": {
+                    "result": {
+                        "offerMappings": [
+                            {
+                                "offer": {
+                                    "offerId": "GT-1",
+                                    "pictures": [
+                                        {"url": "https://market.example.test/quest-main.jpg"},
+                                        {"url": "https://market.example.test/quest-side.jpg"},
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                },
+            }
+
+        with (
+            patch.object(yandex_market, "_load_products", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_group_name_by_id", return_value={}),
+            patch.object(yandex_market, "_load_nodes", return_value=[]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-vr": []}),
+            patch.object(yandex_market, "_load_attr_value_refs", return_value={}),
+            patch.object(yandex_market, "_load_offer_cards_doc", return_value={"items": {}}),
+            patch.object(yandex_market, "_load_offer_mappings_doc", return_value={"items": {}}),
+            patch.object(yandex_market, "_save_offer_cards_doc"),
+            patch.object(yandex_market, "_save_offer_mappings_doc"),
+            patch.object(yandex_market, "_save_products", side_effect=lambda items: saved_products.append(deepcopy(items))),
+            patch.object(yandex_market, "_fetch_offer_mappings_once", side_effect=fake_fetch_offer_mappings_once),
+            patch.object(yandex_market.httpx, "AsyncClient", FakeAsyncClient),
+        ):
+            response = asyncio.run(
+                yandex_market.sync_offer_cards(
+                    yandex_market.OfferCardsSyncReq(
+                        product_ids=["product_1"],
+                        token="token",
+                        business_id="business_1",
+                        store_id="store_1",
+                        store_title="GT USD",
+                    )
+                )
+            )
+
+        self.assertEqual(response["updated_products"], 1)
+        media = saved_products[0][0]["content"]["media_images"]
+        self.assertEqual([x["url"] for x in media], [
+            "https://market.example.test/quest-main.jpg",
+            "https://market.example.test/quest-side.jpg",
+        ])
+        self.assertEqual(saved_products[0][0]["content"]["source_values"]["media_images"]["yandex_market"]["count"], 2)
+
+    def test_ozon_products_sync_imports_marketplace_images_to_product_content(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {"features": []},
+        }
+        saved_products: list[list[dict]] = []
+
+        async def fake_post_api_key(path, _payload, _api_key, _client_id):
+            if path == "/v3/product/info/list":
+                return {
+                    "items": [
+                        {
+                            "offer_id": "GT-1",
+                            "sku": 123,
+                            "primary_image": "https://ozon.example.test/quest-main.jpg",
+                            "images": ["https://ozon.example.test/quest-side.jpg"],
+                            "statuses": {"status": "active", "status_name": "Продается"},
+                        }
+                    ]
+                }
+            return {"products": []}
+
+        with (
+            patch.object(ozon_market, "_load_products", return_value=[deepcopy(product)]),
+            patch.object(ozon_market, "_post_api_key", side_effect=fake_post_api_key),
+            patch.object(ozon_market, "_save_doc"),
+            patch.object(ozon_market, "_save_products", side_effect=lambda items: saved_products.append(deepcopy(items))),
+        ):
+            response = asyncio.run(
+                ozon_market.sync_product_statuses(
+                    ozon_market.OzonProductsSyncReq(
+                        product_ids=["product_1"],
+                        token="token",
+                        client_id="client_1",
+                        store_id="ozon_store_1",
+                        store_title="Ozon",
+                    )
+                )
+            )
+
+        self.assertEqual(response["updated_products"], 1)
+        media = saved_products[0][0]["content"]["media_images"]
+        self.assertEqual([x["url"] for x in media], [
+            "https://ozon.example.test/quest-main.jpg",
+            "https://ozon.example.test/quest-side.jpg",
+        ])
+        self.assertEqual(media[0]["source"], "ozon")
+        self.assertEqual(saved_products[0][0]["content"]["source_values"]["media_images"]["ozon"]["count"], 2)
 
     def test_yandex_export_preview_blocks_unmapped_controlled_value(self) -> None:
         product = {
@@ -1282,6 +1824,71 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(item["ready"], False)
         self.assertIn("Степень защиты: значение не сопоставлено с Я.Маркет", item["missing"])
 
+    def test_yandex_export_preview_uses_provider_specific_output_value(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Apple iPhone",
+            "sku_gt": "GT-1",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "protection", "name": "Степень защиты", "value": "IP68 допускается погружение"},
+                ],
+            },
+        }
+        rows = [
+            {
+                "catalog_name": "Степень защиты",
+                "provider_map": {
+                    "yandex_market": {"id": "14876852", "name": "Степень защиты", "export": True}
+                },
+            }
+        ]
+        calls: list[tuple[str, str, str]] = []
+
+        def export_value(dict_id, provider, value):
+            calls.append((dict_id, provider, value))
+            if dict_id == "dict_protection":
+                return {"value": "IP68", "mapped": True, "reason": "export_map"}
+            return {"value": str(value), "mapped": True, "reason": "free_text"}
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-phone": {"yandex_market": "ym-phone"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(
+                yandex_market,
+                "_load_attr_value_refs",
+                return_value={
+                    "cat-phone": {
+                        "catalog_params": {
+                            "protection": {"catalog_name": "Степень защиты", "dict_id": "dict_protection"}
+                        }
+                    }
+                },
+            ),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+            patch.object(yandex_market, "provider_export_value_details", side_effect=export_value),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        item = response["items"][0]
+        values = {
+            str(param["parameterId"]): param["values"][0]["value"]
+            for param in item["payload_item"]["parameterValues"]
+        }
+        self.assertEqual(values["14876852"], "IP68")
+        self.assertNotEqual(values["14876852"], "IP68 допускается погружение")
+        self.assertIn(("dict_protection", "yandex_market", "IP68 допускается погружение"), calls)
+        self.assertNotIn("Степень защиты: значение не сопоставлено с Я.Маркет", item["missing"])
+
     def test_ozon_export_preview_blocks_unmapped_controlled_value(self) -> None:
         product = {
             "id": "product_1",
@@ -1320,6 +1927,51 @@ class OperatingWorkflowTests(unittest.TestCase):
         item = response["items"][0]
         self.assertEqual(item["ready"], False)
         self.assertIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
+
+    def test_ozon_export_preview_uses_provider_specific_output_value(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "description": "Phone",
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "protection", "name": "Степень защиты", "value": "IP68 допускается погружение"},
+                ],
+            },
+        }
+        rows = [
+            {"catalog_name": "Бренд", "provider_map": {"ozon": {"id": "85", "name": "Бренд", "export": True}}},
+            {"catalog_name": "Степень защиты", "provider_map": {"ozon": {"id": "5269", "name": "Степень защиты", "export": True}}},
+        ]
+        calls: list[tuple[str, str, str]] = []
+
+        def export_value(dict_id, provider, value):
+            calls.append((dict_id, provider, value))
+            if dict_id == "dict_protection":
+                return {"value": "IP68", "mapped": True, "reason": "export_map"}
+            return {"value": str(value), "mapped": True, "reason": "free_text"}
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "oz-phone"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", side_effect=lambda product, name: "dict_protection" if name == "Степень защиты" else ""),
+            patch.object(catalog_exchange, "provider_export_value_details", side_effect=export_value),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        item = response["items"][0]
+        attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
+        self.assertEqual(attrs["5269"], "IP68")
+        self.assertNotEqual(attrs["5269"], "IP68 допускается погружение")
+        self.assertIn(("dict_protection", "ozon", "IP68 допускается погружение"), calls)
+        self.assertNotIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
@@ -1433,6 +2085,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         ring_size = next(candidate for candidate in response["candidates"] if candidate["name"] == "Размер кольца")
         self.assertEqual(ring_size["status"], "accepted")
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})
+        self.assertEqual(ring_size["source_summary"]["by_kind"], {"marketplace": 2})
+        self.assertTrue(any(flag["code"] == "marketplace_required" for flag in ring_size["review_flags"]))
         self.assertEqual(saved["templates"]["tpl-draft-rings"]["meta"]["info_model"]["draft_sources"], ["marketplaces"])
 
     def test_info_model_draft_from_competitors_creates_review_candidates(self) -> None:
@@ -1504,11 +2158,14 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(brightness["status"], "needs_review")
         self.assertEqual(brightness["group"], "Данные конкурентов")
         self.assertEqual({source["provider"] for source in brightness["sources"]}, {"restore", "store77"})
+        self.assertEqual(brightness["source_summary"]["by_kind"], {"competitor": 2})
+        self.assertTrue(any(flag["code"] == "competitor_only" for flag in brightness["review_flags"]))
         storage = by_name["Встроенная память"]
         self.assertEqual(storage["code"], "vstroennaya_pamyat")
         self.assertTrue(any(source["kind"] == "competitor" for source in storage["sources"]))
         self.assertEqual(storage["suggested_action"], "reuse_existing")
         self.assertEqual(storage["global_match"]["id"], "attr-global-storage")
+        self.assertEqual(storage["source_summary"]["by_kind"], {"product": 1, "competitor": 1})
         self.assertEqual(brightness["suggested_action"], "create_attribute")
         self.assertNotIn("global_match", brightness)
         self.assertEqual(saved["templates"]["tpl-draft-phones"]["meta"]["info_model"]["draft_sources"], ["products", "competitors"])
@@ -1564,6 +2221,75 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["template"]["id"], "tpl-draft-oura")
         self.assertEqual([candidate["name"] for candidate in response["candidates"]], ["Размер кольца"])
         self.assertEqual(saved["templates"]["tpl-draft-oura"]["meta"]["info_model"]["status"], "draft")
+
+    def test_info_model_candidate_update_can_clear_wrong_global_match(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {
+            "templates": {
+                "tpl-draft": {
+                    "id": "tpl-draft",
+                    "category_id": "cat-test",
+                    "name": "Draft",
+                    "meta": {
+                        "info_model": {
+                            "status": "draft",
+                            "candidates": [
+                                {
+                                    "id": "cand-color",
+                                    "name": "Цвет",
+                                    "code": "color",
+                                    "type": "select",
+                                    "group": "Характеристики",
+                                    "required": False,
+                                    "confidence": 0.84,
+                                    "status": "needs_review",
+                                    "examples": ["Orange"],
+                                    "sources": [
+                                        {
+                                            "kind": "competitor",
+                                            "provider": "restore",
+                                            "source_name": "restore",
+                                            "field_name": "Цвет",
+                                            "examples": ["Orange"],
+                                            "count": 1,
+                                        }
+                                    ],
+                                    "global_match": {"id": "attr-wrong", "title": "Цвет корпуса", "score": 0.84, "reason": "similar_title"},
+                                    "suggested_action": "reuse_existing",
+                                }
+                            ],
+                        }
+                    },
+                }
+            },
+            "attributes": {"tpl-draft": []},
+            "category_to_template": {"cat-test": "tpl-draft"},
+            "category_to_templates": {"cat-test": ["tpl-draft"]},
+        }
+        saved: dict[str, object] = {}
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "now_iso", return_value="2026-05-24T00:00:00+00:00"),
+        ):
+            response = draft_service.update_draft_candidate(
+                "tpl-draft",
+                "cand-color",
+                {"global_match": None, "suggested_action": "create_attribute"},
+            )
+
+        candidate = response["candidate"]
+        self.assertNotIn("global_match", candidate)
+        self.assertEqual(candidate["suggested_action"], "create_attribute")
+        self.assertTrue(any(flag["code"] == "competitor_only" for flag in candidate["review_flags"]))
+        saved_candidate = saved["templates"]["tpl-draft"]["meta"]["info_model"]["candidates"][0]
+        self.assertNotIn("global_match", saved_candidate)
 
     def test_info_model_approve_draft_writes_accepted_candidates_to_attributes(self) -> None:
         from app.core.info_models import draft_service

@@ -18,6 +18,10 @@ type ValueItemProvider = {
   title: string;
   mapped_count: number;
   allowed_count: number;
+  kind?: string | null;
+  mode?: "boolean" | "enum" | "multi" | "number" | "text" | string;
+  needs_mapping?: boolean;
+  needs_unit_check?: boolean;
   mapped_sample?: Array<{ canonical: string; output: string }>;
   allowed_sample?: string[];
   param_name?: string | null;
@@ -32,9 +36,14 @@ type ValueItem = {
   scope: "group" | "product" | "shared";
   scope_label: string;
   type: string;
+  value_mode?: "boolean" | "enum" | "multi" | "number" | "text" | string;
   confirmed: boolean;
   attribute_id?: string | null;
   value_count: number;
+  pim_sample?: string[];
+  needs_value_mapping?: boolean;
+  needs_unit_check?: boolean;
+  source_category?: { id: string; name: string; path?: string } | null;
   providers: ValueItemProvider[];
   providers_count: number;
   mapped_total: number;
@@ -43,6 +52,7 @@ type ValueItem = {
 type ValuesResp = {
   ok: boolean;
   category: { id: string; name: string; path: string };
+  branch_sources?: Array<{ id: string; name: string; path?: string }>;
   items: ValueItem[];
   count: number;
 };
@@ -59,8 +69,17 @@ const SERVICE_VALUE_GROUPS = new Set(["артикулы"]);
 const SERVICE_VALUE_FIELDS = ["sku", "артикул", "штрихкод", "партномер", "barcode", "offerid", "offer id"];
 
 function isDictionaryLike(item: ValueItem) {
-  const type = String(item.type || "").toLowerCase();
+  const type = String(item.value_mode || item.type || "").toLowerCase();
   return ["select", "multiselect", "enum", "dictionary", "list"].some((part) => type.includes(part));
+}
+
+function valueModeLabel(item: ValueItem) {
+  const mode = String(item.value_mode || item.type || "").toLowerCase();
+  if (mode.includes("bool")) return "Да/Нет";
+  if (mode.includes("number")) return "Число";
+  if (mode.includes("multi")) return "Мультивыбор";
+  if (mode.includes("enum") || isDictionaryLike(item)) return "Справочник";
+  return "Текст";
 }
 
 function isServiceValueField(item: ValueItem) {
@@ -73,19 +92,42 @@ function needsValueMapping(item: ValueItem) {
   const hasProviderValues = item.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
   const hasCanonicalValues = Number(item.value_count || 0) > 0;
   if (isServiceValueField(item)) return false;
-  return hasProviderValues || (isDictionaryLike(item) && hasCanonicalValues);
+  return Boolean(item.needs_value_mapping || item.needs_unit_check) || hasProviderValues || (isDictionaryLike(item) && hasCanonicalValues);
 }
 
 function usefulProviders(item: ValueItem) {
-  return item.providers.filter((provider) => Number(provider.allowed_count || 0) > 0 || Number(provider.mapped_count || 0) > 0);
+  return item.providers.filter((provider) =>
+    Number(provider.allowed_count || 0) > 0 ||
+    Number(provider.mapped_count || 0) > 0 ||
+    Boolean(provider.needs_unit_check),
+  );
 }
 
 function valueItemStatus(item: ValueItem) {
   const providers = usefulProviders(item);
   if (!providers.length) return { label: "нет справочника", tone: "muted" };
-  const hasGap = providers.some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0));
+  const hasGap = providers.some((provider) =>
+    Boolean(provider.needs_mapping) ||
+    (Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0) && String(provider.mode || "").toLowerCase() !== "number"),
+  );
   if (hasGap) return { label: "нужно сопоставить", tone: "warn" };
+  if (item.needs_unit_check) return { label: "проверить единицы", tone: "muted" };
   return { label: "готово", tone: "ok" };
+}
+
+function providerHasGap(provider: ValueItemProvider) {
+  const mode = String(provider.mode || "").toLowerCase();
+  if (mode === "number") return false;
+  return Boolean(provider.needs_mapping) || Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0);
+}
+
+function providerSampleText(provider: ValueItemProvider) {
+  const allowed = (provider.allowed_sample || []).filter(Boolean).slice(0, 3);
+  const mapped = (provider.mapped_sample || []).filter((item) => item.canonical || item.output).slice(0, 2);
+  if (mapped.length) return mapped.map((item) => `${item.canonical} → ${item.output}`).join("; ");
+  if (allowed.length) return `значения площадки: ${allowed.join(", ")}`;
+  if (provider.needs_unit_check) return "проверь единицы измерения перед экспортом";
+  return "";
 }
 
 function buildChildren(nodes: CatalogNode[]) {
@@ -141,7 +183,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const [treeQuery, setTreeQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
-  const [workFilter, setWorkFilter] = useState<WorkFilter>("blockers");
+  const [workFilter, setWorkFilter] = useState<WorkFilter>("all");
   const [fieldQuery, setFieldQuery] = useState("");
   const [data, setData] = useState<ValuesResp | null>(null);
   const [loadingValues, setLoadingValues] = useState(false);
@@ -218,7 +260,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
       .filter((item) => needsValueMapping(item))
       .filter((item) => {
         const providers = usefulProviders(item);
-        const hasGap = providers.some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0));
+        const hasGap = providers.some(providerHasGap);
         if (workFilter === "blockers") return hasGap;
         if (workFilter === "ready") return providers.length > 0 && !hasGap;
         return true;
@@ -314,17 +356,34 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     return list.filter((item) => needsValueMapping(item));
   }, [data]);
   const allUnresolvedCount = allMappingItems.filter((item) =>
-    usefulProviders(item).some((provider) => Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0)),
+    usefulProviders(item).some(providerHasGap),
   ).length;
   const allReadyCount = allMappingItems.filter((item) => {
     const providers = usefulProviders(item);
-    return providers.length > 0 && providers.every((provider) => Number(provider.allowed_count || 0) <= Number(provider.mapped_count || 0));
+    return providers.length > 0 && providers.every((provider) => !providerHasGap(provider));
   }).length;
+  const nextBlocker = allMappingItems.find((item) => usefulProviders(item).some(providerHasGap)) || null;
+  const unitCheckCount = allMappingItems.filter((item) => Boolean(item.needs_unit_check)).length;
+  const branchSourcesCount = Array.isArray(data?.branch_sources) ? data!.branch_sources.length : 0;
+  const emptyValuesMessage = useMemo(() => {
+    if (!mappingItemsCount) return "Для этой категории пока нет полей, где нужно сопоставлять значения площадок.";
+    if (workFilter === "blockers") return "Блокеров по значениям нет. Открой «Все», чтобы проверить поля со справочниками.";
+    if (workFilter === "ready") return "Готовых сопоставлений значений пока нет.";
+    return "Поля есть, но текущий поиск или фильтр их скрыл.";
+  }, [mappingItemsCount, workFilter]);
 
   useEffect(() => {
     if (!data?.category?.id || !data.category.name) return;
     onSelectedCategoryChange?.(data.category.id, data.category.name);
   }, [data?.category?.id, data?.category?.name]);
+
+  function jumpToNextBlocker() {
+    if (!nextBlocker) return;
+    setWorkFilter("blockers");
+    setScopeFilter("all");
+    setFieldQuery("");
+    setActiveDictId(nextBlocker.dict_id);
+  }
 
   return (
     <div className="sm-valuesPage">
@@ -365,15 +424,17 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
             </div>
             <div className="sm-valuesActions">
               <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
-              <Link className="btn" to={`/sources-mapping?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
-              <Link className="btn btn-primary" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+              <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+              <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
             </div>
           </div>
 
           <div className="sm-valuesSummary">
             <span>{data?.category?.path || "Категория не выбрана"}</span>
-            <span>{mappingItemsCount} из {rawItemsCount} полей требуют сопоставления</span>
-            <span>{allUnresolvedCount} требуют работы</span>
+            {branchSourcesCount ? <span>{branchSourcesCount} дочерних категорий</span> : null}
+            <span>{mappingItemsCount} из {rawItemsCount} полей со значениями</span>
+            <span>{allUnresolvedCount} блокеров</span>
+            <span>{unitCheckCount} числовых проверок</span>
             <span>{allReadyCount} готовы</span>
           </div>
 
@@ -418,6 +479,14 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     </button>
                   ))}
                 </div>
+                <button
+                  className="btn sm-valuesNextBtn"
+                  type="button"
+                  disabled={!nextBlocker}
+                  onClick={jumpToNextBlocker}
+                >
+                  Следующий блокер
+                </button>
               </div>
 
               <div className="sm-valuesFieldList">
@@ -426,7 +495,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                 ) : loadingValues ? (
                   <div className="sm-valuesEmpty">Загружаю поля со значениями…</div>
                 ) : filteredItems.length === 0 ? (
-                  <div className="sm-valuesEmpty">Для этой категории пока нет полей, где нужно сопоставлять значения площадок.</div>
+                  <div className="sm-valuesEmpty">{emptyValuesMessage}</div>
                 ) : (
                   filteredItems.map((item) => {
                     const providers = usefulProviders(item);
@@ -445,20 +514,31 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                         <div className="sm-valuesFieldMeta">
                           <span>{item.group || "Без группы"}</span>
                           <span>{item.scope_label}</span>
+                          {item.source_category?.name ? <span>{item.source_category.name}</span> : null}
+                          <span>{valueModeLabel(item)}</span>
                           <span>{item.value_count} PIM-знач.</span>
                         </div>
                         <div className="sm-valuesProviderRow">
                           {providers.length ? providers.map((provider) => (
                             <span
                               key={provider.code}
-                              className={`sm-valuesProviderPill ${Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0) ? "is-gap" : "is-ready"}`}
+                              className={`sm-valuesProviderPill ${providerHasGap(provider) ? "is-gap" : "is-ready"}`}
                             >
-                              {provider.title}: {provider.mapped_count}/{provider.allowed_count}
+                              {provider.title}: {String(provider.mode || "") === "number" ? "единицы" : `${provider.mapped_count}/${provider.allowed_count}`}
                             </span>
                           )) : (
                             <span className="sm-valuesProviderPill is-empty">У площадок нет справочника</span>
                           )}
                         </div>
+                        {providers.some((provider) => providerSampleText(provider)) ? (
+                          <div className="sm-valuesEvidenceRow">
+                            {providers.map((provider) => {
+                              const sample = providerSampleText(provider);
+                              if (!sample) return null;
+                              return <span key={`${provider.code}-sample`}>{provider.title}: {sample}</span>;
+                            })}
+                          </div>
+                        ) : null}
                       </button>
                     );
                   })
@@ -473,20 +553,27 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     <div className="sm-valuesRouteStep">
                       <span>PIM поле</span>
                       <strong>{activeItem.catalog_name}</strong>
-                      <small>{activeItem.group || "Без группы"} · {activeItem.scope_label}</small>
+                      <small>
+                        {[
+                          activeItem.group || "Без группы",
+                          activeItem.scope_label,
+                          activeItem.source_category?.name,
+                          valueModeLabel(activeItem),
+                        ].filter(Boolean).join(" · ")}
+                      </small>
                     </div>
                     <div className="sm-valuesRouteStep">
                       <span>Канон</span>
                       <strong>{activeItem.value_count || 0} знач.</strong>
-                      <small>редактируются ниже</small>
+                      <small>{activeItem.pim_sample?.length ? activeItem.pim_sample.slice(0, 3).join(" · ") : "редактируются ниже"}</small>
                     </div>
                     {["yandex_market", "ozon"].map((providerCode) => {
                       const provider = activeItem.providers.find((item) => item.code === providerCode);
-                      const gap = provider ? Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0) : false;
+                      const gap = provider ? providerHasGap(provider) : false;
                       return (
                         <div className={`sm-valuesRouteStep ${gap ? "is-gap" : provider ? "is-ready" : "is-muted"}`} key={providerCode}>
                           <span>{provider?.title || (providerCode === "yandex_market" ? "Я.Маркет" : "Ozon")}</span>
-                          <strong>{provider ? `${provider.mapped_count}/${provider.allowed_count}` : "нет поля"}</strong>
+                          <strong>{provider ? (String(provider.mode || "") === "number" ? "единицы" : `${provider.mapped_count}/${provider.allowed_count}`) : "нет поля"}</strong>
                           <small>{provider?.param_name || "справочник не подключен"}</small>
                         </div>
                       );
@@ -496,6 +583,22 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                       <strong>{valueItemStatus(activeItem).label}</strong>
                       <small>{valueItemStatus(activeItem).tone === "warn" ? "сначала закрыть маппинг" : "можно проверять экспорт"}</small>
                     </div>
+                  </div>
+                  <div className="sm-valuesEvidencePanel">
+                    {activeItem.pim_sample?.length ? (
+                      <div className="sm-valuesEvidenceCard">
+                        <strong>PIM словарь</strong>
+                        <span>Канонические значения</span>
+                        <small>{activeItem.pim_sample.slice(0, 4).join(" · ")}</small>
+                      </div>
+                    ) : null}
+                    {usefulProviders(activeItem).map((provider) => (
+                      <div className="sm-valuesEvidenceCard" key={provider.code}>
+                        <strong>{provider.title}</strong>
+                        <span>{provider.param_name || "Поле площадки не указано"}</span>
+                        <small>{providerSampleText(provider) || "Образцов значений пока нет."}</small>
+                      </div>
+                    ))}
                   </div>
                   <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
                 </>

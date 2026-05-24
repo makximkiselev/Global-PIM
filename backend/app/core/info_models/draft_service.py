@@ -176,6 +176,97 @@ def _attach_global_attribute_suggestions(candidates: List[Dict[str, Any]]) -> Li
     return candidates
 
 
+def _candidate_source_summary(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    sources = candidate.get("sources") if isinstance(candidate.get("sources"), list) else []
+    by_kind: Dict[str, int] = {}
+    by_provider: Dict[str, int] = {}
+    examples_count = 0
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        kind = _text(source.get("kind")) or "source"
+        provider = _text(source.get("provider")) or kind
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+        by_provider[provider] = by_provider.get(provider, 0) + 1
+        source_examples = source.get("examples") if isinstance(source.get("examples"), list) else []
+        examples_count += len([value for value in source_examples if _text(value)])
+    return {
+        "sources_count": len([source for source in sources if isinstance(source, dict)]),
+        "by_kind": by_kind,
+        "by_provider": by_provider,
+        "examples_count": examples_count,
+    }
+
+
+def _candidate_review_flags(candidate: Dict[str, Any]) -> List[Dict[str, str]]:
+    summary = _candidate_source_summary(candidate)
+    by_kind = summary.get("by_kind") if isinstance(summary.get("by_kind"), dict) else {}
+    flags: List[Dict[str, str]] = []
+    confidence = float(candidate.get("confidence") or 0)
+    source_count = int(summary.get("sources_count") or 0)
+    examples = candidate.get("examples") if isinstance(candidate.get("examples"), list) else []
+
+    if by_kind.get("competitor") and not (by_kind.get("product") or by_kind.get("marketplace")):
+        flags.append(
+            {
+                "level": "review",
+                "code": "competitor_only",
+                "message": "Есть только у конкурентов: нужно подтвердить, что поле требуется для PIM, а не является описательным шумом.",
+            }
+        )
+    if by_kind.get("marketplace") and not by_kind.get("product"):
+        flags.append(
+            {
+                "level": "info",
+                "code": "marketplace_required",
+                "message": "Поле пришло из площадок: проверьте, чем его заполнять в товарах категории.",
+            }
+        )
+    if confidence < 0.7:
+        flags.append(
+            {
+                "level": "review",
+                "code": "low_confidence",
+                "message": "Низкая уверенность сопоставления: перед принятием лучше проверить название, тип и примеры.",
+            }
+        )
+    if source_count <= 1 and not bool(candidate.get("required")):
+        flags.append(
+            {
+                "level": "info",
+                "code": "single_source",
+                "message": "Поле найдено в одном источнике и не обязательное: можно отложить, если оно не нужно для выгрузки.",
+            }
+        )
+    if _text(candidate.get("type")) == "select" and not any(_text(value) for value in examples):
+        flags.append(
+            {
+                "level": "review",
+                "code": "select_without_values",
+                "message": "Тип похож на список, но значений нет: словарь нужно наполнить из товаров, площадок или конкурентов.",
+            }
+        )
+    match = candidate.get("global_match") if isinstance(candidate.get("global_match"), dict) else None
+    if match and float(match.get("score") or 0) < 0.86:
+        flags.append(
+            {
+                "level": "review",
+                "code": "weak_global_match",
+                "message": "Найден похожий глобальный параметр, но совпадение не точное: проверьте, что это тот же смысл.",
+            }
+        )
+    return flags
+
+
+def _finalize_candidate_evidence(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        candidate["source_summary"] = _candidate_source_summary(candidate)
+        candidate["review_flags"] = _candidate_review_flags(candidate)
+    return candidates
+
+
 def _infer_type(values: Iterable[str]) -> str:
     clean = [_text(value) for value in values if _text(value)]
     if not clean:
@@ -589,7 +680,7 @@ def create_draft_from_sources(category_id: str, payload: Dict[str, Any] | None =
             existing = existing_by_code.get(code)
             existing_by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
         candidates = list(existing_by_code.values())
-    candidates = _attach_global_attribute_suggestions(candidates)
+    candidates = _finalize_candidate_evidence(_attach_global_attribute_suggestions(candidates))
     info_model.update(
         {
             "status": "draft",
@@ -617,6 +708,16 @@ def update_draft_candidate(template_id: str, candidate_id: str, patch: Dict[str,
             for key in ("name", "code", "type", "group", "required", "status"):
                 if key in patch:
                     candidate[key] = patch[key]
+            if "global_match" in patch:
+                match = patch.get("global_match")
+                if isinstance(match, dict):
+                    candidate["global_match"] = match
+                elif match is None:
+                    candidate.pop("global_match", None)
+            if "suggested_action" in patch:
+                candidate["suggested_action"] = _text(patch.get("suggested_action")) or "create_attribute"
+            candidate["source_summary"] = _candidate_source_summary(candidate)
+            candidate["review_flags"] = _candidate_review_flags(candidate)
             template["updated_at"] = now_iso()
             db["templates"][template_id] = template
             save_templates_db(db)

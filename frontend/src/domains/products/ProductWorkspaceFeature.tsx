@@ -31,6 +31,10 @@ type ProductRelation = {
 type ProductMedia = {
   url: string;
   caption?: string;
+  source?: string;
+  selected?: boolean;
+  order?: number;
+  export_order?: number;
 };
 
 type ProductContent = {
@@ -221,7 +225,11 @@ function flattenMedia(content?: ProductContent): ProductMedia[] {
       const url = normalizeText(item?.url);
       if (!url || seen.has(url)) continue;
       seen.add(url);
-      out.push({ url, caption: normalizeText(item?.caption) || undefined });
+      out.push({
+        ...item,
+        url,
+        caption: normalizeText(item?.caption) || undefined,
+      });
     }
   }
   return out;
@@ -389,7 +397,7 @@ function qualityTone(ready: boolean): "active" | "pending" | "danger" | "neutral
 function toneForStatus(status: string): "active" | "pending" | "danger" | "neutral" {
   const value = normalizeText(status).toLowerCase();
   if (!value) return "neutral";
-  if (value.includes("ok") || value.includes("готов") || value.includes("active") || value.includes("опублик")) return "active";
+  if (value.includes("ok") || value.includes("готов") || value.includes("active") || value.includes("опублик") || value.includes("подключ")) return "active";
   if (value.includes("ошиб") || value.includes("error") || value.includes("расхожд")) return "danger";
   if (value.includes("draft") || value.includes("чернов") || value.includes("pending") || value.includes("модерац")) return "pending";
   return "neutral";
@@ -1067,6 +1075,8 @@ function ProductWorkspaceFeature() {
   const [competitorBulkNotice, setCompetitorBulkNotice] = useState("");
   const [competitorBulkRun, setCompetitorBulkRun] = useState<CompetitorDiscoveryRunResp["run"] | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [mediaSaving, setMediaSaving] = useState(false);
+  const [mediaNotice, setMediaNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1087,6 +1097,8 @@ function ProductWorkspaceFeature() {
       setCompetitorBulkRunning(false);
       setCompetitorBulkNotice("");
       setCompetitorBulkRun(null);
+      setMediaSaving(false);
+      setMediaNotice("");
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1224,6 +1236,57 @@ function ProductWorkspaceFeature() {
   const selectedVisibleCompetitorIds = useMemo(() => {
     return filteredCompetitorIds.filter((id) => selectedCompetitorSet.has(id));
   }, [filteredCompetitorIds, selectedCompetitorSet]);
+  const justCreated = searchParams.get("created") === "1";
+
+  async function saveMediaImages(nextMedia: ProductMedia[]) {
+    if (!product) return;
+    const orderedMedia = nextMedia.map((item, index) => ({
+      ...item,
+      order: index,
+      export_order: item.export_order ?? index,
+    }));
+    const nextContent: ProductContent = {
+      ...(product.content || {}),
+      media_images: orderedMedia,
+      media: orderedMedia,
+    };
+    const optimisticProduct = { ...product, content: nextContent };
+    setProduct(optimisticProduct);
+    setMediaSaving(true);
+    setMediaNotice("");
+    try {
+      const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: nextContent }),
+      });
+      setProduct(response.product || optimisticProduct);
+      setMediaNotice("Порядок и выбор медиа сохранены.");
+    } catch (err) {
+      setProduct(product);
+      setMediaNotice(err instanceof Error ? err.message : "Не удалось сохранить медиа.");
+    } finally {
+      setMediaSaving(false);
+    }
+  }
+
+  function toggleMediaForExport(index: number, selected: boolean) {
+    const nextMedia = media.map((item, itemIndex) => (itemIndex === index ? { ...item, selected } : item));
+    void saveMediaImages(nextMedia);
+  }
+
+  function moveMediaForExport(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= media.length) return;
+    const nextMedia = [...media];
+    const [item] = nextMedia.splice(index, 1);
+    nextMedia.splice(target, 0, item);
+    const orderedMedia = nextMedia.map((mediaItem, orderIndex) => ({
+      ...mediaItem,
+      order: orderIndex,
+      export_order: orderIndex,
+    }));
+    void saveMediaImages(orderedMedia);
+  }
   const allVisibleCompetitorsSelected = filteredCompetitorIds.length > 0 && selectedVisibleCompetitorIds.length === filteredCompetitorIds.length;
   const competitorSkuStatusCounts = useMemo(() => {
     const counts = { all: competitorGroupItems.length, active: 0, pending: 0, danger: 0, neutral: 0 };
@@ -1466,6 +1529,16 @@ function ProductWorkspaceFeature() {
         </div>
       </div>
 
+      {justCreated ? (
+        <Card className="productWorkspaceCreatedGuide">
+          <div>
+            <strong>SKU создан. Следующий шаг — подтвердить карточки конкурентов.</strong>
+            <span>Для группы вариантов выберите нужные SKU в блоке ниже, запустите поиск re-store/store77 и загрузите параметры, описание и медиа только из подтвержденных ссылок.</span>
+          </div>
+          <Button variant="primary" onClick={() => handleSectionSelect("competitors")}>Открыть конкурентов</Button>
+        </Card>
+      ) : null}
+
       <WorkspaceFrame
         className="productWorkspaceLayout"
         sidebar={
@@ -1693,17 +1766,39 @@ function ProductWorkspaceFeature() {
             {activeSection === "media" ? (
               <Card title="Медиа">
                 {media.length ? (
-                  <div className="productWorkspaceMediaGrid">
-                    {media.map((item, index) => (
-                      <article key={item.url} className="productWorkspaceMediaCard">
-                        <img src={toRenderableMediaUrl(item.url)} alt={item.caption || product.title} loading="lazy" />
-                        <div className="productWorkspaceMediaMeta">
-                          <strong>{item.caption || `Фото ${index + 1}`}</strong>
-                          <span>{mediaSourceLabel(item.url)} · {mediaShortName(item.url)}</span>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                  <>
+                    <div className="productWorkspaceMediaHint">
+                      <span>В экспорт уйдут только отмеченные изображения, в порядке слева направо.</span>
+                      <strong>{media.filter((item) => item.selected !== false).length}/{media.length}</strong>
+                    </div>
+                    {mediaNotice ? <Alert tone={mediaNotice.includes("Не удалось") ? "error" : "success"}>{mediaNotice}</Alert> : null}
+                    <div className="productWorkspaceMediaGrid">
+                      {media.map((item, index) => (
+                        <article key={item.url} className={`productWorkspaceMediaCard${item.selected === false ? " isDisabled" : ""}`}>
+                          <img src={toRenderableMediaUrl(item.url)} alt={item.caption || product.title} loading="lazy" />
+                          <div className="productWorkspaceMediaMeta">
+                            <strong>{item.caption || `Фото ${index + 1}`}</strong>
+                            <span>{mediaSourceLabel(item.url)} · {mediaShortName(item.url)}</span>
+                          </div>
+                          <div className="productWorkspaceMediaActions">
+                            <label className="productWorkspaceMediaToggle">
+                              <input
+                                type="checkbox"
+                                checked={item.selected !== false}
+                                disabled={mediaSaving}
+                                onChange={(event) => toggleMediaForExport(index, event.target.checked)}
+                              />
+                              <span>Выгружать</span>
+                            </label>
+                            <div className="productWorkspaceMediaOrder" aria-label="Порядок выгрузки">
+                              <Button className="productWorkspaceMediaOrderButton" disabled={mediaSaving || index === 0} onClick={() => moveMediaForExport(index, -1)}>Выше</Button>
+                              <Button className="productWorkspaceMediaOrderButton" disabled={mediaSaving || index === media.length - 1} onClick={() => moveMediaForExport(index, 1)}>Ниже</Button>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <EmptyState
                     title="Медиа блокирует выгрузку"

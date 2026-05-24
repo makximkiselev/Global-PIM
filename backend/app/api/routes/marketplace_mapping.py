@@ -4,6 +4,8 @@ import asyncio
 import json
 import os
 import re
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +30,9 @@ from app.storage.json_store import (
     slugify_code,
 )
 from app.storage.relational_pim_store import (
+    claim_pim_workflow_run_as_running,
+    get_pim_workflow_run,
+    list_pim_workflow_runs,
     load_attribute_mapping_doc,
     load_attribute_value_refs_doc,
     load_catalog_nodes,
@@ -37,6 +42,7 @@ from app.storage.relational_pim_store import (
     save_attribute_value_refs_doc,
     save_category_mappings,
     save_template_category_doc,
+    upsert_pim_workflow_run,
 )
 from app.core.master_templates import (
     PARAM_GROUPS,
@@ -75,17 +81,24 @@ PROVIDER_TITLES: Dict[str, str] = {
 MAPPING_PROVIDERS: tuple[str, ...] = tuple(PROVIDER_TITLES.keys())
 
 DEFAULT_SERVICE_NAMES: List[str] = [str(item["name"]) for item in base_template_fields()]
-_ATTR_CATEGORIES_CACHE_TTL_SECONDS = 86400.0
-_ATTR_DETAILS_CACHE_TTL_SECONDS = 86400.0
-_ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = 86400.0
-_IMPORT_CATEGORIES_CACHE_TTL_SECONDS = 86400.0
-_VALUE_DETAILS_CACHE_TTL_SECONDS = 86400.0
-_AI_MATCH_OLLAMA_TIMEOUT_SECONDS = float(os.getenv("AI_MATCH_OLLAMA_TIMEOUT_SECONDS", "3.0") or "3.0")
+_ATTR_CATEGORIES_CACHE_TTL_SECONDS = float(os.getenv("ATTR_CATEGORIES_CACHE_TTL_SECONDS", "900") or "900")
+_ATTR_DETAILS_CACHE_TTL_SECONDS = float(os.getenv("ATTR_DETAILS_CACHE_TTL_SECONDS", "900") or "900")
+_ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = float(os.getenv("ATTR_BOOTSTRAP_CACHE_TTL_SECONDS", "900") or "900")
+_IMPORT_CATEGORIES_CACHE_TTL_SECONDS = float(os.getenv("IMPORT_CATEGORIES_CACHE_TTL_SECONDS", "900") or "900")
+_VALUE_DETAILS_CACHE_TTL_SECONDS = float(os.getenv("VALUE_DETAILS_CACHE_TTL_SECONDS", "900") or "900")
+_ATTR_DETAILS_CACHE_MAX_ITEMS = int(os.getenv("ATTR_DETAILS_CACHE_MAX_ITEMS", "8") or "8")
+_VALUE_DETAILS_CACHE_MAX_ITEMS = int(os.getenv("VALUE_DETAILS_CACHE_MAX_ITEMS", "8") or "8")
+_AI_MATCH_OLLAMA_TIMEOUT_SECONDS = float(os.getenv("AI_MATCH_OLLAMA_TIMEOUT_SECONDS", "90.0") or "90.0")
+_AI_MATCH_OLLAMA_CHUNK_SIZE = int(os.getenv("AI_MATCH_OLLAMA_CHUNK_SIZE", "12") or "12")
 _ATTR_DETAILS_CACHE_SCHEMA_VERSION = "v2"
 
 
 def _ai_match_timeout_seconds() -> float:
     return max(_AI_MATCH_OLLAMA_TIMEOUT_SECONDS, 0.1)
+
+
+def _ai_match_chunk_size() -> int:
+    return max(_AI_MATCH_OLLAMA_CHUNK_SIZE, 1)
 
 
 _import_categories_cache: Dict[str, Dict[str, Any]] = {}
@@ -109,6 +122,38 @@ def _details_cache_bucket() -> Dict[str, tuple[float, Dict[str, Any]]]:
 
 def _value_details_cache_bucket() -> Dict[str, tuple[float, Dict[str, Any]]]:
     return _value_details_cache.setdefault(_current_org_cache_key(), {})
+
+
+def _timed_cache_get(
+    bucket: Dict[str, tuple[float, Dict[str, Any]]],
+    key: str,
+    ttl_seconds: float,
+) -> Optional[Dict[str, Any]]:
+    now = time.monotonic()
+    cached = bucket.get(key)
+    if cached and now - cached[0] < ttl_seconds:
+        return cached[1]
+    if cached:
+        bucket.pop(key, None)
+    return None
+
+
+def _timed_cache_set(
+    bucket: Dict[str, tuple[float, Dict[str, Any]]],
+    key: str,
+    payload: Dict[str, Any],
+    *,
+    max_items: int,
+    ttl_seconds: float,
+) -> None:
+    now = time.monotonic()
+    for cached_key, cached_value in list(bucket.items()):
+        if now - cached_value[0] >= ttl_seconds:
+            bucket.pop(cached_key, None)
+    bucket[key] = (now, payload)
+    while len(bucket) > max(1, int(max_items)):
+        oldest_key = min(bucket, key=lambda item_key: bucket[item_key][0])
+        bucket.pop(oldest_key, None)
 
 
 def _import_categories_cache_path() -> Path:
@@ -366,6 +411,26 @@ def _effective_mapping_for_catalog(
     return out
 
 
+def _effective_mapping_sources_for_catalog(
+    catalog_category_id: str,
+    mappings: Dict[str, Dict[str, str]],
+    parent_by_id: Dict[str, str],
+) -> Dict[str, str]:
+    cid = str(catalog_category_id or "").strip()
+    out: Dict[str, str] = {}
+    if not cid:
+        return out
+    for provider in PROVIDER_TITLES.keys():
+        direct = str((mappings.get(cid) or {}).get(provider) or "").strip()
+        if direct:
+            out[provider] = cid
+            continue
+        source = _nearest_direct_ancestor(cid, provider, mappings, parent_by_id)
+        if source:
+            out[provider] = source
+    return out
+
+
 def _direct_mapping_for_catalog(
     catalog_category_id: str,
     mappings: Dict[str, Dict[str, str]],
@@ -602,7 +667,7 @@ def _normalize_param_group(group_value: Any, catalog_name: str, yandex_name: str
 
 def _provider_binding_payload(raw: Any) -> Dict[str, Any]:
     cur = raw if isinstance(raw, dict) else {}
-    return {
+    payload = {
         "id": str(cur.get("id") or "").strip(),
         "name": str(cur.get("name") or "").strip(),
         "kind": str(cur.get("kind") or "").strip(),
@@ -610,6 +675,19 @@ def _provider_binding_payload(raw: Any) -> Dict[str, Any]:
         "required": bool(cur.get("required") or False),
         "export": bool(cur.get("export") or False),
     }
+    match_source = str(cur.get("match_source") or cur.get("source") or "").strip()
+    if match_source:
+        payload["match_source"] = match_source
+    try:
+        match_confidence = float(cur.get("match_confidence"))
+    except Exception:
+        match_confidence = None
+    if match_confidence is not None:
+        payload["match_confidence"] = max(0.0, min(1.0, match_confidence))
+    match_reason = str(cur.get("match_reason") or cur.get("reason") or "").strip()
+    if match_reason:
+        payload["match_reason"] = match_reason[:240]
+    return payload
 
 
 def _provider_binding_list(raw: Any) -> List[Dict[str, Any]]:
@@ -1096,6 +1174,61 @@ def _kind_to_template_type(kind_raw: str) -> str:
     if any(x in k for x in ("enum", "select", "список", "выбор")):
         return "select"
     return "text"
+
+
+def _value_mode_from_type(type_raw: Any, allowed_values: Optional[List[str]] = None) -> str:
+    kind = str(type_raw or "").strip().lower()
+    if any(x in kind for x in ("bool", "boolean", "да/нет")):
+        return "boolean"
+    if any(x in kind for x in ("int", "integer", "numeric", "number", "decimal", "float", "число")):
+        return "number"
+    if any(x in kind for x in ("multi", "мульти")):
+        return "multi"
+    if any(x in kind for x in ("enum", "select", "dictionary", "list", "список", "выбор")):
+        return "enum"
+    if allowed_values:
+        return "enum"
+    return "text"
+
+
+def _value_payload_with_descendant_refs(
+    *,
+    catalog_category_id: str,
+    values_items: Dict[str, Any],
+    children_by_parent: Dict[str, List[str]],
+    catalog_by_id: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    cid = str(catalog_category_id or "").strip()
+    merged: Dict[str, Any] = {
+        "catalog_category_id": cid,
+        "providers": {},
+        "catalog_params": {},
+        "rows_count": 0,
+        "branch_sources": [],
+    }
+    for child_id in _descendant_ids(cid, children_by_parent):
+        child_payload = values_items.get(child_id) if isinstance(values_items.get(child_id), dict) else {}
+        child_params = child_payload.get("catalog_params") if isinstance(child_payload.get("catalog_params"), dict) else {}
+        if not child_params:
+            continue
+        child_meta = catalog_by_id.get(child_id) or {}
+        source = {
+            "id": child_id,
+            "name": child_meta.get("name") or child_id,
+            "path": child_meta.get("path") or child_meta.get("name") or child_id,
+        }
+        merged["branch_sources"].append(source)
+        merged["rows_count"] = int(merged.get("rows_count") or 0) + int(child_payload.get("rows_count") or len(child_params))
+        for provider, provider_payload in (child_payload.get("providers") or {}).items():
+            if isinstance(provider_payload, dict) and provider not in merged["providers"]:
+                merged["providers"][provider] = provider_payload
+        for key, raw in child_params.items():
+            if not isinstance(raw, dict):
+                continue
+            next_raw = dict(raw)
+            next_raw["source_category"] = source
+            merged["catalog_params"][f"{child_id}:{key}"] = next_raw
+    return merged
 
 
 def _is_service_catalog_name(name_raw: Any) -> bool:
@@ -1783,6 +1916,65 @@ def mapping_import_categories() -> Dict[str, Any]:
     return payload
 
 
+@router.get("/import/categories/bootstrap")
+def mapping_import_categories_bootstrap() -> Dict[str, Any]:
+    payload = dict(mapping_import_categories())
+    full_provider_categories = payload.get("provider_categories") if isinstance(payload.get("provider_categories"), dict) else {}
+    mappings = payload.get("mappings") if isinstance(payload.get("mappings"), dict) else {}
+    binding_states = payload.get("binding_states") if isinstance(payload.get("binding_states"), dict) else {}
+    needed_by_provider: Dict[str, set[str]] = {provider: set() for provider in MAPPING_PROVIDERS}
+
+    for row in mappings.values():
+        if not isinstance(row, dict):
+            continue
+        for provider in MAPPING_PROVIDERS:
+            provider_category_id = str(row.get(provider) or "").strip()
+            if provider_category_id:
+                needed_by_provider.setdefault(provider, set()).add(provider_category_id)
+
+    for provider_states in binding_states.values():
+        if not isinstance(provider_states, dict):
+            continue
+        for provider in MAPPING_PROVIDERS:
+            state = provider_states.get(provider) if isinstance(provider_states.get(provider), dict) else {}
+            for key in ("direct_id", "inherited_id", "effective_id"):
+                provider_category_id = str(state.get(key) or "").strip()
+                if provider_category_id:
+                    needed_by_provider.setdefault(provider, set()).add(provider_category_id)
+            for binding in state.get("child_bindings") or []:
+                if not isinstance(binding, dict):
+                    continue
+                provider_category_id = str(binding.get("provider_category_id") or "").strip()
+                if provider_category_id:
+                    needed_by_provider.setdefault(provider, set()).add(provider_category_id)
+
+    light_provider_categories: Dict[str, List[Dict[str, Any]]] = {}
+    for provider, needed_ids in needed_by_provider.items():
+        source_items = full_provider_categories.get(provider) if isinstance(full_provider_categories.get(provider), list) else []
+        light_provider_categories[provider] = [
+            item for item in source_items if str(item.get("id") or "").strip() in needed_ids
+        ]
+
+    payload["provider_categories"] = light_provider_categories
+    payload["provider_categories_lazy"] = True
+    return payload
+
+
+@router.get("/import/categories/provider/{provider}")
+def mapping_provider_categories(provider: str) -> Dict[str, Any]:
+    provider_code = str(provider or "").strip()
+    if provider_code not in PROVIDER_TITLES:
+        raise HTTPException(status_code=404, detail="PROVIDER_NOT_FOUND")
+    items = _load_provider_categories(provider_code)
+    return {
+        "ok": True,
+        "provider": provider_code,
+        "title": PROVIDER_TITLES.get(provider_code, provider_code),
+        "items": items,
+        "count": len(items),
+    }
+
+
 @router.get("/issues")
 def mapping_issues() -> Dict[str, Any]:
     return {"ok": True, **audit_category_mapping_issues(limit=100)}
@@ -1872,6 +2064,9 @@ class AttrRowProviderBinding(BaseModel):
     values: List[str] = Field(default_factory=list)
     required: bool = False
     export: bool = False
+    match_source: str = ""
+    match_confidence: Optional[float] = None
+    match_reason: str = ""
 
 
 class AttrRowProviderMap(AttrRowProviderBinding):
@@ -1893,6 +2088,144 @@ class SaveAttrMappingReq(BaseModel):
 
 class AiMatchReq(BaseModel):
     apply: bool = True
+
+
+_ATTR_AI_WORKFLOW = "marketplace_attribute_ai_match"
+_ATTR_AI_JOB_TTL_SECONDS = 300.0
+
+
+def _backend_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _repo_root() -> Path:
+    return _backend_root().parent
+
+
+def _start_attr_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    env = os.environ.copy()
+    backend_root = str(_backend_root())
+    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
+
+    command = [
+        sys.executable,
+        "-m",
+        "app.workers.marketplace_attribute_ai_match",
+        "--job-id",
+        job_id,
+    ]
+    if organization_id:
+        command.extend(["--organization-id", organization_id])
+
+    subprocess.Popen(
+        command,
+        cwd=str(_repo_root()),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def _job_ts(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
+
+
+def _save_attr_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    upsert_pim_workflow_run(job, workflow=_ATTR_AI_WORKFLOW)
+    return job
+
+
+def _claim_attr_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
+    return claim_pim_workflow_run_as_running(
+        job_id,
+        workflow=_ATTR_AI_WORKFLOW,
+        payload_updates={
+            "phase": "matching",
+            "message": "AI подбирает спорные связки. Уверенные rule/memory-связки применяются автоматически.",
+            "started_at": _now_iso(),
+            "updated_ts": time.time(),
+        },
+    )
+
+
+def _prune_attr_ai_jobs() -> None:
+    now = time.time()
+    stale_after = max(_ATTR_AI_JOB_TTL_SECONDS, _ai_match_timeout_seconds() * 2.5)
+    for job in list_pim_workflow_runs(workflow=_ATTR_AI_WORKFLOW, statuses=["queued", "running"], limit=200):
+        updated = _job_ts(job.get("updated_ts") or job.get("created_ts"))
+        if updated and now - updated > stale_after:
+            job.update({
+                "status": "failed",
+                "phase": "stale",
+                "message": "AI-подбор был прерван. Запустите подбор заново.",
+                "finished_at": _now_iso(),
+                "updated_ts": now,
+                "error": "STALE_AI_MATCH_JOB",
+            })
+            _save_attr_ai_job(job)
+
+
+def _public_attr_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {
+        "ok": True,
+        "job_id": str(job.get("job_id") or ""),
+        "catalog_category_id": str(job.get("catalog_category_id") or ""),
+        "status": str(job.get("status") or "queued"),
+        "phase": str(job.get("phase") or ""),
+        "message": str(job.get("message") or ""),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "engine": job.get("engine"),
+        "ai_error": job.get("ai_error") or "",
+        "rows_count": job.get("rows_count"),
+        "summary": job.get("summary"),
+        "error": job.get("error") or "",
+    }
+    return payload
+
+
+async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiMatchReq) -> None:
+    job = get_pim_workflow_run(job_id, workflow=_ATTR_AI_WORKFLOW)
+    if not job:
+        return
+    job.update({
+        "status": "running",
+        "phase": "matching",
+        "message": "AI подбирает спорные связки. Уверенные rule/memory-связки применяются автоматически.",
+        "started_at": _now_iso(),
+        "updated_ts": time.time(),
+    })
+    _save_attr_ai_job(job)
+    try:
+        result = await mapping_attribute_ai_match(catalog_category_id, req)
+        job.update({
+            "status": "completed",
+            "phase": "completed",
+            "message": "AI-подбор завершен. Обновите список параметров и проверьте спорные строки.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "engine": result.get("engine"),
+            "ai_error": result.get("ai_error") or "",
+            "rows_count": result.get("rows_count"),
+            "summary": result.get("summary"),
+        })
+        _save_attr_ai_job(job)
+    except Exception as exc:
+        job.update({
+            "status": "failed",
+            "phase": "failed",
+            "message": "AI-подбор не завершился. Rule/memory-связки можно применить повторно.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+        })
+        _save_attr_ai_job(job)
 
 
 def _json_extract(text: str) -> Optional[Dict[str, Any]]:
@@ -2143,7 +2476,19 @@ def _deterministic_ai_rows(
             "values": _extract_text_list(y.get("values"))[:120],
             "required": bool(y.get("required") or False),
             "export": True,
-            "bindings": _provider_binding_list({**y, "id": yid, "export": True}),
+            "match_source": "rule",
+            "match_confidence": round(best_score, 3),
+            "match_reason": "Автоподбор по похожести названия PIM-поля и параметра Я.Маркета.",
+            "bindings": _provider_binding_list(
+                {
+                    **y,
+                    "id": yid,
+                    "export": True,
+                    "match_source": "rule",
+                    "match_confidence": round(best_score, 3),
+                    "match_reason": "Автоподбор по похожести названия PIM-поля и параметра Я.Маркета.",
+                }
+            ),
         }
         row["provider_map"] = provider_map
         row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
@@ -2193,7 +2538,19 @@ def _deterministic_ai_rows(
             "values": _extract_text_list(o.get("values"))[:120],
             "required": bool(o.get("required") or False),
             "export": True,
-            "bindings": _provider_binding_list({**o, "id": oid, "export": True}),
+            "match_source": "rule",
+            "match_confidence": round(best_score, 3),
+            "match_reason": "Автоподбор по похожести названия PIM-поля и параметра Ozon.",
+            "bindings": _provider_binding_list(
+                {
+                    **o,
+                    "id": oid,
+                    "export": True,
+                    "match_source": "rule",
+                    "match_confidence": round(best_score, 3),
+                    "match_reason": "Автоподбор по похожести названия PIM-поля и параметра Ozon.",
+                }
+            ),
         }
         row["provider_map"] = provider_map
         row["confirmed"] = bool(row.get("confirmed") or best_score >= 0.75)
@@ -2293,6 +2650,33 @@ def _catalog_target_rows(
     return _normalize_attr_rows(out)
 
 
+def _provider_param_target_options(*provider_param_lists: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    used: set[str] = set()
+    for params in provider_param_lists:
+        if not isinstance(params, list):
+            continue
+        for param in params:
+            if not isinstance(param, dict):
+                continue
+            title = canonical_base_field_name(_humanize_catalog_name(param.get("name") or param.get("title")))
+            if not title:
+                continue
+            key = _norm_name(title)
+            if not key or key in used:
+                continue
+            used.add(key)
+            out.append(
+                {
+                    "id": str(param.get("id") or title),
+                    "title": title,
+                    "type": _kind_to_template_type(str(param.get("kind") or "")),
+                    "param_group": _normalize_param_group(None, title),
+                }
+            )
+    return out
+
+
 def _merge_existing_into_target_rows(
     target_rows: List[Dict[str, Any]],
     existing_rows: List[Dict[str, Any]],
@@ -2359,12 +2743,84 @@ def _merge_ai_rows_into_target_rows(
         for provider in MAPPING_PROVIDERS:
             row_payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else _empty_provider_binding()
             if str(row_payload.get("id") or "").strip():
+                row_payload = _annotate_provider_payload(
+                    row_payload,
+                    source="ai",
+                    reason="Предложено AI по смыслу PIM-поля и параметра площадки.",
+                )
                 cur_map[provider] = row_payload
         cur["provider_map"] = cur_map
         cur["confirmed"] = bool(cur.get("confirmed") or row.get("confirmed"))
         merged[by_name[key]] = cur
 
     return _normalize_attr_rows(merged)
+
+
+def _provider_payload_has_binding(payload: Dict[str, Any]) -> bool:
+    return bool(_provider_binding_list(payload))
+
+
+def _fill_missing_provider_metadata_from_memory(
+    rows: List[Dict[str, Any]],
+    before_rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    before_keys: set[tuple[str, str, str]] = set()
+    for row in _normalize_attr_rows(before_rows):
+        row_key = _norm_name(str(row.get("catalog_name") or row.get("id") or ""))
+        row_map = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        for provider in MAPPING_PROVIDERS:
+            payload = row_map.get(provider) if isinstance(row_map.get(provider), dict) else {}
+            for item in _provider_binding_list(payload):
+                binding_key = str(item.get("id") or item.get("name") or "").strip()
+                if row_key and binding_key:
+                    before_keys.add((row_key, provider, binding_key))
+
+    out: List[Dict[str, Any]] = []
+    for row in _normalize_attr_rows(rows):
+        row_key = _norm_name(str(row.get("catalog_name") or row.get("id") or ""))
+        next_row = dict(row)
+        next_map = dict(next_row.get("provider_map") or {}) if isinstance(next_row.get("provider_map"), dict) else {}
+        for provider in MAPPING_PROVIDERS:
+            payload = next_map.get(provider) if isinstance(next_map.get(provider), dict) else {}
+            if not _provider_payload_has_binding(payload):
+                continue
+            if str(payload.get("match_source") or "").strip():
+                continue
+            binding_keys = [
+                str(item.get("id") or item.get("name") or "").strip()
+                for item in _provider_binding_list(payload)
+                if str(item.get("id") or item.get("name") or "").strip()
+            ]
+            source = "memory" if any((row_key, provider, key) in before_keys for key in binding_keys) else "rule"
+            reason = (
+                "Сохраненная ранее привязка категории; используется как память сопоставления."
+                if source == "memory"
+                else "Автосвязь без сохраненного источника; требуется проверка пользователем."
+            )
+            next_map[provider] = _annotate_provider_payload(payload, source=source, reason=reason)
+        next_row["provider_map"] = next_map
+        out.append(next_row)
+    return _normalize_attr_rows(out)
+
+
+def _annotate_provider_payload(payload: Dict[str, Any], *, source: str, reason: str) -> Dict[str, Any]:
+    annotated = _provider_map_payload(payload)
+    if not str(annotated.get("match_source") or "").strip():
+        annotated["match_source"] = source
+    if not str(annotated.get("match_reason") or "").strip():
+        annotated["match_reason"] = reason
+    bindings = []
+    for item in _provider_binding_list(annotated):
+        next_item = dict(item)
+        if not str(next_item.get("match_source") or "").strip():
+            next_item["match_source"] = str(annotated.get("match_source") or source)
+        if not str(next_item.get("match_reason") or "").strip():
+            next_item["match_reason"] = str(annotated.get("match_reason") or reason)
+        if annotated.get("match_confidence") is not None and next_item.get("match_confidence") is None:
+            next_item["match_confidence"] = annotated.get("match_confidence")
+        bindings.append(next_item)
+    annotated["bindings"] = bindings
+    return annotated
 
 
 def _attr_row_provider_coverage(row: Dict[str, Any], providers: Optional[List[str]] = None) -> int:
@@ -2414,6 +2870,39 @@ def _is_service_attr_row(row: Dict[str, Any]) -> bool:
         or "фото" in name
         or "картин" in name
     )
+
+
+def _is_core_export_attr_row(row: Dict[str, Any]) -> bool:
+    name = _norm_name(str(row.get("catalog_name") or ""))
+    rid = str(row.get("id") or "").strip().lower()
+    protected_names = {
+        "sku",
+        "sku gt",
+        "наименование",
+        "наименование товара",
+        "название",
+        "название товара",
+        "описание",
+        "описание товара",
+        "фото",
+        "картинки",
+        "изображения",
+    }
+    protected_ids = {"svc:sku_gt", "svc:title", "svc:description", "svc:media_images"}
+    return name in protected_names or rid in protected_ids
+
+
+def _clear_core_export_provider_bindings(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in _normalize_attr_rows(rows):
+        if not _is_core_export_attr_row(row):
+            out.append(row)
+            continue
+        next_row = dict(row)
+        next_row["provider_map"] = {provider: _empty_provider_binding() for provider in MAPPING_PROVIDERS}
+        next_row["confirmed"] = True
+        out.append(next_row)
+    return _normalize_attr_rows(out)
 
 
 def _attr_mapping_snapshot(rows: List[Dict[str, Any]], providers: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -2488,44 +2977,59 @@ async def _ollama_suggest_rows(
     feedback_doc: Optional[Dict[str, Any]] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     base_url = str(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
-    model = str(os.getenv("OLLAMA_MODEL", "qwen2.5:14b-instruct")).strip() or "qwen2.5:14b-instruct"
+    model = str(os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")).strip() or "qwen2.5:7b-instruct"
+    normalized_existing = _normalize_attr_rows(existing_rows)
+    yandex_candidates = [x for x in (yandex_params or []) if isinstance(x, dict)]
+    ranked_ids: List[str] = []
+    ranked_by_id: Dict[str, Dict[str, Any]] = {}
+    for row in normalized_existing:
+        row_name = str(row.get("catalog_name") or "").strip()
+        if not row_name:
+            continue
+        scored = []
+        for param in yandex_candidates:
+            score = _pair_score(
+                {"id": "", "name": row_name, "kind": str(row.get("group") or "")},
+                param,
+                feedback_doc=feedback_doc,
+            )
+            scored.append((score, str(param.get("id") or ""), param))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        for score, param_id, param in scored[:8]:
+            if score <= 0.0 or not param_id or param_id in ranked_by_id:
+                continue
+            ranked_ids.append(param_id)
+            ranked_by_id[param_id] = param
+    selected_yandex_params = [ranked_by_id[x] for x in ranked_ids[: min(32, len(ranked_ids))]]
+    if not selected_yandex_params:
+        selected_yandex_params = yandex_candidates[:16]
 
-    sys_prompt = (
-        "Ты эксперт по PIM и маркетплейсам. "
-        "Нужно сопоставить характеристики категории для Я.Маркет. "
-        "Сопоставляй только параметры с одинаковым смыслом. "
-        "Ответ строго в JSON без markdown."
+    market_text = "; ".join(
+        f"{str(x.get('id') or '')}={str(x.get('name') or '')}"
+        for x in selected_yandex_params[:24]
     )
-    user_payload = {
-        "category": category_name,
-        "yandex_params": [
-            {"id": str(x.get("id") or ""), "name": str(x.get("name") or ""), "kind": str(x.get("kind") or "")}
-            for x in (yandex_params or [])
-        ],
-        "existing_rows": [
-            {
-                "catalog_name": str(r.get("catalog_name") or ""),
-                "group": str(r.get("group") or ""),
-            }
-            for r in _normalize_attr_rows(existing_rows)
-        ],
-        "response_schema": {
-            "rows": [
-                {
-                    "catalog_name": "string",
-                    "group": "Артикулы|Описание|Медиа|О товаре|Логистика|Гарантия|Прочее",
-                    "yandex_id": "string|null",
-                    "confirmed": "boolean",
-                }
-            ]
-        },
-    }
+    pim_text = "; ".join(str(r.get("catalog_name") or "") for r in normalized_existing)
+    prompt = (
+        "Верни только JSON без markdown: {\"rows\":[[\"pim_name\",\"yandex_id_or_null\"]]}. "
+        "Сопоставь PIM-поля с параметрами Я.Маркета только при одинаковом смысле. "
+        "Если не уверен, ставь null. Не сопоставляй SKU, штрихкод, название, описание, фото с характеристиками. "
+        f"Категория: {str(category_name or '')[:120]}. "
+        f"PIM: {pim_text}. "
+        f"MARKET: {market_text}."
+    )
 
     body = {
         "model": model,
         "stream": False,
-        "options": {"temperature": 0.1, "top_p": 0.9},
-        "prompt": f"{sys_prompt}\n\nДанные:\n{json.dumps(user_payload, ensure_ascii=False)}",
+        "format": "json",
+        "keep_alive": "10m",
+        "options": {
+            "temperature": 0.0,
+            "top_p": 0.8,
+            "num_ctx": 4096,
+            "num_predict": 400,
+        },
+        "prompt": prompt,
     }
 
     timeout_budget = _ai_match_timeout_seconds()
@@ -2544,14 +3048,23 @@ async def _ollama_suggest_rows(
     if not obj:
         return None
     rows = obj.get("rows")
+    if not isinstance(rows, list) and obj.get("pim_name"):
+        rows = [obj]
     if not isinstance(rows, list):
         return None
 
-    y_map = {str(x.get("id") or "").strip(): x for x in (yandex_params or []) if str(x.get("id") or "").strip()}
+    y_map = {str(x.get("id") or "").strip(): x for x in selected_yandex_params if str(x.get("id") or "").strip()}
     out: List[Dict[str, Any]] = []
     for rr in rows:
         if not isinstance(rr, dict):
             continue
+        if isinstance(rr, list):
+            rr = {
+                "catalog_name": rr[0] if len(rr) > 0 else "",
+                "group": "",
+                "yandex_id": rr[1] if len(rr) > 1 else "",
+                "confirmed": True,
+            }
         name = str(rr.get("catalog_name") or "").strip()
         if not name:
             continue
@@ -2559,6 +3072,50 @@ async def _ollama_suggest_rows(
         yid = str(rr.get("yandex_id") or "").strip()
         y = y_map.get(yid) if yid else None
         out.append(_build_row(name, y, confirmed=bool(rr.get("confirmed") or False), group=group))
+    return _normalize_attr_rows(out) if out else None
+
+
+async def _ollama_suggest_rows_chunked(
+    *,
+    category_name: str,
+    yandex_params: List[Dict[str, Any]],
+    existing_rows: List[Dict[str, Any]],
+    feedback_doc: Optional[Dict[str, Any]] = None,
+) -> Optional[List[Dict[str, Any]]]:
+    rows = _normalize_attr_rows(existing_rows)
+    if not rows:
+        return None
+
+    chunk_size = _ai_match_chunk_size()
+    deadline = time.monotonic() + _ai_match_timeout_seconds()
+    out: List[Dict[str, Any]] = []
+    successes = 0
+
+    for index in range(0, len(rows), chunk_size):
+        if time.monotonic() >= deadline:
+            break
+        chunk = rows[index : index + chunk_size]
+        remaining = max(deadline - time.monotonic(), 1.0)
+        try:
+            async with asyncio.timeout(remaining):
+                suggested = await _ollama_suggest_rows(
+                    category_name=category_name,
+                    yandex_params=yandex_params,
+                    existing_rows=chunk,
+                    feedback_doc=feedback_doc,
+                )
+        except Exception:
+            suggested = None
+        if suggested:
+            successes += 1
+            out.extend(suggested)
+        else:
+            out.extend(chunk)
+
+    if successes <= 0:
+        return None
+    if len(out) < len(rows):
+        out.extend(rows[len(out) :])
     return _normalize_attr_rows(out) if out else None
 
 
@@ -3156,25 +3713,36 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
 
     details_cache = _details_cache_bucket()
-    cached = details_cache.get(cid)
-    if cached and time.monotonic() - cached[0] < _ATTR_DETAILS_CACHE_TTL_SECONDS:
-        return cached[1]
+    cached = _timed_cache_get(details_cache, cid, _ATTR_DETAILS_CACHE_TTL_SECONDS)
+    if cached:
+        return cached
     persisted = _persistent_cache_read(_attr_details_cache_path(cid), _ATTR_DETAILS_CACHE_TTL_SECONDS)
     if persisted:
-        details_cache[cid] = (time.monotonic(), persisted)
+        _timed_cache_set(
+            details_cache,
+            cid,
+            persisted,
+            max_items=_ATTR_DETAILS_CACHE_MAX_ITEMS,
+            ttl_seconds=_ATTR_DETAILS_CACHE_TTL_SECONDS,
+        )
         return persisted
 
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
     parent_by_id = _catalog_parent_map(catalog_nodes)
+    _, children_by_parent = _tree_maps(catalog_nodes)
+    catalog_by_id = {str(x.get("id") or ""): x for x in catalog_items}
     cat = next((x for x in catalog_items if str(x.get("id")) == cid), None)
     if not cat:
         raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
 
     mappings = _load_mappings()
-    cat_mapping = _direct_mapping_for_catalog(cid, mappings)
+    direct_mapping = _direct_mapping_for_catalog(cid, mappings)
+    cat_mapping = _effective_mapping_for_catalog(cid, mappings, parent_by_id)
     if not cat_mapping:
         raise HTTPException(status_code=400, detail="CATEGORY_NOT_DIRECTLY_MAPPED")
+    mapping_sources = _effective_mapping_sources_for_catalog(cid, mappings, parent_by_id)
+    inherited_mapping = any(source and source != cid for source in mapping_sources.values())
 
     yandex_cat_id = str(cat_mapping.get("yandex_market") or "").strip()
     yandex_cached = _has_yandex_params_cached(yandex_cat_id)
@@ -3207,6 +3775,12 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         "ok": True,
         "category": {"id": cid, "name": cat.get("name"), "path": cat.get("path")},
         "mapping": cat_mapping,
+        "mapping_meta": {
+            "direct": direct_mapping,
+            "effective": cat_mapping,
+            "sources": mapping_sources,
+            "inherited": inherited_mapping,
+        },
         "providers": {
             "yandex_market": {
                 "category_id": yandex_cat_id or None,
@@ -3232,7 +3806,13 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
         "sources": template_meta.get("sources") if isinstance(template_meta.get("sources"), dict) else {},
         "catalog_attr_options": catalog_attr_options,
     }
-    details_cache[cid] = (time.monotonic(), payload)
+    _timed_cache_set(
+        details_cache,
+        cid,
+        payload,
+        max_items=_ATTR_DETAILS_CACHE_MAX_ITEMS,
+        ttl_seconds=_ATTR_DETAILS_CACHE_TTL_SECONDS,
+    )
     _persistent_cache_write(_attr_details_cache_path(cid), payload)
     return payload
 
@@ -3244,12 +3824,15 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
 
     value_cache = _value_details_cache_bucket()
-    cached = value_cache.get(cid)
-    if cached and time.monotonic() - cached[0] < _VALUE_DETAILS_CACHE_TTL_SECONDS:
-        return cached[1]
+    cached = _timed_cache_get(value_cache, cid, _VALUE_DETAILS_CACHE_TTL_SECONDS)
+    if cached:
+        return cached
 
     catalog_nodes = _load_catalog_nodes()
     catalog_items = _catalog_rows(catalog_nodes)
+    parent_by_id = _catalog_parent_map(catalog_nodes)
+    _, children_by_parent = _tree_maps(catalog_nodes)
+    catalog_by_id = {str(x.get("id") or ""): x for x in catalog_items}
     cat = next((x for x in catalog_items if str(x.get("id")) == cid), None)
     if not cat:
         raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
@@ -3258,6 +3841,33 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
     items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
     payload = items.get(cid) if isinstance(items, dict) and isinstance(items.get(cid), dict) else {}
     catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+    if not catalog_params:
+        attr_doc = _load_attr_mapping_doc()
+        attr_items = attr_doc.get("items") if isinstance(attr_doc.get("items"), dict) else {}
+        attr_payload = attr_items.get(cid) if isinstance(attr_items, dict) and isinstance(attr_items.get(cid), dict) else {}
+        attr_rows = attr_payload.get("rows") if isinstance(attr_payload.get("rows"), list) else []
+        if attr_rows:
+            _upsert_attr_values_dictionary_for_category(
+                cid,
+                attr_rows,
+                mappings=_load_mappings(),
+                parent_by_id=parent_by_id,
+            )
+            values_doc = _load_attr_values_dict_doc()
+            items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
+            payload = items.get(cid) if isinstance(items, dict) and isinstance(items.get(cid), dict) else {}
+            catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+    if not catalog_params and isinstance(items, dict):
+        branch_payload = _value_payload_with_descendant_refs(
+            catalog_category_id=cid,
+            values_items=items,
+            children_by_parent=children_by_parent,
+            catalog_by_id=catalog_by_id,
+        )
+        branch_params = branch_payload.get("catalog_params") if isinstance(branch_payload.get("catalog_params"), dict) else {}
+        if branch_params:
+            payload = branch_payload
+            catalog_params = branch_params
 
     dict_db = load_dictionaries_db()
     dict_items = dict_db.get("items") if isinstance(dict_db.get("items"), list) else []
@@ -3278,6 +3888,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         meta = dict_doc.get("meta") if isinstance(dict_doc.get("meta"), dict) else {}
         source_ref = meta.get("source_reference") if isinstance(meta.get("source_reference"), dict) else {}
         export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+        raw_bindings = raw.get("bindings") if isinstance(raw.get("bindings"), dict) else {}
         raw_scope = str(dict_doc.get("scope") or "").strip().lower()
         if raw_scope == "variant":
             scope = "group"
@@ -3291,17 +3902,27 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
 
         providers: List[Dict[str, Any]] = []
         for provider in MAPPING_PROVIDERS:
-            ref = source_ref.get(provider) if isinstance(source_ref.get(provider), dict) else {}
+            binding_ref = raw_bindings.get(provider) if isinstance(raw_bindings.get(provider), dict) else {}
+            meta_ref = source_ref.get(provider) if isinstance(source_ref.get(provider), dict) else {}
+            ref = binding_ref if any(binding_ref.get(k) for k in ("id", "name", "kind", "values")) else meta_ref
             allowed_values = _unique_text_values(ref.get("allowed_values"), limit=200)
+            if not allowed_values:
+                allowed_values = _unique_text_values(ref.get("values"), limit=200)
             mapped_values = export_map.get(provider) if isinstance(export_map.get(provider), dict) else {}
             if not ref and not allowed_values and not mapped_values:
                 continue
+            provider_mode = _value_mode_from_type(ref.get("kind"), allowed_values)
+            needs_mapping = provider_mode in {"boolean", "enum", "multi"} and len(allowed_values) > len(mapped_values)
             providers.append(
                 {
                     "code": provider,
                     "title": PROVIDER_TITLES.get(provider, provider),
                     "mapped_count": len(mapped_values),
                     "allowed_count": len(allowed_values),
+                    "kind": str(ref.get("kind") or "").strip() or None,
+                    "mode": provider_mode,
+                    "needs_mapping": needs_mapping,
+                    "needs_unit_check": provider_mode == "number",
                     "mapped_sample": [
                         {"canonical": str(k), "output": str(v)}
                         for k, v in list(mapped_values.items())[:4]
@@ -3314,11 +3935,30 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
 
         raw_dict_values = dict_doc.get("items") if isinstance(dict_doc.get("items"), list) else []
         value_count = 0
+        pim_sample: List[str] = []
         for value_item in raw_dict_values:
             if isinstance(value_item, str) and str(value_item).strip():
                 value_count += 1
+                if len(pim_sample) < 4:
+                    pim_sample.append(str(value_item).strip())
             elif isinstance(value_item, dict) and str(value_item.get("value") or "").strip():
                 value_count += 1
+                if len(pim_sample) < 4:
+                    pim_sample.append(str(value_item.get("value") or "").strip())
+        item_type = str(dict_doc.get("type") or raw.get("type") or "").strip() or "select"
+        provider_modes = {str(p.get("mode") or "") for p in providers}
+        if "boolean" in provider_modes or _value_mode_from_type(item_type) == "boolean":
+            value_mode = "boolean"
+        elif "multi" in provider_modes:
+            value_mode = "multi"
+        elif "enum" in provider_modes or _value_mode_from_type(item_type) == "enum":
+            value_mode = "enum"
+        elif "number" in provider_modes or _value_mode_from_type(item_type) == "number":
+            value_mode = "number"
+        else:
+            value_mode = "text"
+        needs_value_mapping = any(bool(p.get("needs_mapping")) for p in providers)
+        needs_unit_check = any(bool(p.get("needs_unit_check")) for p in providers)
         out.append(
             {
                 "dict_id": dict_id,
@@ -3327,10 +3967,15 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                 "group": str(raw.get("group") or meta.get("param_group") or "").strip() or "О товаре",
                 "scope": scope,
                 "scope_label": scope_label,
-                "type": str(dict_doc.get("type") or raw.get("type") or "").strip() or "select",
+                "type": item_type,
+                "value_mode": value_mode,
                 "confirmed": bool(raw.get("confirmed") or False),
                 "attribute_id": str(raw.get("attribute_id") or "").strip() or None,
                 "value_count": value_count,
+                "pim_sample": pim_sample,
+                "needs_value_mapping": needs_value_mapping,
+                "needs_unit_check": needs_unit_check,
+                "source_category": raw.get("source_category") if isinstance(raw.get("source_category"), dict) else None,
                 "providers": providers,
                 "providers_count": len(providers),
                 "mapped_total": sum(int(p.get("mapped_count") or 0) for p in providers),
@@ -3343,8 +3988,15 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         "category": {"id": cid, "name": cat.get("name"), "path": cat.get("path")},
         "items": out,
         "count": len(out),
+        "branch_sources": payload.get("branch_sources") if isinstance(payload.get("branch_sources"), list) else [],
     }
-    value_cache[cid] = (time.monotonic(), result)
+    _timed_cache_set(
+        value_cache,
+        cid,
+        result,
+        max_items=_VALUE_DETAILS_CACHE_MAX_ITEMS,
+        ttl_seconds=_VALUE_DETAILS_CACHE_TTL_SECONDS,
+    )
     return result
 
 
@@ -3447,7 +4099,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
 
     mappings = _load_mappings()
-    cat_mapping = _direct_mapping_for_catalog(cid, mappings)
+    cat_mapping = _effective_mapping_for_catalog(cid, mappings, parent_by_id)
     if not cat_mapping:
         raise HTTPException(status_code=400, detail="CATEGORY_NOT_DIRECTLY_MAPPED")
 
@@ -3466,23 +4118,30 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         yandex_params,
         ozon_params,
     )
-    target_rows = _catalog_target_rows(
-        _catalog_attr_options_for_category(cid),
-        _service_param_defs_payload(),
-    )
+    catalog_attr_options = _catalog_attr_options_for_category(cid)
+    if not catalog_attr_options:
+        catalog_attr_options = _provider_param_target_options(yandex_params, ozon_params)
+    target_rows = _catalog_target_rows(catalog_attr_options, _service_param_defs_payload())
     seed_rows = _merge_existing_into_target_rows(target_rows, existing_rows)
     feedback_doc = _load_attr_feedback_doc()
 
     rows_ai: Optional[List[Dict[str, Any]]] = None
     engine = "fallback"
+    ai_error = ""
+    ai_seed_rows = [
+        row
+        for row in seed_rows
+        if not str((((row.get("provider_map") or {}).get("yandex_market") or {}).get("id") or "")).strip()
+    ]
     try:
-        async with asyncio.timeout(_ai_match_timeout_seconds()):
-            rows_ai = await _ollama_suggest_rows(
-                category_name=str(cat.get("path") or cat.get("name") or cid),
-                yandex_params=yandex_params,
-                existing_rows=seed_rows,
-                feedback_doc=feedback_doc,
-            )
+        if ai_seed_rows:
+            async with asyncio.timeout(_ai_match_timeout_seconds()):
+                rows_ai = await _ollama_suggest_rows_chunked(
+                    category_name=str(cat.get("path") or cat.get("name") or cid),
+                    yandex_params=yandex_params,
+                    existing_rows=ai_seed_rows,
+                    feedback_doc=feedback_doc,
+                )
         if rows_ai:
             rows_ai = _merge_ai_rows_into_target_rows(seed_rows, rows_ai)
             rows_ai = _deterministic_ai_rows(
@@ -3492,7 +4151,8 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
                 ozon_params=ozon_params,
             )
             engine = "ollama"
-    except Exception:
+    except Exception as exc:
+        ai_error = f"{exc.__class__.__name__}: {str(exc).strip()}"[:240]
         rows_ai = None
 
     rows_final = rows_ai or _deterministic_ai_rows(
@@ -3501,6 +4161,8 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         feedback_doc=feedback_doc,
         ozon_params=ozon_params,
     )
+    rows_final = _fill_missing_provider_metadata_from_memory(rows_final, seed_rows)
+    rows_final = _clear_core_export_provider_bindings(rows_final)
     rows_final = _apply_group_locks(rows_final)
     run_summary = _attr_ai_run_summary(seed_rows, rows_final)
 
@@ -3549,4 +4211,49 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         "rows": rows_final,
         "rows_count": len(rows_final),
         "summary": run_summary,
+        "ai_error": ai_error,
     }
+
+
+@router.post("/import/attributes/{catalog_category_id}/ai-match/jobs")
+async def mapping_attribute_ai_match_job_start(catalog_category_id: str, req: AiMatchReq) -> Dict[str, Any]:
+    cid = str(catalog_category_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+
+    _prune_attr_ai_jobs()
+    for job in list_pim_workflow_runs(workflow=_ATTR_AI_WORKFLOW, statuses=["queued", "running"], limit=100):
+        if (
+            str(job.get("catalog_category_id") or "") == cid
+            and str(job.get("status") or "") in {"queued", "running"}
+        ):
+            return _public_attr_ai_job(job)
+
+    job_id = f"attr_ai_job_{uuid4().hex}"
+    job = {
+        "id": job_id,
+        "run_id": job_id,
+        "job_id": job_id,
+        "catalog_category_id": cid,
+        "status": "queued",
+        "phase": "queued",
+        "message": "AI-подбор поставлен в очередь.",
+        "created_at": _now_iso(),
+        "created_ts": time.time(),
+        "updated_ts": time.time(),
+        "apply": bool(req.apply),
+    }
+    _save_attr_ai_job(job)
+    organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
+    _start_attr_ai_match_worker_process(job_id, organization_id)
+    return _public_attr_ai_job(job)
+
+
+@router.get("/import/attributes/ai-match/jobs/{job_id}")
+async def mapping_attribute_ai_match_job_status(job_id: str) -> Dict[str, Any]:
+    _prune_attr_ai_jobs()
+    jid = str(job_id or "").strip()
+    job = get_pim_workflow_run(jid, workflow=_ATTR_AI_WORKFLOW)
+    if not job:
+        raise HTTPException(status_code=404, detail="AI_MATCH_JOB_NOT_FOUND")
+    return _public_attr_ai_job(job)

@@ -76,11 +76,57 @@ Info-model attribute rule:
 5. local template attributes may keep category-specific source evidence and required flags, but must point to the canonical global `attribute_id` and `options.dict_id`;
 6. do not create category-local duplicates for parameters that already exist globally.
 
+Unified parameter flow:
+
+1. the operational target is one sellable SKU exported to one or more marketplaces;
+2. a product group/family is a helper for shared enrichment and variants, not a replacement for SKU-level facts;
+3. marketplace category parameters must be imported first with type, required flag, dictionary values, and export role when the provider exposes it;
+4. marketplace category parameters create provider evidence and a skeleton only; they must not be treated as a final info-model without competitor/product evidence;
+5. competitor parameters must be imported from matched competitor product URLs with raw name, raw value, source URL, product/SKU evidence, and confidence;
+6. existing product fields and SKU title/parser facts are part of the same evidence pool;
+7. the canonical info-model draft is created only after marketplace, competitor, product, and title/parser evidence are available or explicitly marked unavailable;
+8. marketplace parameters and competitor parameters are evidence for one canonical PIM parameter, not separate isolated maps;
+9. a canonical PIM parameter may be exported as a marketplace characteristic, a marketplace base-card field, an export payload field, or several of those at once depending on channel;
+10. `Бренд` is a canonical product parameter. It must not be hardcoded as only service/export or only characteristic: per channel it can fill `vendor/brand`, a dictionary value, and/or a category characteristic;
+11. canonical PIM values are normalized once, then converted into provider-specific output values per marketplace;
+12. value mapping must compare marketplace allowed values, competitor raw values, existing product values, and learned memory before marking export readiness;
+13. readiness is SKU-specific and must clearly separate `ready`, `needs parameter mapping`, `needs value mapping`, `missing product value`, `required by provider`, and `not exported intentionally`;
+14. family enrichment should copy common facts across a line and isolate variant axes such as memory, color, SIM/eSIM, region, and bundle;
+15. scripts may use product titles and competitor evidence to fill variant differences, but every derived value must keep source evidence and be reviewable.
+16. competitor discovery status must separate selected SKU state from branch totals. UI labels should explicitly say `для SKU` for the selected product and `в ветке` for aggregate evidence.
+17. a queued/running discovery job must block duplicate launches for the same category/product scope and must not coexist with a `not started` message if candidates or links already exist.
+18. `Бренд` must remain a canonical parameter in the draft. Do not reintroduce it into service-only export lists or automatic system-row detection; channel-specific `brand/vendor` fields are mappings/evidence for that canonical parameter.
+19. when `product_ids` are explicitly provided to competitor discovery, scan only those SKU IDs. Do not silently expand the run to the whole category branch.
+20. selected SKU must stay selected after a discovery run, including empty results. Automatic jumps to another SKU are only allowed through an explicit queue/next-SKU action.
+21. variant parsing must treat colors as blocking axes for exact card matching. Known Apple colors include `starlight`, `space grey/space gray`, `purple`, `midnight`, `sky blue`, `silver`, `blue`, `orange`, and titanium variants.
+22. source-localized color names must be normalized before confidence filtering. For example, `Silver` and `Серебристый`, `Midnight` and `полуночный/темно-синий`, `Sky Blue` and `небесно-голубой` are the same variant axis, not missing required tokens.
+23. deterministic competitor seeds are allowed when they produce review candidates, not automatic approval. Store77 MacBook seeds must include line, size, chip, RAM, SSD, color, and part number in the URL/title evidence.
+24. export preparation must not parse unconfirmed competitor candidates. Enrich products from confirmed competitor links before export; export itself is a bounded readiness check over current product data.
+25. export preparation may run bounded marketplace product-card hydration for the selected stores/SKUs before readiness checks, because marketplace imports are first-party product data for the final catalog;
+26. candidate competitor links may be shown for manual review, but only confirmed links may be used for automatic media/parameter enrichment or export-side fallback.
+27. candidate moderation must distinguish proven conflicts from unknown data. If both product and competitor SIM profiles are known and different, approval is blocked. If competitor SIM is not recognized, keep it as manual review and allow an explicit source-labelled approval/reject decision.
+28. long browser-facing operations must not expose raw nginx `504` pages in the UI. Use persisted run/job state and polling when the backend operation can exceed the proxy timeout; show the saved result once the backend finishes.
+29. export media selection is separate from media enrichment. Removing media from the export set must not delete the enriched source media, and later enrichment must not automatically re-enable media that the user excluded from export.
+30. product media export uses `content.media_images[].selected !== false` and `export_order`/array order. Physical deletion is separate from excluding an image from export.
+31. export preparation should use the persisted job path for broad or long-running scopes:
+    - `POST /api/catalog/exchange/export/jobs`;
+    - `GET /api/catalog/exchange/export/jobs/{job_id}`;
+    - worker service: `global-pim-export-worker.service`.
+    The synchronous `/catalog/exchange/export/run` endpoint is compatibility/diagnostic path, not the preferred UI path for broad checks.
+32. info-model draft review must show why each candidate exists before approval:
+    - `source_summary.by_kind` separates product, marketplace, and competitor evidence;
+    - `review_flags` must call out competitor-only, marketplace-only, low-confidence, single-source, select-without-values, and weak global-match cases;
+    - a candidate that only comes from competitors is evidence, not an automatically approved canonical parameter.
+33. if a draft candidate suggests the wrong global parameter, the user must be able to clear `global_match` before approval and create a new canonical parameter instead of silently reusing the wrong one.
+34. the draft screen should expose aggregate quality counters before approval, so the user can see risky candidate groups without reading every row first.
+35. draft quick filters should let the user isolate competitor-only, marketplace-only, and weak global-match candidates from ordinary status filters.
+
 Media rule:
 
 1. binary media lives in S3/object storage;
 2. product DB stores media references in product content fields such as `media_images`, `media_videos`, and `media_cover`;
-3. do not move binary media into Postgres.
+3. marketplace product imports must also hydrate `content.media_images` when source cards contain images; media is not competitor-only;
+4. do not move binary media into Postgres.
 
 ## Repository
 
@@ -294,9 +340,69 @@ LLM_MODEL_BALANCED=qwen2.5:7b-instruct
 LLM_MODEL_QUALITY=qwen2.5:7b-instruct
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen2.5:7b-instruct
+AI_MATCH_OLLAMA_TIMEOUT_SECONDS=90
+AI_MATCH_OLLAMA_CHUNK_SIZE=12
 ```
 
 Use one model across the old marketplace AI path and the newer `app.core.llm` path. Do not point production to `llama3.1:*`, `qwen2.5:14b-instruct`, or `70b` models unless the model is installed and server resources are checked first.
+
+Category-level marketplace AI matching must stay bounded:
+
+1. never send the full marketplace parameter dictionary plus all PIM rows as one prompt;
+2. shortlist marketplace candidates by deterministic token score before calling Ollama;
+3. send compact pair prompts (`rows: [[pim_name, provider_id_or_null]]`), not verbose schemas;
+4. run category rows in chunks and preserve deterministic rule/memory fallback;
+5. expose `ai_error` when LLM fails, instead of silently claiming AI matched the data;
+6. use a background job/queue for any full-category LLM rematch that can take longer than an interactive request.
+
+Interactive parameter matching should use the background job endpoints:
+
+```text
+POST /api/marketplaces/mapping/import/attributes/{category_id}/ai-match/jobs
+GET  /api/marketplaces/mapping/import/attributes/ai-match/jobs/{job_id}
+```
+
+The old synchronous endpoint may remain for scripts and diagnostics, but frontend buttons should not block on it.
+
+AI matching job state is persisted in `pim_workflow_runs` with workflow:
+
+```text
+marketplace_attribute_ai_match
+```
+
+Use this table to inspect stuck/completed AI jobs. Queued/running jobs older than the bounded stale window are marked `failed/stale` on the next job start/status check so users can restart matching.
+
+Execution is handled by `app.workers.marketplace_attribute_ai_match` as a separate one-job worker process. The worker can also run queued jobs directly:
+
+```bash
+PYTHONPATH=backend python3 -m app.workers.marketplace_attribute_ai_match --run-pending --organization-id org_default
+PYTHONPATH=backend python3 -m app.workers.marketplace_attribute_ai_match --loop --poll-interval 5 --organization-id org_default
+```
+
+Production deploy installs and restarts the managed loop unit:
+
+```text
+global-pim-ai-match-worker.service
+```
+
+Use `scripts/server_ops.sh worker-status`, `worker-logs`, or `restart-worker` for operations. The unit runs `--loop --poll-interval 5 --limit 10 --organization-id org_default`, so queued jobs are picked up again after host/process restarts.
+
+The worker must claim jobs before running LLM work. The claim path is a conditional update in `pim_workflow_runs` from `queued` to `running`; if another process already claimed the job, the worker reports it as skipped and does not execute matching again.
+
+Runtime memory rules:
+
+1. production runs multiple uvicorn workers, so every in-process Python cache is duplicated per worker;
+2. large text/JSON payloads are not cheap after parsing: provider dictionaries, category trees, mapping rows, and export readiness payloads become Python dict/list objects and can retain heap after a heavy request;
+3. long-lived route caches must have both a short TTL and a max item count unless they are tiny by design;
+4. do not cache full marketplace/category/value payloads for a day in process memory; prefer persistent rebuildable files/DB rows plus short per-worker hot caches;
+5. if RSS keeps growing under real load after bounded caches, prefer reducing worker count or moving to a managed worker model with request recycling before adding more in-process caches.
+
+Production disk rules:
+
+1. repeated deploys must not accumulate unlimited `app-*.tgz` archives under `backups`;
+2. keep explicit operational backups such as `info-model-reset-*.json` unless the user asks to remove them;
+3. monitor `/var/log/journal` separately from app data because SSH/deploy/test loops can grow system logs even when product files are tiny;
+4. journald should have a bounded persistent disk limit on the production server.
 
 AI mapping must learn from user confirmations through data, not through ad-hoc prompt edits:
 
@@ -603,3 +709,18 @@ For every page/tab after editing:
 4. check console errors and warnings;
 5. update `docs/SMARTPIM_TASKS.md`;
 6. commit and push stable slices.
+
+## Latest Production Verification Notes
+
+1. `sources?tab=values` must open on `Все`, not `Блокеры`, because a category can have value fields without unresolved mapping blockers.
+2. If value refs are empty but saved parameter rows exist, rebuild value refs from the saved parameter rows before showing the value step.
+3. Single-SKU export readiness was checked on production for GT USD and Ozon:
+   - iPad Air 11 M3: ready;
+   - MacBook Air 13 M4: ready;
+   - iPhone 17 Pro Max `product_1052`: ready after confirming exact competitor links and importing 13 media images.
+4. Do not treat `0 блокеров` plus empty visible list as “no value work”; check the active filter and `Все` count.
+5. Product competitor enrichment must use `/competitor-mapping/discovery/products/{product_id}/enrich/jobs` from UI. The direct `/enrich` endpoint can exceed proxy timeouts when images are fetched and uploaded.
+6. Export media blockers must be diagnosed in two layers:
+   - if `pim_channel_links` has `candidate` or `confirmed` competitor links, export preparation should enrich `content.media_images` from those links;
+   - if no competitor links exist for the SKU, the blocker belongs to the competitor-matching step, not the media-import step.
+7. Competitor image URLs that are extracted but cannot be imported into storage should remain visible as `content.media_images[].status = needs_review`; do not collapse them back into “Нет изображений”.

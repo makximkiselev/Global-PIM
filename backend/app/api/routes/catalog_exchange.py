@@ -1,22 +1,37 @@
 from __future__ import annotations
 
+import asyncio
+from copy import deepcopy
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
 from app.core.products.parameter_flow import dict_id_for_product_feature
+from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import provider_export_value_details
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
-from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
+from app.storage.relational_pim_store import (
+    bulk_upsert_product_items,
+    claim_pim_workflow_run_as_running,
+    get_pim_workflow_run,
+    list_pim_channel_links,
+    list_pim_workflow_runs,
+    load_catalog_nodes,
+    query_products_full,
+    upsert_pim_workflow_run,
+)
 from app.api.routes.yandex_market import (
     OfferCardsSyncReq,
     sync_offer_cards,
@@ -29,7 +44,9 @@ from app.api.routes.yandex_market import (
     _parent_map,
     _preferred_offer_id,
     _export_media_url,
+    _export_media_urls,
 )
+from app.api.routes.ozon_market import OzonProductsSyncReq, sync_product_statuses
 from app.api.routes.competitor_mapping import (
     _ai_map_competitor_specs_to_template,
     _confirmed_links_for_product,
@@ -52,13 +69,28 @@ CATALOG_PATH = DATA_DIR / "catalog_nodes.json"
 IMPORT_RUNS_PATH = DATA_DIR / "catalog_import_runs.json"
 EXPORT_RUNS_PATH = DATA_DIR / "catalog_export_runs.json"
 
+_EXPORT_WORKFLOW = "catalog_export_prepare"
+_EXPORT_JOB_TTL_SECONDS = 900.0
+
 AUTHORIZED_SITES = {
     "restore": {"restore", "re-store.ru"},
     "store77": {"store77", "store77.net", "77"},
 }
 
 _IMPORT_OVERVIEW_CACHE_TTL_SECONDS = 30.0
+_IMPORT_OVERVIEW_CACHE_MAX_ITEMS = int(os.getenv("IMPORT_OVERVIEW_CACHE_MAX_ITEMS", "20") or "20")
 _import_overview_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _remember_import_overview(cache_key: str, payload: Dict[str, Any]) -> None:
+    now = time.monotonic()
+    for key, cached in list(_import_overview_cache.items()):
+        if now - float(cached[0] or 0.0) >= _IMPORT_OVERVIEW_CACHE_TTL_SECONDS:
+            _import_overview_cache.pop(key, None)
+    _import_overview_cache[cache_key] = (now, payload)
+    while len(_import_overview_cache) > max(1, _IMPORT_OVERVIEW_CACHE_MAX_ITEMS):
+        oldest_key = min(_import_overview_cache, key=lambda key: _import_overview_cache[key][0])
+        _import_overview_cache.pop(oldest_key, None)
 
 
 def _now_iso() -> str:
@@ -294,6 +326,106 @@ def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
 
+def _variant_family_key(product: Dict[str, Any]) -> str:
+    title = _normalize_text(product.get("title"))
+    if not title:
+        return ""
+    model_match = re.search(r"\biphone\s+(\d+)\s+(pro(?:\s+max)?)\b", title)
+    storage_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", title)
+    color = ""
+    for candidate in ("silver", "orange", "blue", "black", "white", "purple", "midnight", "starlight", "серебрист", "оранж", "син"):
+        if candidate in title:
+            color = candidate
+            break
+    if not model_match or not storage_match or not color:
+        return ""
+    category_id = str(product.get("category_id") or "").strip()
+    model = " ".join(model_match.groups())
+    storage = "".join(storage_match.groups())
+    return "|".join([category_id, model, storage, color])
+
+
+def _ensure_feature(features: List[Dict[str, Any]], code: str, name: str, value: str, source_product_id: str) -> bool:
+    clean_value = str(value or "").strip()
+    if not clean_value:
+        return False
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        if str(feature.get("code") or "").strip() == code or _normalize_text(feature.get("name")) == _normalize_text(name):
+            if str(feature.get("value") or "").strip():
+                return False
+            feature["value"] = clean_value
+            feature["source"] = "variant_sibling"
+            feature["source_product_id"] = source_product_id
+            return True
+    features.append({"code": code, "name": name, "value": clean_value, "source": "variant_sibling", "source_product_id": source_product_id})
+    return True
+
+
+def _hydrate_missing_content_from_variant_siblings(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+    for product in products:
+        key = _variant_family_key(product)
+        if key:
+            by_key.setdefault(key, []).append(product)
+
+    changed: List[Dict[str, Any]] = []
+    for product in products:
+        key = _variant_family_key(product)
+        siblings = [item for item in by_key.get(key, []) if str(item.get("id") or "") != str(product.get("id") or "")]
+        if not siblings:
+            continue
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        features = content.get("features") if isinstance(content.get("features"), list) else []
+        source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
+        product_changed = False
+
+        if not str(content.get("description") or "").strip():
+            for sibling in siblings:
+                sibling_content = sibling.get("content") if isinstance(sibling.get("content"), dict) else {}
+                description = str(sibling_content.get("description") or "").strip()
+                if not description:
+                    continue
+                content["description"] = description
+                descriptions = source_meta.get("descriptions") if isinstance(source_meta.get("descriptions"), dict) else {}
+                descriptions["variant_sibling"] = {"source_product_id": str(sibling.get("id") or ""), "updated_at": _now_iso()}
+                source_meta["descriptions"] = descriptions
+                product_changed = True
+                break
+
+        current_media = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        if not current_media:
+            for sibling in siblings:
+                sibling_content = sibling.get("content") if isinstance(sibling.get("content"), dict) else {}
+                sibling_media = sibling_content.get("media_images") if isinstance(sibling_content.get("media_images"), list) else []
+                if not sibling_media:
+                    continue
+                content["media_images"] = [dict(item, source=item.get("source") or "variant_sibling", source_product_id=str(sibling.get("id") or "")) for item in deepcopy(sibling_media) if isinstance(item, dict)]
+                content.pop("media", None)
+                media_sources = source_meta.get("media_images") if isinstance(source_meta.get("media_images"), dict) else {}
+                media_sources["variant_sibling"] = {"source_product_id": str(sibling.get("id") or ""), "count": len(content["media_images"]), "updated_at": _now_iso()}
+                source_meta["media_images"] = media_sources
+                product_changed = True
+                break
+
+        if not _extract_product_value(product, "Бренд"):
+            for sibling in siblings:
+                brand = _extract_product_value(sibling, "Бренд")
+                if _ensure_feature(features, "brand", "Бренд", brand, str(sibling.get("id") or "")):
+                    product_changed = True
+                    break
+
+        if product_changed:
+            content["features"] = features
+            if source_meta:
+                content["source_values"] = source_meta
+            product["content"] = content
+            product["updated_at"] = _now_iso()
+            changed.append(product)
+    return changed
+
+
 def _detect_site_from_url(url: str) -> str:
     host = ""
     try:
@@ -344,6 +476,116 @@ def _product_partner_links_by_site(product: Dict[str, Any], competitor_db: Dict[
         if site in out and url:
             out[site] = url
     return out
+
+
+def _export_partner_links_by_site(product_id: str, min_score: float = 0.9) -> Dict[str, str]:
+    normalized_product_id = str(product_id or "").strip()
+    out = {"restore": "", "store77": ""}
+    if not normalized_product_id:
+        return out
+    best: Dict[str, Tuple[float, str]] = {}
+    try:
+        rows = list_pim_channel_links(
+            scope="competitor_product",
+            entity_type="product",
+            entity_id=normalized_product_id,
+        )
+    except Exception:
+        return out
+    for row in rows:
+        status = str(row.get("status") or "").strip()
+        if status != "confirmed":
+            continue
+        provider = str(row.get("provider") or "").strip()
+        url = str(row.get("url") or "").strip()
+        if provider not in out or not url or _detect_site_from_url(url) != provider:
+            continue
+        try:
+            score = float(row.get("score") or 0.0)
+        except Exception:
+            score = 0.0
+        if score < min_score:
+            continue
+        current = best.get(provider)
+        if current and current[0] >= score:
+            continue
+        best[provider] = (score, url)
+    for provider, (_, url) in best.items():
+        out[provider] = url
+    return out
+
+
+async def _enrich_export_products_from_candidate_media(products: List[Dict[str, Any]]) -> Set[str]:
+    nodes = _load_nodes()
+    changed_ids: Set[str] = set()
+    try:
+        max_products = max(0, int(os.getenv("EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT", "0") or "0"))
+    except Exception:
+        max_products = 0
+    try:
+        concurrency = max(1, int(os.getenv("EXPORT_CANDIDATE_MEDIA_ENRICH_CONCURRENCY", "6") or "6"))
+    except Exception:
+        concurrency = 6
+    try:
+        timeout_seconds = max(5.0, float(os.getenv("EXPORT_CANDIDATE_MEDIA_ENRICH_TIMEOUT", "18") or "18"))
+    except Exception:
+        timeout_seconds = 18.0
+    candidates = products[:max_products] if max_products else []
+    semaphore = asyncio.Semaphore(concurrency)
+    save_lock = asyncio.Lock()
+
+    async def _one(product: Dict[str, Any]) -> None:
+        if not isinstance(product, dict):
+            return
+        product_id = str(product.get("id") or "").strip()
+        if not product_id:
+            return
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        if current_images:
+            return
+        template_id = _resolve_template_id(str(product.get("category_id") or "").strip(), nodes)
+        if not template_id:
+            return
+        partner_links = _export_partner_links_by_site(product_id)
+        for site in ("store77", "restore"):
+            url = str(partner_links.get(site) or "").strip()
+            if not url:
+                continue
+            async with semaphore:
+                try:
+                    raw_result = await _extract_competitor_content_with_retry(url, attempts=1)
+                except Exception:
+                    continue
+                payload = {
+                    "ok": True,
+                    "url": url,
+                    "description": str(raw_result.get("description") or "").strip(),
+                    "images": raw_result.get("images") if isinstance(raw_result.get("images"), list) else [],
+                    "specs": raw_result.get("specs") if isinstance(raw_result.get("specs"), dict) else {},
+                    "mapped_specs": {},
+                }
+                changed, _, _ = await _apply_competitor_result_to_product(product, template_id, site, url, payload)
+                if changed:
+                    async with save_lock:
+                        _save_products([product])
+                    changed_ids.add(product_id)
+                    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+                    current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+                    if current_images:
+                        break
+
+    tasks = [asyncio.create_task(_one(product)) for product in candidates]
+    if tasks:
+        done, pending = await asyncio.wait(tasks, timeout=timeout_seconds)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        for task in done:
+            if task.exception():
+                continue
+    return changed_ids
 
 
 def _feature_index(features: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -607,7 +849,8 @@ async def _apply_competitor_result_to_product(
             if isinstance(item, dict)
             for key in _media_identity_keys(item)
         }
-        browser_image_payloads = await _fetch_store77_images_with_browser([str(x or "").strip() for x in images], url) if site == "store77" else {}
+        browser_image_payloads: Dict[str, Tuple[bytes, str]] = {}
+        store77_browser_fetch_attempted = False
         appended = False
         for img in images:
             url_s = str(img or "").strip()
@@ -619,18 +862,36 @@ async def _apply_competitor_result_to_product(
                 source_id=site,
                 source_url=url,
             )
-            if not imported and site == "store77" and url_s in browser_image_payloads:
-                body, content_type = browser_image_payloads[url_s]
-                imported = _upload_competitor_image_bytes(
-                    image_url=url_s,
-                    data=body,
-                    content_type=content_type,
-                    product=product,
-                    source_id=site,
-                )
-            if not imported:
-                continue
-            next_image = {**imported, "source": site, "source_url": url}
+            if not imported and site == "store77":
+                if not store77_browser_fetch_attempted:
+                    browser_image_payloads = await _fetch_store77_images_with_browser(
+                        [str(x or "").strip() for x in images],
+                        url,
+                    )
+                    store77_browser_fetch_attempted = True
+                if url_s in browser_image_payloads:
+                    body, content_type = browser_image_payloads[url_s]
+                    imported = _upload_competitor_image_bytes(
+                        image_url=url_s,
+                        data=body,
+                        content_type=content_type,
+                        product=product,
+                        source_id=site,
+                    )
+            if imported:
+                next_image = {**imported, "source": site, "source_url": url, "status": "ready"}
+            else:
+                next_image = {
+                    "url": url_s,
+                    "external_url": url_s,
+                    "source": site,
+                    "source_url": url,
+                    "source_type": "external_hotlink",
+                    "role": "gallery",
+                    "status": "needs_review",
+                    "selected": True,
+                    "needs_review": True,
+                }
             current_images.append(next_image)
             existing_urls.add(str(next_image.get("url") or "").strip())
             existing_external_urls.update(_media_identity_keys(next_image))
@@ -772,6 +1033,73 @@ def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
     return any(bool(item.get("export")) for item in _provider_bindings(prow))
 
 
+def _store_secret(store: Dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = str(store.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+async def _hydrate_marketplace_product_content(product_ids: List[str], targets: List[ExportTargetReq], limit: int) -> List[Dict[str, Any]]:
+    clean_product_ids = [str(pid or "").strip() for pid in product_ids if str(pid or "").strip()]
+    if not clean_product_ids:
+        return []
+    connectors_state = ConnectorsStateReadAdapter()
+    max_items = max(1, min(int(limit or len(clean_product_ids) or 1), len(clean_product_ids)))
+    hydrated: List[Dict[str, Any]] = []
+    for target in targets or []:
+        provider = str(target.provider or "").strip()
+        selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
+        if provider == "yandex_market":
+            stores = _selected_export_stores(provider, connectors_state.import_stores("yandex_market"), selected_store_ids)
+            for store in stores:
+                token = _store_secret(store, "token", "access_token", "api_key")
+                business_id = _store_secret(store, "business_id")
+                if not token or not business_id:
+                    continue
+                try:
+                    result = await sync_offer_cards(
+                        OfferCardsSyncReq(
+                            product_ids=clean_product_ids,
+                            limit=max_items,
+                            token=token,
+                            business_id=business_id,
+                            auth_mode=str(store.get("auth_mode") or "auto"),
+                            store_id=str(store.get("id") or ""),
+                            store_title=str(store.get("title") or ""),
+                            include_offer_mappings=True,
+                            apply_to_products=True,
+                            overwrite_existing=False,
+                        )
+                    )
+                    hydrated.append({"provider": provider, "store_id": str(store.get("id") or ""), "count": int(result.get("count") or 0), "updated_products": int(result.get("updated_products") or 0)})
+                except Exception as exc:
+                    hydrated.append({"provider": provider, "store_id": str(store.get("id") or ""), "error": str(exc)[:240]})
+        elif provider == "ozon":
+            stores = _selected_export_stores(provider, connectors_state.import_stores("ozon"), selected_store_ids)
+            for store in stores:
+                api_key = _store_secret(store, "api_key", "token", "access_token")
+                client_id = _store_secret(store, "client_id")
+                if not api_key or not client_id:
+                    continue
+                try:
+                    result = await sync_product_statuses(
+                        OzonProductsSyncReq(
+                            product_ids=clean_product_ids,
+                            limit=max_items,
+                            token=api_key,
+                            client_id=client_id,
+                            store_id=str(store.get("id") or ""),
+                            store_title=str(store.get("title") or ""),
+                        )
+                    )
+                    hydrated.append({"provider": provider, "store_id": str(store.get("id") or ""), "count": int(result.get("count") or 0), "updated_products": int(result.get("updated_products") or 0)})
+                except Exception as exc:
+                    hydrated.append({"provider": provider, "store_id": str(store.get("id") or ""), "error": str(exc)[:240]})
+    return hydrated
+
+
 def _infer_ozon_type(product: Dict[str, Any]) -> str:
     title = str(product.get("title") or "").strip().lower()
     category_name = ""
@@ -848,7 +1176,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
         media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
         media = media_images if media_images else media_legacy
-        pictures = [_export_media_url(x.get("url")) for x in media if isinstance(x, dict) and _export_media_url(x.get("url"))]
+        pictures = _export_media_urls(media)
         status = str(product.get("status") or "").strip()
 
         type_row = _provider_row(rows, "ozon", "8229")
@@ -901,6 +1229,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                     }
                 )
         _upsert_ozon_attribute(attributes, "8229", "Тип", type_value, "Системное поле")
+        _upsert_ozon_attribute(attributes, "85", "Бренд", vendor, "Системное поле")
         _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
 
         missing: List[str] = []
@@ -916,7 +1245,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             missing.append("Нет изображений")
         if not type_value:
             missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
-        if not _provider_row_enabled(brand_row, "ozon") or not vendor:
+        if not vendor:
             missing.append("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст")
         if not model_group:
             missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
@@ -1029,6 +1358,106 @@ def _selection_key(node_ids: List[str], product_ids: List[str], include_descenda
     )
 
 
+def _export_request_key(req: CatalogExportRunReq) -> str:
+    target_parts: List[str] = []
+    for target in req.targets or []:
+        provider = str(target.provider or "").strip()
+        stores = ",".join(sorted({str(item or "").strip() for item in target.store_ids if str(item or "").strip()}))
+        if provider:
+            target_parts.append(f"{provider}:{stores}")
+    selection_key = _selection_key(
+        req.selection.node_ids,
+        req.selection.product_ids,
+        bool(req.selection.include_descendants),
+        int(req.limit),
+    )
+    return f"{selection_key}|targets={'/'.join(sorted(target_parts))}"
+
+
+def _backend_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _repo_root() -> Path:
+    return _backend_root().parent
+
+
+def _save_export_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    upsert_pim_workflow_run(job, workflow=_EXPORT_WORKFLOW)
+    return job
+
+
+def _claim_export_job(job_id: str) -> Optional[Dict[str, Any]]:
+    return claim_pim_workflow_run_as_running(
+        job_id,
+        workflow=_EXPORT_WORKFLOW,
+        payload_updates={
+            "phase": "preparing",
+            "message": "Готовлю export batch: проверяю медиа, описание, категории, параметры и значения.",
+            "started_at": _now_iso(),
+            "updated_ts": time.time(),
+        },
+    )
+
+
+def _prune_export_jobs() -> None:
+    now = time.time()
+    for job in list_pim_workflow_runs(workflow=_EXPORT_WORKFLOW, statuses=["queued", "running"], limit=200):
+        updated = float(job.get("updated_ts") or job.get("created_ts") or 0.0)
+        if updated and now - updated > _EXPORT_JOB_TTL_SECONDS:
+            job.update({
+                "status": "failed",
+                "phase": "stale",
+                "message": "Подготовка экспорта была прервана. Запустите проверку заново.",
+                "finished_at": _now_iso(),
+                "updated_ts": now,
+                "error": "STALE_EXPORT_JOB",
+            })
+            _save_export_job(job)
+
+
+def _public_export_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "job_id": str(job.get("job_id") or job.get("id") or ""),
+        "run_id": str(job.get("run_id") or ""),
+        "status": str(job.get("status") or "queued"),
+        "phase": str(job.get("phase") or ""),
+        "message": str(job.get("message") or ""),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "summary": job.get("summary"),
+        "error": job.get("error") or "",
+        "run": job.get("run") if isinstance(job.get("run"), dict) else None,
+    }
+
+
+def _start_export_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    env = os.environ.copy()
+    backend_root = str(_backend_root())
+    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
+    command = [
+        sys.executable,
+        "-m",
+        "app.workers.catalog_export_prepare",
+        "--job-id",
+        job_id,
+    ]
+    if organization_id:
+        command.extend(["--organization-id", organization_id])
+    subprocess.Popen(
+        command,
+        cwd=str(_repo_root()),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
 def _build_import_overview_payload(
     node_ids: List[str],
     product_ids: List[str],
@@ -1110,7 +1539,7 @@ def get_catalog_import_overview(
         return cached[1]
 
     payload = _build_import_overview_payload(parsed_node_ids, parsed_product_ids, bool(include_descendants), safe_limit)
-    _import_overview_cache[cache_key] = (now, payload)
+    _remember_import_overview(cache_key, payload)
     return payload
 
 
@@ -1344,11 +1773,20 @@ def resolve_catalog_import(req: CatalogImportResolveReq) -> Dict[str, Any]:
     return {"ok": True, "resolved_count": len(resolved_keys)}
 
 
-@router.post("/export/run")
-def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
+def _build_catalog_export_run(req: CatalogExportRunReq) -> Dict[str, Any]:
     products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants), limit=int(req.limit))
     products = products[: int(req.limit)]
     product_ids = [str(p.get("id") or "").strip() for p in products if str(p.get("id") or "").strip()]
+    enriched_from_candidates: List[str] = []
+    if product_ids:
+        enriched_from_candidates = sorted(asyncio.run(_enrich_export_products_from_candidate_media(products)))
+    marketplace_hydration: List[Dict[str, Any]] = []
+    if product_ids:
+        marketplace_hydration = asyncio.run(_hydrate_marketplace_product_content(product_ids, req.targets or [], int(req.limit)))
+        sibling_updates = _hydrate_missing_content_from_variant_siblings(query_products_full(ids=product_ids))
+        if sibling_updates:
+            _save_products(sibling_updates)
+            marketplace_hydration.append({"provider": "variant_sibling", "updated_products": len(sibling_updates), "count": len(sibling_updates)})
     connectors_state = ConnectorsStateReadAdapter()
     batches: List[Dict[str, Any]] = []
     for target in req.targets or []:
@@ -1377,9 +1815,107 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
         "targets": [t.model_dump() for t in req.targets or []],
         "summary": summary,
         "batches": batches,
+        "enriched_from_candidates": enriched_from_candidates,
+        "marketplace_hydration": marketplace_hydration,
     }
     _save_runs(EXPORT_RUNS_PATH, runs)
-    return {"ok": True, "run_id": run_id, "count": len(product_ids), "summary": summary, "batches": batches}
+    return {"ok": True, "run_id": run_id, "count": len(product_ids), "summary": summary, "batches": batches, "enriched_from_candidates": enriched_from_candidates, "marketplace_hydration": marketplace_hydration}
+
+
+@router.post("/export/run")
+def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
+    return _build_catalog_export_run(req)
+
+
+def _run_catalog_export_job(job_id: str) -> None:
+    job = get_pim_workflow_run(job_id, workflow=_EXPORT_WORKFLOW)
+    if not isinstance(job, dict):
+        return
+    request_payload = job.get("request") if isinstance(job.get("request"), dict) else {}
+    try:
+        req = CatalogExportRunReq.model_validate(request_payload)
+    except Exception as exc:
+        job.update({
+            "status": "failed",
+            "phase": "failed",
+            "message": "Не удалось прочитать параметры export batch.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+        })
+        _save_export_job(job)
+        return
+
+    job.update({
+        "status": "running",
+        "phase": "preparing",
+        "message": "Готовлю export batch: проверяю медиа, описание, категории, параметры и значения.",
+        "started_at": job.get("started_at") or _now_iso(),
+        "updated_ts": time.time(),
+    })
+    _save_export_job(job)
+    try:
+        result = _build_catalog_export_run(req)
+        job.update({
+            "status": "completed",
+            "phase": "completed",
+            "message": "Export batch подготовлен. Проверьте готовые строки и блокеры.",
+            "run_id": result.get("run_id"),
+            "run": result,
+            "summary": result.get("summary"),
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+        })
+        _save_export_job(job)
+    except Exception as exc:
+        job.update({
+            "status": "failed",
+            "phase": "failed",
+            "message": "Подготовка export batch не завершилась. Можно запустить проверку заново.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+        })
+        _save_export_job(job)
+
+
+@router.post("/export/jobs")
+def start_catalog_export_job(req: CatalogExportRunReq) -> Dict[str, Any]:
+    _prune_export_jobs()
+    request_key = _export_request_key(req)
+    for job in list_pim_workflow_runs(workflow=_EXPORT_WORKFLOW, statuses=["queued", "running"], limit=100):
+        if str(job.get("request_key") or "") == request_key:
+            return _public_export_job(job)
+
+    job_id = f"export_job_{uuid4().hex}"
+    job = {
+        "id": job_id,
+        "run_id": "",
+        "job_id": job_id,
+        "workflow": _EXPORT_WORKFLOW,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Подготовка экспорта поставлена в очередь.",
+        "request": req.model_dump(),
+        "request_key": request_key,
+        "created_at": _now_iso(),
+        "created_ts": time.time(),
+        "updated_ts": time.time(),
+    }
+    _save_export_job(job)
+    organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
+    _start_export_worker_process(job_id, organization_id)
+    return _public_export_job(job)
+
+
+@router.get("/export/jobs/{job_id}")
+def get_catalog_export_job(job_id: str) -> Dict[str, Any]:
+    _prune_export_jobs()
+    jid = str(job_id or "").strip()
+    job = get_pim_workflow_run(jid, workflow=_EXPORT_WORKFLOW)
+    if not isinstance(job, dict):
+        raise HTTPException(status_code=404, detail="EXPORT_JOB_NOT_FOUND")
+    return _public_export_job(job)
 
 
 @router.get("/export/runs/{run_id}")
@@ -1389,3 +1925,30 @@ def get_catalog_export_run(run_id: str) -> Dict[str, Any]:
     if not isinstance(row, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
     return {"ok": True, "run": row}
+
+
+@router.get("/export/latest-run")
+def get_latest_catalog_export_run(
+    category_id: str = Query(default=""),
+    product_id: str = Query(default=""),
+) -> Dict[str, Any]:
+    category = str(category_id).strip() if isinstance(category_id, str) else ""
+    product = str(product_id).strip() if isinstance(product_id, str) else ""
+    runs = _load_runs(EXPORT_RUNS_PATH)
+    rows = [row for row in (runs.get("runs") or {}).values() if isinstance(row, dict)]
+
+    def matches(row: Dict[str, Any]) -> bool:
+        selection = row.get("selection") if isinstance(row.get("selection"), dict) else {}
+        node_ids = {str(item or "").strip() for item in selection.get("node_ids") or [] if str(item or "").strip()}
+        product_ids = {str(item or "").strip() for item in selection.get("product_ids") or [] if str(item or "").strip()}
+        if category and category not in node_ids:
+            return False
+        if product and product not in product_ids:
+            return False
+        return True
+
+    filtered = [row for row in rows if matches(row)]
+    latest = max(filtered, key=lambda row: str(row.get("created_at") or row.get("id") or ""), default=None)
+    if not latest:
+        raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
+    return {"ok": True, "run": latest}

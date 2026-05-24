@@ -134,7 +134,7 @@ const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
   rejected: "Отклонено",
 };
 
-type DraftFilter = "all" | InfoModelCandidate["status"];
+type DraftFilter = "all" | InfoModelCandidate["status"] | "competitor_only" | "marketplace_only" | "weak_global";
 
 function normTitle(s: string) {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -239,6 +239,53 @@ function candidateSources(candidate: InfoModelCandidate) {
       return `${provider}${field}${count}`;
     })
     .filter(Boolean);
+}
+
+function sourceKindLabel(kind: string) {
+  if (kind === "product") return "Товары";
+  if (kind === "marketplace") return "Площадки";
+  if (kind === "competitor") return "Конкуренты";
+  return sourceLabel(kind);
+}
+
+function sourceKindStats(candidate: InfoModelCandidate) {
+  const byKind = candidate.source_summary?.by_kind || {};
+  const fromSummary = Object.entries(byKind)
+    .filter(([, count]) => Number(count || 0) > 0)
+    .map(([kind, count]) => ({ label: sourceKindLabel(kind), count: Number(count || 0) }));
+  if (fromSummary.length) return fromSummary;
+  const fallback = new Map<string, number>();
+  for (const source of candidate.sources || []) {
+    const key = source.kind || source.provider || "source";
+    fallback.set(key, (fallback.get(key) || 0) + 1);
+  }
+  return Array.from(fallback.entries()).map(([kind, count]) => ({ label: sourceKindLabel(kind), count }));
+}
+
+function globalMatchReasonLabel(reason?: string) {
+  if (reason === "same_code") return "код совпал";
+  if (reason === "same_title") return "название совпало";
+  if (reason === "similar_code") return "похожий код";
+  if (reason === "similar_title") return "похожее название";
+  return "похожий параметр";
+}
+
+function candidateSourceKinds(candidate: InfoModelCandidate) {
+  return candidate.source_summary?.by_kind || {};
+}
+
+function isCompetitorOnlyCandidate(candidate: InfoModelCandidate) {
+  const kinds = candidateSourceKinds(candidate);
+  return Number(kinds.competitor || 0) > 0 && Number(kinds.product || 0) === 0 && Number(kinds.marketplace || 0) === 0;
+}
+
+function isMarketplaceOnlyCandidate(candidate: InfoModelCandidate) {
+  const kinds = candidateSourceKinds(candidate);
+  return Number(kinds.marketplace || 0) > 0 && Number(kinds.product || 0) === 0;
+}
+
+function isWeakGlobalCandidate(candidate: InfoModelCandidate) {
+  return Boolean(candidate.global_match) && Number(candidate.global_match?.score || 0) < 0.86;
 }
 
 export default function TemplateEditor() {
@@ -452,6 +499,9 @@ export default function TemplateEditor() {
   const rejectedCandidates = draftCandidates.filter((candidate) => candidate.status === "rejected").length;
   const visibleDraftCandidates = useMemo(() => {
     if (draftFilter === "all") return draftCandidates;
+    if (draftFilter === "competitor_only") return draftCandidates.filter(isCompetitorOnlyCandidate);
+    if (draftFilter === "marketplace_only") return draftCandidates.filter(isMarketplaceOnlyCandidate);
+    if (draftFilter === "weak_global") return draftCandidates.filter(isWeakGlobalCandidate);
     return draftCandidates.filter((candidate) => candidate.status === draftFilter);
   }, [draftCandidates, draftFilter]);
 
@@ -468,6 +518,33 @@ export default function TemplateEditor() {
       }
     }
     return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
+  }, [draftCandidates]);
+  const draftAudit = useMemo(() => {
+    const codeCounts = new Map<string, number>();
+    for (const candidate of draftCandidates) {
+      const code = (candidate.code || candidate.name || "").trim().toLowerCase();
+      if (code) codeCounts.set(code, (codeCounts.get(code) || 0) + 1);
+    }
+    let competitorOnly = 0;
+    let marketplaceOnly = 0;
+    let weakGlobalMatch = 0;
+    let lowConfidence = 0;
+    let selectWithoutValues = 0;
+    for (const candidate of draftCandidates) {
+      if (isCompetitorOnlyCandidate(candidate)) competitorOnly += 1;
+      if (isMarketplaceOnlyCandidate(candidate)) marketplaceOnly += 1;
+      if (isWeakGlobalCandidate(candidate)) weakGlobalMatch += 1;
+      if (Number(candidate.confidence || 0) < 0.7) lowConfidence += 1;
+      if (candidate.type === "select" && !(candidate.examples || []).some(Boolean)) selectWithoutValues += 1;
+    }
+    return {
+      competitorOnly,
+      marketplaceOnly,
+      weakGlobalMatch,
+      lowConfidence,
+      selectWithoutValues,
+      duplicates: Array.from(codeCounts.values()).filter((count) => count > 1).length,
+    };
   }, [draftCandidates]);
 
   const yandexSource = useMemo<TemplateSourceInfo | null>(() => {
@@ -969,6 +1046,9 @@ export default function TemplateEditor() {
     { key: "needs_review", label: `На проверке (${reviewCandidates})` },
     { key: "accepted", label: `В модели (${acceptedCandidates})` },
     { key: "rejected", label: `Не используется (${rejectedCandidates})` },
+    { key: "competitor_only", label: `Только конкуренты (${draftAudit.competitorOnly})` },
+    { key: "marketplace_only", label: `Только площадки (${draftAudit.marketplaceOnly})` },
+    { key: "weak_global", label: `Слабая связь PIM (${draftAudit.weakGlobalMatch})` },
     { key: "all", label: `Все (${draftCandidates.length})` },
   ] as const;
 
@@ -1088,10 +1168,10 @@ export default function TemplateEditor() {
                         <button type="button" onClick={() => nav(`/products?parent=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                           Товары категории
                         </button>
-                        <button type="button" onClick={() => nav(`/sources-mapping?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                        <button type="button" onClick={() => nav(`/sources?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                           Маппинг полей
                         </button>
-                        <button type="button" onClick={() => nav(`/catalog?selected=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                        <button type="button" onClick={() => nav(`/catalog?category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                           Открыть категорию
                         </button>
                         <button type="button" onClick={() => setImportOpen(true)} disabled={!categoryId || saving}>
@@ -1121,6 +1201,32 @@ export default function TemplateEditor() {
                           <span>{reviewCandidates} на проверке</span>
                           <span>{rejectedCandidates} не используется</span>
                         </div>
+                        <div className="tplDraftAuditGrid" aria-label="Проверка качества draft-модели">
+                          <span>
+                            <b>{draftAudit.competitorOnly}</b>
+                            только конкуренты
+                          </span>
+                          <span>
+                            <b>{draftAudit.marketplaceOnly}</b>
+                            только площадки
+                          </span>
+                          <span>
+                            <b>{draftAudit.weakGlobalMatch}</b>
+                            слабая связь PIM
+                          </span>
+                          <span>
+                            <b>{draftAudit.lowConfidence}</b>
+                            низкая уверенность
+                          </span>
+                          <span>
+                            <b>{draftAudit.selectWithoutValues}</b>
+                            списки без значений
+                          </span>
+                          <span>
+                            <b>{draftAudit.duplicates}</b>
+                            дубли кодов
+                          </span>
+                        </div>
                       </div>
                       <details className="tplDraftHelp">
                         <summary>Как читать предложения</summary>
@@ -1146,7 +1252,10 @@ export default function TemplateEditor() {
                               {candidate.global_match ? (
                                 <div className="tplDraftReuse">
                                   <b>Уже есть в PIM</b>
-                                  <span>{candidate.global_match.title || candidate.global_match.code}</span>
+                                  <span>
+                                    {candidate.global_match.title || candidate.global_match.code} · {globalMatchReasonLabel(candidate.global_match.reason)}
+                                    {typeof candidate.global_match.score === "number" ? ` ${Math.round(candidate.global_match.score * 100)}%` : ""}
+                                  </span>
                                 </div>
                               ) : (
                                 <div className="tplDraftReuse is-new">
@@ -1154,11 +1263,29 @@ export default function TemplateEditor() {
                                   <span>Глобального параметра пока нет</span>
                                 </div>
                               )}
+                              <div className="tplDraftEvidence">
+                                {sourceKindStats(candidate).map((item) => (
+                                  <span key={`${candidate.id}-${item.label}`}>
+                                    <b>{item.count}</b>
+                                    {item.label}
+                                  </span>
+                                ))}
+                                {candidate.required ? <span className="is-required">Обязательное</span> : null}
+                              </div>
                               <div className="tplDraftSources">
                                 {candidateSources(candidate).slice(0, 3).map((source) => (
                                   <small key={source}>{source}</small>
                                 ))}
                               </div>
+                              {candidate.review_flags?.length ? (
+                                <div className="tplDraftFlags">
+                                  {candidate.review_flags.slice(0, 2).map((flag) => (
+                                    <small className={`is-${flag.level || "info"}`} key={`${candidate.id}-${flag.code || flag.message}`}>
+                                      {flag.message}
+                                    </small>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                             <div className="tplDraftExamples">{candidate.examples?.slice(0, 3).join(", ") || "Без примеров"}</div>
                             <div className="tplDraftActions">
@@ -1166,6 +1293,19 @@ export default function TemplateEditor() {
                               {candidate.status !== "accepted" ? (
                                 <Button onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
                                   {candidate.global_match ? "Использовать поле" : "Создать поле"}
+                                </Button>
+                              ) : null}
+                              {candidate.status !== "accepted" && candidate.global_match ? (
+                                <Button
+                                  onClick={() =>
+                                    updateDraftCandidate(candidate.id, {
+                                      global_match: null,
+                                      suggested_action: "create_attribute",
+                                    } as Partial<InfoModelCandidate> & { global_match: null })
+                                  }
+                                  disabled={draftBusy}
+                                >
+                                  Создать как новое
                                 </Button>
                               ) : null}
                               {candidate.status !== "rejected" ? (

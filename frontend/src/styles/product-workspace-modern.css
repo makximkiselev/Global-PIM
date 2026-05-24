@@ -801,11 +801,35 @@
   gap:14px;
 }
 
+.productWorkspaceMediaHint{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+  padding:12px 14px;
+  border:1px solid rgba(var(--line-rgb), .72);
+  border-radius:14px;
+  background:rgba(var(--surface-rgb), .76);
+  color:var(--muted);
+  font-size:13px;
+  font-weight:750;
+}
+
+.productWorkspaceMediaHint strong{
+  color:var(--text);
+  white-space:nowrap;
+}
+
 .productWorkspaceMediaCard{
   overflow:hidden;
   border:1px solid rgba(var(--line-rgb), .7);
   border-radius:18px;
   background:rgba(var(--surface-rgb), .8);
+}
+
+.productWorkspaceMediaCard.isDisabled{
+  opacity:.58;
 }
 
 .productWorkspaceMediaCard img{
@@ -835,12 +859,78 @@
   font-weight:750;
 }
 
+.productWorkspaceMediaActions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:0 12px 12px;
+}
+
+.productWorkspaceMediaToggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:var(--text);
+  font-size:12px;
+  font-weight:850;
+}
+
+.productWorkspaceMediaToggle input{
+  width:16px;
+  height:16px;
+  margin:0;
+  accent-color:var(--accent);
+}
+
+.productWorkspaceMediaOrder{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.productWorkspaceMediaOrderButton{
+  min-height:30px;
+  padding:6px 9px;
+  font-size:12px;
+}
+
 .productWorkspaceEmptyActions{
   display:flex;
   align-items:center;
   gap:10px;
   flex-wrap:wrap;
   justify-content:center;
+}
+
+.productWorkspaceCreatedGuide{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px 18px;
+  border-color:rgba(var(--brand-rgb), .24);
+  background:linear-gradient(180deg, rgba(var(--card-rgb), .98), rgba(var(--brand-rgb), .08));
+}
+
+.productWorkspaceCreatedGuide div{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  min-width:0;
+}
+
+.productWorkspaceCreatedGuide strong{
+  color:var(--text);
+  font-size:15px;
+  font-weight:950;
+}
+
+.productWorkspaceCreatedGuide span{
+  color:var(--text-soft);
+  font-size:13px;
+  font-weight:750;
+  line-height:1.45;
 }
 
 .productWorkspaceEmptyActions .btn{
@@ -1853,6 +1943,44 @@
   line-height:1.05;
   letter-spacing:-.04em;
   overflow-wrap:anywhere;
+}
+
+.productCanonicalInput{
+  width:100%;
+  min-height:92px;
+  resize:vertical;
+  border:1px solid rgba(var(--line-rgb), .72);
+  border-radius:16px;
+  padding:12px 14px;
+  background:rgba(var(--surface-rgb), .78);
+  color:var(--text);
+  font:inherit;
+  font-size:15px;
+  font-weight:800;
+  line-height:1.35;
+  outline:none;
+}
+
+.productCanonicalInput:focus{
+  border-color:rgba(var(--brand-rgb), .58);
+  box-shadow:0 0 0 4px rgba(var(--brand-rgb), .12);
+}
+
+.productCanonicalActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.productParamError{
+  padding:10px 12px;
+  border:1px solid rgba(220, 38, 38, .28);
+  border-radius:14px;
+  background:rgba(254, 226, 226, .72);
+  color:#991b1b;
+  font-size:12px;
+  font-weight:800;
 }
 
 .productLongValue{

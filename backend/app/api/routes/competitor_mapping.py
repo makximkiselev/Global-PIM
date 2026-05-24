@@ -18,7 +18,7 @@ from urllib.parse import quote, quote_plus, urljoin, urlparse
 
 import httpx
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.core.llm import LlmError, llm_chat_text
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
@@ -58,6 +58,7 @@ router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
 _BOOTSTRAP_CACHE_TTL_SECONDS = 300.0
 _DISCOVERY_SOURCE_TIMEOUT_SECONDS = 32.0
 _STORE77_CATEGORY_HTML_CACHE_TTL_SECONDS = 180.0
+_DISCOVERY_RUN_CACHE_MAX_ITEMS = int(os.getenv("DISCOVERY_RUN_CACHE_MAX_ITEMS", "50") or "50")
 _ACTIONABLE_DISCOVERY_CONFIDENCE_SCORE = 0.78
 _VISIBLE_DISCOVERY_CONFIDENCE_SCORE = 0.45
 _bootstrap_cache: Dict[str, Dict[str, Any]] = {}
@@ -66,6 +67,11 @@ _store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
 
 _AI_SPEC_ACTIONS = {"map_existing", "create_attribute", "ignore"}
 _AI_MAPPING_MEMORY_SCOPE = "ai_mapping_memory"
+_COMPETITOR_PRODUCT_ENRICH_WORKFLOW = "competitor_product_enrich"
+_AI_PRODUCT_MAPPING_SPEC_LIMIT = max(4, int(os.getenv("AI_PRODUCT_MAPPING_SPEC_LIMIT", "6") or "6"))
+_AI_PRODUCT_MAPPING_TIMEOUT_SECONDS = max(30.0, float(os.getenv("AI_PRODUCT_MAPPING_TIMEOUT_SECONDS", "120") or "120"))
+_AI_TEMPLATE_MAPPING_SPEC_LIMIT = max(6, int(os.getenv("AI_TEMPLATE_MAPPING_SPEC_LIMIT", "8") or "8"))
+_AI_TEMPLATE_MAPPING_TIMEOUT_SECONDS = max(30.0, float(os.getenv("AI_TEMPLATE_MAPPING_TIMEOUT_SECONDS", "120") or "120"))
 
 
 # =========================
@@ -340,6 +346,7 @@ DISCOVERY_SOURCES: List[Dict[str, Any]] = [
     },
 ]
 
+DISCOVERY_SAMPLE_PRODUCT_LIMIT = 200
 _COMPETITOR_MAPPING_SCOPE = "competitor_mapping"
 _COMPETITOR_MAPPING_META_PROVIDER = "__meta"
 _COMPETITOR_DISCOVERY_WORKFLOW = "competitor_discovery"
@@ -673,6 +680,9 @@ def _remember_discovery_run(run: Dict[str, Any]) -> Dict[str, Any]:
     run_id = str(run.get("id") or "").strip()
     if run_id:
         _discovery_run_cache[run_id] = dict(run)
+    while len(_discovery_run_cache) > max(1, _DISCOVERY_RUN_CACHE_MAX_ITEMS):
+        oldest_key = next(iter(_discovery_run_cache))
+        _discovery_run_cache.pop(oldest_key, None)
     return run
 
 
@@ -760,11 +770,62 @@ def _query_terms_for_product(product: Dict[str, Any]) -> List[str]:
         compact = re.sub(r"\s+", " ", title)
         if compact and compact not in terms:
             terms.append(compact)
-        search_title = re.sub(r"\b(смартфон|телефон)\b", " ", compact, flags=re.I)
+        search_title = re.sub(r"\b(смартфон|телефон|планшет|ноутбук)\b", " ", compact, flags=re.I)
         search_title = re.sub(r"\((global|ru|россия)\)", " ", search_title, flags=re.I)
+        search_title = re.sub(r"\bMidhight\b", "Midnight", search_title, flags=re.I)
         search_title = re.sub(r"\s+", " ", search_title).strip()
         if search_title and search_title not in terms:
             terms.append(search_title)
+        normalized = _norm_match_text(search_title)
+        storage_values = re.findall(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized)
+        memory_terms = [f"{num}{'TB' if unit in {'tb', 'тб'} else 'GB'}" for num, unit in storage_values]
+        color_word = ""
+        for label, aliases in (
+            ("Midnight", ("midnight", "midhight", "темная ночь")),
+            ("Starlight", ("starlight", "сияющая звезда")),
+            ("Space Grey", ("space grey", "space gray", "серый космос")),
+            ("Silver", ("silver", "серебрист")),
+            ("Sky Blue", ("sky blue", "небесно голубой")),
+            ("Purple", ("purple", "фиолет")),
+            ("Blue", ("blue", "синий")),
+        ):
+            if any(alias in normalized or alias in search_title.lower() for alias in aliases):
+                color_word = label
+                break
+        if "macbook" in normalized:
+            parts = ["MacBook"]
+            if "air" in normalized:
+                parts.append("Air")
+            size = re.search(r"\b(13|15|14|16)\b", normalized)
+            if size:
+                parts.append(size.group(1))
+            chip = re.search(r"\bm\s*(\d)\b", normalized)
+            if chip:
+                parts.append(f"M{chip.group(1)}")
+            parts.extend(memory_terms[:2])
+            if color_word:
+                parts.append(color_word)
+            term = " ".join(parts).strip()
+            if term and term not in terms:
+                terms.append(term)
+        if "ipad" in normalized:
+            parts = ["iPad"]
+            if "air" in normalized:
+                parts.append("Air")
+            size = re.search(r"\b(11|13)\b", normalized)
+            if size:
+                parts.append(size.group(1))
+            chip = re.search(r"\bm\s*(\d)\b", normalized)
+            if chip:
+                parts.append(f"M{chip.group(1)}")
+            parts.extend(memory_terms[:1])
+            if "cellular" in normalized:
+                parts.append("Cellular")
+            if color_word:
+                parts.append(color_word)
+            term = " ".join(parts).strip()
+            if term and term not in terms:
+                terms.append(term)
     for key in ("sku_gt", "sku_pim"):
         value = str(product.get(key) or "").strip()
         if value and value not in terms:
@@ -809,6 +870,11 @@ _MATCH_REQUIRED_TOKENS = {
     "sony",
     "dyson",
     "pro",
+    "m1",
+    "m2",
+    "m3",
+    "m4",
+    "m5",
     "max",
     "plus",
     "ultra",
@@ -906,13 +972,28 @@ def _variant_profile(value: Any) -> Dict[str, str]:
     profile: Dict[str, str] = {}
 
     model_match = re.search(r"\biphone\s+(\d{1,2})(e\b|(?:\s+(pro\s+max|pro|plus|mini)))?", normalized)
+    macbook_match = re.search(r"\bmacbook\s+(air|pro)?\s*(13|14|15|16)?\b.*?\bm\s*(\d)\b", normalized)
+    ipad_match = re.search(r"\bipad\s+(air|pro|mini)?\s*(11|13)?\b.*?\bm\s*(\d)\b", normalized)
     memory_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized)
     if model_match:
         generation = model_match.group(1)
         suffix = re.sub(r"\s+", "_", ((model_match.group(3) or model_match.group(2) or "")).strip())
         profile["model"] = "_".join(part for part in ("iphone", generation, suffix) if part)
+    elif macbook_match:
+        line = macbook_match.group(1) or ""
+        size = macbook_match.group(2) or ""
+        chip = f"m{macbook_match.group(3)}"
+        profile["model"] = "_".join(part for part in ("macbook", line, size, chip) if part)
+    elif ipad_match:
+        line = ipad_match.group(1) or ""
+        size = ipad_match.group(2) or ""
+        chip = f"m{ipad_match.group(3)}"
+        profile["model"] = "_".join(part for part in ("ipad", line, size, chip) if part)
     if memory_match:
         profile["memory"] = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
+
+    if "deep blue" in raw_lower or "глубокий синий" in raw_lower or "глубокий-синий" in raw_lower:
+        profile["color"] = "blue"
 
     color_options = [
         ("natural_titanium", ("natural titanium", "натуральный титан", "natural", "натуральн")),
@@ -920,16 +1001,22 @@ def _variant_profile(value: Any) -> Dict[str, str]:
         ("black_titanium", ("black titanium", "черный титан", "чёрный титан", "black", "черный", "чёрный")),
         ("white_titanium", ("white titanium", "белый титан", "white", "белый")),
         ("silver", ("silver", "серебрист", "серебро")),
+        ("space_gray", ("space gray", "space grey", "серый космос", "космический серый", "spacegray", "spacegrey")),
+        ("starlight", ("starlight", "сияющая звезда", "звездный", "звёздный")),
+        ("purple", ("purple", "фиолетовый", "фиолетов")),
+        ("midnight", ("midnight", "midhight", "темная ночь", "темно синий", "темно-синий", "полуночный")),
+        ("sky_blue", ("sky blue", "небесно голубой", "skyblue")),
         ("blue", ("blue", "синий", "голубой")),
         ("green", ("green", "зеленый", "зелёный")),
         ("orange", ("orange", "оранжевый", "оранжев")),
         ("pink", ("pink", "розовый")),
         ("yellow", ("yellow", "желтый", "жёлтый")),
     ]
-    for slug, aliases in color_options:
-        if any(alias in raw_lower or alias in normalized for alias in aliases):
-            profile["color"] = slug
-            break
+    if not profile.get("color"):
+        for slug, aliases in color_options:
+            if any(alias in raw_lower or alias in normalized for alias in aliases):
+                profile["color"] = slug
+                break
 
     sim = _sim_profile(value)
     if sim != "unknown":
@@ -1017,6 +1104,8 @@ def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, bra
     required_tokens = _required_match_tokens(product)
     candidate_tokens = candidate_tokens_for_line
     missing_required = sorted(required_tokens - candidate_tokens)
+    if product_profile.get("color") and product_profile.get("color") == candidate_profile.get("color"):
+        missing_required = [token for token in missing_required if token != product_profile.get("color")]
     if missing_required:
         return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
     if required_tokens:
@@ -1059,6 +1148,8 @@ def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku
 
     required_tokens = _required_match_tokens(product)
     missing_required = sorted(required_tokens - candidate_tokens)
+    if product_profile.get("color") and product_profile.get("color") == candidate_profile.get("color"):
+        missing_required = [token for token in missing_required if token != product_profile.get("color")]
     sim_missing = [token for token in missing_required if token in {"esim", "sim"}]
     if missing_required and missing_required != sim_missing:
         return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
@@ -1577,6 +1668,10 @@ def _product_discovery_source_summaries(
         best = max(source_candidates, key=_candidate_confidence_score, default=None)
         best_score = _candidate_confidence_score(best) if best else None
         hidden_count = max(0, len(source_candidates) - len(visible))
+        scan_state = scan_states.get(source_id, {})
+        retry_after_seconds = 0
+        if scan_state.get("status") in {"scan_error", "scanned_empty"}:
+            retry_after_seconds = 300 if scan_state.get("status") == "scan_error" else 900
         if source_links:
             status = "confirmed"
             label = "Подтверждено"
@@ -1592,12 +1687,15 @@ def _product_discovery_source_summaries(
         elif best:
             status = "no_exact_match"
             label = "Нет точного товара"
+            reasons = (best or {}).get("confidence_reasons") if isinstance((best or {}).get("confidence_reasons"), list) else []
             message = "Найденные карточки скрыты: точность ниже порога или товар не совпадает."
-        elif scan_states.get(source_id, {}).get("status") == "scan_error":
+            if reasons:
+                message = f"{message} Причина: {str(reasons[0])[:160]}"
+        elif scan_state.get("status") == "scan_error":
             status = "scan_error"
             label = "Ошибка источника"
-            message = scan_states[source_id].get("message") or "Источник не ответил или вернул ошибку. Можно повторить поиск."
-        elif scan_states.get(source_id, {}).get("status") == "scanned_empty":
+            message = scan_state.get("message") or "Источник не ответил или вернул ошибку. Можно повторить поиск."
+        elif scan_state.get("status") == "scanned_empty":
             status = "no_exact_match"
             label = "Нет точного товара"
             message = "Источник проверен: точной карточки для этого SKU не найдено."
@@ -1622,9 +1720,10 @@ def _product_discovery_source_summaries(
                 "best_reasons": (best or {}).get("confidence_reasons")
                 if isinstance((best or {}).get("confidence_reasons"), list)
                 else [],
-                "last_scanned_at": scan_states.get(source_id, {}).get("last_scanned_at"),
-                "scan_error": scan_states.get(source_id, {}).get("error"),
-                "scan_evidence": scan_states.get(source_id, {}).get("evidence") or {},
+                "last_scanned_at": scan_state.get("last_scanned_at"),
+                "retry_after_seconds": retry_after_seconds,
+                "scan_error": scan_state.get("error"),
+                "scan_evidence": scan_state.get("evidence") or {},
             }
         )
     return summaries
@@ -2044,8 +2143,13 @@ async def _merge_competitor_content_into_product(
             if imported_image:
                 next_image.update(imported_image)
             else:
-                # Broken external hotlinks must not be treated as ready media.
-                continue
+                next_image.update({
+                    "url": image_url,
+                    "external_url": image_url,
+                    "source_type": "external_hotlink",
+                    "status": "needs_review",
+                    "needs_review": True,
+                })
             next_image.setdefault("source", source_id)
             next_image.setdefault("source_url", source_url)
             next_image.setdefault("role", "gallery")
@@ -2228,7 +2332,18 @@ def _target_match_score(source_name: str, target: Dict[str, Any]) -> float:
     if not source_tokens or not target_tokens:
         return 0.0
 
-    if "упаковк" in " ".join(target_tokens) and "упаковк" not in " ".join(source_tokens):
+    source_text = " ".join(source_tokens)
+    target_text = " ".join(target_tokens)
+    if "упаковк" in target_text and "упаковк" not in source_text:
+        return 0.0
+    if "зум" in source_text and "зум" not in target_text:
+        return 0.0
+    if "аккумулятор" in source_text and "аккумулятор" in target_text:
+        if ("тип" in source_text and "креплен" in target_text) or ("креплен" in source_text and "тип" in target_text):
+            return 0.0
+    if "аккумулятор" in source_text and "аккумулятор" not in target_text:
+        return 0.0
+    if "яркост" in source_text and "яркост" not in target_text:
         return 0.0
     overlap = len(source_tokens & target_tokens)
     if overlap <= 0:
@@ -2280,6 +2395,62 @@ def _rule_ai_suggestion(spec: Dict[str, str], targets: List[Dict[str, Any]]) -> 
 
 def _target_by_code(targets: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     return {str(target.get("code") or "").strip(): target for target in targets if str(target.get("code") or "").strip()}
+
+
+def _candidate_targets_for_ai(specs: List[Dict[str, Any]], targets: List[Dict[str, Any]], *, per_spec: int = 8, limit: int = 35) -> List[Dict[str, Any]]:
+    if not specs or not targets:
+        return targets[:limit]
+    ranked: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+    for spec in specs:
+        source_name = str(spec.get("source_name") or "").strip()
+        for score, target in sorted(
+            ((_target_match_score(source_name, target), target) for target in targets),
+            key=lambda item: item[0],
+            reverse=True,
+        )[:per_spec]:
+            code = str(target.get("code") or "").strip()
+            if not code:
+                continue
+            current = ranked.get(code)
+            if current is None or score > current[0]:
+                ranked[code] = (score, target)
+    selected = [item[1] for item in sorted(ranked.values(), key=lambda item: item[0], reverse=True)[:limit]]
+    return selected or targets[:limit]
+
+
+def _compact_targets_for_prompt(targets: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    return [
+        {
+            "c": str(target.get("code") or "").strip(),
+            "n": _compact_ai_text(target.get("name"), 60),
+        }
+        for target in targets
+        if str(target.get("code") or "").strip()
+    ]
+
+
+def _compact_specs_for_prompt(specs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    return [
+        {
+            "sid": str(spec.get("source_id") or "").strip(),
+            "n": _compact_ai_text(spec.get("source_name"), 70),
+            "v": _compact_ai_text(spec.get("raw_value"), 120),
+        }
+        for spec in specs
+        if str(spec.get("source_name") or "").strip()
+    ]
+
+
+def _compact_memory_for_prompt(memory_examples: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    return [
+        {
+            "sid": str(item.get("source_id") or "").strip(),
+            "n": _compact_ai_text(item.get("source_name"), 70),
+            "c": str(item.get("target_code") or "").strip(),
+        }
+        for item in memory_examples[:12]
+        if str(item.get("source_name") or "").strip() and str(item.get("target_code") or "").strip()
+    ]
 
 
 def _ai_mapping_memory_link_id(source_id: str, source_name: str, target_code: str) -> str:
@@ -2446,9 +2617,9 @@ def _validate_llm_suggestions(
     for raw in raw_items:
         if not isinstance(raw, dict):
             continue
-        source_id = str(raw.get("source_id") or "").strip()
-        source_name = _compact_ai_text(raw.get("source_name"), 120)
-        raw_value = _compact_ai_text(raw.get("raw_value"), 260)
+        source_id = str(raw.get("source_id") or raw.get("sid") or "").strip()
+        source_name = _compact_ai_text(raw.get("source_name") or raw.get("n"), 120)
+        raw_value = _compact_ai_text(raw.get("raw_value") or raw.get("v"), 260)
         key = f"{source_id}:{_source_value_key(source_name)}:{_source_value_key(raw_value)}"
         base = rule_by_key.get(key)
         if not base:
@@ -2464,12 +2635,15 @@ def _validate_llm_suggestions(
             next_item["confidence"] = max(0.0, min(1.0, float(raw.get("confidence"))))
         except Exception:
             next_item["confidence"] = base.get("confidence", 0.0)
+        if float(next_item.get("confidence") or 0.0) < 0.55:
+            out.append(base)
+            continue
 
         if action == "map_existing":
-            target_key = _source_value_key(raw.get("target_code"))
+            target_key = _source_value_key(raw.get("target_code") or raw.get("c"))
             target = target_by_code.get(target_key) if target_key else None
             if not target:
-                target = target_by_name.get(_source_value_key(raw.get("target_name")))
+                target = target_by_name.get(_source_value_key(raw.get("target_name") or raw.get("tn")))
             if not target:
                 target = target_by_code.get(_source_value_key(base.get("target_code"))) or target_by_name.get(_source_value_key(base.get("target_name")))
             if not target:
@@ -2477,11 +2651,14 @@ def _validate_llm_suggestions(
                 next_item["target_name"] = source_name
                 next_item["target_code"] = _source_value_key(source_name).replace(" ", "_")
             else:
+                if _target_match_score(source_name, target) < 0.38:
+                    out.append(base)
+                    continue
                 next_item["target_code"] = target.get("code")
                 next_item["target_name"] = target.get("name")
                 next_item["target_source"] = target.get("source")
         elif action == "create_attribute":
-            next_item["target_name"] = _compact_ai_text(raw.get("target_name") or source_name, 120)
+            next_item["target_name"] = _compact_ai_text(raw.get("target_name") or raw.get("tn") or source_name, 120)
             next_item["target_code"] = _source_value_key(next_item["target_name"]).replace(" ", "_")
             next_item.pop("target_source", None)
         else:
@@ -2506,25 +2683,23 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
     if not specs:
         return {"mode": "empty", "items": [], "warnings": warnings}
 
-    product_title = _compact_ai_text(product.get("title") or product.get("name") or product.get("sku_gt") or product.get("id"), 160)
-    target_payload = [{"code": item["code"], "name": item["name"]} for item in targets[:90]]
-    spec_payload = specs[:45]
+    product_title = _compact_ai_text(product.get("title") or product.get("name") or product.get("sku_gt") or product.get("id"), 100)
+    spec_payload = specs[:_AI_PRODUCT_MAPPING_SPEC_LIMIT]
+    llm_targets = _candidate_targets_for_ai(spec_payload, targets, per_spec=6, limit=24)
+    target_payload = _compact_targets_for_prompt(llm_targets)
+    prompt_specs = _compact_specs_for_prompt(spec_payload)
+    prompt_memory = _compact_memory_for_prompt(memory_examples)
     system_prompt = (
-        "Ты PIM-ассистент для контент-менеджера. Нужно разобрать характеристики конкурентов, "
-        "которые не попали в поля товара. Ничего не придумывай сверх входных данных. "
-        "Верни только JSON без Markdown."
+        "Map competitor product specs to PIM fields. Return only minified JSON."
     )
     user_prompt = (
-        "Задача: для каждой характеристики конкурента выбери действие:\n"
-        "map_existing — если это то же самое, что существующее поле PIM;\n"
-        "create_attribute — если полезная товарная характеристика, но поля еще нет;\n"
-        "ignore — если это цена, доставка, отзывы, промо или не характеристика товара.\n\n"
-        f"Товар: {product_title}\n"
-        f"Существующие поля PIM JSON:\n{json.dumps(target_payload, ensure_ascii=False)}\n\n"
-        f"Подтвержденные ранее примеры сопоставления JSON:\n{json.dumps(memory_examples[:30], ensure_ascii=False)}\n\n"
-        f"Незамапленные характеристики JSON:\n{json.dumps(spec_payload, ensure_ascii=False)}\n\n"
-        "Ответ строго в формате: "
-        '{"items":[{"source_id":"restore","source_name":"...","raw_value":"...","action":"map_existing|create_attribute|ignore","target_code":"...","target_name":"...","confidence":0.0,"reason":"коротко"}]}'
+        "Actions: map_existing=same meaning as PIM field; create_attribute=useful product spec without field; "
+        "ignore=price/delivery/reviews/promo/not a spec. Do not map name/description.\n"
+        f"Product:{product_title}\n"
+        f"Fields(c,n):{json.dumps(target_payload, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"Memory(sid,n,c):{json.dumps(prompt_memory, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"Specs(sid,n,v):{json.dumps(prompt_specs, ensure_ascii=False, separators=(',', ':'))}\n"
+        'JSON:{"items":[{"sid":"sid","n":"spec name","v":"spec value","action":"map_existing|create_attribute|ignore","c":"field code","confidence":0.8}]}'
     )
     try:
         llm_response = await llm_chat_text(
@@ -2534,7 +2709,8 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
             ],
             profile="fast",
             temperature=0.1,
-            timeout_seconds=45.0,
+            timeout_seconds=_AI_PRODUCT_MAPPING_TIMEOUT_SECONDS,
+            max_tokens=700,
         )
         parsed = _json_object_from_text(llm_response["content"])
         items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
@@ -2588,26 +2764,27 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
         if str(name or "").strip()
         and str(value or "").strip()
         and not _noise_spec_name(str(name or ""))
-    ][:60]
+    ][:_AI_TEMPLATE_MAPPING_SPEC_LIMIT]
     if not targets or not spec_items:
         return {}
     rule_items = [_rule_ai_suggestion(spec, targets) for spec in spec_items]
     memory_examples = _load_ai_mapping_memory_examples(source_id=source_id, targets=targets)
     rule_items = _apply_ai_mapping_memory(rule_items, memory_examples, targets)
     mapped = _mapped_specs_from_ai_items(rule_items, specs, targets)
+    prompt_targets = _compact_targets_for_prompt(_candidate_targets_for_ai(spec_items, targets, per_spec=6, limit=28))
+    prompt_specs = _compact_specs_for_prompt(spec_items)
+    prompt_memory = _compact_memory_for_prompt(memory_examples)
 
     system_prompt = (
-        "Ты PIM-ассистент. Нужно сопоставить характеристики конкурента с полями инфо-модели. "
-        "Сопоставляй только одинаковый смысл. Не сопоставляй описание, наименование, цену, доставку, отзывы и промо. "
-        "Верни только JSON без Markdown."
+        "Map competitor specs to info-model fields. Return only minified JSON."
     )
     user_prompt = (
-        f"Источник конкурента: {source_id}\n"
-        f"Поля PIM JSON:\n{json.dumps([{'code': t['code'], 'name': t['name']} for t in targets[:120]], ensure_ascii=False)}\n\n"
-        f"Подтвержденные ранее примеры сопоставления JSON:\n{json.dumps(memory_examples[:30], ensure_ascii=False)}\n\n"
-        f"Характеристики конкурента JSON:\n{json.dumps(spec_items, ensure_ascii=False)}\n\n"
-        "Ответ строго в формате: "
-        '{"items":[{"source_id":"store77","source_name":"...","raw_value":"...","action":"map_existing|create_attribute|ignore","target_code":"...","target_name":"...","confidence":0.0,"reason":"коротко"}]}'
+        "Only same meaning. Never map product name, description, price, delivery, reviews or promo.\n"
+        f"Source:{source_id}\n"
+        f"Fields(c,n):{json.dumps(prompt_targets, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"Memory(sid,n,c):{json.dumps(prompt_memory, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"Specs(sid,n,v):{json.dumps(prompt_specs, ensure_ascii=False, separators=(',', ':'))}\n"
+        'JSON:{"items":[{"sid":"sid","n":"spec name","v":"spec value","action":"map_existing|create_attribute|ignore","c":"field code","confidence":0.8}]}'
     )
     try:
         llm_response = await llm_chat_text(
@@ -2617,7 +2794,8 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
             ],
             profile="fast",
             temperature=0.1,
-            timeout_seconds=45.0,
+            timeout_seconds=_AI_TEMPLATE_MAPPING_TIMEOUT_SECONDS,
+            max_tokens=700,
         )
         parsed = _json_object_from_text(llm_response["content"])
         items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
@@ -2890,11 +3068,6 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
     category_urls = _store77_category_urls_for_product(product)
-    if not category_urls:
-        # store77 search page is browser/ajax-backed and can consume one timeout
-        # per SKU. For category scans we must not block the whole worker when no
-        # deterministic category route is known yet.
-        return []
     for url in category_urls:
         try:
             html = await _fetch_store77_category_html(url)
@@ -2985,11 +3158,82 @@ def _store77_category_urls_for_product(product: Dict[str, Any]) -> List[str]:
     return urls
 
 
+def _store77_macbook_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_title = str(product.get("title") or "").strip()
+    normalized_title = _norm_match_text(raw_title.replace("Midhight", "Midnight"))
+    if "macbook" not in normalized_title:
+        return []
+    model_match = re.search(r"\bmacbook\s+(air|pro)?\s*(13|14|15|16)?\b.*?\bm\s*(\d)\b", normalized_title)
+    capacities = re.findall(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized_title)
+    part_match = re.search(r"\b([a-z]{2}\d[a-z0-9]{2})\b", normalized_title, flags=re.I)
+    if not model_match or len(capacities) < 2 or not part_match:
+        return []
+    line = model_match.group(1) or "air"
+    size = model_match.group(2) or "13"
+    chip = f"m{model_match.group(3)}"
+    ram_num, ram_unit = capacities[0]
+    storage_num, storage_unit = capacities[1]
+    ram_slug = f"{ram_num}_{'tb' if ram_unit in {'tb', 'тб'} else 'gb'}"
+    storage_slug = f"{storage_num}_{'tb' if storage_unit in {'tb', 'тб'} else 'gb'}"
+    part = part_match.group(1).lower()
+    color_options = [
+        ("serebristyy", "Серебристый", ("silver", "серебрист", "серебро")),
+        ("temno_siniy", "Темно-синий", ("midnight", "midhight", "полуночный", "темно синий", "темно-синий")),
+        ("starlayt", "Старлайт", ("starlight", "старлайт", "сияющая звезда")),
+        ("nebesno_goluboy", "Небесно-голубой", ("sky blue", "небесно голубой", "небесно-голубой", "skyblue")),
+    ]
+    color_slug = ""
+    color_label = ""
+    for slug, label, aliases in color_options:
+        if any(alias in normalized_title or alias in raw_title.lower() for alias in aliases):
+            color_slug = slug
+            color_label = label
+            break
+    if not color_slug:
+        return []
+    product_slug = "_".join([
+        "noutbuk",
+        "apple",
+        "macbook",
+        line,
+        f"{size}_6",
+        chip,
+        ram_slug,
+        storage_slug,
+        "ssd",
+        color_slug,
+        part,
+    ])
+    url = f"https://store77.net/kompyuternaya_tekhnika/{product_slug}/"
+    title = (
+        f'Ноутбук Apple MacBook {line.title()} {size}.6" '
+        f"({chip.upper()}, {ram_num} Gb, {storage_num} {'Tb' if storage_unit in {'tb', 'тб'} else 'Gb'} SSD) "
+        f"{color_label} ({part.upper()})"
+    )
+    confidence_score, reasons = _store77_review_confidence_for_candidate(product, title)
+    if confidence_score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+        return []
+    return [
+        {
+            "url": url,
+            "title": title,
+            "sku": part.upper(),
+            "confidence_score": min(0.93, max(confidence_score, 0.84)),
+            "confidence_reasons": [*reasons, "store77 URL собран из модели, RAM, SSD, цвета и part number"],
+            "discovery_strategy": "store77_macbook_slug_seed",
+            "match_group_key": _model_memory_color_group_key(raw_title),
+        }
+    ]
+
+
 def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     raw_title = str(product.get("title") or "").strip()
     normalized_title = _norm_match_text(raw_title)
     category_urls = _store77_category_urls_for_product(product)
     if not category_urls:
+        macbook_candidates = _store77_macbook_seed_candidates_for_product(product)
+        if macbook_candidates:
+            return macbook_candidates
         return []
     model_match = re.search(r"\biphone\s+(\d{1,2})(e\b|(?:\s+(pro\s+max|pro|plus|mini)))?", normalized_title)
     memory_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized_title)
@@ -3120,7 +3364,7 @@ def _extract_store77_search_candidates(html: str, product: Dict[str, Any]) -> Li
         url = urljoin("https://store77.net", href)
         if detect_site(url) != "store77" or url in seen:
             continue
-        if not re.search(r"/(catalog/|product/|tovar/|goods?/|telefony_|apple_iphone_|apple_airpods_)", url, re.I):
+        if not re.search(r"/(catalog/|product/|tovar/|goods?/|telefony_|apple_iphone_|apple_airpods_|apple_ipad_|apple_macbook_)", url, re.I):
             continue
         if not _store77_likely_product_link(href, text):
             continue
@@ -3152,6 +3396,8 @@ def _store77_likely_product_link(href: str, text: str) -> bool:
         return bool(
             re.search(r"\b\d+\s*(gb|гб|tb|тб)\b", normalized_text)
             or "телефон" in tokens
+            or "планшет" in tokens
+            or "ноутбук" in tokens
             or "naushniki" in tokens
             or "наушники" in tokens
         )
@@ -4072,6 +4318,13 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                         str(row.get("title") or row.get("url") or ""),
                     ),
                 )[:6],
+                "link_items": sorted(
+                    source_links,
+                    key=lambda row: (
+                        str(row.get("product_id") or ""),
+                        str(row.get("confirmed_at") or row.get("last_checked_at") or ""),
+                    ),
+                )[:20],
                 "suggestions": suggestions,
                 "fallback_search": fallback_search,
             }
@@ -4096,7 +4349,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                         str(row.get("id") or "").strip() not in product_has_competitor_context,
                         str(row.get("title") or row.get("name") or ""),
                     ),
-                )[:8]
+                )[:DISCOVERY_SAMPLE_PRODUCT_LIMIT]
                 if str(item.get("id") or "").strip()
             ],
         },
@@ -4216,6 +4469,8 @@ def _resolve_discovery_product_ids(
     limit: int,
 ) -> Optional[List[str]]:
     safe_ids = [str(item or "").strip() for item in (product_ids or []) if str(item or "").strip()]
+    if safe_ids:
+        return safe_ids
     normalized_category_id = str(category_id or "").strip()
     if normalized_category_id:
         _, category_product_ids = _product_ids_for_category_scope(normalized_category_id, limit=max(1, int(limit or 50)))
@@ -4678,6 +4933,124 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
         "unmatched_count": merged["unmatched_count"],
         "errors": errors,
     }
+
+
+def _public_product_enrich_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "job_id": str(job.get("job_id") or job.get("run_id") or job.get("id") or ""),
+        "product_id": str(job.get("product_id") or ""),
+        "status": str(job.get("status") or "queued"),
+        "phase": str(job.get("phase") or ""),
+        "message": str(job.get("message") or ""),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "enriched_sources": job.get("enriched_sources") if isinstance(job.get("enriched_sources"), list) else [],
+        "matched_count": int(job.get("matched_count") or 0),
+        "unmatched_count": int(job.get("unmatched_count") or 0),
+        "media_images_count": int(job.get("media_images_count") or 0),
+        "errors": job.get("errors") if isinstance(job.get("errors"), list) else [],
+        "error": str(job.get("error") or ""),
+    }
+
+
+async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
+    job = get_pim_workflow_run(job_id, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW) or {
+        "id": job_id,
+        "run_id": job_id,
+        "job_id": job_id,
+        "product_id": product_id,
+    }
+    job.update({
+        "status": "running",
+        "phase": "extracting",
+        "message": "Загружаю параметры, описание и медиа из подтвержденных карточек конкурентов.",
+        "started_at": now_iso(),
+        "updated_ts": monotonic(),
+    })
+    upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+    try:
+        products = query_products_full(ids=[product_id])
+        product = products[0] if products and isinstance(products[0], dict) else {}
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        current_media = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        if current_media:
+            source_values = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
+            media_sources = source_values.get("media_images") if isinstance(source_values.get("media_images"), dict) else {}
+            job.update({
+                "status": "completed",
+                "phase": "completed",
+                "message": "Медиа уже загружены. Повторная загрузка не требуется.",
+                "finished_at": now_iso(),
+                "updated_ts": monotonic(),
+                "enriched_sources": [str(key) for key in media_sources.keys() if str(key).strip()],
+                "matched_count": 0,
+                "unmatched_count": 0,
+                "media_images_count": len(current_media),
+                "errors": [],
+            })
+            upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+            return
+        async with asyncio.timeout(110):
+            result = await enrich_product_from_confirmed_competitors(product_id)
+        product = result.get("product") if isinstance(result.get("product"), dict) else {}
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+        job.update({
+            "status": "completed",
+            "phase": "completed",
+            "message": "Насыщение товара завершено.",
+            "finished_at": now_iso(),
+            "updated_ts": monotonic(),
+            "enriched_sources": result.get("enriched_sources") if isinstance(result.get("enriched_sources"), list) else [],
+            "matched_count": int(result.get("matched_count") or 0),
+            "unmatched_count": int(result.get("unmatched_count") or 0),
+            "media_images_count": len(media_images),
+            "errors": result.get("errors") if isinstance(result.get("errors"), list) else [],
+        })
+    except Exception as exc:
+        job.update({
+            "status": "failed",
+            "phase": "failed",
+            "message": "Насыщение не завершилось. Повторите загрузку из подтвержденных ссылок.",
+            "finished_at": now_iso(),
+            "updated_ts": monotonic(),
+            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+        })
+    upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+
+
+@router.post("/discovery/products/{product_id}/enrich/jobs")
+async def start_product_enrich_job(product_id: str, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    normalized_product_id = str(product_id or "").strip()
+    if not normalized_product_id:
+        raise HTTPException(status_code=400, detail="product_id required")
+    job_id = f"competitor_enrich_{hashlib.sha1((normalized_product_id + ':' + now_iso()).encode('utf-8')).hexdigest()[:20]}"
+    job = {
+        "id": job_id,
+        "run_id": job_id,
+        "job_id": job_id,
+        "product_id": normalized_product_id,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Насыщение товара поставлено в очередь.",
+        "created_at": now_iso(),
+        "created_ts": monotonic(),
+        "updated_ts": monotonic(),
+    }
+    upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+    background_tasks.add_task(_run_product_enrich_job, job_id, normalized_product_id)
+    return _public_product_enrich_job(job)
+
+
+@router.get("/discovery/products/enrich/jobs/{job_id}")
+def product_enrich_job_status(job_id: str) -> Dict[str, Any]:
+    normalized_job_id = str(job_id or "").strip()
+    job = get_pim_workflow_run(normalized_job_id, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+    if not job:
+        raise HTTPException(status_code=404, detail="PRODUCT_ENRICH_JOB_NOT_FOUND")
+    return _public_product_enrich_job(job)
 
 
 @router.post("/discovery/products/{product_id}/ai-suggestions")

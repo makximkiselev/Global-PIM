@@ -190,6 +190,9 @@ def _ensure_tables_impl() -> None:
                   provider_values TEXT[] NULL,
                   provider_required BOOLEAN NOT NULL DEFAULT FALSE,
                   provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  match_source TEXT NULL,
+                  match_confidence DOUBLE PRECISION NULL,
+                  match_reason TEXT NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (catalog_category_id, row_id, provider, position)
                 )
@@ -209,11 +212,18 @@ def _ensure_tables_impl() -> None:
                   provider_values TEXT[] NULL,
                   provider_required BOOLEAN NOT NULL DEFAULT FALSE,
                   provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  match_source TEXT NULL,
+                  match_confidence DOUBLE PRECISION NULL,
+                  match_reason TEXT NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (organization_id, catalog_category_id, row_id, provider, position)
                 )
                 """
             )
+            for table_name in ("attribute_provider_bindings_rel", "attribute_provider_bindings_tenant_rel"):
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS match_source TEXT NULL")
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS match_confidence DOUBLE PRECISION NULL")
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS match_reason TEXT NULL")
             cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_attribute_provider_bindings_tenant_rel_lookup
@@ -1196,6 +1206,9 @@ def _ensure_lightweight_schema_migrations() -> None:
                   provider_values TEXT[] NULL,
                   provider_required BOOLEAN NOT NULL DEFAULT FALSE,
                   provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  match_source TEXT NULL,
+                  match_confidence DOUBLE PRECISION NULL,
+                  match_reason TEXT NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (catalog_category_id, row_id, provider, position)
                 )
@@ -1215,11 +1228,18 @@ def _ensure_lightweight_schema_migrations() -> None:
                   provider_values TEXT[] NULL,
                   provider_required BOOLEAN NOT NULL DEFAULT FALSE,
                   provider_export BOOLEAN NOT NULL DEFAULT FALSE,
+                  match_source TEXT NULL,
+                  match_confidence DOUBLE PRECISION NULL,
+                  match_reason TEXT NULL,
                   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   PRIMARY KEY (organization_id, catalog_category_id, row_id, provider, position)
                 )
                 """
             )
+            for table_name in ("attribute_provider_bindings_rel", "attribute_provider_bindings_tenant_rel"):
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS match_source TEXT NULL")
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS match_confidence DOUBLE PRECISION NULL")
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS match_reason TEXT NULL")
             cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_attribute_provider_bindings_tenant_rel_lookup
@@ -1639,6 +1659,102 @@ def get_pim_workflow_run(
     return _with_pg_retry(_run)
 
 
+def claim_pim_workflow_run_as_running(
+    run_id: str,
+    *,
+    workflow: str,
+    organization_id: Optional[str] = None,
+    payload_updates: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    workflow_id = str(workflow or "").strip()
+    normalized_run_id = str(run_id or "").strip()
+    if not workflow_id or not normalized_run_id:
+        return None
+    updates: Dict[str, Any] = {"status": "running"}
+    if isinstance(payload_updates, dict):
+        updates.update(payload_updates)
+    updates["status"] = "running"
+
+    def _run() -> Optional[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE pim_workflow_runs
+                SET
+                  status = 'running',
+                  payload_json = payload_json || %s::jsonb,
+                  started_at = COALESCE(started_at, NOW()),
+                  updated_at = NOW()
+                WHERE organization_id = %s
+                  AND workflow = %s
+                  AND run_id = %s
+                  AND status = 'queued'
+                RETURNING payload_json
+                """,
+                [
+                    json.dumps(updates, ensure_ascii=False),
+                    org_id,
+                    workflow_id,
+                    normalized_run_id,
+                ],
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        payload = row[0] if isinstance(row[0], dict) else {}
+        return dict(payload) if isinstance(payload, dict) else None
+
+    return _with_pg_retry(_run)
+
+
+def list_pim_workflow_runs(
+    *,
+    workflow: str,
+    status: Optional[str] = None,
+    statuses: Optional[List[str]] = None,
+    organization_id: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    _ensure_tables()
+    org_id = _resolve_organization_id(organization_id)
+    workflow_id = str(workflow or "").strip()
+    if not workflow_id:
+        return []
+    normalized_statuses = [str(item).strip() for item in (statuses or []) if str(item).strip()]
+    if status and not normalized_statuses:
+        normalized_statuses = [str(status).strip()]
+    safe_limit = max(1, min(int(limit or 50), 500))
+
+    def _run() -> List[Dict[str, Any]]:
+        conn, _, _ = _pg_connect()
+        sql = """
+            SELECT payload_json
+            FROM pim_workflow_runs
+            WHERE organization_id = %s AND workflow = %s
+        """
+        params: List[Any] = [org_id, workflow_id]
+        if normalized_statuses:
+            placeholders = ", ".join(["%s"] * len(normalized_statuses))
+            sql += f" AND status IN ({placeholders})"
+            params.extend(normalized_statuses)
+        sql += " ORDER BY updated_at DESC LIMIT %s"
+        params.append(safe_limit)
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall() or []
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            payload = row[0] if isinstance(row[0], dict) else {}
+            if isinstance(payload, dict):
+                out.append(dict(payload))
+        return out
+
+    return _with_pg_retry(_run)
+
+
 def _replace_catalog_nodes_table(nodes: List[Dict[str, Any]]) -> None:
     def _run() -> None:
         conn, _, _ = _pg_connect()
@@ -1860,10 +1976,12 @@ def _replace_attribute_mappings_table(doc: Dict[str, Any]) -> None:
                     INSERT INTO attribute_provider_bindings_rel (
                       catalog_category_id, row_id, provider, position,
                       provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                      match_source, match_confidence, match_reason,
                       updated_at
                     ) VALUES (
                       %s, %s, %s, %s,
                       %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s,
                       NOW()
                     )
                     """,
@@ -1875,7 +1993,7 @@ def _replace_attribute_mappings_table(doc: Dict[str, Any]) -> None:
 
 def _provider_binding_payload(raw: Any) -> Dict[str, Any]:
     cur = raw if isinstance(raw, dict) else {}
-    return {
+    payload = {
         "id": str(cur.get("id") or "").strip(),
         "name": str(cur.get("name") or "").strip(),
         "kind": str(cur.get("kind") or "").strip(),
@@ -1883,6 +2001,19 @@ def _provider_binding_payload(raw: Any) -> Dict[str, Any]:
         "required": bool(cur.get("required") or False),
         "export": bool(cur.get("export") or False),
     }
+    match_source = str(cur.get("match_source") or cur.get("source") or "").strip()
+    if match_source:
+        payload["match_source"] = match_source
+    try:
+        match_confidence = float(cur.get("match_confidence"))
+    except Exception:
+        match_confidence = None
+    if match_confidence is not None:
+        payload["match_confidence"] = max(0.0, min(1.0, match_confidence))
+    match_reason = str(cur.get("match_reason") or cur.get("reason") or "").strip()
+    if match_reason:
+        payload["match_reason"] = match_reason[:240]
+    return payload
 
 
 def _provider_bindings_payload(raw: Any) -> List[Dict[str, Any]]:
@@ -1925,7 +2056,13 @@ def _provider_doc_from_row(
         "export": bool(export or False),
     }
     if isinstance(bindings, list):
-        base["bindings"] = _provider_bindings_payload({"bindings": bindings, **base})
+        normalized_bindings = _provider_bindings_payload({"bindings": bindings})
+        if normalized_bindings:
+            first_binding = normalized_bindings[0]
+            for key in ("match_source", "match_confidence", "match_reason"):
+                if first_binding.get(key) is not None and first_binding.get(key) != "":
+                    base[key] = first_binding.get(key)
+        base["bindings"] = normalized_bindings
     else:
         base["bindings"] = _provider_bindings_payload(base)
     return base
@@ -1962,6 +2099,9 @@ def _collect_attribute_provider_binding_rows(doc: Dict[str, Any]) -> List[tuple[
                             [str(v).strip() for v in (binding.get("values") or []) if str(v).strip()] or None,
                             bool(binding.get("required") or False),
                             bool(binding.get("export") or False),
+                            str(binding.get("match_source") or "").strip() or None,
+                            float(binding.get("match_confidence")) if binding.get("match_confidence") is not None else None,
+                            str(binding.get("match_reason") or "").strip()[:240] or None,
                         )
                     )
     return out
@@ -2041,10 +2181,12 @@ def _replace_attribute_mappings_tenant_table(doc: Dict[str, Any], organization_i
                     INSERT INTO attribute_provider_bindings_tenant_rel (
                       organization_id, catalog_category_id, row_id, provider, position,
                       provider_param_id, provider_param_name, provider_kind, provider_values, provider_required, provider_export,
+                      match_source, match_confidence, match_reason,
                       updated_at
                     ) VALUES (
                       %s, %s, %s, %s, %s,
                       %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s,
                       NOW()
                     )
                     """,
@@ -2694,7 +2836,10 @@ def load_attribute_mapping_doc(organization_id: Optional[str] = None) -> Dict[st
                   provider_kind,
                   provider_values,
                   provider_required,
-                  provider_export
+                  provider_export,
+                  match_source,
+                  match_confidence,
+                  match_reason
                 FROM attribute_provider_bindings_tenant_rel
                 WHERE organization_id = %s
                 ORDER BY catalog_category_id, row_id, provider, position
@@ -2719,6 +2864,9 @@ def load_attribute_mapping_doc(organization_id: Optional[str] = None) -> Dict[st
                     "values": list(binding_row[6] or []),
                     "required": bool(binding_row[7] or False),
                     "export": bool(binding_row[8] or False),
+                    "match_source": str(binding_row[9] or "").strip(),
+                    "match_confidence": float(binding_row[10]) if binding_row[10] is not None else None,
+                    "match_reason": str(binding_row[11] or "").strip(),
                 }
             )
         for row in db_rows:
