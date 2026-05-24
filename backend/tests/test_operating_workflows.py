@@ -35,6 +35,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             executed.append((catalog_category_id, bool(req.apply)))
 
         with (
+            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
             patch.object(
                 marketplace_attribute_ai_match.marketplace_mapping,
                 "_claim_attr_ai_job",
@@ -59,6 +60,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             executed.append(job_id)
 
         with (
+            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
             patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_claim_attr_ai_job", return_value=None),
             patch.object(
                 marketplace_attribute_ai_match.marketplace_mapping,
@@ -2047,6 +2049,15 @@ class OperatingWorkflowTests(unittest.TestCase):
                                     "parameters": [
                                         {"id": "brand", "name": "Бренд", "required": True, "type": "ENUM", "values": [{"name": "Oura"}]},
                                         {"id": "ring_size", "name": "Размер кольца", "required": True, "type": "ENUM", "values": [{"name": "10"}]},
+                                        {
+                                            "id": "material",
+                                            "name": "Материал",
+                                            "required": False,
+                                            "type": "ENUM",
+                                            "values": [{"name": f"Справочное значение материала номер {idx}"} for idx in range(60)],
+                                        },
+                                        {"id": "thumbnail", "name": "Изображение для миниатюры", "required": False, "type": "String"},
+                                        {"id": "rich_content", "name": "Rich-контент JSON", "required": False, "type": "String"},
                                     ]
                                 }
                             }
@@ -2073,7 +2084,11 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(draft_service, "load_catalog_nodes", return_value=[{"id": "cat-rings", "parent_id": None, "name": "Умные кольца"}]),
             patch.object(draft_service, "load_category_mappings", return_value={"cat-rings": {"yandex_market": "ym-smart-ring", "ozon": "ozon-smart-ring"}}),
             patch.object(draft_service, "read_doc", side_effect=read_doc),
-            patch.object(draft_service, "new_id", side_effect=["tpl-draft-rings", "cand-brand", "cand-size-ym", "cand-battery", "cand-size-ozon"]),
+            patch.object(
+                draft_service,
+                "new_id",
+                side_effect=["tpl-draft-rings", "cand-brand", "cand-size-ym", "cand-material", "cand-battery", "cand-size-ozon"],
+            ),
             patch.object(draft_service, "now_iso", return_value="2026-04-27T00:00:00+00:00"),
         ):
             response = draft_service.create_draft_from_sources("cat-rings", {"sources": ["marketplaces"]})
@@ -2082,6 +2097,13 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn("Бренд", names)
         self.assertIn("Размер кольца", names)
         self.assertIn("Время работы", names)
+        self.assertIn("Материал", names)
+        self.assertNotIn("Изображение для миниатюры", names)
+        self.assertNotIn("Rich-контент JSON", names)
+        material = next(candidate for candidate in response["candidates"] if candidate["name"] == "Материал")
+        self.assertEqual(material["type"], "select")
+        self.assertEqual(material["examples"], [])
+        self.assertEqual(material["sources"][0]["examples"], [])
         ring_size = next(candidate for candidate in response["candidates"] if candidate["name"] == "Размер кольца")
         self.assertEqual(ring_size["status"], "accepted")
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})

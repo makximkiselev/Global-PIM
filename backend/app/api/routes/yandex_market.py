@@ -71,6 +71,32 @@ def _export_media_url(url: Any) -> str:
     return value
 
 
+def _export_media_urls(items: Any) -> List[str]:
+    media = items if isinstance(items, list) else []
+    sortable: List[Tuple[int, int, Dict[str, Any]]] = []
+    for idx, item in enumerate(media):
+        if not isinstance(item, dict):
+            continue
+        if item.get("selected") is False:
+            continue
+        order_raw = item.get("export_order", item.get("order", idx + 1))
+        try:
+            order = int(order_raw)
+        except Exception:
+            order = idx + 1
+        sortable.append((order, idx, item))
+    sortable.sort(key=lambda row: (row[0], row[1]))
+    out: List[str] = []
+    seen: Set[str] = set()
+    for _, _, item in sortable:
+        url = _export_media_url(item.get("url"))
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append(url)
+    return out
+
+
 def _env_token() -> str:
     return (
         os.getenv("YANDEX_MARKET_API_TOKEN", "").strip()
@@ -1756,7 +1782,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 barcode_row = _find_provider_system_row(rows, "yandex_market", {"sys:barcode"}) or _find_system_row(rows, {"штрихкод", "barcode"})
                 source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
 
-                if description_row and imported_description:
+                if imported_description:
                     current_description = str(content.get("description") or "").strip()
                     if req.overwrite_existing or not current_description:
                         content["description"] = imported_description
@@ -1771,7 +1797,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                     }
                     source_meta["descriptions"] = descriptions
 
-                if media_row and imported_pictures:
+                if imported_pictures:
                     current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
                     merged_images = _merge_media_items(current_images, imported_pictures, bool(req.overwrite_existing))
                     if merged_images != current_images:
@@ -1807,7 +1833,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 if imported_vendor and _upsert_imported_system_feature(
                     features=features,
                     feature_by_code=feature_by_code,
-                    row=vendor_row,
+                    row=vendor_row or {"catalog_name": "Бренд", "code": "brand"},
                     raw_value=imported_vendor,
                     store_key=store_key,
                     store_id=store_id,
@@ -1830,7 +1856,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 if imported_barcode and _upsert_imported_system_feature(
                     features=features,
                     feature_by_code=feature_by_code,
-                    row=barcode_row,
+                    row=barcode_row or {"catalog_name": "Штрихкод", "code": "barcode"},
                     raw_value=imported_barcode,
                     store_key=store_key,
                     store_id=store_id,
@@ -2004,7 +2030,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         media_legacy = content.get("media") if isinstance(content.get("media"), list) else []
         media = media_images if media_images else media_legacy
         docs = content.get("documents") if isinstance(content.get("documents"), list) else []
-        pictures = [_export_media_url(x.get("url")) for x in media if isinstance(x, dict) and _export_media_url(x.get("url"))]
+        pictures = _export_media_urls(media)
         manuals = [_export_media_url(x.get("url")) for x in docs if isinstance(x, dict) and _export_media_url(x.get("url"))]
         media_enabled = _is_system_content_export_enabled(media_row, "yandex_market")
         description_enabled = _is_system_content_export_enabled(description_row, "yandex_market")

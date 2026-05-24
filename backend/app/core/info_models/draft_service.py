@@ -105,6 +105,72 @@ def _norm_match_text(value: Any) -> str:
     return " ".join(_text(value).lower().replace("_", " ").split())
 
 
+PROVIDER_PAYLOAD_FIELD_TOKENS = (
+    "изображение",
+    "izobrazhenie",
+    "миниатюр",
+    "miniatyur",
+    "фото",
+    "foto",
+    "фотограф",
+    "fotograf",
+    "картин",
+    "kartin",
+    "видео",
+    "video",
+    "медиа",
+    "media",
+    "описание",
+    "opisanie",
+    "аннотац",
+    "annotac",
+    "название группы вариантов",
+    "nazvanie_gruppy_variantov",
+    "название файла pdf",
+    "nazvanie_fayla_pdf",
+    "rich контент",
+    "rich_kontent",
+    "image",
+    "images",
+    "picture",
+    "pictures",
+    "thumbnail",
+    "gallery",
+    "photo",
+    "photos",
+    "video",
+    "media",
+    "description",
+    "annotation",
+    "rich_content",
+    "rich-content",
+    "richcontent",
+    "pdf_file",
+    "file_pdf",
+)
+
+
+def _is_provider_payload_field(name: str, code: str | None = None) -> bool:
+    haystack = " ".join(
+        part
+        for part in (
+            _norm_match_text(name),
+            _slugify(name),
+            _norm_match_text(code),
+            _slugify(_text(code)),
+        )
+        if part
+    )
+    return any(token in haystack for token in PROVIDER_PAYLOAD_FIELD_TOKENS)
+
+
+def _provider_candidate_examples(values: List[str]) -> List[str]:
+    clean = [_text(value) for value in values if _text(value)]
+    if len(clean) > 40:
+        return []
+    return [value for value in clean if len(value) <= 80][:8]
+
+
 def _global_attribute_match(candidate: Dict[str, Any]) -> Dict[str, Any] | None:
     canonical_name, canonical_code = _canonical_attribute_identity(
         _text(candidate.get("name")),
@@ -587,8 +653,12 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
         name = _text(param.get("name"))
         if not name:
             continue
+        field_id = _text(param.get("id"))
+        if _is_provider_payload_field(name, field_id):
+            continue
         canonical_name, code = _canonical_attribute_identity(name)
         values = param.get("values") if isinstance(param.get("values"), list) else []
+        examples = _provider_candidate_examples(values)
         provider = _text(param.get("provider"))
         candidate = {
             "id": new_id(),
@@ -596,7 +666,7 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
             "code": code,
             "group": "Требования площадок",
             "required": bool(param.get("required") or False),
-            "examples": values[:8],
+            "examples": examples,
             "type": _infer_type_from_kind(_text(param.get("kind")), values),
             "confidence": 0.9 if bool(param.get("required") or False) else 0.72,
             "status": "accepted" if bool(param.get("required") or False) else "needs_review",
@@ -605,8 +675,8 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
                     "kind": "marketplace",
                     "provider": provider,
                     "source_name": _text(param.get("source_name")) or provider,
-                    "field_name": _text(param.get("id")) or code,
-                    "examples": values[:8],
+                    "field_name": field_id or code,
+                    "examples": examples,
                     "count": 1,
                 }
             ],
