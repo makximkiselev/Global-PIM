@@ -18,6 +18,9 @@ type ProviderParam = {
   values?: string[];
   required?: boolean;
   export?: boolean;
+  match_source?: string;
+  match_confidence?: number | null;
+  match_reason?: string;
   bindings?: ProviderBinding[];
 };
 
@@ -35,6 +38,12 @@ type AttrDetailsResp = {
   ok: boolean;
   category: { id: string; name: string; path: string };
   mapping: Record<string, string>;
+  mapping_meta?: {
+    direct?: Record<string, string>;
+    effective?: Record<string, string>;
+    sources?: Record<string, string>;
+    inherited?: boolean;
+  };
   providers: Record<string, { category_id: string | null; category_name?: string | null; params: ProviderParam[]; count: number }>;
   rows: AttrRow[];
   template_id?: string | null;
@@ -54,6 +63,20 @@ type AttrAiMatchResp = {
     before?: { total?: number; ready?: number; attention?: number; unmapped?: number; sample_unmapped?: string[] };
     after?: { total?: number; ready?: number; attention?: number; unmapped?: number; sample_unmapped?: string[] };
   };
+};
+
+type AttrAiMatchJobResp = {
+  ok: boolean;
+  job_id: string;
+  catalog_category_id: string;
+  status: "queued" | "running" | "completed" | "failed" | string;
+  phase?: string;
+  message?: string;
+  engine?: string | null;
+  ai_error?: string;
+  rows_count?: number | null;
+  summary?: AttrAiMatchResp["summary"];
+  error?: string;
 };
 
 type CompetitorSourceSuggestion = {
@@ -107,12 +130,11 @@ const PARAM_GROUPS: Array<{ key: Exclude<ParamGroupKey, "all">; label: string; h
 const PARAM_GROUP_LABEL = Object.fromEntries(PARAM_GROUPS.map((item) => [item.key, item.label])) as Record<Exclude<ParamGroupKey, "all">, string>;
 
 const SERVICE_EXPORTS = [
-  { key: "sku_gt", title: "SKU GT", target: "offerId / SKU площадки", note: "Главный идентификатор товара для выгрузки." },
-  { key: "title", title: "Название", target: "name", note: "Название карточки товара." },
-  { key: "brand", title: "Бренд", target: "vendor / brand", note: "Производитель товара." },
-  { key: "description", title: "Описание", target: "description", note: "Текст карточки." },
-  { key: "media_images", title: "Фото", target: "pictures / images", note: "Основная галерея товара." },
-  { key: "barcode", title: "Штрихкод", target: "barcode", note: "Передается при наличии." },
+  { key: "sku_gt", title: "SKU GT", target: "offerId / SKU площадки", note: "Идентификатор товара. Передается в экспортном payload, не как характеристика." },
+  { key: "title", title: "Название", target: "name", note: "Название карточки товара. Берется из товарной карточки." },
+  { key: "description", title: "Описание", target: "description", note: "Текст карточки. Передается через контентный блок экспорта." },
+  { key: "media_images", title: "Фото", target: "pictures / images", note: "Основная галерея товара. Передается через медиа-блок экспорта." },
+  { key: "barcode", title: "Штрихкод", target: "barcode", note: "Передается при наличии в товаре, не требует выбора характеристики." },
 ];
 
 function qnorm(value: string) {
@@ -145,7 +167,6 @@ function serviceKey(row: AttrRow) {
   if (name === "sku gt" || name.includes("sku")) return "sku_gt";
   if (name.includes("штрихкод") || name.includes("barcode")) return "barcode";
   if (name.includes("наименование") || name === "название") return "title";
-  if (name.includes("бренд")) return "brand";
   if (name.includes("описание")) return "description";
   if (name.includes("фото") || name.includes("картин")) return "media_images";
   return "";
@@ -185,8 +206,7 @@ function rowNeedsAttention(row: AttrRow, codes: string[]) {
 }
 
 function rowHasValues(row: AttrRow, codes: string[]) {
-  if (providerBindings(row.provider_map?.yandex_market).some((item) => ["select", "enum", "list", "multiselect"].some((part) => qnorm(item.kind || "").includes(part)))) return true;
-  return codes.some((code) => providerBindings(row.provider_map?.[code]).some((item) => Array.isArray(item.values) && (item.values || []).length > 0));
+  return codes.some((code) => providerBindings(row.provider_map?.[code]).some((item) => providerValueMode(item).needsValues));
 }
 
 function rowHasComplexBindings(row: AttrRow, codes: string[]) {
@@ -194,9 +214,153 @@ function rowHasComplexBindings(row: AttrRow, codes: string[]) {
 }
 
 function rowStatusLabel(row: AttrRow, codes: string[]) {
+  if (rowProviderCoverage(row, codes) === 0 && row.confirmed) return "не передавать";
   if (rowProviderCoverage(row, codes) === 0) return "без связки";
   if (!row.confirmed) return "нужна проверка";
   return "подтвержден";
+}
+
+function rowStatusReason(row: AttrRow, codes: string[]) {
+  const coverage = rowProviderCoverage(row, codes);
+  if (coverage === 0) {
+    if (row.confirmed) {
+      return "Пользователь подтвердил, что это поле не передается как характеристика площадки. Если решение изменилось, сбросьте его и выберите поле площадки.";
+    }
+    return "Поле PIM пока не связано ни с одной площадкой. Выберите подходящие поля вручную или запустите AI-подбор по всей категории.";
+  }
+  if (rowHasComplexBindings(row, codes)) {
+    return "У поля есть сложная связка: один параметр PIM передается в несколько полей площадки. Проверьте это вручную перед подтверждением.";
+  }
+  if (!row.confirmed) {
+    return "Связка найдена, но еще не подтверждена пользователем. Проверьте названия полей и сохраните решение.";
+  }
+  return "Поле подтверждено. Дальше проверьте значения, если у площадки есть справочник или альтернативные написания.";
+}
+
+function mappingOriginLabel(source?: string) {
+  const value = qnorm(source || "");
+  if (value === "ai" || value === "ollama" || value === "llm") return "AI";
+  if (value === "rule" || value === "fallback" || value === "deterministic") return "Правило";
+  if (value === "memory" || value === "ai_mapping_memory") return "Память";
+  if (value === "manual" || value === "user") return "Ручное";
+  if (value === "system") return "Системное";
+  return "Источник не указан";
+}
+
+function mappingOriginClass(source?: string) {
+  const value = qnorm(source || "");
+  if (value === "ai" || value === "ollama" || value === "llm") return "isAi";
+  if (value === "rule" || value === "fallback" || value === "deterministic") return "isRule";
+  if (value === "memory" || value === "ai_mapping_memory") return "isMemory";
+  if (value === "manual" || value === "user") return "isManual";
+  return "";
+}
+
+function formatConfidence(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
+  return `${Math.round(Math.max(0, Math.min(1, Number(value))) * 100)}%`;
+}
+
+function providerValueMode(binding?: ProviderBinding | ProviderParam | null) {
+  const kind = qnorm(binding?.kind || "");
+  const valuesCount = Array.isArray(binding?.values) ? binding.values.length : 0;
+  if (kind.includes("boolean") || kind === "bool") {
+    return {
+      code: "boolean",
+      label: "Да/Нет",
+      hint: "Площадка ждет булево значение. Нужна нормализация да/нет из PIM.",
+      needsValues: true,
+    };
+  }
+  if (kind.includes("мульти") || kind.includes("multi")) {
+    return {
+      code: "multi",
+      label: "Мультивыбор",
+      hint: valuesCount ? "Площадка принимает несколько значений из справочника." : "Площадка принимает несколько значений; справочник не загружен.",
+      needsValues: true,
+    };
+  }
+  if (kind.includes("enum") || kind.includes("select") || kind.includes("list") || valuesCount > 0) {
+    return {
+      code: "dictionary",
+      label: "Справочник",
+      hint: valuesCount ? "Нужна нормализация PIM-значений в допустимые значения площадки." : "Справочник ожидается, но допустимые значения не загружены.",
+      needsValues: true,
+    };
+  }
+  if (kind.includes("numeric") || kind.includes("decimal") || kind.includes("integer") || kind.includes("number")) {
+    return {
+      code: "number",
+      label: "Число",
+      hint: "Площадка ждет число. Проверьте единицы измерения и не отправляйте текст с единицами.",
+      needsValues: false,
+    };
+  }
+  if (kind.includes("text") || kind.includes("string")) {
+    return {
+      code: "text",
+      label: "Текст",
+      hint: "Площадка принимает свободный текст без справочника значений.",
+      needsValues: false,
+    };
+  }
+  return {
+    code: "unknown",
+    label: "Тип не указан",
+    hint: "Тип поля площадки не загружен. Проверьте вручную перед подтверждением.",
+    needsValues: false,
+  };
+}
+
+function serviceExportStatus(row: AttrRow | undefined, codes: string[]) {
+  if (!row) {
+    return {
+      label: "системно",
+      className: "isSystem",
+      hint: "Поле не заведено как параметр категории и заполняется экспортом, если есть данные товара.",
+    };
+  }
+  const coverage = rowProviderCoverage(row, codes);
+  if (coverage > 0) {
+    return {
+      label: "проверьте связку",
+      className: "isWarn",
+      hint: "Служебное поле связано как характеристика. Обычно это ошибка: его нужно передавать через export payload.",
+    };
+  }
+  if (row.confirmed) {
+    return {
+      label: "экспорт",
+      className: "isOk",
+      hint: "Подтверждено: поле не уходит как характеристика площадки.",
+    };
+  }
+  return {
+    label: "не характеристика",
+    className: "isMuted",
+    hint: "Поле похоже на служебное. Подтвердите 'Не передавать', если оно должно идти через экспорт.",
+  };
+}
+
+function providerOriginChips(bindings: ProviderBinding[]) {
+  const bySource = new Map<string, { source: string; count: number; confidence: number | null; reasons: string[] }>();
+  for (const binding of bindings) {
+    const source = String(binding.match_source || "").trim() || "unknown";
+    const current = bySource.get(source) || { source, count: 0, confidence: null, reasons: [] };
+    current.count += 1;
+    const confidence = binding.match_confidence === null || binding.match_confidence === undefined ? null : Number(binding.match_confidence);
+    if (confidence !== null && !Number.isNaN(confidence)) {
+      current.confidence = current.confidence === null ? confidence : Math.max(current.confidence, confidence);
+    }
+    if (binding.match_reason) current.reasons.push(binding.match_reason);
+    bySource.set(source, current);
+  }
+  return [...bySource.values()].sort((a, b) => {
+    const order = ["manual", "user", "memory", "ai_mapping_memory", "ai", "ollama", "llm", "rule", "fallback", "deterministic", "system", "unknown"];
+    const ai = order.indexOf(qnorm(a.source));
+    const bi = order.indexOf(qnorm(b.source));
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
 }
 
 function aiEngineLabel(engine: string) {
@@ -223,6 +387,17 @@ function formatAiMatchNotice(resp: AttrAiMatchResp) {
   return `AI-сопоставление (${aiEngineLabel(resp.engine)}) проверило ${total} полей, но новых уверенных связок не нашло. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.`;
 }
 
+function formatAiJobNotice(job: AttrAiMatchJobResp) {
+  return formatAiMatchNotice({
+    ok: true,
+    engine: String(job.engine || "fallback"),
+    applied: true,
+    rows: [],
+    rows_count: Number(job.rows_count || 0),
+    summary: job.summary,
+  });
+}
+
 function providerBindingPayload(param?: ProviderParam | ProviderBinding): ProviderBinding | null {
   if (!param) return null;
   const id = String(param.id || "").trim();
@@ -235,6 +410,9 @@ function providerBindingPayload(param?: ProviderParam | ProviderBinding): Provid
     values: param.values || [],
     required: !!param.required,
     export: param.export !== false,
+    match_source: param.match_source || "",
+    match_confidence: param.match_confidence ?? null,
+    match_reason: param.match_reason || "",
   };
 }
 
@@ -261,6 +439,49 @@ function providerMapFromBindings(bindings: ProviderBinding[]): ProviderParam | u
   return { ...primary, bindings: filtered };
 }
 
+function asManualBinding(param: ProviderBinding): ProviderBinding {
+  return {
+    ...param,
+    match_source: "manual",
+    match_confidence: null,
+    match_reason: "Поле выбрано пользователем в редакторе сопоставления.",
+  };
+}
+
+function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds: Set<string>, search: string) {
+  const selected: ProviderParam[] = [];
+  const suggested: ProviderParam[] = [];
+  const manual: ProviderParam[] = [];
+  const target = qnorm(row.catalog_name || "");
+  const targetTokens = target.split(" ").filter((token) => token.length >= 4);
+  const isSearch = !!qnorm(search || "");
+
+  for (const param of visible) {
+    const id = String(param.id || "").trim();
+    const name = qnorm(param.name || "");
+    if (id && currentIds.has(id)) {
+      selected.push(param);
+      continue;
+    }
+    const closeByName = !isSearch && target && name && (
+      name.includes(target) ||
+      target.includes(name) ||
+      targetTokens.some((token) => name.includes(token))
+    );
+    if (closeByName) {
+      suggested.push(param);
+      continue;
+    }
+    manual.push(param);
+  }
+
+  return [
+    { key: "selected", title: "Связано сейчас", hint: "Рекомендация или ручной выбор уже применены к этому PIM-полю.", items: selected },
+    { key: "suggested", title: "Близко по названию", hint: "Поля площадки, похожие на выбранный PIM-параметр. Проверьте тип и значения.", items: suggested },
+    { key: "manual", title: isSearch ? "Ручной поиск" : "Все остальные поля", hint: "Полный ручной выбор из параметров выбранной категории площадки.", items: manual },
+  ].filter((group) => group.items.length > 0);
+}
+
 export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -270,6 +491,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [aiMatching, setAiMatching] = useState(false);
+  const [aiJob, setAiJob] = useState<AttrAiMatchJobResp | null>(null);
   const [competitors, setCompetitors] = useState<CompetitorCategoryResp | null>(null);
   const [competitorsLoading, setCompetitorsLoading] = useState(false);
   const [competitorsError, setCompetitorsError] = useState("");
@@ -322,6 +544,37 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       cancelled = true;
     };
   }, [selectedCategoryId]);
+
+  useEffect(() => {
+    if (!aiJob?.job_id || aiJob.status === "completed" || aiJob.status === "failed") return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const next = await api<AttrAiMatchJobResp>(
+          `/marketplaces/mapping/import/attributes/ai-match/jobs/${encodeURIComponent(aiJob.job_id)}`
+        );
+        if (cancelled) return;
+        setAiJob(next);
+        setAiMatching(next.status === "queued" || next.status === "running");
+        if (next.status === "completed") {
+          await loadDetails(next.catalog_category_id || selectedCategoryId);
+          if (!cancelled) setNotice(formatAiJobNotice(next));
+        }
+        if (next.status === "failed") {
+          setError(next.error || "AI-сопоставление не завершилось");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAiMatching(false);
+          setError(err instanceof Error ? err.message : "Не удалось получить статус AI-сопоставления");
+        }
+      }
+    }, 1600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [aiJob, selectedCategoryId]);
 
   useEffect(() => {
     if (!selectedCategoryId) {
@@ -425,12 +678,24 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
   const categoryName = details?.category?.name || "Выберите категорию";
   const categoryPath = details?.category?.path || "Категория не выбрана";
+  const mappingInherited = !!details?.mapping_meta?.inherited;
+  const hasProviderCategoryMapping = Object.keys(details?.mapping || {}).length > 0;
+  const inheritedProviderLabels = useMemo(() => {
+    if (!details?.mapping_meta?.inherited) return [];
+    const sources = details.mapping_meta.sources || {};
+    const labels: string[] = [];
+    for (const code of codes) {
+      const source = String(sources[code] || "").trim();
+      if (source && source !== selectedCategoryId) labels.push(PROVIDER_LABEL[code] || code);
+    }
+    return labels;
+  }, [details?.mapping_meta, codes, selectedCategoryId]);
   const initialParamsLoading = loading && !details;
   const readinessText = initialParamsLoading
-    ? "загружаю поля инфо-модели"
+    ? "загружаю черновик параметров"
     : stats.total
-      ? `${stats.ready}/${stats.total} полей инфо-модели готово`
-      : "нет полей инфо-модели";
+      ? `${stats.ready}/${stats.total} параметров черновика готово`
+      : "черновик параметров пуст";
   const competitorTotals = useMemo(() => {
     const sources = competitors?.sources || [];
     return sources.reduce(
@@ -443,6 +708,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       { sources: 0, products: 0, links: 0, review: 0 },
     );
   }, [competitors]);
+  const hasCompetitorEvidence = competitorTotals.links > 0 || competitorTotals.review > 0;
+  const infoModelIsEmpty = !!selectedCategoryId && !initialParamsLoading && hasProviderCategoryMapping && stats.total === 0;
 
   useEffect(() => {
     if (!paramRows.length || !queueRows.length) {
@@ -469,16 +736,16 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     setAiMatching(true);
     setError("");
     setNotice("");
+    setAiJob(null);
     try {
-      const resp = await api<AttrAiMatchResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}/ai-match`, {
+      const resp = await api<AttrAiMatchJobResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}/ai-match/jobs`, {
         method: "POST",
         body: JSON.stringify({ apply: true }),
       });
-      await loadDetails(selectedCategoryId);
-      setNotice(formatAiMatchNotice(resp));
+      setAiJob(resp);
+      setNotice(resp.message || "AI-подбор запущен. Можно продолжать работу на странице.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка AI-сопоставления");
-    } finally {
       setAiMatching(false);
     }
   }
@@ -521,7 +788,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     const providerParam = (details?.providers?.[code]?.params || []).find((param) => String(param.id) === String(paramId));
     const payload = providerBindingPayload(providerParam);
     if (!payload) return;
-    await saveProviderBindings(row, code, [...providerBindings(row.provider_map?.[code]), payload]);
+    await saveProviderBindings(row, code, [...providerBindings(row.provider_map?.[code]), asManualBinding(payload)]);
   }
 
   async function removeProviderParam(row: AttrRow, code: string, paramId: string) {
@@ -539,6 +806,22 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
   async function confirmRow(row: AttrRow) {
     const nextRows = rows.map((candidate) => (String(candidate.id) === String(row.id) ? { ...candidate, confirmed: true } : candidate));
+    await saveRows(nextRows, String(row.id));
+  }
+
+  async function clearRowAllProviders(row: AttrRow) {
+    const nextRows = rows.map((candidate) => {
+      if (String(candidate.id) !== String(row.id)) return candidate;
+      return { ...candidate, provider_map: {}, confirmed: true };
+    });
+    await saveRows(nextRows, String(row.id));
+  }
+
+  async function resetRowDecision(row: AttrRow) {
+    const nextRows = rows.map((candidate) => {
+      if (String(candidate.id) !== String(row.id)) return candidate;
+      return { ...candidate, provider_map: {}, confirmed: false };
+    });
     await saveRows(nextRows, String(row.id));
   }
 
@@ -609,10 +892,16 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       <section className="paramsWorkspaceMain">
         <div className="paramsCommand">
           <div>
-            <div className="paramsEyebrow">Параметры инфо-модели</div>
+            <div className="paramsEyebrow">Черновик параметров</div>
             <h2>{categoryName}</h2>
             <div className="paramsCommandBadges" aria-label="Готовность параметров">
-              <span>{Object.keys(details?.mapping || {}).length ? "категории связаны" : "нужна связка категорий"}</span>
+              <span>
+                {hasProviderCategoryMapping
+                  ? mappingInherited
+                    ? "связка унаследована"
+                    : "категории связаны"
+                  : "нужна связка категорий"}
+              </span>
               <span>{codes.length} площадки</span>
               <span>{readinessText}</span>
               <span>{stats.values} с вариантами значений</span>
@@ -620,10 +909,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           </div>
           <div className="paramsCommandActions">
             <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
-            <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
-              {aiMatching ? "Собираю..." : "Собрать с AI"}
-            </button>
-            <Link className="btn btn-primary" to={`/catalog/export?category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+            {infoModelIsEmpty ? (
+              <Link className="btn" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
+            ) : (
+              <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
+                {aiMatching ? "Собираю..." : "Собрать черновик"}
+              </button>
+            )}
+            <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
           </div>
         </div>
 
@@ -655,20 +948,48 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         {error ? (
           <div className="paramsAlert">
             {error.includes("CATEGORY_NOT_DIRECTLY_MAPPED")
-              ? "Для этой категории сначала нужна прямая связка с категориями площадок."
+              ? "Для этой категории или ее родителя сначала нужна связка с категориями площадок."
               : error}
           </div>
         ) : null}
+        {mappingInherited ? (
+          <div className="paramsAlert isInfo">
+            Эта товарная категория использует связку площадок родительской ветки
+            {inheritedProviderLabels.length ? `: ${inheritedProviderLabels.join(", ")}` : ""}.
+            Можно насыщать товары здесь, а параметры площадок брать из общей категории.
+          </div>
+        ) : null}
+        {infoModelIsEmpty ? (
+          <div className="paramsAlert isInfo paramsInfoModelEmptyGuide">
+            <strong>Сначала соберите инфо-модель категории.</strong>
+            <span>
+              Категории площадок уже связаны, но PIM-полей для сопоставления нет. Откройте инфо-модель,
+              соберите draft из товаров, площадок и конкурентов, затем вернитесь сюда для маппинга полей.
+            </span>
+            <Link className="btn sm" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
+          </div>
+        ) : !hasCompetitorEvidence ? (
+          <div className="paramsAlert isInfo">
+            Площадки уже дают список обязательных и полезных полей, но финальная инфо-модель строится после конкурентных карточек и товарных данных.
+            Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к черновику параметров.
+            <Link className="btn sm" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть конкурентов</Link>
+          </div>
+        ) : null}
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
+        {aiJob && (aiJob.status === "queued" || aiJob.status === "running") ? (
+          <div className="paramsAlert">
+            {aiJob.status === "queued" ? "AI-подбор в очереди." : "AI-подбор выполняется."} {aiJob.message || ""}
+          </div>
+        ) : null}
         {loading ? <div className="paramsAlert">Загружаю параметры категории...</div> : null}
 
         <div className="paramsFocusLayout">
           <div className="paramsQueueBlock">
             <div className="paramsSectionHead">
               <div>
-                <h3>Параметры инфо-модели</h3>
+                <h3>Черновик PIM-параметров</h3>
                 <p>
-                  Рабочие поля PIM для товаров этой категории. Справа выберите поля площадок и подтвердите результат.
+                  Это не финальная инфо-модель: строки собираются из площадок, конкурентов и товарных данных. Утверждайте только проверенные параметры.
                 </p>
               </div>
             </div>
@@ -779,6 +1100,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                         const value = row.provider_map?.[code];
                         const bindings = providerBindings(value);
                         const valuesCount = bindings.reduce((acc, item) => acc + (item.values?.length || 0), 0);
+                        const originChips = providerOriginChips(bindings);
+                        const valueModes = bindings.map(providerValueMode);
                         return (
                           <div className="paramsProviderCell" key={`${row.id}-${code}`}>
                             <span>{PROVIDER_LABEL[code] || code}</span>
@@ -790,6 +1113,30 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                             ) : (
                               <strong>не связано</strong>
                             )}
+                            {originChips.length ? (
+                              <div className="paramsProviderOrigins">
+                                {originChips.map((item) => (
+                                  <i
+                                    key={`${code}-${item.source}`}
+                                    className={mappingOriginClass(item.source)}
+                                    title={item.reasons.join("\n") || "Причина сопоставления пока не записана."}
+                                  >
+                                    {mappingOriginLabel(item.source)}
+                                    {formatConfidence(item.confidence) ? ` ${formatConfidence(item.confidence)}` : ""}
+                                    {item.count > 1 ? ` x${item.count}` : ""}
+                                  </i>
+                                ))}
+                              </div>
+                            ) : null}
+                            {valueModes.length ? (
+                              <div className="paramsProviderKinds">
+                                {valueModes.map((mode, index) => (
+                                  <i key={`${code}-${mode.code}-${index}`} className={`is${mode.code}`} title={mode.hint}>
+                                    {mode.label}
+                                  </i>
+                                ))}
+                              </div>
+                            ) : null}
                             <em>{valuesCount ? `${valuesCount} значений` : bindings.length > 1 ? `${bindings.length} поля` : bindings[0]?.kind || "параметр"}</em>
                           </div>
                         );
@@ -798,7 +1145,11 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                   </button>
                 );
               }) : (
-                <div className="paramsAlert">По текущему фильтру параметров нет.</div>
+                <div className="paramsAlert">
+                  {infoModelIsEmpty
+                    ? "Инфо-модель пустая. Сначала соберите draft модели категории из источников."
+                    : "Черновик параметров пуст. Подтвердите конкурентные карточки для SKU, затем соберите черновик из evidence."}
+                </div>
               )}
             </div>
           </div>
@@ -826,16 +1177,27 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     {rowStatusLabel(selectedRow, codes)}
                   </b>
                 </div>
+                <div className={`paramsMiniAlert ${rowNeedsAttention(selectedRow, codes) ? "" : "isSuccess"}`}>
+                  {rowStatusReason(selectedRow, codes)}
+                </div>
 
                 <div className="paramsInspectorSection">
                   <h4>Привязка к площадкам</h4>
                   <p>Здесь редактируется, какое поле площадки наполняет поле PIM.</p>
+                  <div className="paramsModeLegend" aria-label="Режимы передачи параметров">
+                    <span><i className="paramsValueMode isdictionary">Справочник</i> выбрать поле и настроить значения</span>
+                    <span><i className="paramsValueMode ismulti">Мультивыбор</i> значения могут быть списком</span>
+                    <span><i className="paramsValueMode isboolean">Да/Нет</i> нормализовать булево значение</span>
+                    <span><i className="paramsValueMode isnumber">Число</i> проверить единицы измерения</span>
+                    <span><i className="paramsValueMode istext">Текст</i> передается вручную/из PIM без справочника</span>
+                  </div>
                   {codes.map((code) => {
                     const provider = details?.providers?.[code];
                     const current = selectedRow.provider_map?.[code];
                     const options = providerParamOptions(code, current);
                     const bindings = providerBindings(current);
                     const currentIds = new Set(bindings.map((item) => String(item.id || "").trim()).filter(Boolean));
+                    const optionGroups = providerOptionGroups(selectedRow, options.visible, currentIds, providerSearch[code] || "");
                     return (
                       <div className="paramsFieldSelect" key={code}>
                         <div className="paramsProviderBindHead">
@@ -852,8 +1214,24 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                               ) : null}
                               {bindings.map((item, index) => (
                                 <span key={`${code}-current-${item.id || item.name}`}>
+                                  {(() => {
+                                    const mode = providerValueMode(item);
+                                    return (
+                                      <i className={`paramsValueMode is${mode.code}`} title={mode.hint}>
+                                        {mode.label}
+                                      </i>
+                                    );
+                                  })()}
                                   <strong>{item.name || item.id}</strong>
                                   <em>{index === 0 ? "основное поле" : "доп. поле"}</em>
+                                  <small className="paramsValueModeHint">{providerValueMode(item).hint}</small>
+                                  <div className="paramsOriginLine">
+                                    <b className={mappingOriginClass(item.match_source)}>
+                                      {mappingOriginLabel(item.match_source)}
+                                      {formatConfidence(item.match_confidence) ? ` ${formatConfidence(item.match_confidence)}` : ""}
+                                    </b>
+                                    <small>{item.match_reason || "Причина сопоставления пока не записана. Проверьте связь вручную."}</small>
+                                  </div>
                                   <button
                                     type="button"
                                     disabled={savingRowId === String(selectedRow.id)}
@@ -887,21 +1265,36 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                             <strong>Не связывать</strong>
                             <em>Поле не передается на площадку</em>
                           </button>
-                          {options.visible.map((param) => {
-                            const selected = currentIds.has(String(param.id || "").trim());
-                            return (
-                              <button
-                                type="button"
-                                key={String(param.id)}
-                                className={selected ? "isSelected" : ""}
-                                disabled={savingRowId === String(selectedRow.id)}
-                                onClick={() => void (selected ? removeProviderParam(selectedRow, code, String(param.id)) : addProviderParam(selectedRow, code, String(param.id)))}
-                              >
-                                <strong>{param.name}</strong>
-                                <em>{selected ? "Нажмите, чтобы убрать" : param.values?.length ? `${param.values.length} значений` : param.kind || "тип не указан"}</em>
-                              </button>
-                            );
-                          })}
+                          {optionGroups.map((group) => (
+                            <div className={`paramsProviderOptionGroup is-${group.key}`} key={`${code}-${group.key}`}>
+                              <div className="paramsProviderOptionGroupHead">
+                                <b>{group.title}</b>
+                                <small>{group.hint}</small>
+                              </div>
+                              {group.items.map((param) => {
+                                const selected = currentIds.has(String(param.id || "").trim());
+                                const mode = providerValueMode(param);
+                                return (
+                                  <button
+                                    type="button"
+                                    key={String(param.id)}
+                                    className={selected ? "isSelected" : ""}
+                                    disabled={savingRowId === String(selectedRow.id)}
+                                    onClick={() => void (selected ? removeProviderParam(selectedRow, code, String(param.id)) : addProviderParam(selectedRow, code, String(param.id)))}
+                                  >
+                                    <strong>{param.name}</strong>
+                                    <em>
+                                      {selected
+                                        ? "Нажмите, чтобы убрать"
+                                        : param.values?.length
+                                          ? `${mode.label} · ${param.values.length} значений`
+                                          : mode.label || param.kind || "тип не указан"}
+                                    </em>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ))}
                         </div>
                         <small>
                           {options.filtered.length
@@ -930,13 +1323,21 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       <em>отдельная очередь</em>
                     </div>
                   </div>
-                  <Link className="btn" to={`/data-prep/competitors?category=${encodeURIComponent(selectedCategoryId)}`}>Открыть конкурентов</Link>
+                  <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть конкурентов</Link>
                 </div>
 
                 <div className="paramsInspectorSection">
                   <h4>Следующее действие</h4>
-                  <p>После подтверждения поля настройте варианты написания для площадок.</p>
+                  <p>Если конкуренты еще не подтверждены, сначала соберите evidence. Затем подтвердите параметры, отключите лишнее и переходите к значениям.</p>
                   <div className="paramsInspectorActions">
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={!selectedCategoryId || aiMatching || loading}
+                      onClick={runAiMatch}
+                    >
+                      {aiMatching ? "Собираю черновик..." : "Собрать черновик"}
+                    </button>
                     <button
                       className="btn btn-primary"
                       type="button"
@@ -945,20 +1346,39 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     >
                       {savingRowId === String(selectedRow.id) ? "Сохраняю..." : "Подтвердить"}
                     </button>
-                    <Link className="btn" to={`/sources-mapping?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Настроить значения</Link>
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={savingRowId === String(selectedRow.id)}
+                      onClick={() => void clearRowAllProviders(selectedRow)}
+                    >
+                      Не передавать
+                    </button>
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={savingRowId === String(selectedRow.id)}
+                      onClick={() => void resetRowDecision(selectedRow)}
+                    >
+                      Сбросить решение
+                    </button>
+                    <Link className="btn" to={`/sources?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Настроить значения</Link>
                   </div>
                 </div>
 
                 <details className="paramsServiceDetails">
-                  <summary>Служебные поля выгрузки</summary>
+                  <summary>Служебные поля выгрузки, не характеристики</summary>
+                  <p>Эти поля выбираются и заполняются в товаре или экспортном канале. Их не нужно матчить с характеристиками категории, если площадка принимает их как базовые поля карточки.</p>
                   <div className="paramsServiceCompact">
                     {SERVICE_EXPORTS.map((item) => {
                       const row = serviceRows.find((candidate) => serviceKey(candidate) === item.key);
+                      const status = serviceExportStatus(row, codes);
                       return (
                         <div key={item.key}>
                           <strong>{item.title}</strong>
                           <span>{item.target}</span>
-                          <em>{row ? "настроено" : "системно"}</em>
+                          <em className={status.className} title={status.hint}>{status.label}</em>
+                          <small>{item.note}</small>
                         </div>
                       );
                     })}
