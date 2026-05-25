@@ -1902,9 +1902,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const hasMappingIssue = categoryHasMappingIssue.has(node.id);
     const isFullNode = !!categorySuccessById.get(node.id);
     const successChildrenCount = children.filter((child) => !!subtreeSuccessById.get(child.id)).length;
-    const totalCount = hasChildren ? children.length : 1;
-    const mappedProvidersCount = hasChildren ? successChildrenCount : (isFullNode ? 1 : 0);
-    const hasWarnProviders = hasChildren ? successChildrenCount > 0 && successChildrenCount < children.length : !isFullNode;
+    const mappingLabel = hasChildren
+      ? successChildrenCount === children.length && children.length > 0
+        ? "связано"
+        : successChildrenCount > 0
+          ? "частично"
+          : "нет"
+      : isFullNode
+        ? "связано"
+        : "нет";
+    const hasMappedProviders = mappingLabel === "связано";
+    const hasWarnProviders = mappingLabel === "частично";
     return (
       <div key={node.id}>
         <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
@@ -1929,8 +1937,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             >
               <span className="csb-treeName">{node.name}</span>
             </button>
-            <span className={`csb-treeCount mm-treeMappingCount ${mappedProvidersCount > 0 ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""}`}>
-              {mappedProvidersCount}/{totalCount}
+            <span className={`csb-treeCount mm-treeMappingCount ${hasMappedProviders ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""}`}>
+              {mappingLabel}
             </span>
           </div>
         </div>

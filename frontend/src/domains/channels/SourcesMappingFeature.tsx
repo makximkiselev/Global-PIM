@@ -78,6 +78,7 @@ export default function SourcesMappingFeature() {
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
+  const selectedCategoryContext = selectedCategoryName ? `Категория: ${selectedCategoryName}` : undefined;
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
@@ -87,6 +88,28 @@ export default function SourcesMappingFeature() {
     setSelectedCategoryName((prev) => (nextCategoryId ? prev : ""));
     setCategoryResolving(nextTab === "params" && !nextCategoryId);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!selectedCategoryId) {
+      setSelectedCategoryName("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await loadMappingBootstrap();
+        if (cancelled) return;
+        const currentItem = (data.catalog_items || []).find((item) => item.id === selectedCategoryId);
+        const nextName = currentItem?.name || currentItem?.path || "";
+        if (nextName) setSelectedCategoryName((prev) => (prev === nextName ? prev : nextName));
+      } catch {
+        if (!cancelled) setSelectedCategoryName((prev) => prev || "");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId]);
 
   useEffect(() => {
     if (tab !== "params" || !selectedCategoryId) return;
@@ -173,7 +196,7 @@ export default function SourcesMappingFeature() {
       <WorkspaceHeader
         eyebrow="Инфо-модели"
         title="Сопоставления"
-        context={selectedCategoryName || undefined}
+        context={selectedCategoryContext}
         subtitle={tabDescription}
         tabs={TAB_ITEMS}
         activeTab={tab}

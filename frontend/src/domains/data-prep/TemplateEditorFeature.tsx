@@ -15,6 +15,7 @@ import Modal from "../../components/ui/Modal";
 import PageTabs from "../../components/ui/PageTabs";
 import TextInput from "../../components/ui/TextInput";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
+import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
 import type { InfoModelCandidate, InfoModelSummary } from "./infoModelDraft";
 import { candidateTone, modelStatusLabel } from "./infoModelDraft";
 
@@ -1064,6 +1065,18 @@ export default function TemplateEditor() {
     <div className="templates-page page-shell">
       {toast ? <div className="tpl-toast">{toast}</div> : null}
 
+      <WorkspaceHeader
+        eyebrow="Инфо-модель"
+        title={category?.name || "Категория"}
+        context={category?.path?.length ? `Категория: ${category.path.map((item) => item.name).join(" / ")}` : undefined}
+        subtitle="Сначала соберите черновик полей из товаров, площадок и конкурентов. После проверки он станет PIM-моделью категории."
+        actions={
+          <Button onClick={() => nav(`/sources?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+            К сопоставлениям
+          </Button>
+        }
+      />
+
       {hasAnyTpl && inheritedFrom && !ownerTpl?.id ? (
         <Alert>
           Эта категория наследует модель из <b>{inheritedFrom.name}</b>. Чтобы начать отдельную настройку, создай свою модель и продолжай работу уже на ней.
@@ -1086,7 +1099,7 @@ export default function TemplateEditor() {
               <Card className="tplCanvasCard">
                 <EmptyState
                   title="Инфо-модель еще не собрана"
-                  body="Сначала соберите предложения полей из реальных источников: товаров категории, импортов и подключенных каналов. После проверки модель можно утвердить и использовать в товарах."
+                  description="Сейчас у категории нет PIM-полей. Нажмите «Собрать предложения», чтобы система подготовила draft из товаров, площадок и конкурентных карточек. Затем проверьте список и утвердите модель."
                   action={
                     <div className="tplEmptyActions">
                       <Button variant="primary" onClick={collectDraftModel} disabled={!categoryId || draftBusy}>

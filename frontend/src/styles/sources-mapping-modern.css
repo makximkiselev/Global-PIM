@@ -595,9 +595,10 @@
 }
 
 .sourcesMappingPage .mm-treeMappingCount {
-  min-width: 30px;
+  min-width: 52px;
   justify-content: center;
   padding-inline: 5px;
+  text-transform: lowercase;
 }
 
 .sourcesMappingPage .mm-detailPane {
