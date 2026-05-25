@@ -295,12 +295,6 @@
   font-weight:900;
 }
 
-.productCommerceActions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-}
-
 .productCommerceReadiness{
   grid-column:1 / -1;
   display:flex;
@@ -364,30 +358,6 @@
 .productCommerceReadinessItem.isReady{
   border-color:rgba(16, 185, 129, .22);
   background:rgba(16, 185, 129, .08);
-}
-
-.productCommerceNextSteps{
-  flex:0 0 190px;
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-}
-
-.productCommerceNextSteps button{
-  min-height:36px;
-  border:1px solid var(--line);
-  border-radius:12px;
-  background:rgba(var(--card-rgb), .62);
-  color:var(--text);
-  font:inherit;
-  font-size:12px;
-  font-weight:900;
-  cursor:pointer;
-}
-
-.productCommerceNextSteps button:hover{
-  border-color:rgba(var(--brand-rgb), .28);
-  color:rgba(var(--brand-rgb), .98);
 }
 
 .productWorkspaceSkeletonLine,
@@ -1713,53 +1683,6 @@
   letter-spacing:.04em;
 }
 
-.productWorkflowStrip{
-  display:grid;
-  grid-template-columns:repeat(7, minmax(0, 1fr));
-  gap:8px;
-  margin-top:12px;
-}
-
-.productWorkflowStep{
-  display:flex;
-  align-items:center;
-  gap:9px;
-  min-height:38px;
-  padding:8px 9px;
-  border:1px solid rgba(var(--line-rgb), .68);
-  border-radius:16px;
-  background:linear-gradient(180deg, rgba(var(--surface-rgb), .76), rgba(var(--surface-rgb), .5));
-  color:var(--muted);
-  cursor:pointer;
-  text-align:left;
-}
-
-.productWorkflowStep span{
-  display:grid;
-  place-items:center;
-  width:24px;
-  height:24px;
-  border-radius:10px;
-  background:rgba(var(--brand-rgb), .1);
-  color:rgba(var(--brand-rgb), .92);
-  font-size:11px;
-  font-weight:950;
-}
-
-.productWorkflowStep strong{
-  min-width:0;
-  font-size:11px;
-  line-height:1.1;
-  font-weight:900;
-}
-
-.productWorkflowStep:hover,
-.productWorkflowStep.isActive{
-  color:var(--text);
-  border-color:rgba(var(--brand-rgb), .34);
-  background:linear-gradient(180deg, rgba(var(--brand-rgb), .15), rgba(var(--brand-rgb), .06));
-}
-
 .productCockpitStack{
   min-height:calc(100vh - 180px);
 }
@@ -2497,7 +2420,6 @@
   .productCompetitorMetrics,
   .productCompetitorSourceGrid,
   .productCompetitorAiList,
-  .productWorkflowStrip,
   .productCreateFlowPreview{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }

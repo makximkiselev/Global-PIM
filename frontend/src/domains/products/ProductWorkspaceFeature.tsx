@@ -172,7 +172,7 @@ type SectionId =
   | "create-flow";
 
 const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
-  { id: "overview", label: "Сводка", meta: "контекст SKU" },
+  { id: "overview", label: "Описание", meta: "контекст SKU" },
   { id: "attributes", label: "Параметры", meta: "значения и источники" },
   { id: "sources", label: "Источники", meta: "импорт, excel, конкуренты" },
   { id: "channels", label: "Площадки", meta: "вывод и альтернативы" },
@@ -438,7 +438,7 @@ function ProductWorkspaceSectionNav({
 }) {
   return (
     <nav className="productWorkspaceNav" aria-label="Навигация по товару">
-      <div className="productWorkspaceNavTitle">Workflow товара</div>
+      <div className="productWorkspaceNavTitle">Меню товара</div>
       <div className="productWorkspaceNavList">
         {SECTION_LABELS.map((section) => (
           <button
@@ -453,30 +453,6 @@ function ProductWorkspaceSectionNav({
         ))}
       </div>
     </nav>
-  );
-}
-
-function ProductWorkflowStrip({
-  activeSection,
-  onSelect,
-}: {
-  activeSection: SectionId;
-  onSelect: (id: SectionId) => void;
-}) {
-  return (
-    <div className="productWorkflowStrip" aria-label="Product workflow">
-      {SECTION_LABELS.slice(0, 7).map((section, index) => (
-        <button
-          key={section.id}
-          type="button"
-          className={`productWorkflowStep${activeSection === section.id ? " isActive" : ""}`}
-          onClick={() => onSelect(section.id)}
-        >
-          <span>{String(index + 1).padStart(2, "0")}</span>
-          <strong>{section.label}</strong>
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -503,7 +479,7 @@ function ProductWorkspaceInspector({
 
   return (
     <div className="productWorkspaceInspectorStack">
-      <InspectorPanel title="Сводка" subtitle="Ключевой контекст товара">
+      <InspectorPanel title="Описание" subtitle="Ключевой контекст товара">
         <div className="productWorkspaceKeyValue">
           <span>SKU GT</span>
           <strong>{normalizeText(product.sku_gt) || "Не задан"}</strong>
@@ -900,7 +876,6 @@ function ProductCommerceHero({
   channels,
   analogs,
   accessories,
-  onSelectSection,
 }: {
   product: ProductData;
   categoryPath: string;
@@ -910,7 +885,6 @@ function ProductCommerceHero({
   channels: ChannelsSummary | null;
   analogs: ProductRelation[];
   accessories: ProductRelation[];
-  onSelectSection: (id: SectionId) => void;
 }) {
   const filledAttributes = features.filter((feature) => featureValue(feature)).length;
   const importantFeatures = features.filter((feature) => featureValue(feature)).slice(0, 6);
@@ -976,13 +950,6 @@ function ProductCommerceHero({
               </div>
             )}
           </div>
-
-          <div className="productCommerceActions">
-            <Button variant="primary" onClick={() => onSelectSection("attributes")}>Редактировать параметры</Button>
-            <Button onClick={() => onSelectSection("media")}>Медиа</Button>
-            <Button onClick={() => onSelectSection("channels")}>Площадки</Button>
-            <Link className="btn" to="/products">К списку</Link>
-          </div>
         </section>
 
         <aside className="productCommerceReadiness" aria-label="Готовность карточки">
@@ -997,11 +964,6 @@ function ProductCommerceHero({
                 <strong>{item.value}</strong>
               </div>
             ))}
-          </div>
-          <div className="productCommerceNextSteps">
-            <button type="button" onClick={() => onSelectSection("sources")}>Проверить источники</button>
-            <button type="button" onClick={() => onSelectSection("validation")}>Открыть валидацию</button>
-            <button type="button" onClick={() => onSelectSection("relations")}>Связи товара</button>
           </div>
         </aside>
       </div>
@@ -1059,7 +1021,7 @@ function ProductWorkspaceSkeleton() {
         }
         inspector={
           <div className="productWorkspaceInspectorStack" aria-hidden="true">
-            <InspectorPanel title="Сводка" subtitle="Загрузка товара">
+            <InspectorPanel title="Описание" subtitle="Загрузка товара">
               <div className="productWorkspaceSkeletonInspector" />
             </InspectorPanel>
             <InspectorPanel title="Readiness" subtitle="Загрузка контекста">
@@ -1595,9 +1557,7 @@ function ProductWorkspaceFeature() {
                   channels={channels}
                   analogs={analogs}
                   accessories={accessories}
-                  onSelectSection={handleSectionSelect}
                 />
-                <ProductWorkflowStrip activeSection={activeSection} onSelect={handleSectionSelect} />
                 <div className="productWorkspaceTextBlock productCockpitDescription">
                   <div className="productWorkspaceTextLabel">Описание товара</div>
                   <div
