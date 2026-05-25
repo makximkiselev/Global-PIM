@@ -38,6 +38,7 @@ from app.storage.relational_pim_store import (
     load_attribute_value_refs_doc,
     load_catalog_nodes,
     load_category_mappings,
+    query_products_full,
     save_attribute_value_refs_category_doc,
     save_attribute_mapping_doc,
     save_attribute_value_refs_doc,
@@ -1267,6 +1268,91 @@ def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str],
         "missing_count": len(missing),
         "missing_sample": missing[:4],
         "missing_values": missing[:limit],
+    }
+
+
+def _feature_source_evidence(
+    *,
+    category_ids: List[str],
+    catalog_name: str,
+    pim_values: List[str],
+    limit: int = 12,
+) -> List[Dict[str, Any]]:
+    wanted_name = _norm_name(catalog_name)
+    wanted_values = {normalize_value_key(value) for value in pim_values if normalize_value_key(value)}
+    if not category_ids or not wanted_name:
+        return []
+    try:
+        products = query_products_full(category_ids=category_ids, limit=220)
+    except Exception:
+        return []
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        features = content.get("features") if isinstance(content.get("features"), list) else []
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            feature_name = _norm_name(feature.get("name") or feature.get("code"))
+            value = str(feature.get("value") or feature.get("values") or "").strip()
+            if feature_name != wanted_name and normalize_value_key(value) not in wanted_values:
+                continue
+            source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
+            for source_group, group_payload in source_values.items():
+                if not isinstance(group_payload, dict):
+                    continue
+                for source_id, payload in group_payload.items():
+                    if not isinstance(payload, dict):
+                        continue
+                    raw_value = str(payload.get("raw_value") or payload.get("value") or "").strip()
+                    resolved_value = str(payload.get("resolved_value") or payload.get("canonical_value") or raw_value).strip()
+                    canonical_value = str(payload.get("canonical_value") or resolved_value).strip()
+                    if not raw_value and not resolved_value and not canonical_value:
+                        continue
+                    key = "|".join([
+                        str(product.get("id") or ""),
+                        str(source_id or ""),
+                        raw_value,
+                        resolved_value,
+                        canonical_value,
+                    ])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(
+                        {
+                            "product_id": str(product.get("id") or "").strip(),
+                            "sku_gt": str(product.get("sku_gt") or "").strip(),
+                            "product_title": str(product.get("title") or product.get("name") or "").strip(),
+                            "source_group": str(source_group or "").strip(),
+                            "source_id": str(source_id or "").strip(),
+                            "source_label": PROVIDER_TITLES.get(str(source_id or "").strip(), str(source_id or "").strip()),
+                            "raw_value": raw_value,
+                            "resolved_value": resolved_value,
+                            "canonical_value": canonical_value,
+                        }
+                    )
+                    if len(out) >= limit:
+                        return out
+    return out
+
+
+def _provider_dictionary_quality(allowed_values: List[str], pim_value_count: int) -> Dict[str, Any]:
+    issues: List[Dict[str, str]] = []
+    count = len(allowed_values)
+    sample_text = " ".join(allowed_values[:8]).lower()
+    if count >= 80:
+        issues.append({"code": "wide_dictionary", "label": "широкий справочник", "text": f"У площадки {count} значений; проверьте, что поле выбрано верно."})
+    if pim_value_count == 0 and count >= 20:
+        issues.append({"code": "no_pim_values", "label": "нет PIM значений", "text": "Справочник площадки есть, но PIM-словарь пуст."})
+    if any(token in sample_text for token in ("#1 ", "#365", "bestselling", "чек-лист", "организуй")):
+        issues.append({"code": "noisy_values", "label": "подозрительные значения", "text": "Первые значения похожи на чужой широкий справочник."})
+    return {
+        "status": "warn" if issues else "ok",
+        "issues": issues,
     }
 
 
@@ -4290,6 +4376,17 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         else:
             scope = "product"
             scope_label = "Товар"
+        source_category = raw.get("source_category") if isinstance(raw.get("source_category"), dict) else None
+        evidence_category_id = str((source_category or {}).get("id") or cid).strip()
+        evidence_category_ids = [evidence_category_id] if evidence_category_id else [cid]
+        for child_id in _descendant_ids(evidence_category_id, children_by_parent):
+            if child_id not in evidence_category_ids:
+                evidence_category_ids.append(child_id)
+        source_evidence = _feature_source_evidence(
+            category_ids=evidence_category_ids,
+            catalog_name=str(raw.get("catalog_name") or dict_doc.get("title") or dict_id),
+            pim_values=pim_values,
+        )
 
         providers: List[Dict[str, Any]] = []
         for provider in MAPPING_PROVIDERS:
@@ -4303,6 +4400,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
             if not ref and not allowed_values and not mapped_values:
                 continue
             provider_mode = _value_mode_from_type(ref.get("kind"), allowed_values)
+            dictionary_quality = _provider_dictionary_quality(allowed_values, value_count)
             coverage = (
                 _provider_value_coverage(dict_id, provider, pim_values)
                 if provider_mode in {"boolean", "enum", "multi"} and pim_values
@@ -4331,6 +4429,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                     },
                     "allowed_sample": allowed_values[:4],
                     "allowed_values": allowed_values[:160],
+                    "dictionary_quality": dictionary_quality,
                     "missing_sample": coverage.get("missing_sample") if isinstance(coverage.get("missing_sample"), list) else [],
                     "missing_values": coverage.get("missing_values") if isinstance(coverage.get("missing_values"), list) else [],
                     "param_name": str(ref.get("name") or "").strip() or None,
@@ -4342,11 +4441,13 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         provider_modes = {str(p.get("mode") or "") for p in providers}
         if "boolean" in provider_modes or _value_mode_from_type(item_type) == "boolean":
             value_mode = "boolean"
+        elif "number" in provider_modes:
+            value_mode = "number"
         elif "multi" in provider_modes:
             value_mode = "multi"
         elif "enum" in provider_modes or _value_mode_from_type(item_type) == "enum":
             value_mode = "enum"
-        elif "number" in provider_modes or _value_mode_from_type(item_type) == "number":
+        elif _value_mode_from_type(item_type) == "number":
             value_mode = "number"
         else:
             value_mode = "text"
@@ -4367,9 +4468,10 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                 "value_count": value_count,
                 "pim_sample": pim_sample,
                 "pim_values": pim_values[:80],
+                "source_evidence": source_evidence,
                 "needs_value_mapping": needs_value_mapping,
                 "needs_unit_check": needs_unit_check,
-                "source_category": raw.get("source_category") if isinstance(raw.get("source_category"), dict) else None,
+                "source_category": source_category,
                 "providers": providers,
                 "providers_count": len(providers),
                 "mapped_total": sum(int(p.get("mapped_count") or 0) for p in providers),

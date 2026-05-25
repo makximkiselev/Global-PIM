@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.api.routes import catalog_exchange, competitor_mapping, marketplace_mapping, ozon_market, products, templates, yandex_market
+from app.api.routes import catalog_exchange, competitor_mapping, marketplace_mapping, ozon_market, product_groups, products, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
@@ -293,6 +293,145 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(outputs["ozon"]["output_value"], "256")
         self.assertEqual(outputs["ozon"]["status"], "ready")
 
+    def test_product_parameter_flow_keeps_multiple_provider_bindings_for_one_pim_parameter(self) -> None:
+        product = {
+            "id": "product_phone",
+            "category_id": "cat_phones",
+            "sku_gt": "52462",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Blue",
+            "content": {
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                ],
+            },
+        }
+
+        with (
+            patch.object(parameter_flow, "load_catalog_nodes", return_value=[{"id": "cat_phones", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(
+                parameter_flow,
+                "load_attribute_mapping_doc",
+                return_value={
+                    "items": {
+                        "cat_phones": {
+                            "rows": [
+                                {
+                                    "catalog_name": "Бренд",
+                                    "provider_map": {
+                                        "yandex_market": {
+                                            "id": "vendor",
+                                            "name": "Производитель",
+                                            "export": True,
+                                            "bindings": [
+                                                {"id": "brand", "name": "Бренд товара", "export": True},
+                                            ],
+                                        },
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                },
+            ),
+            patch.object(
+                parameter_flow,
+                "load_attribute_value_refs_doc",
+                return_value={
+                    "items": {
+                        "cat_phones": {
+                            "catalog_params": {
+                                "brand": {"catalog_name": "Бренд", "dict_id": "dict_brand"}
+                            }
+                        }
+                    }
+                },
+            ),
+            patch.object(
+                parameter_flow,
+                "provider_export_value_details",
+                return_value={"value": "Apple", "mapped": True, "reason": "allowed_exact"},
+            ),
+        ):
+            payload = parameter_flow.build_product_parameter_flow(product)
+
+        row = payload["items"][0]
+        outputs = [item for item in row["marketplaces"] if item["provider"] == "yandex_market"]
+        self.assertEqual([item["target_id"] for item in outputs], ["vendor", "brand"])
+        self.assertEqual([item["binding_index"] for item in outputs], [0, 1])
+        self.assertEqual([item["primary"] for item in outputs], [True, False])
+
+    def test_product_parameter_flow_uses_provider_specific_export_map_fixture(self) -> None:
+        product = {
+            "id": "product_phone",
+            "category_id": "cat_phones",
+            "sku_gt": "52462",
+            "title": "Смартфон Apple iPhone 17 Pro Max 1 ТБ",
+            "content": {
+                "features": [
+                    {"code": "memory", "name": "Встроенная память", "value": "1 ТБ"},
+                ],
+            },
+        }
+        dictionary = {
+            "id": "dict_memory",
+            "items": [{"value": "1 ТБ"}],
+            "aliases": {},
+            "meta": {
+                "export_map": {
+                    "ozon": {"1 тб": "1024"},
+                    "yandex_market": {"1 тб": "1 ТБ"},
+                },
+                "source_reference": {
+                    "ozon": {"allowed_values": ["512", "1024"]},
+                    "yandex_market": {"allowed_values": ["512 ГБ", "1 ТБ"]},
+                },
+            },
+        }
+
+        with (
+            patch.object(parameter_flow, "load_catalog_nodes", return_value=[{"id": "cat_phones", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(
+                parameter_flow,
+                "load_attribute_mapping_doc",
+                return_value={
+                    "items": {
+                        "cat_phones": {
+                            "rows": [
+                                {
+                                    "catalog_name": "Встроенная память",
+                                    "provider_map": {
+                                        "yandex_market": {"id": "ym_memory", "name": "Объем встроенной памяти", "export": True},
+                                        "ozon": {"id": "oz_memory", "name": "Встроенная память", "export": True},
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                },
+            ),
+            patch.object(
+                parameter_flow,
+                "load_attribute_value_refs_doc",
+                return_value={
+                    "items": {
+                        "cat_phones": {
+                            "catalog_params": {
+                                "memory": {"catalog_name": "Встроенная память", "dict_id": "dict_memory"}
+                            }
+                        }
+                    }
+                },
+            ),
+            patch.object(value_mapping, "load_dict", return_value=deepcopy(dictionary)),
+            patch.object(parameter_flow, "provider_export_value_details", side_effect=value_mapping.provider_export_value_details),
+        ):
+            payload = parameter_flow.build_product_parameter_flow(product)
+
+        outputs = {item["provider"]: item for item in payload["items"][0]["marketplaces"]}
+        self.assertEqual(outputs["ozon"]["output_value"], "1024")
+        self.assertEqual(outputs["ozon"]["mapping_reason"], "export_map")
+        self.assertEqual(outputs["yandex_market"]["output_value"], "1 ТБ")
+
     def test_dictionary_canonicalizes_competitor_explanatory_value(self) -> None:
         dictionary = {
             "id": "dict_степень_защиты",
@@ -395,6 +534,38 @@ class OperatingWorkflowTests(unittest.TestCase):
                 }
             }
         }
+        products = [
+            {
+                "id": "product_phone_1",
+                "sku_gt": "52420",
+                "title": "iPhone 17 Pro Max 256",
+                "category_id": "cat-phone",
+                "content": {
+                    "features": [
+                        {
+                            "code": "memory",
+                            "name": "Встроенная память",
+                            "value": "256 ГБ",
+                            "source_values": {
+                                "competitor": {
+                                    "store77": {
+                                        "raw_value": "256Gb",
+                                        "resolved_value": "256 ГБ",
+                                        "canonical_value": "256 ГБ",
+                                    }
+                                },
+                                "yandex_market": {
+                                    "ym": {
+                                        "raw_value": "256 ГБ",
+                                        "resolved_value": "256 ГБ",
+                                    }
+                                },
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
 
         with (
             patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
@@ -405,6 +576,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(marketplace_mapping, "_load_attr_values_dict_doc", return_value=deepcopy(values_doc)),
             patch.object(marketplace_mapping, "load_dictionaries_db", return_value=deepcopy(dictionaries)),
             patch.object(marketplace_mapping, "load_dict", side_effect=lambda dict_id: next(d for d in dictionaries["items"] if d["id"] == dict_id)),
+            patch.object(marketplace_mapping, "query_products_full", return_value=deepcopy(products)),
             patch.object(
                 marketplace_mapping,
                 "provider_export_value_details",
@@ -423,6 +595,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(memory_provider["covered_count"], 2)
         self.assertEqual(memory_provider["missing_count"], 0)
         self.assertEqual(by_title["Встроенная память"]["pim_values"], ["256 ГБ", "512 ГБ"])
+        self.assertEqual(by_title["Встроенная память"]["source_evidence"][0]["raw_value"], "256Gb")
+        self.assertEqual(by_title["Встроенная память"]["source_evidence"][0]["source_id"], "store77")
+        self.assertEqual(by_title["Встроенная память"]["source_evidence"][0]["sku_gt"], "52420")
         self.assertEqual(memory_provider["allowed_values"], ["128 ГБ", "256 ГБ", "512 ГБ", "1 ТБ"])
         self.assertEqual(memory_provider["missing_values"], [])
         self.assertTrue(by_title["Версия"]["needs_value_mapping"])
@@ -430,6 +605,61 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(version_provider["missing_sample"], ["Global"])
         self.assertEqual(version_provider["missing_values"], ["Global"])
         self.assertFalse(by_title["Линейка"]["needs_value_mapping"])
+
+    def test_value_details_treats_provider_numeric_kind_as_unit_check_not_dictionary_mapping(self) -> None:
+        dictionaries = {
+            "items": [
+                {
+                    "id": "dict_weight",
+                    "title": "Вес упаковки, г",
+                    "type": "select",
+                    "items": [{"value": "240"}],
+                    "meta": {
+                        "source_reference": {
+                            "ozon": {
+                                "kind": "Decimal",
+                                "allowed_values": ["100", "200", "240"],
+                            }
+                        },
+                        "export_map": {},
+                    },
+                }
+            ]
+        }
+        values_doc = {
+            "items": {
+                "cat-phone": {
+                    "catalog_params": {
+                        "weight": {
+                            "catalog_name": "Вес упаковки, г",
+                            "dict_id": "dict_weight",
+                        }
+                    }
+                }
+            }
+        }
+
+        with (
+            patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
+            patch.object(marketplace_mapping, "_load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_rows", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_parent_map", return_value={}),
+            patch.object(marketplace_mapping, "_tree_maps", return_value=({}, {})),
+            patch.object(marketplace_mapping, "_load_attr_values_dict_doc", return_value=deepcopy(values_doc)),
+            patch.object(marketplace_mapping, "load_dictionaries_db", return_value=deepcopy(dictionaries)),
+            patch.object(marketplace_mapping, "load_dict", side_effect=lambda dict_id: next(d for d in dictionaries["items"] if d["id"] == dict_id)),
+            patch.object(marketplace_mapping, "query_products_full", return_value=[]),
+        ):
+            response = marketplace_mapping.mapping_value_details("cat-phone")
+
+        item = response["items"][0]
+        provider = item["providers"][0]
+        self.assertEqual(item["value_mode"], "number")
+        self.assertFalse(item["needs_value_mapping"])
+        self.assertTrue(item["needs_unit_check"])
+        self.assertEqual(provider["mode"], "number")
+        self.assertFalse(provider["needs_mapping"])
+        self.assertTrue(provider["needs_unit_check"])
 
     def test_value_ai_suggest_applies_valid_allowed_pairs(self) -> None:
         dictionary = {
@@ -693,6 +923,50 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual({item["group_id"] for item in saved_products}, {"group_1"})
         self.assertEqual(saved_products[0]["content"]["features"][0]["value"], "256 ГБ")
         self.assertEqual(saved_groups[-1]["items"][0]["variant_param_ids"], ["memory", "color"])
+
+    def test_product_group_family_facts_separates_shared_values_and_variant_overrides(self) -> None:
+        products_payload = [
+            {
+                "id": "p1",
+                "title": "iPhone 17 Pro Max 256 Orange eSIM",
+                "sku_gt": "52420",
+                "group_id": "group-phone",
+                "content": {
+                    "features": [
+                        {"code": "brand", "name": "Бренд", "value": "Apple"},
+                        {"code": "memory", "name": "Встроенная память", "value": "256 ГБ"},
+                        {"code": "color", "name": "Цвет", "value": "Оранжевый"},
+                    ]
+                },
+            },
+            {
+                "id": "p2",
+                "title": "iPhone 17 Pro Max 512 Orange eSIM",
+                "sku_gt": "52421",
+                "group_id": "group-phone",
+                "content": {
+                    "features": [
+                        {"code": "brand", "name": "Бренд", "value": "Apple"},
+                        {"code": "memory", "name": "Встроенная память", "value": "512 ГБ"},
+                        {"code": "color", "name": "Цвет", "value": "Оранжевый"},
+                    ]
+                },
+            },
+        ]
+
+        with (
+            patch.object(product_groups, "load_product_groups_doc", return_value={"items": [{"id": "group-phone", "name": "iPhone 17 Pro Max", "variant_param_ids": ["memory"]}]}),
+            patch.object(product_groups, "query_products_full", return_value=deepcopy(products_payload)),
+        ):
+            response = product_groups.group_family_facts("group-phone")
+
+        self.assertEqual(response["summary"]["products_count"], 2)
+        shared_by_code = {item["code"]: item for item in response["shared_facts"]}
+        override_by_code = {item["code"]: item for item in response["variant_overrides"]}
+        self.assertEqual(shared_by_code["brand"]["value"], "Apple")
+        self.assertEqual(shared_by_code["color"]["value"], "Оранжевый")
+        self.assertEqual([item["value"] for item in override_by_code["memory"]["values"]], ["256 ГБ", "512 ГБ"])
+        self.assertTrue(override_by_code["memory"]["selected_variant_axis"])
 
     def test_competitor_candidate_approval_confirms_one_and_rejects_siblings(self) -> None:
         db = {

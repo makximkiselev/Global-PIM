@@ -108,6 +108,32 @@ def _normalize_ids(items: Any) -> List[str]:
     return out
 
 
+def _norm_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().replace("ё", "е").split())
+
+
+def _feature_value_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return ", ".join([part for part in (_feature_value_text(item) for item in value) if part])
+    if isinstance(value, dict):
+        for key in ("canonical_value", "resolved_value", "value", "name", "title", "label", "raw_value"):
+            if key in value:
+                resolved = _feature_value_text(value.get(key))
+                if resolved:
+                    return resolved
+        return ""
+    return str(value).strip()
+
+
+def _feature_identity(feature: Dict[str, Any]) -> Tuple[str, str, str]:
+    code = str(feature.get("code") or "").strip()
+    name = str(feature.get("name") or code).strip()
+    key = _norm_text(code) or _norm_text(name)
+    return key, code, name
+
+
 def _ensure_group_shape(group: Dict[str, Any]) -> Dict[str, Any]:
     group["variant_param_ids"] = _normalize_ids(group.get("variant_param_ids") or [])
     return group
@@ -317,6 +343,107 @@ def group_details(group_id: str) -> Dict[str, Any]:
     group = _ensure_group_shape(_get_group(doc, group_id))
     items = query_group_product_summaries(group_id=group_id)
     return {"group": group, "items": items}
+
+
+@router.get("/{group_id}/family-facts")
+def group_family_facts(group_id: str) -> Dict[str, Any]:
+    doc = _load_groups()
+    group = _ensure_group_shape(_get_group(doc, group_id))
+    selected_axes = set(_normalize_ids(group.get("variant_param_ids") or []))
+    products = [p for p in query_products_full(group_ids=[group_id]) if str(p.get("group_id") or "").strip() == group_id]
+    products_count = len(products)
+
+    feature_rows: Dict[str, Dict[str, Any]] = {}
+    for product in products:
+        product_id = str(product.get("id") or "").strip()
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        features = content.get("features") if isinstance(content.get("features"), list) else []
+        seen_in_product: Set[str] = set()
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            key, code, name = _feature_identity(feature)
+            if not key or key in seen_in_product:
+                continue
+            if (code or key).lower() in SERVICE_CODES:
+                continue
+            value = _feature_value_text(feature.get("value"))
+            if not value:
+                continue
+            seen_in_product.add(key)
+            row = feature_rows.setdefault(
+                key,
+                {
+                    "key": key,
+                    "code": code,
+                    "name": name,
+                    "products": [],
+                    "values_by_norm": {},
+                },
+            )
+            if not row.get("code") and code:
+                row["code"] = code
+            if not row.get("name") and name:
+                row["name"] = name
+            row["products"].append(product_id)
+            value_key = _norm_text(value)
+            value_row = row["values_by_norm"].setdefault(
+                value_key,
+                {
+                    "value": value,
+                    "count": 0,
+                    "products": [],
+                    "samples": [],
+                },
+            )
+            value_row["count"] = int(value_row.get("count") or 0) + 1
+            value_row["products"].append(product_id)
+            if len(value_row["samples"]) < 4:
+                value_row["samples"].append(
+                    {
+                        "product_id": product_id,
+                        "sku_gt": str(product.get("sku_gt") or product.get("sku_pim") or "").strip(),
+                        "title": str(product.get("title") or product.get("name") or "").strip(),
+                    }
+                )
+
+    shared_facts: List[Dict[str, Any]] = []
+    variant_overrides: List[Dict[str, Any]] = []
+    for row in feature_rows.values():
+        values = sorted(
+            row["values_by_norm"].values(),
+            key=lambda item: (-int(item.get("count") or 0), str(item.get("value") or "").lower()),
+        )
+        code = str(row.get("code") or "").strip()
+        axis_keys = {code, row["key"], f"dict_{code}" if code else ""}
+        selected_variant_axis = bool(selected_axes.intersection({x for x in axis_keys if x}))
+        coverage = len(set(row.get("products") or []))
+        payload_base = {
+            "key": row["key"],
+            "code": code,
+            "name": str(row.get("name") or code or row["key"]),
+            "coverage": coverage,
+            "products_count": products_count,
+            "selected_variant_axis": selected_variant_axis,
+        }
+        if len(values) == 1 and products_count > 0 and coverage == products_count:
+            shared_facts.append({**payload_base, "value": str(values[0].get("value") or ""), "samples": values[0].get("samples") or []})
+        elif len(values) > 1:
+            variant_overrides.append({**payload_base, "values": values})
+
+    shared_facts.sort(key=lambda item: (str(item.get("name") or "").lower(), str(item.get("code") or "")))
+    variant_overrides.sort(key=lambda item: (not bool(item.get("selected_variant_axis")), str(item.get("name") or "").lower()))
+    return {
+        "ok": True,
+        "group": {"id": group_id, "name": str(group.get("name") or ""), "variant_param_ids": group.get("variant_param_ids") or []},
+        "summary": {
+            "products_count": products_count,
+            "shared_count": len(shared_facts),
+            "variant_override_count": len(variant_overrides),
+        },
+        "shared_facts": shared_facts,
+        "variant_overrides": variant_overrides,
+    }
 
 
 class GroupCreateReq(BaseModel):

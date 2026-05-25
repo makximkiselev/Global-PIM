@@ -1184,6 +1184,27 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                 <div className="paramsInspectorSection">
                   <h4>Привязка к площадкам</h4>
                   <p>Здесь редактируется, какое поле площадки наполняет поле PIM.</p>
+                  {(() => {
+                    const provenance = providerOriginChips(
+                      codes.flatMap((code) => providerBindings(selectedRow.provider_map?.[code])),
+                    );
+                    return provenance.length ? (
+                      <div className="paramsProvenancePanel">
+                        <div>
+                          <strong>Почему предложена эта связь</strong>
+                          <span>AI, правила и память показываются до ручного подтверждения.</span>
+                        </div>
+                        <div className="paramsProvenanceList">
+                          {provenance.map((item) => (
+                            <span key={item.source} className={mappingOriginClass(item.source)} title={item.reasons.join("\n") || "Причина сопоставления пока не записана."}>
+                              <b>{mappingOriginLabel(item.source)}{formatConfidence(item.confidence) ? ` ${formatConfidence(item.confidence)}` : ""}</b>
+                              <em>{item.reasons[0] || "Причина сопоставления пока не записана."}</em>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="paramsModeLegend" aria-label="Режимы передачи параметров">
                     <span><i className="paramsValueMode isdictionary">Справочник</i> выбрать поле и настроить значения</span>
                     <span><i className="paramsValueMode ismulti">Мультивыбор</i> значения могут быть списком</span>

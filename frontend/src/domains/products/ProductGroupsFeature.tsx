@@ -54,6 +54,49 @@ type VariantParam = {
   selected?: boolean;
 };
 
+type FamilyFactSample = {
+  product_id: string;
+  sku_gt?: string;
+  title?: string;
+};
+
+type FamilySharedFact = {
+  key: string;
+  code?: string;
+  name: string;
+  value: string;
+  coverage: number;
+  products_count: number;
+  samples?: FamilyFactSample[];
+};
+
+type FamilyVariantValue = {
+  value: string;
+  count: number;
+  samples?: FamilyFactSample[];
+};
+
+type FamilyVariantOverride = {
+  key: string;
+  code?: string;
+  name: string;
+  coverage: number;
+  products_count: number;
+  selected_variant_axis?: boolean;
+  values: FamilyVariantValue[];
+};
+
+type FamilyFactsResp = {
+  ok: boolean;
+  summary?: {
+    products_count?: number;
+    shared_count?: number;
+    variant_override_count?: number;
+  };
+  shared_facts?: FamilySharedFact[];
+  variant_overrides?: FamilyVariantOverride[];
+};
+
 function productLabel(p: ProductItem) {
   return (p.title || p.name || "").trim() || p.id;
 }
@@ -82,6 +125,8 @@ export default function ProductGroupsFeature() {
   const [selectedGroupId, setSelectedGroupIdState] = useState<string>(searchParams.get("group") || "");
   const [groupDetails, setGroupDetails] = useState<GroupDetails | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
+  const [familyFacts, setFamilyFacts] = useState<FamilyFactsResp | null>(null);
+  const [familyFactsLoading, setFamilyFactsLoading] = useState(false);
 
   const [ungrouped, setUngrouped] = useState<ProductItem[]>([]);
   const [ungroupedLoading, setUngroupedLoading] = useState(false);
@@ -147,6 +192,7 @@ export default function ProductGroupsFeature() {
   async function loadGroupDetails(groupId: string) {
     if (!groupId) {
       setGroupDetails(null);
+      setFamilyFacts(null);
       return;
     }
     setGroupLoading(true);
@@ -156,6 +202,15 @@ export default function ProductGroupsFeature() {
       setEditName(data?.group?.name || "");
     } finally {
       setGroupLoading(false);
+    }
+    setFamilyFactsLoading(true);
+    try {
+      const facts = await api<FamilyFactsResp>(`/product-groups/${encodeURIComponent(groupId)}/family-facts`);
+      setFamilyFacts(facts || null);
+    } catch {
+      setFamilyFacts(null);
+    } finally {
+      setFamilyFactsLoading(false);
     }
   }
 
@@ -439,6 +494,8 @@ export default function ProductGroupsFeature() {
   const assignCreateNorm = qnorm(assignCreateName);
   const createNameDuplicate = !!createNameNorm && groupNameSet.has(createNameNorm);
   const assignCreateDuplicate = !!assignCreateNorm && groupNameSet.has(assignCreateNorm);
+  const sharedFactsPreview = (familyFacts?.shared_facts || []).slice(0, 8);
+  const variantOverridesPreview = (familyFacts?.variant_overrides || []).slice(0, 8);
 
   const createNameHints = useMemo(() => {
     const q = qnorm(createName);
@@ -1001,6 +1058,64 @@ export default function ProductGroupsFeature() {
                 </>
               )}
                 </div>
+
+                {groupDetails?.items.length ? (
+                  <div className="card pg-familyFactsCard">
+                    <div className="pg-familyFactsHead">
+                      <div>
+                        <div className="card-title">Факты линейки</div>
+                        <div className="muted">
+                          Общие значения можно применять ко всей группе, отличия оставляем на уровне SKU.
+                        </div>
+                      </div>
+                      <button className="btn" type="button" onClick={() => loadGroupDetails(selectedGroupId)} disabled={familyFactsLoading}>
+                        {familyFactsLoading ? "Обновляю…" : "Пересчитать"}
+                      </button>
+                    </div>
+
+                    {familyFactsLoading ? (
+                      <div className="muted">Считаю общие факты и отличия…</div>
+                    ) : (
+                      <>
+                        <div className="pg-familySummary">
+                          <span><b>{familyFacts?.summary?.products_count || groupDetails.items.length}</b> SKU</span>
+                          <span><b>{familyFacts?.summary?.shared_count || 0}</b> общих фактов</span>
+                          <span><b>{familyFacts?.summary?.variant_override_count || 0}</b> отличий</span>
+                        </div>
+                        <div className="pg-familyFactsGrid">
+                          <div className="pg-familyColumn">
+                            <div className="pg-familyColumnTitle">Общие для группы</div>
+                            {sharedFactsPreview.length ? (
+                              sharedFactsPreview.map((fact) => (
+                                <div key={fact.key} className="pg-familyFactRow">
+                                  <span>{fact.name}</span>
+                                  <strong>{fact.value}</strong>
+                                  <em>{fact.coverage}/{fact.products_count} SKU</em>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="muted">Общие факты не найдены или группа еще не заполнена.</div>
+                            )}
+                          </div>
+                          <div className="pg-familyColumn">
+                            <div className="pg-familyColumnTitle">Отличия SKU</div>
+                            {variantOverridesPreview.length ? (
+                              variantOverridesPreview.map((fact) => (
+                                <div key={fact.key} className={`pg-familyFactRow ${fact.selected_variant_axis ? "isAxis" : ""}`}>
+                                  <span>{fact.name}</span>
+                                  <strong>{fact.values.map((item) => item.value).slice(0, 4).join(" / ")}</strong>
+                                  <em>{fact.selected_variant_axis ? "ось варианта" : `${fact.values.length} знач.`}</em>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="muted">Отличия SKU не найдены.</div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
 
                 <div className="card pg-productsCard">
                   {groupLoading ? (

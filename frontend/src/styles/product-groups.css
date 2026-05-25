@@ -588,6 +588,103 @@
   padding-top:12px;
 }
 
+.pg-familyFactsCard{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.pg-familyFactsHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.pg-familySummary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.pg-familySummary span{
+  border:1px solid rgba(11,18,32,.08);
+  border-radius:10px;
+  padding:6px 10px;
+  background:#f8fafc;
+  color:#51607a;
+  font-size:12px;
+  font-weight:700;
+}
+
+.pg-familySummary b{
+  color:#0f172a;
+}
+
+.pg-familyFactsGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+
+.pg-familyColumn{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+}
+
+.pg-familyColumnTitle{
+  font-size:12px;
+  font-weight:800;
+  color:#51607a;
+  text-transform:uppercase;
+}
+
+.pg-familyFactRow{
+  display:grid;
+  grid-template-columns:minmax(120px, .8fr) minmax(140px, 1fr) auto;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(11,18,32,.08);
+  border-radius:12px;
+  padding:8px 10px;
+  background:#fff;
+  min-width:0;
+}
+
+.pg-familyFactRow.isAxis{
+  border-color:rgba(61,107,255,.22);
+  background:rgba(61,107,255,.05);
+}
+
+.pg-familyFactRow span,
+.pg-familyFactRow strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pg-familyFactRow span{
+  color:#51607a;
+  font-size:12px;
+  font-weight:700;
+}
+
+.pg-familyFactRow strong{
+  color:#0f172a;
+  font-size:13px;
+}
+
+.pg-familyFactRow em{
+  color:#64748b;
+  font-size:11px;
+  font-style:normal;
+  font-weight:800;
+  white-space:nowrap;
+}
+
 .pg-modalBackdrop{
   position:fixed;
   inset:0;
@@ -656,4 +753,6 @@
 
 @media (max-width: 900px){
   .pg-filters{grid-template-columns: 1fr;}
+  .pg-familyFactsGrid{grid-template-columns: 1fr;}
+  .pg-familyFactRow{grid-template-columns: 1fr;}
 }

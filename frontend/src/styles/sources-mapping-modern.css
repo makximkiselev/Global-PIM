@@ -1085,11 +1085,13 @@
 }
 
 .sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceStrip,
+.sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceDiagnostics,
 .sourcesMappingPage .mm-competitorWorkbench .mm-competitorMiniStats {
   grid-column: auto;
 }
 
 .sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceStrip,
+.sourcesMappingPage .mm-competitorWorkbench .mm-competitorSourceDiagnostics,
 .sourcesMappingPage .mm-competitorWorkbench .mm-competitorMiniStats {
   min-width: 0;
 }
@@ -1153,6 +1155,13 @@
   gap: 8px;
   align-content: start;
   grid-column: 1;
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostics {
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+  grid-column:1 / -1;
 }
 
 .sourcesMappingPage .mm-competitorSourceItem {
@@ -1222,6 +1231,49 @@
 .sourcesMappingPage .mm-competitorSourceItem.is-review > span {
   border-color: color-mix(in srgb, var(--brand) 28%, var(--line));
   color: var(--brand);
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:color-mix(in srgb, var(--panel) 94%, var(--surface));
+  padding:8px 9px;
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic strong {
+  color:var(--text);
+  font-size:11px;
+  font-weight:950;
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic span {
+  color:var(--muted);
+  font-size:11px;
+  font-weight:750;
+  line-height:1.35;
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic.isReady {
+  border-color:color-mix(in srgb, #16a34a 26%, var(--line));
+  background:color-mix(in srgb, #ecfdf3 48%, var(--panel));
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic.isReview {
+  border-color:color-mix(in srgb, var(--brand) 30%, var(--line));
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic.isEmpty {
+  border-color:color-mix(in srgb, #f59e0b 28%, var(--line));
+  background:color-mix(in srgb, #fff7ed 48%, var(--panel));
+}
+
+.sourcesMappingPage .mm-competitorSourceDiagnostic.isError {
+  border-color:color-mix(in srgb, #d92d20 28%, var(--line));
+  background:color-mix(in srgb, #fff1f0 56%, var(--panel));
 }
 
 .sourcesMappingPage .mm-competitorMiniStats {
@@ -2681,6 +2733,75 @@
   font-size: 12px;
   line-height: 1.45;
   font-weight: 700;
+}
+
+.paramsProvenancePanel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid rgba(var(--line-rgb), .12);
+  border-radius: 14px;
+  background: rgba(var(--card-rgb), .66);
+}
+
+.paramsProvenancePanel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.paramsProvenancePanel strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.paramsProvenancePanel span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.paramsProvenanceList {
+  display: grid;
+  gap: 7px;
+}
+
+.paramsProvenanceList span {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(var(--line-rgb), .1);
+  border-radius: 12px;
+  background: rgba(var(--bg-rgb), .18);
+}
+
+.paramsProvenanceList span.isAi {
+  border-color: rgba(79, 70, 229, .24);
+  background: rgba(79, 70, 229, .08);
+}
+
+.paramsProvenanceList span.isRule {
+  border-color: rgba(14, 165, 233, .24);
+  background: rgba(14, 165, 233, .08);
+}
+
+.paramsProvenanceList span.isMemory {
+  border-color: rgba(22, 163, 74, .24);
+  background: rgba(22, 163, 74, .08);
+}
+
+.paramsProvenanceList b {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.paramsProvenanceList em {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 780;
+  line-height: 1.35;
 }
 
 .paramsInspectorHead b {

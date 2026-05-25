@@ -30,8 +30,24 @@ type ValueItemProvider = {
   allowed_values?: string[];
   missing_sample?: string[];
   missing_values?: string[];
+  dictionary_quality?: {
+    status?: "ok" | "warn" | string;
+    issues?: Array<{ code?: string; label?: string; text?: string }>;
+  };
   param_name?: string | null;
   required?: boolean;
+};
+
+type ValueSourceEvidence = {
+  product_id?: string;
+  sku_gt?: string;
+  product_title?: string;
+  source_group?: string;
+  source_id?: string;
+  source_label?: string;
+  raw_value?: string;
+  resolved_value?: string;
+  canonical_value?: string;
 };
 
 type ValueItem = {
@@ -48,6 +64,7 @@ type ValueItem = {
   value_count: number;
   pim_sample?: string[];
   pim_values?: string[];
+  source_evidence?: ValueSourceEvidence[];
   needs_value_mapping?: boolean;
   needs_unit_check?: boolean;
   source_category?: { id: string; name: string; path?: string } | null;
@@ -151,6 +168,14 @@ function providerSampleText(provider: ValueItemProvider) {
   if (allowed.length) return `значения площадки: ${allowed.join(", ")}`;
   if (provider.needs_unit_check) return "проверь единицы измерения перед экспортом";
   return "";
+}
+
+function sourceEvidenceText(evidence: ValueSourceEvidence) {
+  const source = evidence.source_label || evidence.source_id || evidence.source_group || "источник";
+  const sku = evidence.sku_gt ? `SKU ${evidence.sku_gt}` : evidence.product_title || evidence.product_id || "";
+  const raw = evidence.raw_value || evidence.resolved_value || evidence.canonical_value || "";
+  const resolved = evidence.resolved_value && evidence.resolved_value !== raw ? ` -> ${evidence.resolved_value}` : "";
+  return `${source}${sku ? ` · ${sku}` : ""}: ${raw}${resolved}`;
 }
 
 function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
@@ -797,6 +822,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                         <strong>{provider.title}</strong>
                         <span>{provider.param_name || "Поле площадки не указано"}</span>
                         <small>{providerSampleText(provider) || "Образцов значений пока нет."}</small>
+                        {provider.dictionary_quality?.issues?.length ? (
+                          <div className="sm-valuesQualityWarnings">
+                            {provider.dictionary_quality.issues.slice(0, 2).map((issue) => (
+                              <em key={issue.code || issue.label}>{issue.label || "проверь справочник"}</em>
+                            ))}
+                          </div>
+                        ) : null}
                         {String(provider.mode || "").toLowerCase() !== "number" && Number(activeItem.value_count || 0) > 0 && Number(provider.allowed_count || 0) > 0 ? (
                           <button
                             className="btn sm"
@@ -811,6 +843,23 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     ))}
                   </div>
                   {aiValueMessage ? <div className="sm-valuesEmpty">{aiValueMessage}</div> : null}
+                  {activeItem.source_evidence?.length ? (
+                    <div className="sm-valuesSourceEvidence">
+                      <div className="sm-valuesSourceEvidenceHead">
+                        <strong>Raw values из источников</strong>
+                        <span>что пришло с конкурентов и площадок до нормализации</span>
+                      </div>
+                      <div className="sm-valuesSourceEvidenceList">
+                        {activeItem.source_evidence.slice(0, 8).map((evidence, index) => (
+                          <div key={`${evidence.product_id || index}:${evidence.source_id || evidence.source_group}:${evidence.raw_value || evidence.resolved_value}`} className="sm-valuesSourceEvidenceItem">
+                            <span>{evidence.source_label || evidence.source_id || evidence.source_group || "источник"}</span>
+                            <strong>{evidence.raw_value || evidence.resolved_value || evidence.canonical_value}</strong>
+                            <small>{sourceEvidenceText(evidence)}</small>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {usefulProviders(activeItem).map((provider) => renderInlineValueEditor(provider))}
                   <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
                 </>

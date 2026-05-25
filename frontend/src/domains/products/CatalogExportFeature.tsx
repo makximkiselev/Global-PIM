@@ -644,7 +644,16 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                             </ul>
                             <div className="cx-exportBlockerActions">
                               <Link className="btn" to={`/products/${encodeURIComponent(blocker.product_id)}`}>Открыть SKU</Link>
-                              <Link className="btn btn-primary" to={blockerFixHref(blocker, blocker.missing[0] || "")}>{blockerFixLabel(blocker.missing[0] || "")}</Link>
+                              {blocker.missing.slice(0, 4).map((reason, index) => (
+                                <Link
+                                  key={`${reason}:${index}`}
+                                  className={`btn ${index === 0 ? "btn-primary" : ""}`}
+                                  to={blockerFixHref(blocker, reason)}
+                                  title={reason}
+                                >
+                                  {blockerFixLabel(reason)}
+                                </Link>
+                              ))}
                             </div>
                           </div>
                       ))}

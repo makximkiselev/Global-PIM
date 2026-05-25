@@ -470,6 +470,21 @@ Next tasks:
 3. Show AI confidence/reason/memory source next to competitor field mapping suggestions in `/sources?tab=params`.
 4. Browser-check inline value editing on a category with real unresolved value blockers, not only already-covered smartphone dictionaries.
 
+## Current Closeout Checklist
+
+These 10 items are being worked as one closeout batch before the category/export flow can be considered stable:
+
+- [x] Values: show raw source/competitor evidence next to each PIM canonical value.
+- [x] Params: show AI confidence, reason, and memory/source provenance next to AI mapping suggestions.
+- [x] Values: browser-check inline value editing on a category/field with real unresolved blockers. Current production data has 0 unresolved value blockers for `iPhone 17 Pro Max`, `iPad Air 11 M3`, and `MacBook Air 13 M4`; inline editing was browser-checked on live MacBook value rows with raw evidence and save/remove controls.
+- [x] Marketplace dictionary QA: identify and mark suspicious/noisy provider dictionaries that can mislead matching.
+- [x] Tests: add coverage for complex one-PIM-field-to-many-marketplace-field mappings and provider-specific export-map fixtures.
+- [x] Product-family enrichment: expose shared line facts and SKU variant overrides in a usable view/action.
+- [x] Competitor diagnostics: show source-specific exact-miss, timeout, and retry evidence for Store77/re-store.
+- [x] Export readiness UX: each blocker must point to the exact fixing workspace/action.
+- [x] Info-model builder: repeat empty-model workflow on a second category (tablet or notebook) and fix blockers found there. `MacBook Air 13 M4` empty-model state was opened on production and `Собрать предложения` produced a draft with 137 suggestions and 41 fields in model.
+- [x] Numeric/logistics fields: verify provider numeric fields prefer unit-check flow over select-only dictionary mapping.
+
 ### P0.5 Product Creation And Variants
 
 Status: active.

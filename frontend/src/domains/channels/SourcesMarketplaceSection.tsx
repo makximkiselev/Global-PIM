@@ -223,6 +223,7 @@ type CompetitorCategoryDiscoveryResp = {
     candidates_count: number;
     needs_review_count: number;
     candidate_items?: CompetitorDiscoveryCandidate[];
+    link_items?: CompetitorDiscoveryCandidate[];
     suggestions: CompetitorCategorySuggestion[];
     fallback_search?: CompetitorCategorySuggestion | null;
   }>;
@@ -2465,8 +2466,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   const selectedCatalogNode = useMemo(() => {
     if (!selectedCatalogId) return null;
-    return catalogNodes.find((node) => node.id === selectedCatalogId) || null;
-  }, [catalogNodes, selectedCatalogId]);
+    const node = catalogNodes.find((item) => item.id === selectedCatalogId);
+    if (node) return node;
+    const item = catalogItems.find((entry) => entry.id === selectedCatalogId);
+    return {
+      id: selectedCatalogId,
+      parent_id: null,
+      name: item?.name || item?.path || "Выбранная категория",
+      position: 0,
+    };
+  }, [catalogItems, catalogNodes, selectedCatalogId]);
 
   async function loadCompetitorDiscovery(categoryId: string) {
     const cid = String(categoryId || "").trim();
@@ -3135,6 +3144,39 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         : "нет кандидатов",
                                   };
                                 });
+                                const sourceDiagnostics = competitorSourceRows.map((site) => {
+                                  const discoverySource = discoverySources.find((source) => String(source.id) === site.code);
+                                  const selectedCandidates = (discoverySource?.candidate_items || []).filter((candidate) => (
+                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
+                                  ));
+                                  const selectedLinks = (discoverySource?.link_items || []).filter((candidate) => (
+                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
+                                  ));
+                                  const sourceErrors = (competitorDiscoveryRun?.errors || []).filter((item) => String(item.source_id || "") === site.code);
+                                  const firstError = sourceErrors[0]?.error || sourceErrors[0]?.warning || "";
+                                  let text = "Источник готов к подбору точной карточки.";
+                                  let tone = "isNeutral";
+                                  if (selectedLinks.length) {
+                                    text = "Для выбранного SKU уже есть подтвержденная карточка.";
+                                    tone = "isReady";
+                                  } else if (selectedCandidates.length) {
+                                    text = "Есть кандидаты для выбранного SKU, требуется модерация.";
+                                    tone = "isReview";
+                                  } else if (firstError) {
+                                    text = `Последний запуск: ${firstError}`;
+                                    tone = "isError";
+                                  } else if ((discoverySource?.candidate_items || []).length) {
+                                    text = "Кандидаты есть по другим SKU ветки, но не по выбранному SKU.";
+                                    tone = "isReview";
+                                  } else if (competitorDiscoveryRun && !competitorDiscoveryRunning) {
+                                    text = "После последнего скана точного кандидата для выбранного SKU нет.";
+                                    tone = "isEmpty";
+                                  } else if (site.hasCandidates || site.isLinked) {
+                                    text = site.label;
+                                    tone = site.isLinked ? "isReady" : "isReview";
+                                  }
+                                  return { ...site, text, tone };
+                                });
                                 const branchProductCount = Number(competitorDiscovery?.category?.products_count || 0);
                                 const selectedSampleLabel = selectedSampleProduct
                                   ? `${selectedSampleProduct.sku_gt ? `${selectedSampleProduct.sku_gt} · ` : ""}${selectedSampleProduct.title || selectedSampleProduct.id}`
@@ -3217,6 +3259,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                             <div key={site.code} className={`mm-competitorSourceItem ${site.className}`}>
                                               <strong>{site.title}</strong>
                                               <span>{site.label}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div className="mm-competitorSourceDiagnostics">
+                                          {sourceDiagnostics.map((site) => (
+                                            <div key={`diag-${site.code}`} className={`mm-competitorSourceDiagnostic ${site.tone}`}>
+                                              <strong>{site.title}</strong>
+                                              <span>{site.text}</span>
                                             </div>
                                           ))}
                                         </div>
