@@ -592,10 +592,17 @@ iPhone 17 Pro Max export pass is ready on production after confirmed competitor 
 5. Previously blocked `2Sim` rows now receive brand, description, and media from same-line sibling facts.
 6. Store77 eSIM-only candidates for Sim+eSim SKU stay unconfirmed and cannot be accidentally approved from the UI.
 
+Second category export proof:
+
+1. `iPad Air 11 M3` branch export run `export_58a390b9ac` completed after generalizing sibling enrichment beyond iPhone-only titles.
+2. Result: 32 SKU x 2 safe targets (`Я.Маркет GT USD`, `OZON Global Trade AE`) = 64 ready target rows, 0 blockers.
+3. The pass hydrated 12 Yandex offer cards and filled 20 missing SKU from same-line sibling facts.
+4. Sibling enrichment now groups Apple line variants by category, model line, and color for iPhone, iPad Air, MacBook Air, and MacBook Pro titles, instead of only matching iPhone by storage/color.
+
 Next fix in the category flow:
 
-1. Repeat the same ready-export pass for another category branch to prove the flow is not smartphone-specific.
-2. The UI should keep separating “нет ссылок конкурентов” as a previous-step blocker from “ссылка есть, медиа найдено, нужна проверка” as a media-check state.
+1. The UI should keep separating “нет ссылок конкурентов” as a previous-step blocker from “ссылка есть, медиа найдено, нужна проверка” as a media-check state.
+2. Continue value/dictionary QA on the ready branches, especially provider-specific controlled values.
 3. Long full-category export preparation now has a persisted backend job path:
    - `POST /api/catalog/exchange/export/jobs` creates/reuses a queued job;
    - `GET /api/catalog/exchange/export/jobs/{job_id}` returns queued/running/completed/failed status and the saved run result;

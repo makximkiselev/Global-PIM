@@ -330,19 +330,45 @@ def _variant_family_key(product: Dict[str, Any]) -> str:
     title = _normalize_text(product.get("title"))
     if not title:
         return ""
-    model_match = re.search(r"\biphone\s+(\d+)\s+(pro(?:\s+max)?)\b", title)
-    storage_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", title)
+    model_patterns = (
+        r"\biphone\s+\d+\s+pro(?:\s+max)?\b",
+        r"\bipad\s+air\s+\d+\s+m\d+\b",
+        r"\bmacbook\s+air\s+\d+\s+m\d+\b",
+        r"\bmacbook\s+pro\s+\d+\s+m\d+\b",
+    )
+    model = ""
+    for pattern in model_patterns:
+        match = re.search(pattern, title)
+        if match:
+            model = " ".join(match.group(0).split())
+            break
     color = ""
-    for candidate in ("silver", "orange", "blue", "black", "white", "purple", "midnight", "starlight", "серебрист", "оранж", "син"):
+    for candidate in (
+        "space grey",
+        "space gray",
+        "sky blue",
+        "silver",
+        "orange",
+        "blue",
+        "black",
+        "white",
+        "purple",
+        "midnight",
+        "starlight",
+        "серебрист",
+        "серый",
+        "оранж",
+        "син",
+        "фиолет",
+        "сияющая звезда",
+    ):
         if candidate in title:
             color = candidate
             break
-    if not model_match or not storage_match or not color:
+    if not model or not color:
         return ""
     category_id = str(product.get("category_id") or "").strip()
-    model = " ".join(model_match.groups())
-    storage = "".join(storage_match.groups())
-    return "|".join([category_id, model, storage, color])
+    return "|".join([category_id, model, color])
 
 
 def _ensure_feature(features: List[Dict[str, Any]], code: str, name: str, value: str, source_product_id: str) -> bool:

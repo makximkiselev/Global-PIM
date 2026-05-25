@@ -1555,6 +1555,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-iphone", "parent_id": None, "name": "Смартфоны"}]),
             patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-iphone": {"ozon": "17028922"}}),
             patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-iphone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", return_value=""),
         ):
             response = catalog_exchange._ozon_export_preview(["product_iphone"], 10)
 
@@ -1564,6 +1565,35 @@ class OperatingWorkflowTests(unittest.TestCase):
         attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
         self.assertEqual(attrs["8229"], "Смартфон")
         self.assertEqual(attrs["9048"], "iPhone 17 Pro")
+
+    def test_variant_sibling_hydration_covers_ipad_storage_variants(self) -> None:
+        donor = {
+            "id": "product_ipad_donor",
+            "sku_gt": "50806",
+            "title": "Планшет Apple iPad Air 11 M3 2025 128Gb Wi-Fi + Cellular purple",
+            "category_id": "cat-ipad-air-11-m3",
+            "content": {
+                "description": "iPad Air donor description",
+                "media_images": [{"url": "https://cdn.example.test/ipad-purple.jpg", "selected": True}],
+                "features": [{"code": "brand", "name": "Бренд", "value": "Apple"}],
+            },
+        }
+        target = {
+            "id": "product_ipad_target",
+            "sku_gt": "50814",
+            "title": "Планшет Apple iPad Air 11 M3 2025 256Gb + Cellular Wi-Fi purple",
+            "category_id": "cat-ipad-air-11-m3",
+            "content": {"features": []},
+        }
+
+        changed = catalog_exchange._hydrate_missing_content_from_variant_siblings([deepcopy(donor), deepcopy(target)])
+
+        self.assertEqual(len(changed), 1)
+        content = changed[0]["content"]
+        self.assertEqual(content["description"], "iPad Air donor description")
+        self.assertEqual(content["media_images"][0]["url"], "https://cdn.example.test/ipad-purple.jpg")
+        self.assertEqual(content["features"][0]["value"], "Apple")
+        self.assertEqual(content["source_values"]["media_images"]["variant_sibling"]["source_product_id"], "product_ipad_donor")
 
     def test_yandex_export_preview_filters_products_in_sql_by_selected_ids(self) -> None:
         product = {
