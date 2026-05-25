@@ -391,6 +391,12 @@ function isFeatureAttr(attr: { code?: string; options?: { layer?: string; param_
   return true;
 }
 
+function isProductFeatureCode(codeOrName: string) {
+  const key = qnorm(codeOrName);
+  if (key.startsWith("description") || key.startsWith("описание")) return false;
+  return !["description", "описание", "media", "медиа", "media_images", "media_videos", "media_cover", "title", "название товара"].includes(key);
+}
+
 function parseHost(url: string) {
   try {
     return new URL(url).hostname.toLowerCase();
@@ -631,6 +637,7 @@ export default function ProductFeature() {
     for (const item of content.features || []) {
       const key = qnorm(item.code || item.name);
       if (!key || templateKeys.has(key)) continue;
+      if (!isProductFeatureCode(item.code || item.name || "")) continue;
       rows.push({
         key,
         code: String(item.code || "").trim(),
@@ -923,6 +930,7 @@ export default function ProductFeature() {
           for (const item of merged.features || []) {
             const key = qnorm(item.code || item.name);
             if (!key || known.has(key)) continue;
+            if (!isProductFeatureCode(item.code || item.name || "")) continue;
             nextFeatures.push({
               code: String(item.code || "").trim(),
               name: String(item.name || item.code || "").trim(),
@@ -1268,6 +1276,7 @@ export default function ProductFeature() {
       const knownDefs = new Set(featureDefs.map((d) => qnorm(d.code)));
       const extraFeatures = (content.features || [])
         .filter((f) => !knownDefs.has(qnorm(f.code || "")))
+        .filter((f) => isProductFeatureCode(f.code || f.name || ""))
         .filter((f) => String(f.value || "").trim())
         .map((f) => ({
           ...f,
@@ -1332,6 +1341,22 @@ export default function ProductFeature() {
       setStatus("archived");
     } catch (e) {
       setErr((e as Error).message || "Ошибка перевода в архив");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteProduct() {
+    if (!productId || !product) return;
+    const ok = window.confirm("Удалить товар безвозвратно? Это уберет SKU из каталога, групп и рабочих привязок.");
+    if (!ok) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      await api(`/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
+      navigate("/products");
+    } catch (e) {
+      setErr((e as Error).message || "Ошибка удаления товара");
     } finally {
       setSaving(false);
     }
@@ -1430,6 +1455,9 @@ export default function ProductFeature() {
           </Link>
           <button className="pn-cancelBtn" type="button" onClick={moveToArchive} disabled={saving || status === "archived"}>
             В архив
+          </button>
+          <button className="pn-cancelBtn" type="button" onClick={deleteProduct} disabled={saving}>
+            Удалить
           </button>
           <button className="pn-saveBtn" onClick={onSave} disabled={saving}>
             {saving ? <span className="pn-spinner" /> : <span className="pn-saveIcon">✓</span>}

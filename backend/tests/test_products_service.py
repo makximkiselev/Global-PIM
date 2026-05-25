@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.core.products import service as products_service
+from app.core.products import parameter_flow
 from app.storage import relational_pim_store
 
 
@@ -68,6 +69,36 @@ class ProductServiceTests(unittest.TestCase):
 
         self.assertEqual(result["product"]["status"], "archived")
         upsert_product.assert_called_once()
+
+    def test_delete_products_bulk_service_removes_existing_ids(self) -> None:
+        with (
+            patch.object(products_service, "load_products_by_ids", return_value=[{"id": "product_1"}]) as load_by_ids,
+            patch.object(products_service, "delete_product_items", return_value=1) as delete_items,
+        ):
+            result = products_service.delete_products_bulk_service(["product_1"])
+
+        load_by_ids.assert_called_once_with(["product_1"])
+        delete_items.assert_called_once_with(["product_1"])
+        self.assertEqual(result, {"ok": True, "deleted": 1, "ids": ["product_1"]})
+
+    def test_parameter_flow_does_not_put_description_in_service_rows(self) -> None:
+        product = {
+            "id": "product_1",
+            "category_id": "phones",
+            "title": "Apple iPhone",
+            "sku_gt": "50001",
+            "content": {"description": "Long product description", "features": []},
+        }
+
+        with (
+            patch.object(parameter_flow, "load_catalog_nodes", return_value=[]),
+            patch.object(parameter_flow, "_load_attr_rows_by_category", return_value={}),
+            patch.object(parameter_flow, "_load_value_refs_by_category", return_value={}),
+        ):
+            payload = parameter_flow.build_product_parameter_flow(product)
+
+        self.assertNotIn("description", [row.get("code") for row in payload["service_rows"]])
+        self.assertEqual(payload["items"], [])
 
 
 if __name__ == "__main__":

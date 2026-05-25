@@ -11,6 +11,8 @@ from fastapi.responses import StreamingResponse
 
 from app.storage.json_store import load_templates_db, save_templates_db
 from app.storage.relational_pim_store import (
+    load_attribute_mapping_doc,
+    load_attribute_value_refs_doc,
     load_catalog_nodes,
     save_catalog_nodes,
     load_catalog_product_items,
@@ -25,8 +27,12 @@ from app.storage.relational_pim_store import (
     load_category_template_resolution_map,
     save_product_marketplace_status,
     load_product_marketplace_status_map,
+    load_category_mappings,
+    save_attribute_mapping_doc,
+    save_attribute_value_refs_doc,
+    save_category_mappings,
 )
-from app.core.json_store import read_doc, write_doc
+from app.core.json_store import _pg_connect, read_doc, write_doc
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.products.service import (
     create_product_service,
@@ -103,6 +109,62 @@ def _load_products() -> List[Dict[str, Any]]:
 def _save_products(items: List[Dict[str, Any]]) -> None:
     _ = items
     raise RuntimeError("CATALOG_PRODUCTS_LEGACY_WRITE_DISABLED")
+
+
+def _cleanup_downstream_for_deleted_categories(category_ids: Set[str]) -> Dict[str, int]:
+    clean_ids = {str(item or "").strip() for item in category_ids if str(item or "").strip()}
+    if not clean_ids:
+        return {"category_mappings": 0, "attribute_mappings": 0, "value_refs": 0, "channel_links": 0}
+
+    category_mappings = load_category_mappings()
+    next_category_mappings = {
+        str(category_id): row
+        for category_id, row in (category_mappings or {}).items()
+        if str(category_id or "").strip() not in clean_ids
+    }
+    removed_category_mappings = max(0, len(category_mappings or {}) - len(next_category_mappings))
+    if removed_category_mappings:
+        save_category_mappings(next_category_mappings)
+
+    attr_doc = load_attribute_mapping_doc()
+    attr_items = attr_doc.get("items") if isinstance(attr_doc.get("items"), dict) else {}
+    next_attr_items = {
+        str(category_id): row
+        for category_id, row in (attr_items or {}).items()
+        if str(category_id or "").strip() not in clean_ids
+    }
+    removed_attr_mappings = max(0, len(attr_items or {}) - len(next_attr_items))
+    if removed_attr_mappings:
+        attr_doc["items"] = next_attr_items
+        save_attribute_mapping_doc(attr_doc)
+
+    refs_doc = load_attribute_value_refs_doc()
+    ref_items = refs_doc.get("items") if isinstance(refs_doc.get("items"), dict) else {}
+    next_ref_items = {
+        str(category_id): row
+        for category_id, row in (ref_items or {}).items()
+        if str(category_id or "").strip() not in clean_ids
+    }
+    removed_refs = max(0, len(ref_items or {}) - len(next_ref_items))
+    if removed_refs:
+        refs_doc["items"] = next_ref_items
+        save_attribute_value_refs_doc(refs_doc)
+
+    deleted_links = 0
+    conn, _, _ = _pg_connect()
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM pim_channel_links WHERE entity_type = 'category' AND entity_id = ANY(%s)",
+            [list(clean_ids)],
+        )
+        deleted_links = int(cur.rowcount or 0)
+
+    return {
+        "category_mappings": removed_category_mappings,
+        "attribute_mappings": removed_attr_mappings,
+        "value_refs": removed_refs,
+        "channel_links": deleted_links,
+    }
 
 
 def _serialize_product_list_item(product: Dict[str, Any]) -> Dict[str, Any]:
@@ -746,8 +808,14 @@ def delete_node(node_id: str):
 
     # 5) удаляем шаблоны/привязки для удалённых категорий
     _cleanup_templates_for_deleted_categories(subtree_ids)
+    downstream_deleted = _cleanup_downstream_for_deleted_categories(subtree_ids)
 
-    return {"ok": True}
+    return {
+        "ok": True,
+        "deleted_category_ids": sorted(subtree_ids),
+        "deleted_products": len(product_ids),
+        "downstream_deleted": downstream_deleted,
+    }
 
 
 @router.patch("/catalog/nodes/{node_id}/move")

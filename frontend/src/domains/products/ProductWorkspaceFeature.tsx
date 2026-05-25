@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -198,6 +198,24 @@ function sectionFromTab(value: string | null): SectionId {
 
 function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function isProductFeatureCode(codeOrName: unknown): boolean {
+  const raw = normalizeText(codeOrName).toLowerCase();
+  if (!raw) return true;
+  if (raw.startsWith("описание") || raw.startsWith("description")) return false;
+  return !new Set([
+    "description",
+    "описание",
+    "product_description",
+    "media",
+    "media_images",
+    "media_cover",
+    "images",
+    "photos",
+    "title",
+    "name",
+  ]).has(raw);
 }
 
 function buildCategoryPath(nodes: CatalogNode[], categoryId?: string): string {
@@ -1057,6 +1075,7 @@ function ProductWorkspaceSkeleton() {
 function ProductWorkspaceFeature() {
   const { productId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [product, setProduct] = useState<ProductData | null>(null);
@@ -1205,7 +1224,9 @@ function ProductWorkspaceFeature() {
     setActiveSection(sectionFromTab(searchParams.get("tab")));
   }, [searchParams]);
 
-  const features = useMemo(() => product?.content?.features || [], [product]);
+  const features = useMemo(() => {
+    return (product?.content?.features || []).filter((feature) => isProductFeatureCode(feature.code || feature.name));
+  }, [product]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
   const categoryPath = useMemo(() => buildCategoryPath(nodes, product?.category_id), [nodes, product?.category_id]);
   const competitorGroupItems = useMemo(() => {
@@ -1266,6 +1287,19 @@ function ProductWorkspaceFeature() {
       setMediaNotice(err instanceof Error ? err.message : "Не удалось сохранить медиа.");
     } finally {
       setMediaSaving(false);
+    }
+  }
+
+  async function deleteProduct() {
+    if (!product) return;
+    const title = normalizeText(product.title) || normalizeText(product.sku_gt) || product.id;
+    if (!window.confirm(`Удалить товар "${title}" безвозвратно?`)) return;
+    setError("");
+    try {
+      await api(`/products/${encodeURIComponent(product.id)}`, { method: "DELETE" });
+      navigate("/products");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить товар.");
     }
   }
 
@@ -1523,6 +1557,7 @@ function ProductWorkspaceFeature() {
         </div>
         <div className="productWorkspaceTopbarActions">
           <Button variant="primary">Сохранить</Button>
+          <Button variant="danger" onClick={deleteProduct}>Удалить</Button>
           <Link className="btn" to="/products">
             К очереди товаров
           </Link>

@@ -12,6 +12,7 @@ from app.core.llm import LlmError, llm_chat_text, llm_model_for_profile
 from app.core.products.service import (
     create_product_family_service,
     create_product_service,
+    delete_products_bulk_service,
     get_product_service,
     get_products_bulk_service,
     patch_product_service,  # ✅ вместо update_product
@@ -415,6 +416,17 @@ def products_patch(product_id: str, req: PatchProductReq):
         return patch_product_service(product_id, patch)  # ✅ сервис возвращает {"product": ...}
     except JsonStoreError as e:
         raise _http_from_store_error(str(e))
+
+
+@router.delete("/{product_id}")
+def products_delete(product_id: str):
+    try:
+        result = delete_products_bulk_service([product_id])
+    except JsonStoreError as e:
+        raise _http_from_store_error(str(e))
+    if int(result.get("deleted") or 0) <= 0:
+        raise HTTPException(status_code=404, detail="PRODUCT_NOT_FOUND")
+    return result
 
 
 @router.get("/by-category/{category_id}")

@@ -5420,6 +5420,7 @@ def delete_product_items(ids: List[str]) -> int:
             cur.execute("DELETE FROM catalog_product_page_tenant_rel WHERE product_id = ANY(%s)", [safe_ids])
             cur.execute("DELETE FROM product_marketplace_status_rel WHERE product_id = ANY(%s)", [safe_ids])
             cur.execute("DELETE FROM product_marketplace_status_tenant_rel WHERE product_id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM pim_channel_links WHERE entity_type = 'product' AND entity_id = ANY(%s)", [safe_ids])
             cur.execute("DELETE FROM products_rel WHERE id = ANY(%s)", [safe_ids])
             deleted = int(cur.rowcount or 0)
         _refresh_category_counts_for(affected_categories)

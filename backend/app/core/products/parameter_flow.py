@@ -259,7 +259,6 @@ def _service_rows(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     sku_gt = str(product.get("sku_gt") or "").strip()
     title = str(product.get("title") or "").strip()
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
-    description = str(content.get("description") or "").strip()
     images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
     return [
         {
@@ -299,15 +298,6 @@ def _service_rows(product: Dict[str, Any]) -> List[Dict[str, Any]]:
             "name": "Название товара",
             "value": title,
             "sources": [{"source_id": "pim", "source_label": "SmartPim", "resolved_value": title}] if title else [],
-            "marketplaces": [],
-        },
-        {
-            "key": "service:description",
-            "kind": "service",
-            "code": "description",
-            "name": "Описание",
-            "value": description,
-            "sources": [],
             "marketplaces": [],
         },
         {

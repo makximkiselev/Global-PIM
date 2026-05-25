@@ -97,6 +97,7 @@ export default function ProductRegistry({
   const [moveCategoryId, setMoveCategoryId] = useState("");
   const [moveLoading, setMoveLoading] = useState(false);
   const [moveError, setMoveError] = useState("");
+  const [deleteProductId, setDeleteProductId] = useState("");
 
   const query = searchParams.get(`${paramPrefix}q`) || "";
   const parentCategoryId = scopeCategoryId ? "" : searchParams.get(`${paramPrefix}parent`) || "";
@@ -401,6 +402,25 @@ export default function ProductRegistry({
     }
   }
 
+  async function deleteProduct(product: ProductItem) {
+    const productId = String(product.id || "").trim();
+    if (!productId) return;
+    const title = String(product.title || product.name || productId);
+    if (!window.confirm(`Удалить товар "${title}" безвозвратно?`)) return;
+    setDeleteProductId(productId);
+    setLoadError("");
+    try {
+      await api(`/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
+      productsRegistryCache.clear();
+      await load();
+      await onProductMoved?.();
+    } catch (error) {
+      setLoadError((error as Error).message || "Не удалось удалить товар");
+    } finally {
+      setDeleteProductId("");
+    }
+  }
+
   return (
     <div className={`products-registry ${mode === "embedded" ? "isEmbedded" : ""} ${isCatalogClean ? "isCatalogClean" : ""}`}>
       {showHeader ? (
@@ -586,6 +606,14 @@ export default function ProductRegistry({
                         </Link>
                         <button className="btn sm products-openBtn" type="button" onClick={() => openMoveDialog(p)}>
                           Переместить
+                        </button>
+                        <button
+                          className="btn sm products-openBtn"
+                          type="button"
+                          onClick={() => void deleteProduct(p)}
+                          disabled={deleteProductId === p.id}
+                        >
+                          {deleteProductId === p.id ? "Удаляю..." : "Удалить"}
                         </button>
                       </div>
                     </td>

@@ -494,10 +494,12 @@ function ProductBulkActionBar({
   selectedIds,
   categoryId,
   onClear,
+  onDelete,
 }: {
   selectedIds: string[];
   categoryId?: string;
   onClear: () => void;
+  onDelete: () => void;
 }) {
   if (!selectedIds.length) return null;
 
@@ -518,6 +520,7 @@ function ProductBulkActionBar({
         <Link className="btn" to="/sources-mapping">
           К mapping
         </Link>
+        <Button variant="danger" onClick={onDelete}>Удалить выбранные</Button>
         <Button onClick={onClear}>Снять выбор</Button>
       </div>
     </div>
@@ -538,6 +541,7 @@ export default function ProductListFeature() {
   const [searchDraft, setSearchDraft] = useState(searchParams.get("q") || "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   const query = searchParams.get("q") || "";
   const deferredSearchDraft = useDeferredValue(searchDraft);
@@ -765,7 +769,7 @@ export default function ProductListFeature() {
       richController.abort();
       window.clearTimeout(richTimeout);
     };
-  }, [query, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, queueMode, currentPage]);
+  }, [query, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, queueMode, currentPage, refreshToken]);
 
   useEffect(() => {
     setSelectedIds((current) => current.filter((id) => products.some((product) => product.id === id)));
@@ -863,6 +867,24 @@ export default function ProductListFeature() {
       return;
     }
     setSelectedIds([]);
+  }
+
+  async function deleteSelectedProducts() {
+    if (!selectedIds.length) return;
+    const ok = window.confirm(`Удалить выбранные товары безвозвратно? SKU: ${selectedIds.length}`);
+    if (!ok) return;
+    setLoadError("");
+    try {
+      await api("/catalog/products/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      setSelectedIds([]);
+      setSelectedProductId(null);
+      setRefreshToken((value) => value + 1);
+    } catch (error) {
+      setLoadError((error as Error).message || "Не удалось удалить товары");
+    }
   }
 
   return (
@@ -1055,6 +1077,7 @@ export default function ProductListFeature() {
                 selectedIds={selectedIds}
                 categoryId={activeCategoryId}
                 onClear={() => setSelectedIds([])}
+                onDelete={() => void deleteSelectedProducts()}
               />
             </div>
           }
