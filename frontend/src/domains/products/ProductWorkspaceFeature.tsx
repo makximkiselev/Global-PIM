@@ -705,7 +705,7 @@ function ProductAttributeWorkbench({
   );
 }
 
-function ProductSourcesWorkbench({ features }: { features: ProductFeatureValue[] }) {
+function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFeatureValue[]; categoryId?: string }) {
   const rows = features.flatMap((feature) =>
     sourceEntriesForFeature(feature).map((entry) => ({
       feature: normalizeText(feature.name) || normalizeText(feature.code) || "Параметр",
@@ -714,7 +714,26 @@ function ProductSourcesWorkbench({ features }: { features: ProductFeatureValue[]
     })),
   );
   if (!rows.length) {
-    return <EmptyState title="Источники пока не связаны" description="Когда товар заполнится из импорта, Excel, конкурентов или ручной проверки, здесь появится трассировка по каждому параметру." />;
+    const encodedCategoryId = encodeURIComponent(normalizeText(categoryId));
+    return (
+      <EmptyState
+        title="Источники пока не связаны"
+        description="Чтобы здесь появилась трассировка по параметрам, сначала сопоставьте категорию, поля площадок и конкурентные источники."
+        action={
+          <div className="productWorkspaceEmptyActions">
+            {encodedCategoryId ? (
+              <>
+                <Link className="btn primary" to={`/sources?tab=params&category=${encodedCategoryId}`}>Открыть сопоставление</Link>
+                <Link className="btn" to={`/sources?tab=sources&category=${encodedCategoryId}`}>Связать источники</Link>
+                <Link className="btn" to={`/templates/${encodedCategoryId}`}>Собрать инфо-модель</Link>
+              </>
+            ) : (
+              <Link className="btn primary" to="/sources?tab=sources">Открыть сопоставление</Link>
+            )}
+          </div>
+        }
+      />
+    );
   }
   return (
     <div className="productWorkspaceTableWrap">
@@ -1633,7 +1652,7 @@ function ProductWorkspaceFeature() {
 
             {activeSection === "sources" ? (
               <Card title="Трассировка источников">
-                <ProductSourcesWorkbench features={features} />
+                <ProductSourcesWorkbench features={features} categoryId={product.category_id} />
               </Card>
             ) : null}
 
