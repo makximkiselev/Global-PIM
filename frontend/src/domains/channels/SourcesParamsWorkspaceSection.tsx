@@ -909,14 +909,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           </div>
           <div className="paramsCommandActions">
             <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
-            {infoModelIsEmpty ? (
-              <Link className="btn" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
-            ) : (
-              <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
-                {aiMatching ? "Собираю..." : "Собрать черновик"}
-              </button>
-            )}
-            <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+            {!infoModelIsEmpty ? (
+              <>
+                <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
+                  {aiMatching ? "Собираю..." : "Собрать черновик"}
+                </button>
+                <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -952,23 +952,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               : error}
           </div>
         ) : null}
-        {mappingInherited ? (
+        {mappingInherited && !infoModelIsEmpty ? (
           <div className="paramsAlert isInfo">
             Эта товарная категория использует связку площадок родительской ветки
             {inheritedProviderLabels.length ? `: ${inheritedProviderLabels.join(", ")}` : ""}.
             Можно насыщать товары здесь, а параметры площадок брать из общей категории.
           </div>
         ) : null}
-        {infoModelIsEmpty ? (
-          <div className="paramsAlert isInfo paramsInfoModelEmptyGuide">
-            <strong>Сначала соберите инфо-модель категории.</strong>
-            <span>
-              Категории площадок уже связаны, но PIM-полей для сопоставления нет. Откройте инфо-модель,
-              соберите draft из товаров, площадок и конкурентов, затем вернитесь сюда для маппинга полей.
-            </span>
-            <Link className="btn sm" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
-          </div>
-        ) : !hasCompetitorEvidence ? (
+        {!infoModelIsEmpty && !hasCompetitorEvidence ? (
           <div className="paramsAlert isInfo">
             Площадки уже дают список обязательных и полезных полей, но финальная инфо-модель строится после конкурентных карточек и товарных данных.
             Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к черновику параметров.
@@ -983,6 +974,22 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
         ) : null}
         {loading ? <div className="paramsAlert">Загружаю параметры категории...</div> : null}
 
+        {infoModelIsEmpty ? (
+          <div className="paramsInfoModelSetup">
+            <div>
+              <span>Следующий шаг</span>
+              <h3>Соберите инфо-модель категории</h3>
+              <p>
+                Категории площадок уже связаны{mappingInherited ? " через родительскую ветку" : ""}, но PIM-полей для сопоставления еще нет.
+                Сначала соберите draft модели из товаров, площадок и конкурентов, затем возвращайтесь сюда для маппинга полей.
+              </p>
+            </div>
+            <div className="paramsInfoModelSetupActions">
+              <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
+              <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить источники</Link>
+            </div>
+          </div>
+        ) : (
         <div className="paramsFocusLayout">
           <div className="paramsQueueBlock">
             <div className="paramsSectionHead">
@@ -1411,6 +1418,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             )}
           </aside>
         </div>
+        )}
       </section>
     </div>
   );
