@@ -190,6 +190,65 @@ def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
+    cid = _norm(category_id)
+    empty = {
+        "has_template": False,
+        "template_id": "",
+        "template_ids": [],
+        "template_name": "",
+        "status": "",
+        "attributes_count": 0,
+        "attributes": [],
+    }
+    if not cid:
+        return empty
+
+    organization_id = current_tenant_organization_id()
+    db = load_templates_db_doc(organization_id)
+    templates = db.get("templates") if isinstance(db.get("templates"), dict) else {}
+    attrs_by_template = db.get("attributes") if isinstance(db.get("attributes"), dict) else {}
+    category_to_templates = db.get("category_to_templates") if isinstance(db.get("category_to_templates"), dict) else {}
+
+    template_ids = [
+        _norm(tid)
+        for tid in (category_to_templates.get(cid) if isinstance(category_to_templates.get(cid), list) else [])
+        if _norm(tid)
+    ]
+    if not template_ids:
+        resolution = load_category_template_resolution_map(organization_id).get(cid) or {}
+        resolved_id = _norm(resolution.get("template_id"))
+        if resolved_id:
+            template_ids.append(resolved_id)
+
+    template_ids = [tid for tid in template_ids if isinstance(templates.get(tid), dict)]
+    if not template_ids:
+        return empty
+
+    template_id = template_ids[0]
+    template = templates.get(template_id) or {}
+    attrs = [dict(attr) for attr in (attrs_by_template.get(template_id) or []) if isinstance(attr, dict)]
+    meta = template.get("meta") if isinstance(template.get("meta"), dict) else {}
+    info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
+
+    return {
+        "has_template": True,
+        "template_id": template_id,
+        "template_ids": template_ids,
+        "template_name": _norm(template.get("name")) or template_id,
+        "status": _norm(info_model.get("status")) or _norm(template.get("status")),
+        "attributes_count": len(attrs),
+        "attributes": [
+            {
+                "code": _norm(attr.get("code") or attr.get("name")),
+                "name": _norm(attr.get("name") or attr.get("code")),
+                "required": bool(attr.get("required", False)),
+            }
+            for attr in attrs
+        ],
+    }
+
+
 def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, Any]:
     content = _content_payload(product.get("content"))
     existing_features = content.get("features") if isinstance(content.get("features"), list) else []
@@ -418,7 +477,10 @@ def get_product_service(product_id: str, include_variants: bool = True) -> Dict[
     product = next((x for x in items if _norm(x.get("id")) == pid), None)
     if not isinstance(product, dict):
         raise JsonStoreError("PRODUCT_NOT_FOUND")
-    result: Dict[str, Any] = {"product": product}
+    result: Dict[str, Any] = {
+        "product": product,
+        "info_model": _info_model_context_for_category(_norm(product.get("category_id"))),
+    }
     if include_variants:
         group_id = _norm(product.get("group_id"))
         if group_id:

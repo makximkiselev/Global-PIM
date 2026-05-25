@@ -28,13 +28,53 @@ class ProductServiceTests(unittest.TestCase):
         with (
             patch.object(products_service, "load_products_by_ids", return_value=[product]) as load_by_ids,
             patch.object(products_service, "load_products_by_group", return_value=variants) as load_by_group,
+            patch.object(products_service, "_info_model_context_for_category", return_value={"has_template": False}) as info_model_context,
         ):
             payload = products_service.get_product_service("product_70", include_variants=True)
 
         load_by_ids.assert_called_once_with(["product_70"])
         load_by_group.assert_called_once_with("group_47")
+        info_model_context.assert_called_once_with("")
         self.assertEqual(payload["product"]["id"], "product_70")
         self.assertEqual([item["id"] for item in payload["variants"]], ["product_71", "product_72"])
+        self.assertEqual(payload["info_model"], {"has_template": False})
+
+    def test_product_service_reports_missing_info_model_separately_from_saved_features(self) -> None:
+        product = {
+            "id": "product_1",
+            "category_id": "phones",
+            "content": {"features": [{"code": "processor", "name": "Процессор", "value": "A18 Pro"}]},
+        }
+
+        with (
+            patch.object(products_service, "load_products_by_ids", return_value=[product]),
+            patch.object(products_service, "load_templates_db_doc", return_value={"templates": {}, "attributes": {}, "category_to_templates": {}}),
+            patch.object(products_service, "load_category_template_resolution_map", return_value={"phones": {"template_id": ""}}),
+        ):
+            payload = products_service.get_product_service("product_1", include_variants=False)
+
+        self.assertEqual(payload["product"]["content"]["features"][0]["code"], "processor")
+        self.assertFalse(payload["info_model"]["has_template"])
+        self.assertEqual(payload["info_model"]["attributes_count"], 0)
+
+    def test_product_service_reports_info_model_attributes_for_category(self) -> None:
+        product = {"id": "product_1", "category_id": "phones"}
+        templates_db = {
+            "templates": {"tpl-phone": {"id": "tpl-phone", "name": "Phone model", "meta": {"info_model": {"status": "approved"}}}},
+            "attributes": {"tpl-phone": [{"code": "processor", "name": "Процессор", "required": True}]},
+            "category_to_templates": {"phones": ["tpl-phone"]},
+        }
+
+        with (
+            patch.object(products_service, "load_products_by_ids", return_value=[product]),
+            patch.object(products_service, "load_templates_db_doc", return_value=templates_db),
+        ):
+            payload = products_service.get_product_service("product_1", include_variants=False)
+
+        self.assertTrue(payload["info_model"]["has_template"])
+        self.assertEqual(payload["info_model"]["template_id"], "tpl-phone")
+        self.assertEqual(payload["info_model"]["attributes_count"], 1)
+        self.assertEqual(payload["info_model"]["attributes"][0]["code"], "processor")
 
     def test_product_normalizer_does_not_nest_extra_on_readback(self) -> None:
         raw = {

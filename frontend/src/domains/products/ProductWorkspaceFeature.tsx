@@ -68,9 +68,19 @@ type VariantData = {
   status?: string;
 };
 
+type ProductInfoModel = {
+  has_template?: boolean;
+  template_id?: string;
+  template_name?: string;
+  status?: string;
+  attributes_count?: number;
+  attributes?: ProductFeatureValue[];
+};
+
 type ProductResponse = {
   product: ProductData;
   variants?: VariantData[];
+  info_model?: ProductInfoModel;
 };
 
 type ProductWorkspaceSummaryResp = {
@@ -200,8 +210,12 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function featureIdentity(value: unknown): string {
+  return normalizeText(value).toLowerCase().replace(/[\s-]+/g, "_");
+}
+
 function isProductFeatureCode(codeOrName: unknown): boolean {
-  const raw = normalizeText(codeOrName).toLowerCase();
+  const raw = featureIdentity(codeOrName);
   if (!raw) return true;
   if (raw.startsWith("описание") || raw.startsWith("description")) return false;
   return !new Set([
@@ -541,11 +555,15 @@ function ProductWorkspaceInspector({
 
 function ProductAttributeWorkbench({
   features,
+  hasInfoModel,
+  rawFeatureCount,
   channels,
   selectedKey,
   onSelect,
 }: {
   features: ProductFeatureValue[];
+  hasInfoModel: boolean;
+  rawFeatureCount: number;
   channels: ChannelsSummary | null;
   selectedKey: string;
   onSelect: (key: string) => void;
@@ -562,6 +580,19 @@ function ProductAttributeWorkbench({
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
     return values.size > 1;
   }).length;
+
+  if (!hasInfoModel) {
+    return (
+      <EmptyState
+        title="Инфо-модель не создана"
+        description={
+          rawFeatureCount
+            ? `В товаре сохранено ${rawFeatureCount} сырых параметров из источников, но они не считаются PIM-параметрами до создания инфо-модели категории.`
+            : "Сначала соберите и подтвердите инфо-модель категории, после этого здесь появятся PIM-параметры для выгрузки."
+        }
+      />
+    );
+  }
 
   if (!features.length) {
     return <EmptyState title="Инфо-модель не наполнена" description="После выбора категории здесь появятся параметры, их источники и вывод на площадки." />;
@@ -1041,6 +1072,7 @@ function ProductWorkspaceFeature() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [product, setProduct] = useState<ProductData | null>(null);
+  const [infoModel, setInfoModel] = useState<ProductInfoModel | null>(null);
   const [variants, setVariants] = useState<VariantData[]>([]);
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [channels, setChannels] = useState<ChannelsSummary | null>(null);
@@ -1066,6 +1098,7 @@ function ProductWorkspaceFeature() {
       setLoading(true);
       setError("");
       setProduct(null);
+      setInfoModel(null);
       setVariants([]);
       setNodes([]);
       setChannels(null);
@@ -1138,6 +1171,7 @@ function ProductWorkspaceFeature() {
         };
         const mergedGroupId = normalizeText(mergedProduct.group_id);
         setProduct(mergedProduct);
+        setInfoModel(productResponse.info_model || null);
         let nextVariants = Array.isArray(productResponse.variants) ? productResponse.variants : [];
         if (mergedGroupId && nextVariants.length === 0) {
           try {
@@ -1186,9 +1220,23 @@ function ProductWorkspaceFeature() {
     setActiveSection(sectionFromTab(searchParams.get("tab")));
   }, [searchParams]);
 
-  const features = useMemo(() => {
+  const rawFeatures = useMemo(() => {
     return (product?.content?.features || []).filter((feature) => isProductFeatureCode(feature.code || feature.name));
   }, [product]);
+  const templateFeatureCodes = useMemo(() => {
+    const attrs = Array.isArray(infoModel?.attributes) ? infoModel?.attributes || [] : [];
+    return new Set(attrs.flatMap((attr) => [featureIdentity(attr.code), featureIdentity(attr.name)]).filter(Boolean));
+  }, [infoModel]);
+  const hasInfoModel = Boolean(infoModel?.has_template);
+  const features = useMemo(() => {
+    if (!hasInfoModel) return [];
+    if (!templateFeatureCodes.size) return rawFeatures;
+    return rawFeatures.filter((feature) => {
+      const code = featureIdentity(feature.code);
+      const name = featureIdentity(feature.name);
+      return (code && templateFeatureCodes.has(code)) || (name && templateFeatureCodes.has(name));
+    });
+  }, [hasInfoModel, rawFeatures, templateFeatureCodes]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
   const categoryPath = useMemo(() => buildCategoryPath(nodes, product?.category_id), [nodes, product?.category_id]);
   const competitorGroupItems = useMemo(() => {
@@ -1574,6 +1622,8 @@ function ProductWorkspaceFeature() {
               <Card title="Параметры и значения">
                 <ProductAttributeWorkbench
                   features={features}
+                  hasInfoModel={hasInfoModel}
+                  rawFeatureCount={rawFeatures.length}
                   channels={channels}
                   selectedKey={selectedFeatureKey}
                   onSelect={setSelectedFeatureKey}
