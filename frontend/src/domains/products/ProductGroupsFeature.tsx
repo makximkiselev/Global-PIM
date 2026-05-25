@@ -153,6 +153,7 @@ export default function ProductGroupsFeature() {
   const [assignCreateTouched, setAssignCreateTouched] = useState(false);
   const [groupCreatedToast, setGroupCreatedToast] = useState("");
   const [softRefreshing, setSoftRefreshing] = useState(false);
+  const isNewlyCreatedGroup = searchParams.get("created") === "1";
 
   const [variantModalOpen, setVariantModalOpen] = useState(false);
   const [variantLoading, setVariantLoading] = useState(false);
@@ -496,6 +497,14 @@ export default function ProductGroupsFeature() {
   const assignCreateDuplicate = !!assignCreateNorm && groupNameSet.has(assignCreateNorm);
   const sharedFactsPreview = (familyFacts?.shared_facts || []).slice(0, 8);
   const variantOverridesPreview = (familyFacts?.variant_overrides || []).slice(0, 8);
+  const selectedGroupProductIds = useMemo(
+    () => (groupDetails?.items || []).map((item) => String(item.id || "").trim()).filter(Boolean),
+    [groupDetails?.items],
+  );
+  const firstSelectedGroupProductId = selectedGroupProductIds[0] || "";
+  const selectedGroupExportHref = selectedGroupProductIds.length
+    ? `/catalog/exchange?tab=export&products=${encodeURIComponent(selectedGroupProductIds.join(","))}`
+    : "/catalog/exchange?tab=export";
 
   const createNameHints = useMemo(() => {
     const q = qnorm(createName);
@@ -989,6 +998,27 @@ export default function ProductGroupsFeature() {
               </div>
             ) : (
               <>
+                {isNewlyCreatedGroup ? (
+                  <div className="card pg-createdGuide">
+                    <div>
+                      <div className="pg-createdGuideTitle">Группа SKU создана</div>
+                      <div className="muted">
+                        Проверьте состав линейки, общие факты и отличия. После этого переходите к конкурентам по SKU группы и готовьте выгрузку выбранных товаров.
+                      </div>
+                    </div>
+                    <div className="pg-createdGuideActions">
+                      {firstSelectedGroupProductId ? (
+                        <Link className="btn primary" to={`/products/${encodeURIComponent(firstSelectedGroupProductId)}?tab=competitors&created=1`}>
+                          Открыть конкурентов
+                        </Link>
+                      ) : null}
+                      <Link className="btn" to={selectedGroupExportHref}>
+                        Подготовить выгрузку SKU
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="card pg-right">
                   {groupLoading ? (
                 <div className="muted">Загрузка группы…</div>

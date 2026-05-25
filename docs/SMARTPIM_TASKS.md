@@ -506,6 +506,7 @@ Current state:
 7. Generated variant rows now allow editing title, SKU GT, and SKU PIM before creation.
 8. Creation blocks duplicate manual SKU GT inside the variant matrix before calling backend.
 9. Variant-family creation now opens the created product group directly, so the next step is group-level SKU review and enrichment instead of a single product card.
+10. Created product groups show a next-step guide with direct actions to competitor matching for the first SKU and export preparation for the selected SKU group.
 
 Known problems:
 
@@ -516,7 +517,7 @@ Known problems:
 Next tasks:
 
 1. Re-test full path for a real product family: base data -> axes -> matrix -> create -> group competitor scan -> enrichment -> validation.
-2. Improve group workspace after creation with immediate selected-SKU guidance.
+2. Browser-check group workspace after creation with a real newly created family and refine selected-SKU guidance if it is still unclear.
 3. Add stronger preview of generated group title and variant axes before final create.
 
 ### P0.6 Catalog / Products / Export UX
@@ -600,7 +601,7 @@ Rules:
 14. Values tab now opens on `Все` instead of an empty `Блокеры` filter and explains empty states per filter.
 15. Value refs are lazily restored from saved parameter rows when a category has approved/draft mappings but the value step has no rows yet.
 16. Production one-SKU export check: iPad Air 11 M3 and MacBook Air 13 M4 are ready for GT USD and Ozon.
-17. iPhone 17 Pro Max `product_1052 / GT 52420` now has confirmed re-store + Store77 links, 13 S3 media images, and export readiness is ready for GT USD and Ozon.
+17. iPhone 17 Pro Max `product_1052 / GT 52420` was the previous one-SKU ready proof, then was intentionally deleted during the 2026-05-25 manual walkthrough reset.
 18. Competitor product enrichment has a job-based endpoint backed by `pim_workflow_runs`; the product competitor UI now uses job/status polling instead of waiting on long media extraction/upload HTTP requests.
 19. Export preparation no longer enriches from unconfirmed competitor `candidate` links. Automatic export/media fallback may use only confirmed `pim_channel_links`; if a confirmed competitor image URL is found but storage import fails, the URL is kept in `content.media_images` as `needs_review` instead of being lost as “Нет изображений”.
 20. Export preparation UI handles long backend runs without showing nginx `504`: it aborts the visible request, polls the persisted latest run, and renders the saved batch result.
@@ -608,10 +609,13 @@ Rules:
 22. Marketplace product imports hydrate canonical product media too: Yandex offer-card pictures and Ozon product images are merged into `content.media_images` so export readiness sees photos collected from marketplaces, not only competitors.
 23. Export preparation now runs bounded marketplace hydration for the selected SKU/store set before readiness checks, so first-party marketplace photos/descriptions/brand data are pulled into PIM before batch blockers are calculated.
 24. Export preparation also fills missing media/description/brand from sibling variants with the same category, iPhone model, storage, and color. This covers line variants such as `eSIM`, `Sim+eSIM`, and `2Sim` where only the SIM axis differs.
+25. After the manual reset, one clean SKU proof is ready again: `product_1065 / GT 52433` produced export run `export_4a7603c091` for safe targets `Я.Маркет GT USD` and `OZON Global Trade AE`; result is 2 ready target rows, 0 blockers.
 
 ## Current Production Finding
 
 iPhone 17 Pro Max export pass is ready on production after confirmed competitor matching, marketplace hydration, and sibling enrichment:
+
+Manual-reset follow-up: `product_1052 / GT 52420` is intentionally gone; current one-SKU proof is `product_1065 / GT 52433`, run `export_4a7603c091`, safe targets only, 0 blockers.
 
 1. Fresh production export run `export_928e9a89af` completed for the `iPhone 17 Pro Max` branch without nginx `504`.
 2. Result: 36 SKU x 2 safe targets (`Я.Маркет GT USD`, `OZON Global Trade AE`) = 72 ready target rows, 0 blockers.

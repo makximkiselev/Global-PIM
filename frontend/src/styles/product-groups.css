@@ -38,6 +38,29 @@
   gap:14px;
 }
 
+.pg-createdGuide{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-color:rgba(61,107,255,.20);
+  background:linear-gradient(135deg, rgba(61,107,255,.08), rgba(255,255,255,.96));
+}
+
+.pg-createdGuideTitle{
+  color:#0f172a;
+  font-size:15px;
+  font-weight:900;
+  margin-bottom:4px;
+}
+
+.pg-createdGuideActions{
+  display:flex;
+  flex:0 0 auto;
+  gap:8px;
+  align-items:center;
+}
+
 .pg-leftHead,
 .pg-groupHeader,
 .pg-ungroupedHead,
@@ -746,6 +769,10 @@
 @media (max-width: 1100px){
   .pg-grid{grid-template-columns: 1fr;}
   .pg-addGrid{grid-template-columns: 1fr;}
+  .pg-createdGuide{
+    align-items:flex-start;
+    flex-direction:column;
+  }
   .pg-selectionControls{
     grid-template-columns:1fr;
   }
