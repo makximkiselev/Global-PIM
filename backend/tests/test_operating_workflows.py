@@ -422,9 +422,13 @@ class OperatingWorkflowTests(unittest.TestCase):
         memory_provider = by_title["Встроенная память"]["providers"][0]
         self.assertEqual(memory_provider["covered_count"], 2)
         self.assertEqual(memory_provider["missing_count"], 0)
+        self.assertEqual(by_title["Встроенная память"]["pim_values"], ["256 ГБ", "512 ГБ"])
+        self.assertEqual(memory_provider["allowed_values"], ["128 ГБ", "256 ГБ", "512 ГБ", "1 ТБ"])
+        self.assertEqual(memory_provider["missing_values"], [])
         self.assertTrue(by_title["Версия"]["needs_value_mapping"])
         version_provider = by_title["Версия"]["providers"][0]
         self.assertEqual(version_provider["missing_sample"], ["Global"])
+        self.assertEqual(version_provider["missing_values"], ["Global"])
         self.assertFalse(by_title["Линейка"]["needs_value_mapping"])
 
     def test_value_ai_suggest_applies_valid_allowed_pairs(self) -> None:
@@ -537,6 +541,36 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["summary"]["engine"], "ollama")
         self.assertEqual(response["summary"]["missing_values"], 1)
         self.assertEqual(saved["meta"]["export_map"]["yandex_market"]["global"], "GLOBAL")
+
+    def test_value_export_map_patch_invalidates_category_value_cache(self) -> None:
+        dictionary = {
+            "id": "dict_version",
+            "title": "Версия",
+            "type": "select",
+            "items": [{"value": "Global"}],
+            "meta": {"export_map": {}},
+        }
+        saved: dict[str, object] = {}
+        cache: dict[str, object] = {"cat-phone": {"stale": True}}
+
+        with (
+            patch.object(marketplace_mapping, "load_dict", return_value=deepcopy(dictionary)),
+            patch.object(marketplace_mapping, "save_dict", side_effect=lambda doc: saved.update(deepcopy(doc))),
+            patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value=cache),
+        ):
+            response = marketplace_mapping.mapping_value_export_map_patch(
+                "cat-phone",
+                "dict_version",
+                marketplace_mapping.ValueExportMapPatchReq(
+                    provider="yandex_market",
+                    canonical_value="Global",
+                    output_value="GLOBAL",
+                ),
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(saved["meta"]["export_map"]["yandex_market"]["global"], "GLOBAL")
+        self.assertNotIn("cat-phone", cache)
 
     def test_new_category_without_model_can_create_draft_template(self) -> None:
         db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}

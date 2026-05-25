@@ -25,8 +25,11 @@ type ValueItemProvider = {
   needs_mapping?: boolean;
   needs_unit_check?: boolean;
   mapped_sample?: Array<{ canonical: string; output: string }>;
+  mapped_values?: Record<string, string>;
   allowed_sample?: string[];
+  allowed_values?: string[];
   missing_sample?: string[];
+  missing_values?: string[];
   param_name?: string | null;
   required?: boolean;
 };
@@ -44,6 +47,7 @@ type ValueItem = {
   attribute_id?: string | null;
   value_count: number;
   pim_sample?: string[];
+  pim_values?: string[];
   needs_value_mapping?: boolean;
   needs_unit_check?: boolean;
   source_category?: { id: string; name: string; path?: string } | null;
@@ -163,6 +167,10 @@ function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
   return "свободно";
 }
 
+function normValueKey(value: string) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function buildChildren(nodes: CatalogNode[]) {
   const map = new Map<string, CatalogNode[]>();
   for (const node of nodes) {
@@ -224,6 +232,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [aiValueLoading, setAiValueLoading] = useState("");
   const [aiValueMessage, setAiValueMessage] = useState("");
+  const [valueMapDraft, setValueMapDraft] = useState<Record<string, string>>({});
+  const [valueMapSaving, setValueMapSaving] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -469,6 +479,112 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     }
   }
 
+  async function saveInlineValueMapping(provider: ValueItemProvider, canonicalValue: string, outputValue: string) {
+    if (!selectedCategoryId || !activeItem?.dict_id || !provider.code) return;
+    const saveKey = `${activeItem.dict_id}:${provider.code}:${canonicalValue}`;
+    setValueMapSaving(saveKey);
+    try {
+      await api(
+        `/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}/dictionaries/${encodeURIComponent(activeItem.dict_id)}/export-map`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            provider: provider.code,
+            canonical_value: canonicalValue,
+            output_value: outputValue.trim() || null,
+          }),
+        },
+      );
+      setLoadingValues(true);
+      const refreshed = await api<ValuesResp>(`/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}`);
+      setData(refreshed);
+      setValueMapDraft((prev) => {
+        const next = { ...prev };
+        delete next[saveKey];
+        return next;
+      });
+    } catch (e: any) {
+      setAiValueMessage(e?.message || "VALUE_MAPPING_SAVE_FAILED");
+    } finally {
+      setValueMapSaving("");
+      setLoadingValues(false);
+    }
+  }
+
+  function renderInlineValueEditor(provider: ValueItemProvider) {
+    if (!activeItem || String(provider.mode || "").toLowerCase() === "number") return null;
+    const pimValues = (activeItem.pim_values?.length ? activeItem.pim_values : activeItem.pim_sample || []).filter(Boolean);
+    const allowedValues = (provider.allowed_values?.length ? provider.allowed_values : provider.allowed_sample || []).filter(Boolean);
+    if (!pimValues.length || !allowedValues.length) return null;
+    const missingKeys = new Set((provider.missing_values || []).map(normValueKey));
+    const mappedValues = provider.mapped_values || {};
+    const rows = [...pimValues]
+      .sort((a, b) => {
+        const am = missingKeys.has(normValueKey(a));
+        const bm = missingKeys.has(normValueKey(b));
+        if (am !== bm) return am ? -1 : 1;
+        return a.localeCompare(b, "ru");
+      })
+      .slice(0, 36);
+    const listId = `value-provider-${activeItem.dict_id}-${provider.code}`;
+    const hiddenCount = Math.max(0, pimValues.length - rows.length);
+
+    return (
+      <div className="sm-valuesInlineMap" key={provider.code}>
+        <div className="sm-valuesInlineMapHead">
+          <div>
+            <strong>{provider.title}: значения для выгрузки</strong>
+            <span>{Number(provider.missing_count || 0) ? `не покрыто ${provider.missing_count}` : "все покрыто"}</span>
+          </div>
+          <small>{provider.param_name || "поле площадки"}</small>
+        </div>
+        <div className="sm-valuesInlineRows">
+          {rows.map((value) => {
+            const valueKey = normValueKey(value);
+            const saveKey = `${activeItem.dict_id}:${provider.code}:${value}`;
+            const mapped = mappedValues[valueKey] || "";
+            const draft = valueMapDraft[saveKey] ?? mapped;
+            const isMissing = missingKeys.has(valueKey);
+            return (
+              <div className={`sm-valuesInlineRow ${isMissing ? "is-missing" : ""}`} key={`${provider.code}:${value}`}>
+                <div className="sm-valuesInlineCanon">
+                  <span>PIM</span>
+                  <strong title={value}>{value}</strong>
+                </div>
+                <input
+                  list={listId}
+                  value={draft}
+                  onChange={(event) => setValueMapDraft((prev) => ({ ...prev, [saveKey]: event.target.value }))}
+                  placeholder="Значение площадки"
+                />
+                <button
+                  className="btn sm"
+                  type="button"
+                  disabled={valueMapSaving === saveKey || draft.trim() === mapped}
+                  onClick={() => void saveInlineValueMapping(provider, value, draft)}
+                >
+                  {valueMapSaving === saveKey ? "Сохраняю…" : "Сохранить"}
+                </button>
+                <button
+                  className="btn sm"
+                  type="button"
+                  disabled={valueMapSaving === saveKey || !mapped}
+                  onClick={() => void saveInlineValueMapping(provider, value, "")}
+                >
+                  Снять
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {hiddenCount ? <div className="sm-valuesInlineFoot">Показаны первые {rows.length} значений, еще {hiddenCount} доступны в полном редакторе ниже.</div> : null}
+        <datalist id={listId}>
+          {allowedValues.map((value) => <option key={value} value={value} />)}
+        </datalist>
+      </div>
+    );
+  }
+
   return (
     <div className="sm-valuesPage">
       <div className="sm-valuesLayout">
@@ -695,6 +811,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     ))}
                   </div>
                   {aiValueMessage ? <div className="sm-valuesEmpty">{aiValueMessage}</div> : null}
+                  {usefulProviders(activeItem).map((provider) => renderInlineValueEditor(provider))}
                   <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
                 </>
               ) : (

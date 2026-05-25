@@ -1252,7 +1252,7 @@ def _dictionary_value_samples(dict_doc: Dict[str, Any], limit: int = 4) -> tuple
     return value_count, pim_sample, pim_values
 
 
-def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str]) -> Dict[str, Any]:
+def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str], *, limit: int = 80) -> Dict[str, Any]:
     missing: List[str] = []
     covered = 0
     for value in pim_values:
@@ -1266,6 +1266,7 @@ def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str])
         "covered_count": covered,
         "missing_count": len(missing),
         "missing_sample": missing[:4],
+        "missing_values": missing[:limit],
     }
 
 
@@ -2344,6 +2345,12 @@ class AiMatchReq(BaseModel):
 class ValueAiSuggestReq(BaseModel):
     provider: str
     apply: bool = True
+
+
+class ValueExportMapPatchReq(BaseModel):
+    provider: str
+    canonical_value: str
+    output_value: Optional[str] = None
 
 
 _ATTR_AI_WORKFLOW = "marketplace_attribute_ai_match"
@@ -4318,8 +4325,14 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                         {"canonical": str(k), "output": str(v)}
                         for k, v in list(mapped_values.items())[:4]
                     ],
+                    "mapped_values": {
+                        str(k): str(v)
+                        for k, v in list(mapped_values.items())[:120]
+                    },
                     "allowed_sample": allowed_values[:4],
+                    "allowed_values": allowed_values[:160],
                     "missing_sample": coverage.get("missing_sample") if isinstance(coverage.get("missing_sample"), list) else [],
+                    "missing_values": coverage.get("missing_values") if isinstance(coverage.get("missing_values"), list) else [],
                     "param_name": str(ref.get("name") or "").strip() or None,
                     "required": bool(ref.get("required") or False),
                 }
@@ -4353,6 +4366,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                 "attribute_id": str(raw.get("attribute_id") or "").strip() or None,
                 "value_count": value_count,
                 "pim_sample": pim_sample,
+                "pim_values": pim_values[:80],
                 "needs_value_mapping": needs_value_mapping,
                 "needs_unit_check": needs_unit_check,
                 "source_category": raw.get("source_category") if isinstance(raw.get("source_category"), dict) else None,
@@ -4569,6 +4583,48 @@ async def mapping_value_ai_suggest_job_status(job_id: str) -> Dict[str, Any]:
     if not job:
         raise HTTPException(status_code=404, detail="VALUE_AI_MATCH_JOB_NOT_FOUND")
     return _public_value_ai_job(job)
+
+
+@router.patch("/import/values/{catalog_category_id}/dictionaries/{dict_id}/export-map")
+def mapping_value_export_map_patch(catalog_category_id: str, dict_id: str, req: ValueExportMapPatchReq) -> Dict[str, Any]:
+    cid = str(catalog_category_id or "").strip()
+    did = str(dict_id or "").strip()
+    provider = str(req.provider or "").strip()
+    canonical_value = str(req.canonical_value or "").strip()
+    output_value = str(req.output_value or "").strip() if req.output_value is not None else ""
+    if not cid:
+        raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+    if not did:
+        raise HTTPException(status_code=400, detail="DICT_ID_REQUIRED")
+    if provider not in set(MAPPING_PROVIDERS):
+        raise HTTPException(status_code=400, detail="PROVIDER_INVALID")
+    if not canonical_value:
+        raise HTTPException(status_code=400, detail="CANONICAL_VALUE_REQUIRED")
+
+    doc = load_dict(did)
+    meta = doc.get("meta") if isinstance(doc.get("meta"), dict) else {}
+    export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+    provider_map = export_map.get(provider) if isinstance(export_map.get(provider), dict) else {}
+    provider_map = {
+        normalize_value_key(str(key or "")): str(value or "").strip()
+        for key, value in provider_map.items()
+        if normalize_value_key(str(key or "")) and str(value or "").strip()
+    }
+    key = normalize_value_key(canonical_value)
+    if output_value:
+        provider_map[key] = output_value
+    else:
+        provider_map.pop(key, None)
+    if provider_map:
+        export_map[provider] = provider_map
+    else:
+        export_map.pop(provider, None)
+    meta["export_map"] = export_map
+    doc["meta"] = meta
+    doc["updated_at"] = _now_iso()
+    save_dict(doc)
+    _value_details_cache_bucket().pop(cid, None)
+    return {"ok": True, "item": doc}
 
 
 @router.put("/import/attributes/{catalog_category_id}")

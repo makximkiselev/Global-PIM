@@ -2911,6 +2911,104 @@
   color:var(--text-soft);
 }
 
+.sm-valuesInlineMap{
+  display:grid;
+  gap:10px;
+  margin:0 0 12px;
+  padding:12px;
+  border:1px solid var(--values-line, var(--line));
+  border-radius:16px;
+  background:rgba(var(--card-rgb),.7);
+}
+
+.sm-valuesInlineMapHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.sm-valuesInlineMapHead div{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+
+.sm-valuesInlineMapHead strong{
+  color:var(--text);
+  font-size:14px;
+}
+
+.sm-valuesInlineMapHead span,
+.sm-valuesInlineMapHead small,
+.sm-valuesInlineFoot{
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:800;
+}
+
+.sm-valuesInlineRows{
+  display:grid;
+  gap:7px;
+}
+
+.sm-valuesInlineRow{
+  display:grid;
+  grid-template-columns:minmax(170px,1fr) minmax(190px,1fr) auto auto;
+  align-items:center;
+  gap:8px;
+  padding:8px;
+  border:1px solid rgba(var(--line-rgb),.1);
+  border-radius:12px;
+  background:rgba(var(--bg-rgb),.18);
+}
+
+.sm-valuesInlineRow.is-missing{
+  border-color:rgba(var(--brand-rgb),.28);
+  background:rgba(var(--brand-rgb),.07);
+}
+
+.sm-valuesInlineCanon{
+  min-width:0;
+  display:grid;
+  gap:2px;
+}
+
+.sm-valuesInlineCanon span{
+  color:var(--brand-strong);
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.sm-valuesInlineCanon strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:13px;
+}
+
+.sm-valuesInlineRow input{
+  min-width:0;
+  min-height:36px;
+  padding:8px 11px;
+  border:1px solid var(--values-line, var(--line));
+  border-radius:10px;
+  background:rgba(var(--card-rgb),.88);
+  color:var(--text);
+  font:inherit;
+  font-size:13px;
+  font-weight:800;
+  outline:none;
+}
+
+.sm-valuesInlineRow input:focus{
+  border-color:rgba(var(--brand-rgb),.55);
+  background:var(--card);
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.12);
+}
+
 .dictionaryValueEditor{
   gap:10px;
   color:var(--text);
@@ -3179,6 +3277,14 @@
   .sm-valuesFields{
     border-right:0;
     border-bottom:1px solid rgba(15,23,42,.06);
+  }
+
+  .sm-valuesInlineRow{
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .sm-valuesInlineRow .btn{
+    width:100%;
   }
 }
 

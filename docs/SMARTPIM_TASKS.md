@@ -452,8 +452,8 @@ Current state:
 
 Known problems:
 
-1. Value mapping now has a first `Следующий блокер` action, but the dictionary editor still needs tighter inline editing for unresolved provider values.
-2. Canonical PIM value, raw source value, marketplace output value, and allowed marketplace values are more visible in snippets, but row-level editing is still dense.
+1. Value mapping now has a first `Следующий блокер` action and inline PIM -> provider value editing in the selected-field panel, but dictionary data quality still needs real-category QA.
+2. Canonical PIM value, marketplace output value, allowed marketplace values, AI result, and manual save/remove are visible in the values panel; raw competitor/source value snippets still need a dedicated pass.
 3. Marketplace dictionary data quality still needs verification.
 4. Actual export payload now has route-level guard tests for provider-specific output values; remaining risk is the quality/completeness of the dictionaries and export maps.
 5. Parameter list provenance and type-mode chips are now visible, but the next pass should verify the density on narrow laptop widths after more real mappings are confirmed.
@@ -468,6 +468,7 @@ Next tasks:
 1. Add more route tests for complex one-PIM-field-to-many-marketplace-field mappings and real dictionary/export-map fixtures.
 2. Add direct source-evidence snippets to value rows where competitor/raw source values differ from canonical PIM values.
 3. Show AI confidence/reason/memory source next to competitor field mapping suggestions in `/sources?tab=params`.
+4. Browser-check inline value editing on a category with real unresolved value blockers, not only already-covered smartphone dictionaries.
 
 ### P0.5 Product Creation And Variants
 
