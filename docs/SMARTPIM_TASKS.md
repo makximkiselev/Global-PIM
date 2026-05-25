@@ -583,17 +583,18 @@ Rules:
 
 ## Current Production Finding
 
-iPhone 17 Pro Max export is being walked SKU-by-SKU on production after confirmed competitor matching and media enrichment:
+iPhone 17 Pro Max export pass is ready on production after confirmed competitor matching, marketplace hydration, and sibling enrichment:
 
-1. Browser export run completed without nginx `504`.
-2. Current browser-verified batch produced 38 ready target rows: 19 SKU x 2 channels (`Я.Маркет GT USD`, `OZON Global Trade AE`), with 17 target rows still blocked per channel.
-3. Completed in the current pass: GT 52436, GT 52437, GT 52438, GT 52440. Each has confirmed re-store link and 9 S3 media images.
-4. Store77 eSIM-only candidates for Sim+eSim SKU stay unconfirmed and cannot be accidentally approved from the UI.
-5. Next visible blocker is GT 52441.
+1. Fresh production export run `export_928e9a89af` completed for the `iPhone 17 Pro Max` branch without nginx `504`.
+2. Result: 36 SKU x 2 safe targets (`Я.Маркет GT USD`, `OZON Global Trade AE`) = 72 ready target rows, 0 blockers.
+3. Export preparation hydrated 9 Yandex offer cards, checked 24 Ozon rows, and filled 12 `2Sim` variants from sibling SKU facts.
+4. Previously blocked Sim+eSim rows such as GT 52441 now have media available for export.
+5. Previously blocked `2Sim` rows now receive brand, description, and media from same-line sibling facts.
+6. Store77 eSIM-only candidates for Sim+eSim SKU stay unconfirmed and cannot be accidentally approved from the UI.
 
 Next fix in the category flow:
 
-1. Continue the same SKU-by-SKU pass for the remaining line variants (`Sim+eSim`, `2Sim`, missing storage/color combinations).
+1. Repeat the same ready-export pass for another category branch to prove the flow is not smartphone-specific.
 2. The UI should keep separating “нет ссылок конкурентов” as a previous-step blocker from “ссылка есть, медиа найдено, нужна проверка” as a media-check state.
 3. Long full-category export preparation now has a persisted backend job path:
    - `POST /api/catalog/exchange/export/jobs` creates/reuses a queued job;
