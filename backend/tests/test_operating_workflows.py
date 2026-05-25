@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.api.routes import catalog_exchange, competitor_mapping, ozon_market, products, templates, yandex_market
+from app.api.routes import catalog_exchange, competitor_mapping, marketplace_mapping, ozon_market, products, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
@@ -256,6 +256,108 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(details["value"], "IP68")
         self.assertEqual(details["mapped"], True)
         self.assertEqual(saved["aliases"]["ip68 допускается погружение в воду на глубину до 6 метров"], "IP68")
+
+    def test_value_details_blocks_only_uncovered_pim_values(self) -> None:
+        dictionaries = {
+            "items": [
+                {
+                    "id": "dict_memory",
+                    "title": "Встроенная память",
+                    "type": "select",
+                    "items": [{"value": "256 ГБ"}, {"value": "512 ГБ"}],
+                    "meta": {
+                        "source_reference": {
+                            "yandex_market": {
+                                "kind": "ENUM",
+                                "allowed_values": ["128 ГБ", "256 ГБ", "512 ГБ", "1 ТБ"],
+                            }
+                        },
+                        "export_map": {},
+                    },
+                },
+                {
+                    "id": "dict_version",
+                    "title": "Версия",
+                    "type": "select",
+                    "items": [{"value": "Global"}],
+                    "meta": {
+                        "source_reference": {
+                            "yandex_market": {
+                                "kind": "ENUM",
+                                "allowed_values": ["EU", "RU"],
+                            }
+                        },
+                        "export_map": {},
+                    },
+                },
+                {
+                    "id": "dict_empty",
+                    "title": "Линейка",
+                    "type": "select",
+                    "items": [],
+                    "meta": {
+                        "source_reference": {
+                            "yandex_market": {
+                                "kind": "ENUM",
+                                "allowed_values": ["iPad Air", "iPhone"],
+                            }
+                        },
+                        "export_map": {},
+                    },
+                },
+            ]
+        }
+        values_doc = {
+            "items": {
+                "cat-phone": {
+                    "catalog_params": {
+                        "memory": {
+                            "catalog_name": "Встроенная память",
+                            "dict_id": "dict_memory",
+                        },
+                        "version": {
+                            "catalog_name": "Версия",
+                            "dict_id": "dict_version",
+                        },
+                        "line": {
+                            "catalog_name": "Линейка",
+                            "dict_id": "dict_empty",
+                        },
+                    }
+                }
+            }
+        }
+
+        with (
+            patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
+            patch.object(marketplace_mapping, "_load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_rows", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_parent_map", return_value={}),
+            patch.object(marketplace_mapping, "_tree_maps", return_value=({}, {})),
+            patch.object(marketplace_mapping, "_load_attr_values_dict_doc", return_value=deepcopy(values_doc)),
+            patch.object(marketplace_mapping, "load_dictionaries_db", return_value=deepcopy(dictionaries)),
+            patch.object(marketplace_mapping, "load_dict", side_effect=lambda dict_id: next(d for d in dictionaries["items"] if d["id"] == dict_id)),
+            patch.object(
+                marketplace_mapping,
+                "provider_export_value_details",
+                side_effect=lambda dict_id, provider, value: {
+                    "value": str(value),
+                    "mapped": dict_id == "dict_memory",
+                    "reason": "allowed_exact" if dict_id == "dict_memory" else "value_missing",
+                },
+            ),
+        ):
+            response = marketplace_mapping.mapping_value_details("cat-phone")
+
+        by_title = {item["title"]: item for item in response["items"]}
+        self.assertFalse(by_title["Встроенная память"]["needs_value_mapping"])
+        memory_provider = by_title["Встроенная память"]["providers"][0]
+        self.assertEqual(memory_provider["covered_count"], 2)
+        self.assertEqual(memory_provider["missing_count"], 0)
+        self.assertTrue(by_title["Версия"]["needs_value_mapping"])
+        version_provider = by_title["Версия"]["providers"][0]
+        self.assertEqual(version_provider["missing_sample"], ["Global"])
+        self.assertFalse(by_title["Линейка"]["needs_value_mapping"])
 
     def test_new_category_without_model_can_create_draft_template(self) -> None:
         db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}

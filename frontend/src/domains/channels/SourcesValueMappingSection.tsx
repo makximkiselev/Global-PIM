@@ -18,12 +18,15 @@ type ValueItemProvider = {
   title: string;
   mapped_count: number;
   allowed_count: number;
+  covered_count?: number;
+  missing_count?: number;
   kind?: string | null;
   mode?: "boolean" | "enum" | "multi" | "number" | "text" | string;
   needs_mapping?: boolean;
   needs_unit_check?: boolean;
   mapped_sample?: Array<{ canonical: string; output: string }>;
   allowed_sample?: string[];
+  missing_sample?: string[];
   param_name?: string | null;
   required?: boolean;
 };
@@ -106,10 +109,8 @@ function usefulProviders(item: ValueItem) {
 function valueItemStatus(item: ValueItem) {
   const providers = usefulProviders(item);
   if (!providers.length) return { label: "нет справочника", tone: "muted" };
-  const hasGap = providers.some((provider) =>
-    Boolean(provider.needs_mapping) ||
-    (Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0) && String(provider.mode || "").toLowerCase() !== "number"),
-  );
+  if (Number(item.value_count || 0) === 0) return { label: "нет PIM знач.", tone: "muted" };
+  const hasGap = providers.some((provider) => Boolean(provider.needs_mapping));
   if (hasGap) return { label: "нужно сопоставить", tone: "warn" };
   if (item.needs_unit_check) return { label: "проверить единицы", tone: "muted" };
   return { label: "готово", tone: "ok" };
@@ -118,16 +119,33 @@ function valueItemStatus(item: ValueItem) {
 function providerHasGap(provider: ValueItemProvider) {
   const mode = String(provider.mode || "").toLowerCase();
   if (mode === "number") return false;
-  return Boolean(provider.needs_mapping) || Number(provider.allowed_count || 0) > Number(provider.mapped_count || 0);
+  return Boolean(provider.needs_mapping);
 }
 
 function providerSampleText(provider: ValueItemProvider) {
+  const missing = (provider.missing_sample || []).filter(Boolean).slice(0, 3);
   const allowed = (provider.allowed_sample || []).filter(Boolean).slice(0, 3);
   const mapped = (provider.mapped_sample || []).filter((item) => item.canonical || item.output).slice(0, 2);
+  if (missing.length) return `не покрыто: ${missing.join(", ")}`;
   if (mapped.length) return mapped.map((item) => `${item.canonical} → ${item.output}`).join("; ");
+  if (Number(provider.covered_count || 0) > 0) return `покрыто PIM-значений: ${provider.covered_count}`;
   if (allowed.length) return `значения площадки: ${allowed.join(", ")}`;
   if (provider.needs_unit_check) return "проверь единицы измерения перед экспортом";
   return "";
+}
+
+function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
+  const mode = String(provider.mode || "").toLowerCase();
+  if (mode === "number") return "единицы";
+  const valueCount = Number(item.value_count || 0);
+  const covered = Number(provider.covered_count || 0);
+  const missing = Number(provider.missing_count || 0);
+  if (valueCount > 0 && (covered > 0 || missing > 0 || provider.needs_mapping)) {
+    return `${covered}/${valueCount} PIM`;
+  }
+  if (Number(provider.mapped_count || 0) > 0) return `${provider.mapped_count} ручн.`;
+  if (Number(provider.allowed_count || 0) > 0) return `${provider.allowed_count} знач.`;
+  return "свободно";
 }
 
 function buildChildren(nodes: CatalogNode[]) {
@@ -262,7 +280,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
         const providers = usefulProviders(item);
         const hasGap = providers.some(providerHasGap);
         if (workFilter === "blockers") return hasGap;
-        if (workFilter === "ready") return providers.length > 0 && !hasGap;
+        if (workFilter === "ready") return Number(item.value_count || 0) > 0 && providers.length > 0 && !hasGap;
         return true;
       })
       .filter((item) => {
@@ -360,7 +378,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   ).length;
   const allReadyCount = allMappingItems.filter((item) => {
     const providers = usefulProviders(item);
-    return providers.length > 0 && providers.every((provider) => !providerHasGap(provider));
+    return Number(item.value_count || 0) > 0 && providers.length > 0 && providers.every((provider) => !providerHasGap(provider));
   }).length;
   const nextBlocker = allMappingItems.find((item) => usefulProviders(item).some(providerHasGap)) || null;
   const unitCheckCount = allMappingItems.filter((item) => Boolean(item.needs_unit_check)).length;
@@ -432,7 +450,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
           <div className="sm-valuesSummary">
             <span>{data?.category?.path || "Категория не выбрана"}</span>
             {branchSourcesCount ? <span>{branchSourcesCount} дочерних категорий</span> : null}
-            <span>{mappingItemsCount} из {rawItemsCount} полей со значениями</span>
+            <span>{mappingItemsCount} из {rawItemsCount} полей со справочниками</span>
             <span>{allUnresolvedCount} блокеров</span>
             <span>{unitCheckCount} числовых проверок</span>
             <span>{allReadyCount} готовы</span>
@@ -524,7 +542,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                               key={provider.code}
                               className={`sm-valuesProviderPill ${providerHasGap(provider) ? "is-gap" : "is-ready"}`}
                             >
-                              {provider.title}: {String(provider.mode || "") === "number" ? "единицы" : `${provider.mapped_count}/${provider.allowed_count}`}
+                              {provider.title}: {providerCoverageLabel(provider, item)}
                             </span>
                           )) : (
                             <span className="sm-valuesProviderPill is-empty">У площадок нет справочника</span>
@@ -573,7 +591,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                       return (
                         <div className={`sm-valuesRouteStep ${gap ? "is-gap" : provider ? "is-ready" : "is-muted"}`} key={providerCode}>
                           <span>{provider?.title || (providerCode === "yandex_market" ? "Я.Маркет" : "Ozon")}</span>
-                          <strong>{provider ? (String(provider.mode || "") === "number" ? "единицы" : `${provider.mapped_count}/${provider.allowed_count}`) : "нет поля"}</strong>
+                          <strong>{provider ? providerCoverageLabel(provider, activeItem) : "нет поля"}</strong>
                           <small>{provider?.param_name || "справочник не подключен"}</small>
                         </div>
                       );

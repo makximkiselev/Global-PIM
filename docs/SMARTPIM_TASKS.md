@@ -603,6 +603,9 @@ Next fix in the category flow:
 
 1. The UI should keep separating “нет ссылок конкурентов” as a previous-step blocker from “ссылка есть, медиа найдено, нужна проверка” as a media-check state.
 2. Continue value/dictionary QA on the ready branches, especially provider-specific controlled values.
+   - value readiness now checks real PIM dictionary values against provider output coverage, not the full provider allowed-value list;
+   - production value check after deploy: `iPhone 17 Pro Max` has 0 value blockers and 26 unit checks; `iPad Air 11 M3` has 0 value blockers and 24 unit checks;
+   - `/sources?tab=values` shows provider coverage as covered PIM values (`covered / PIM total`) instead of `mapped / allowed`.
 3. Long full-category export preparation now has a persisted backend job path:
    - `POST /api/catalog/exchange/export/jobs` creates/reuses a queued job;
    - `GET /api/catalog/exchange/export/jobs/{job_id}` returns queued/running/completed/failed status and the saved run result;

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.tenant_context import current_tenant_organization_id
+from app.core.value_mapping import provider_export_value_details
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
@@ -1229,6 +1230,43 @@ def _value_payload_with_descendant_refs(
             next_raw["source_category"] = source
             merged["catalog_params"][f"{child_id}:{key}"] = next_raw
     return merged
+
+
+def _dictionary_value_samples(dict_doc: Dict[str, Any], limit: int = 4) -> tuple[int, List[str], List[str]]:
+    raw_dict_values = dict_doc.get("items") if isinstance(dict_doc.get("items"), list) else []
+    value_count = 0
+    pim_sample: List[str] = []
+    pim_values: List[str] = []
+    for value_item in raw_dict_values:
+        value = ""
+        if isinstance(value_item, str):
+            value = str(value_item or "").strip()
+        elif isinstance(value_item, dict):
+            value = str(value_item.get("value") or "").strip()
+        if not value:
+            continue
+        value_count += 1
+        if len(pim_sample) < limit:
+            pim_sample.append(value)
+        pim_values.append(value)
+    return value_count, pim_sample, pim_values
+
+
+def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str]) -> Dict[str, Any]:
+    missing: List[str] = []
+    covered = 0
+    for value in pim_values:
+        details = provider_export_value_details(dict_id, provider, value)
+        output_value = str(details.get("value") or "").strip()
+        if output_value and bool(details.get("mapped", True)):
+            covered += 1
+        else:
+            missing.append(value)
+    return {
+        "covered_count": covered,
+        "missing_count": len(missing),
+        "missing_sample": missing[:4],
+    }
 
 
 def _is_service_catalog_name(name_raw: Any) -> bool:
@@ -3890,6 +3928,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
         raw_bindings = raw.get("bindings") if isinstance(raw.get("bindings"), dict) else {}
         raw_scope = str(dict_doc.get("scope") or "").strip().lower()
+        value_count, pim_sample, pim_values = _dictionary_value_samples(dict_doc)
         if raw_scope == "variant":
             scope = "group"
             scope_label = "Группа"
@@ -3912,13 +3951,20 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
             if not ref and not allowed_values and not mapped_values:
                 continue
             provider_mode = _value_mode_from_type(ref.get("kind"), allowed_values)
-            needs_mapping = provider_mode in {"boolean", "enum", "multi"} and len(allowed_values) > len(mapped_values)
+            coverage = (
+                _provider_value_coverage(dict_id, provider, pim_values)
+                if provider_mode in {"boolean", "enum", "multi"} and pim_values
+                else {"covered_count": 0, "missing_count": 0, "missing_sample": []}
+            )
+            needs_mapping = provider_mode in {"boolean", "enum", "multi"} and int(coverage.get("missing_count") or 0) > 0
             providers.append(
                 {
                     "code": provider,
                     "title": PROVIDER_TITLES.get(provider, provider),
                     "mapped_count": len(mapped_values),
                     "allowed_count": len(allowed_values),
+                    "covered_count": int(coverage.get("covered_count") or 0),
+                    "missing_count": int(coverage.get("missing_count") or 0),
                     "kind": str(ref.get("kind") or "").strip() or None,
                     "mode": provider_mode,
                     "needs_mapping": needs_mapping,
@@ -3928,23 +3974,12 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
                         for k, v in list(mapped_values.items())[:4]
                     ],
                     "allowed_sample": allowed_values[:4],
+                    "missing_sample": coverage.get("missing_sample") if isinstance(coverage.get("missing_sample"), list) else [],
                     "param_name": str(ref.get("name") or "").strip() or None,
                     "required": bool(ref.get("required") or False),
                 }
             )
 
-        raw_dict_values = dict_doc.get("items") if isinstance(dict_doc.get("items"), list) else []
-        value_count = 0
-        pim_sample: List[str] = []
-        for value_item in raw_dict_values:
-            if isinstance(value_item, str) and str(value_item).strip():
-                value_count += 1
-                if len(pim_sample) < 4:
-                    pim_sample.append(str(value_item).strip())
-            elif isinstance(value_item, dict) and str(value_item.get("value") or "").strip():
-                value_count += 1
-                if len(pim_sample) < 4:
-                    pim_sample.append(str(value_item.get("value") or "").strip())
         item_type = str(dict_doc.get("type") or raw.get("type") or "").strip() or "select"
         provider_modes = {str(p.get("mode") or "") for p in providers}
         if "boolean" in provider_modes or _value_mode_from_type(item_type) == "boolean":
