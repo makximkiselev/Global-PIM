@@ -606,6 +606,9 @@ Next fix in the category flow:
    - value readiness now checks real PIM dictionary values against provider output coverage, not the full provider allowed-value list;
    - production value check after deploy: `iPhone 17 Pro Max` has 0 value blockers and 26 unit checks; `iPad Air 11 M3` has 0 value blockers and 24 unit checks;
    - `/sources?tab=values` shows provider coverage as covered PIM values (`covered / PIM total`) instead of `mapped / allowed`.
+   - value mapping now has an AI suggestion endpoint and UI action for a selected PIM dictionary/provider:
+     `POST /api/marketplaces/mapping/import/values/{category_id}/dictionaries/{dict_id}/ai-suggest`;
+     the endpoint uses the same allowed-value evidence as the value tab, validates that every suggested output is an actual provider allowed value, writes accepted pairs into dictionary `meta.export_map`, and records AI/rule evidence in `meta.value_ai`.
 3. Long full-category export preparation now has a persisted backend job path:
    - `POST /api/catalog/exchange/export/jobs` creates/reuses a queued job;
    - `GET /api/catalog/exchange/export/jobs/{job_id}` returns queued/running/completed/failed status and the saved run result;

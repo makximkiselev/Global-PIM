@@ -359,6 +359,64 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(version_provider["missing_sample"], ["Global"])
         self.assertFalse(by_title["Линейка"]["needs_value_mapping"])
 
+    def test_value_ai_suggest_applies_valid_allowed_pairs(self) -> None:
+        dictionary = {
+            "id": "dict_version",
+            "title": "Версия",
+            "type": "select",
+            "items": [{"value": "Global"}, {"value": "EU"}],
+            "meta": {"export_map": {}},
+        }
+        values_doc = {
+            "items": {
+                "cat-phone": {
+                    "catalog_params": {
+                        "version": {
+                            "catalog_name": "Версия",
+                            "dict_id": "dict_version",
+                            "bindings": {
+                                "yandex_market": {
+                                    "kind": "ENUM",
+                                    "values": ["EU", "GLOBAL"],
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        }
+        saved: dict[str, object] = {}
+
+        async def suggest(**_kwargs):
+            return [
+                {"canonical": "Global", "output": "GLOBAL", "confidence": 0.96, "reason": "same region"},
+                {"canonical": "EU", "output": "NOT_ALLOWED", "confidence": 0.99, "reason": "invalid output"},
+            ]
+
+        with (
+            patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
+            patch.object(marketplace_mapping, "_load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_rows", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "load_dict", return_value=deepcopy(dictionary)),
+            patch.object(marketplace_mapping, "save_dict", side_effect=lambda doc: saved.update(deepcopy(doc))),
+            patch.object(marketplace_mapping, "_load_attr_values_dict_doc", return_value=deepcopy(values_doc)),
+            patch.object(marketplace_mapping, "provider_export_value_details", return_value={"value": "", "mapped": False, "reason": "value_missing"}),
+            patch.object(marketplace_mapping, "_ollama_suggest_value_pairs", side_effect=suggest),
+        ):
+            response = asyncio.run(
+                marketplace_mapping.mapping_value_ai_suggest(
+                    "cat-phone",
+                    "dict_version",
+                    marketplace_mapping.ValueAiSuggestReq(provider="yandex_market", apply=True),
+                )
+            )
+
+        self.assertEqual(response["summary"]["engine"], "ollama")
+        self.assertEqual(response["summary"]["ai_suggestions"], 1)
+        self.assertEqual(response["suggestions"][0]["canonical"], "Global")
+        self.assertEqual(saved["meta"]["export_map"]["yandex_market"]["global"], "GLOBAL")
+        self.assertEqual(saved["meta"]["export_map"]["yandex_market"]["eu"], "EU")
+
     def test_new_category_without_model_can_create_draft_template(self) -> None:
         db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
         saved: dict[str, object] = {}

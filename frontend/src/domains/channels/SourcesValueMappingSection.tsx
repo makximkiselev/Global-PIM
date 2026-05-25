@@ -207,6 +207,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const [loadingValues, setLoadingValues] = useState(false);
   const [activeDictId, setActiveDictId] = useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
+  const [aiValueLoading, setAiValueLoading] = useState("");
+  const [aiValueMessage, setAiValueMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -401,6 +403,38 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     setScopeFilter("all");
     setFieldQuery("");
     setActiveDictId(nextBlocker.dict_id);
+  }
+
+  async function runValueAi(provider: ValueItemProvider) {
+    if (!selectedCategoryId || !activeItem?.dict_id || !provider.code) return;
+    const key = `${activeItem.dict_id}:${provider.code}`;
+    setAiValueLoading(key);
+    setAiValueMessage("");
+    try {
+      const result = await api<{ summary?: { suggestions?: number; ai_suggestions?: number; rule_suggestions?: number }; ai_error?: string; message?: string }>(
+        `/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}/dictionaries/${encodeURIComponent(activeItem.dict_id)}/ai-suggest`,
+        {
+          method: "POST",
+          body: JSON.stringify({ provider: provider.code, apply: true }),
+        },
+      );
+      const suggestions = Number(result?.summary?.suggestions || 0);
+      const aiSuggestions = Number(result?.summary?.ai_suggestions || 0);
+      const ruleSuggestions = Number(result?.summary?.rule_suggestions || 0);
+      setAiValueMessage(
+        suggestions
+          ? `Сопоставлено: ${suggestions} знач. (AI ${aiSuggestions}, правило ${ruleSuggestions}).`
+          : result?.message || result?.ai_error || "AI не нашел уверенных пар.",
+      );
+      setLoadingValues(true);
+      const refreshed = await api<ValuesResp>(`/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}`);
+      setData(refreshed);
+    } catch (e: any) {
+      setAiValueMessage(e?.message || "AI_VALUE_MATCH_FAILED");
+    } finally {
+      setAiValueLoading("");
+      setLoadingValues(false);
+    }
   }
 
   return (
@@ -615,9 +649,20 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                         <strong>{provider.title}</strong>
                         <span>{provider.param_name || "Поле площадки не указано"}</span>
                         <small>{providerSampleText(provider) || "Образцов значений пока нет."}</small>
+                        {String(provider.mode || "").toLowerCase() !== "number" && Number(activeItem.value_count || 0) > 0 && Number(provider.allowed_count || 0) > 0 ? (
+                          <button
+                            className="btn sm"
+                            type="button"
+                            disabled={aiValueLoading === `${activeItem.dict_id}:${provider.code}`}
+                            onClick={() => void runValueAi(provider)}
+                          >
+                            {aiValueLoading === `${activeItem.dict_id}:${provider.code}` ? "AI подбирает…" : "Подобрать AI"}
+                          </button>
+                        ) : null}
                       </div>
                     ))}
                   </div>
+                  {aiValueMessage ? <div className="sm-valuesEmpty">{aiValueMessage}</div> : null}
                   <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
                 </>
               ) : (

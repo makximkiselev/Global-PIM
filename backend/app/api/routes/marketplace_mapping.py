@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.tenant_context import current_tenant_organization_id
-from app.core.value_mapping import provider_export_value_details
+from app.core.value_mapping import normalize_value_key, provider_export_value_details
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
@@ -1269,6 +1269,209 @@ def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str])
     }
 
 
+def _dictionary_values(doc: Dict[str, Any], limit: int = 80) -> List[str]:
+    _, _, values = _dictionary_value_samples(doc, limit=limit)
+    return values[:limit]
+
+
+def _provider_allowed_values(doc: Dict[str, Any], provider: str, limit: int = 160) -> List[str]:
+    meta = doc.get("meta") if isinstance(doc.get("meta"), dict) else {}
+    source_ref = meta.get("source_reference") if isinstance(meta.get("source_reference"), dict) else {}
+    ref = source_ref.get(provider) if isinstance(source_ref.get(provider), dict) else {}
+    return _unique_text_values(ref.get("allowed_values") or ref.get("values"), limit=limit)
+
+
+def _provider_allowed_values_for_category_dict(catalog_category_id: str, dict_id: str, provider: str, limit: int = 160) -> List[str]:
+    values_doc = _load_attr_values_dict_doc()
+    items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
+    payload = items.get(catalog_category_id) if isinstance(items, dict) and isinstance(items.get(catalog_category_id), dict) else {}
+    catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+    for raw in catalog_params.values():
+        if not isinstance(raw, dict) or str(raw.get("dict_id") or "").strip() != dict_id:
+            continue
+        bindings = raw.get("bindings") if isinstance(raw.get("bindings"), dict) else {}
+        ref = bindings.get(provider) if isinstance(bindings.get(provider), dict) else {}
+        allowed = _unique_text_values(ref.get("allowed_values") or ref.get("values"), limit=limit)
+        if allowed:
+            return allowed
+    return []
+
+
+def _current_export_map(doc: Dict[str, Any], provider: str) -> Dict[str, str]:
+    meta = doc.get("meta") if isinstance(doc.get("meta"), dict) else {}
+    export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+    provider_map = export_map.get(provider) if isinstance(export_map.get(provider), dict) else {}
+    out: Dict[str, str] = {}
+    for key, value in provider_map.items():
+        nkey = str(key or "").strip()
+        nval = str(value or "").strip()
+        if nkey and nval:
+            out[nkey] = nval
+    return out
+
+
+def _score_value_pair(pim_value: str, allowed_value: str) -> float:
+    pim = _norm_name(pim_value)
+    allowed = _norm_name(allowed_value)
+    if not pim or not allowed:
+        return 0.0
+    if pim == allowed:
+        return 1.0
+    pim_tokens = set(pim.split())
+    allowed_tokens = set(allowed.split())
+    overlap = len(pim_tokens & allowed_tokens) / max(len(pim_tokens | allowed_tokens), 1)
+    containment = 0.0
+    if len(pim) >= 3 and pim in allowed:
+        containment = len(pim) / max(len(allowed), 1)
+    elif len(allowed) >= 3 and allowed in pim:
+        containment = len(allowed) / max(len(pim), 1)
+    return max(overlap, containment * 0.9)
+
+
+def _deterministic_value_suggestions(pim_values: List[str], allowed_values: List[str]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for pim_value in pim_values:
+        ranked = sorted(
+            (
+                (_score_value_pair(pim_value, allowed_value), allowed_value)
+                for allowed_value in allowed_values
+            ),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        score, best = ranked[0] if ranked else (0.0, "")
+        if score >= 0.92 and best:
+            out.append(
+                {
+                    "canonical": pim_value,
+                    "output": best,
+                    "confidence": round(float(score), 3),
+                    "source": "rule",
+                    "reason": "exact_or_near_match",
+                }
+            )
+    return out
+
+
+async def _ollama_suggest_value_pairs(
+    *,
+    dict_title: str,
+    provider: str,
+    pim_values: List[str],
+    allowed_values: List[str],
+) -> List[Dict[str, Any]]:
+    if not pim_values or not allowed_values:
+        return []
+    base_url = str(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+    model = str(os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")).strip() or "qwen2.5:7b-instruct"
+    prompt = (
+        "Верни только JSON без markdown: "
+        "{\"pairs\":[{\"canonical\":\"PIM value\",\"output\":\"allowed value\",\"confidence\":0.0,\"reason\":\"short\"}]}. "
+        "Сопоставь значения PIM со значениями маркетплейса только если это одно и то же значение. "
+        "output обязан быть дословно одним из allowed values. Если не уверен, не возвращай пару. "
+        f"Параметр: {str(dict_title or '')[:120]}. "
+        f"Площадка: {provider}. "
+        f"PIM values: {json.dumps(pim_values[:80], ensure_ascii=False)}. "
+        f"Allowed values: {json.dumps(allowed_values[:160], ensure_ascii=False)}."
+    )
+    body = {
+        "model": model,
+        "stream": False,
+        "format": "json",
+        "keep_alive": "10m",
+        "options": {
+            "temperature": 0.0,
+            "top_p": 0.8,
+            "num_ctx": 4096,
+            "num_predict": 700,
+        },
+        "prompt": prompt,
+    }
+    timeout_budget = _ai_match_timeout_seconds()
+    timeout = httpx.Timeout(timeout_budget, connect=min(max(timeout_budget / 2.0, 0.1), 3.0))
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(f"{base_url}/api/generate", json=body)
+        if response.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"OLLAMA_HTTP_{response.status_code}")
+        data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+    obj = _json_extract(str((data or {}).get("response") or ""))
+    pairs = obj.get("pairs") if isinstance(obj, dict) else None
+    if not isinstance(pairs, list):
+        return []
+    return [pair for pair in pairs if isinstance(pair, dict)]
+
+
+def _validated_value_suggestions(
+    *,
+    raw_pairs: List[Dict[str, Any]],
+    pim_values: List[str],
+    allowed_values: List[str],
+    source: str,
+) -> List[Dict[str, Any]]:
+    pim_by_key = {normalize_value_key(value): value for value in pim_values if normalize_value_key(value)}
+    allowed_by_key = {normalize_value_key(value): value for value in allowed_values if normalize_value_key(value)}
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for pair in raw_pairs:
+        canonical = str(pair.get("canonical") or pair.get("pim") or pair.get("value") or "").strip()
+        output = str(pair.get("output") or pair.get("provider") or pair.get("marketplace") or "").strip()
+        canonical = pim_by_key.get(normalize_value_key(canonical), canonical if canonical in pim_values else "")
+        output = allowed_by_key.get(normalize_value_key(output), output if output in allowed_values else "")
+        if not canonical or not output:
+            continue
+        key = normalize_value_key(canonical)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            confidence = float(pair.get("confidence") or 0.0)
+        except Exception:
+            confidence = 0.0
+        out.append(
+            {
+                "canonical": canonical,
+                "output": output,
+                "confidence": max(0.0, min(confidence, 1.0)),
+                "source": source,
+                "reason": str(pair.get("reason") or source).strip()[:160],
+            }
+        )
+    return out
+
+
+def _apply_value_suggestions_to_dict(doc: Dict[str, Any], provider: str, suggestions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    meta = doc.get("meta") if isinstance(doc.get("meta"), dict) else {}
+    export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
+    provider_map = export_map.get(provider) if isinstance(export_map.get(provider), dict) else {}
+    ai_meta = meta.get("value_ai") if isinstance(meta.get("value_ai"), dict) else {}
+    provider_ai = ai_meta.get(provider) if isinstance(ai_meta.get(provider), dict) else {}
+    applied = 0
+    for suggestion in suggestions:
+        key = str(suggestion.get("canonical") or "").strip()
+        output = str(suggestion.get("output") or "").strip()
+        if not key or not output:
+            continue
+        nkey = normalize_value_key(key)
+        provider_map[nkey] = output
+        provider_ai[nkey] = {
+            "output": output,
+            "confidence": suggestion.get("confidence"),
+            "source": suggestion.get("source"),
+            "reason": suggestion.get("reason"),
+            "updated_at": _now_iso(),
+        }
+        applied += 1
+    if applied:
+        export_map[provider] = provider_map
+        ai_meta[provider] = provider_ai
+        meta["export_map"] = export_map
+        meta["value_ai"] = ai_meta
+        doc["meta"] = meta
+        doc["updated_at"] = _now_iso()
+        save_dict(doc)
+    return doc
+
+
 def _is_service_catalog_name(name_raw: Any) -> bool:
     target = _norm_name(str(name_raw or ""))
     if not target:
@@ -2125,6 +2328,11 @@ class SaveAttrMappingReq(BaseModel):
 
 
 class AiMatchReq(BaseModel):
+    apply: bool = True
+
+
+class ValueAiSuggestReq(BaseModel):
+    provider: str
     apply: bool = True
 
 
@@ -4033,6 +4241,134 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         ttl_seconds=_VALUE_DETAILS_CACHE_TTL_SECONDS,
     )
     return result
+
+
+@router.post("/import/values/{catalog_category_id}/dictionaries/{dict_id}/ai-suggest")
+async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: ValueAiSuggestReq) -> Dict[str, Any]:
+    cid = str(catalog_category_id or "").strip()
+    did = str(dict_id or "").strip()
+    provider = str(req.provider or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+    if not did:
+        raise HTTPException(status_code=400, detail="DICT_ID_REQUIRED")
+    if provider not in set(MAPPING_PROVIDERS):
+        raise HTTPException(status_code=400, detail="PROVIDER_INVALID")
+
+    catalog_nodes = _load_catalog_nodes()
+    catalog_items = _catalog_rows(catalog_nodes)
+    if not any(str(item.get("id") or "") == cid for item in catalog_items):
+        raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
+
+    doc = load_dict(did)
+    pim_values = _dictionary_values(doc)
+    allowed_values = _provider_allowed_values(doc, provider)
+    if not allowed_values:
+        allowed_values = _provider_allowed_values_for_category_dict(cid, did, provider)
+    if not pim_values:
+        return {
+            "ok": True,
+            "applied": False,
+            "provider": provider,
+            "dict_id": did,
+            "suggestions": [],
+            "summary": {"pim_values": 0, "allowed_values": len(allowed_values), "suggestions": 0, "engine": "none"},
+            "message": "В PIM-словаре пока нет значений для сопоставления.",
+        }
+    if not allowed_values:
+        return {
+            "ok": True,
+            "applied": False,
+            "provider": provider,
+            "dict_id": did,
+            "suggestions": [],
+            "summary": {"pim_values": len(pim_values), "allowed_values": 0, "suggestions": 0, "engine": "none"},
+            "message": "У площадки нет справочника значений для этого поля.",
+        }
+
+    existing_map = _current_export_map(doc, provider)
+    missing_values = [
+        value
+        for value in pim_values
+        if normalize_value_key(value) not in existing_map
+        and not bool(provider_export_value_details(did, provider, value).get("mapped", True))
+    ]
+    if not missing_values:
+        return {
+            "ok": True,
+            "applied": False,
+            "provider": provider,
+            "dict_id": did,
+            "suggestions": [],
+            "summary": {
+                "pim_values": len(pim_values),
+                "allowed_values": len(allowed_values),
+                "suggestions": 0,
+                "engine": "already_covered",
+            },
+            "message": "Все PIM-значения уже покрыты для этой площадки.",
+        }
+
+    deterministic = _deterministic_value_suggestions(missing_values, allowed_values)
+    deterministic_valid = _validated_value_suggestions(
+        raw_pairs=deterministic,
+        pim_values=missing_values,
+        allowed_values=allowed_values,
+        source="rule",
+    )
+    ai_valid: List[Dict[str, Any]] = []
+    ai_error = ""
+    try:
+        async with asyncio.timeout(_ai_match_timeout_seconds()):
+            ai_raw = await _ollama_suggest_value_pairs(
+                dict_title=str(doc.get("title") or did),
+                provider=provider,
+                pim_values=missing_values,
+                allowed_values=allowed_values,
+            )
+        ai_valid = _validated_value_suggestions(
+            raw_pairs=ai_raw,
+            pim_values=missing_values,
+            allowed_values=allowed_values,
+            source="ollama",
+        )
+    except Exception as exc:
+        ai_error = f"{exc.__class__.__name__}: {str(exc).strip()}"[:240]
+
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for suggestion in deterministic_valid + ai_valid:
+        key = normalize_value_key(suggestion.get("canonical"))
+        if not key:
+            continue
+        prev = by_key.get(key)
+        if not prev or str(suggestion.get("source")) == "ollama" or float(suggestion.get("confidence") or 0) > float(prev.get("confidence") or 0):
+            by_key[key] = suggestion
+    suggestions = list(by_key.values())
+
+    applied = False
+    if req.apply and suggestions:
+        doc = _apply_value_suggestions_to_dict(doc, provider, suggestions)
+        applied = True
+        _value_details_cache_bucket().pop(cid, None)
+
+    return {
+        "ok": True,
+        "applied": applied,
+        "provider": provider,
+        "dict_id": did,
+        "suggestions": suggestions,
+        "summary": {
+            "pim_values": len(pim_values),
+            "missing_values": len(missing_values),
+            "allowed_values": len(allowed_values),
+            "suggestions": len(suggestions),
+            "engine": "ollama" if ai_valid else "rule",
+            "rule_suggestions": len(deterministic_valid),
+            "ai_suggestions": len(ai_valid),
+        },
+        "ai_error": ai_error,
+        "item": doc if applied else None,
+    }
 
 
 @router.put("/import/attributes/{catalog_category_id}")
