@@ -104,6 +104,46 @@ function normalizeStatus(status?: string, present?: boolean): "good" | "warn" | 
   return "good";
 }
 
+function marketplaceLabel(provider: "yandex_market" | "ozon") {
+  return provider === "yandex_market" ? "Я.Маркет" : "Ozon";
+}
+
+function marketplaceStatusMeta(product: ProductItem, provider: "yandex_market" | "ozon") {
+  const raw = product.marketplace_statuses?.[provider] || {};
+  const status = String(raw.status || "").trim();
+  const present = !!raw.present;
+  const tone = normalizeStatus(status, present);
+  return {
+    label: marketplaceLabel(provider),
+    detail: present ? status || "есть" : "нет связи",
+    tone,
+  };
+}
+
+function compactCategoryPath(path?: string) {
+  const parts = String(path || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.length) return { primary: "Категория не определена", secondary: "" };
+  return {
+    primary: parts[parts.length - 1],
+    secondary: parts.length > 1 ? parts.slice(0, -1).join(" / ") : "",
+  };
+}
+
+function displayGroupName(product: ProductItem) {
+  const name = String(product.group_name || "").trim();
+  const id = String(product.group_id || "").trim();
+  const visible = name && name !== id ? name : id;
+  if (!visible) return { primary: "Без семейства", secondary: "" };
+  const technical = visible.match(/^group[_-](\d+)$/i);
+  if (technical) {
+    return { primary: `Семейство SKU #${technical[1]}`, secondary: "варианты одной линейки" };
+  }
+  return { primary: visible, secondary: "варианты одной линейки" };
+}
+
 function queueModeLabel(mode: QueueMode): string {
   switch (mode) {
     case "issues":
@@ -129,6 +169,55 @@ function withProductExportHref(productIds: string[]) {
   if (!ids.length) return "/catalog/export";
   const param = ids.length === 1 ? "product" : "products";
   return `/catalog/export?${param}=${encodeURIComponent(ids.join(","))}`;
+}
+
+function templateHref(product: ProductItem) {
+  const sourceCategoryId = String(product.effective_template_source_category_id || product.category_id || "").trim();
+  return sourceCategoryId ? `/templates/${encodeURIComponent(sourceCategoryId)}` : "/templates";
+}
+
+function getProductNextStep(product: ProductItem): {
+  title: string;
+  detail: string;
+  tone: "danger" | "pending" | "active";
+  href: string;
+  cta: string;
+} {
+  const hasTemplate = !!String(product.effective_template_name || "").trim();
+  const ym = marketplaceStatusMeta(product, "yandex_market");
+  const oz = marketplaceStatusMeta(product, "ozon");
+
+  if (!hasTemplate) {
+    return {
+      title: "Нет инфо-модели",
+      detail: "Сначала соберите параметры категории",
+      tone: "danger",
+      href: templateHref(product),
+      cta: "Собрать",
+    };
+  }
+
+  if (ym.tone !== "good" || oz.tone !== "good") {
+    const missing = [ym, oz]
+      .filter((item) => item.tone !== "good")
+      .map((item) => item.label)
+      .join(", ");
+    return {
+      title: "Проверить площадки",
+      detail: missing ? `Не готово: ${missing}` : "Есть незакрытые связи",
+      tone: "pending",
+      href: sourcesMappingHref(product.category_id, "params"),
+      cta: "Сопоставить",
+    };
+  }
+
+  return {
+    title: "Готов к выгрузке",
+    detail: "Можно проверить экспорт SKU",
+    tone: "active",
+    href: withProductExportHref([product.id]),
+    cta: "Экспорт",
+  };
 }
 
 function ProductQueueSwitch({
@@ -236,29 +325,23 @@ function ProductReadinessBadge({ product }: { product: ProductItem }) {
 }
 
 function ProductChannelsCell({ product }: { product: ProductItem }) {
-  const ymStatus = String(product.marketplace_statuses?.yandex_market?.status || "").trim();
-  const ymPresent = !!product.marketplace_statuses?.yandex_market?.present;
-  const ozStatus = String(product.marketplace_statuses?.ozon?.status || "").trim();
-  const ozPresent = !!product.marketplace_statuses?.ozon?.present;
+  const channels = [
+    marketplaceStatusMeta(product, "yandex_market"),
+    marketplaceStatusMeta(product, "ozon"),
+  ];
 
   return (
     <div className="productListChannels">
-      <span
-        className={`productListChannelBadge productListChannelBadgeYm productListChannelBadge--${normalizeStatus(
-          ymStatus,
-          ymPresent,
-        )}`}
-      >
-        Я.Маркет
-      </span>
-      <span
-        className={`productListChannelBadge productListChannelBadgeOzon productListChannelBadge--${normalizeStatus(
-          ozStatus,
-          ozPresent,
-        )}`}
-      >
-        Ozon
-      </span>
+      {channels.map((channel) => (
+        <span
+          key={channel.label}
+          className={`productListChannelBadge productListChannelBadge--${channel.tone}`}
+          title={`${channel.label}: ${channel.detail}`}
+        >
+          <span>{channel.label}</span>
+          <small>{channel.detail}</small>
+        </span>
+      ))}
     </div>
   );
 }
@@ -402,10 +485,11 @@ function ProductListTable({
               </th>
               <th>Товар</th>
               <th>Категория</th>
-              <th>Модель</th>
-              <th>Группа</th>
-              <th>Readiness</th>
-              <th>Каналы</th>
+              <th>Инфо-модель</th>
+              <th>Семейство</th>
+              <th>Что сделать</th>
+              <th>Площадки</th>
+              <th className="productListActionCol">Действие</th>
             </tr>
           </thead>
           <tbody>
@@ -419,13 +503,16 @@ function ProductListTable({
                     <td><span className="productListSkeleton productListSkeletonMeta" /></td>
                     <td><span className="productListSkeleton productListSkeletonBadge" /></td>
                     <td><span className="productListSkeleton productListSkeletonChannels" /></td>
+                    <td><span className="productListSkeleton productListSkeletonAction" /></td>
                   </tr>
                 ))
               : rows.map((product) => {
                   const title = String(product.title || product.name || "").trim() || product.id;
                   const sku = String(product.sku_gt || "").trim() || "Без SKU";
-                  const group = String(product.group_name || "").trim();
                   const templateName = String(product.effective_template_name || "").trim();
+                  const category = compactCategoryPath(product.category_path);
+                  const group = displayGroupName(product);
+                  const nextStep = getProductNextStep(product);
                   const isSelected = selectedIds.includes(product.id);
                   const isFocused = selectedProductId === product.id;
                   return (
@@ -462,23 +549,49 @@ function ProductListTable({
                         </div>
                       </td>
                       <td>
-                        <div className="productListCellMeta">{product.category_path || "Категория не определена"}</div>
+                        <div className="productListCategoryCell">
+                          <div className="productListCellMeta isStrong">{category.primary}</div>
+                          {category.secondary ? <div className="productListCellSubtle">{category.secondary}</div> : null}
+                        </div>
                       </td>
                       <td>
                         {templateName ? (
-                          <div className="productListCellMeta isStrong">{templateName}</div>
+                          <Link
+                            className="productListInlineLink"
+                            to={templateHref(product)}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {templateName}
+                          </Link>
                         ) : (
-                          <div className="productListCellMeta isMuted">Не назначена</div>
+                          <Link
+                            className="productListMissingLink"
+                            to={templateHref(product)}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Собрать модель
+                          </Link>
                         )}
                       </td>
                       <td>
-                        <div className="productListCellMeta">{group || "Без группы"}</div>
+                        <div className="productListGroupCell">
+                          <div className="productListCellMeta isStrong">{group.primary}</div>
+                          {group.secondary ? <div className="productListCellSubtle">{group.secondary}</div> : null}
+                        </div>
                       </td>
                       <td>
-                        <ProductReadinessBadge product={product} />
+                        <div className="productListNextStep">
+                          <Badge tone={nextStep.tone}>{nextStep.title}</Badge>
+                          <div>{nextStep.detail}</div>
+                        </div>
                       </td>
                       <td>
                         <ProductChannelsCell product={product} />
+                      </td>
+                      <td className="productListActionCol" onClick={(event) => event.stopPropagation()}>
+                        <Link className="btn productListRowAction" to={nextStep.href}>
+                          {nextStep.cta}
+                        </Link>
                       </td>
                     </tr>
                   );
@@ -1044,7 +1157,7 @@ export default function ProductListFeature() {
               <Card className="productListTableCard">
                 <div className="productListTableHead">
                   <div>
-                    <div className="productListTableTitle">Очередь товаров</div>
+                    <div className="productListTableTitle">SKU в работе</div>
                     <div className="productListTableSubtitle">
                       Показано <strong>{pageFrom}-{pageTo}</strong> из <strong>{total}</strong>
                     </div>

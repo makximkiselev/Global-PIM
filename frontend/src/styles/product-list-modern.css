@@ -242,7 +242,7 @@
 
 .productListTable{
   width:100%;
-  min-width:1180px;
+  min-width:1120px;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -359,25 +359,89 @@
   color:var(--text-soft);
 }
 
+.productListCellSubtle{
+  margin-top:4px;
+  max-width:260px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  line-height:1.35;
+  color:var(--text-soft);
+  font-weight:700;
+}
+
+.productListCategoryCell,
+.productListGroupCell{
+  min-width:150px;
+}
+
+.productListMissingLink{
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  padding:0 10px;
+  border:1px solid rgba(var(--brand-rgb), .25);
+  border-radius:999px;
+  background:rgba(var(--brand-rgb), .08);
+  color:var(--brand-strong);
+  font-size:12px;
+  font-weight:900;
+  text-decoration:none;
+}
+
+.productListMissingLink:hover{
+  border-color:rgba(var(--brand-rgb), .38);
+  background:rgba(var(--brand-rgb), .12);
+}
+
+.productListNextStep{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  min-width:170px;
+}
+
+.productListNextStep div{
+  font-size:11px;
+  line-height:1.35;
+  color:var(--muted);
+  font-weight:700;
+}
+
 .productListChannels{
   display:flex;
-  align-items:center;
-  gap:8px;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
   flex-wrap:wrap;
 }
 
 .productListChannelBadge{
   display:inline-flex;
   align-items:center;
-  justify-content:center;
-  min-height:24px;
-  padding:0 8px;
+  justify-content:space-between;
+  gap:8px;
+  min-height:26px;
+  min-width:118px;
+  padding:0 9px;
   border-radius:999px;
   border:1px solid var(--line);
   background:rgba(var(--bg-rgb), .26);
   font-size:11px;
   font-weight:800;
   color:var(--text-soft);
+}
+
+.productListChannelBadge small{
+  max-width:70px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+  color:inherit;
+  opacity:.84;
 }
 
 .productListChannelBadge--good{
@@ -394,6 +458,18 @@
 
 .productListChannelBadge--neutral{
   color:var(--text-soft);
+}
+
+.productListActionCol{
+  width:118px;
+  text-align:right;
+}
+
+.productListRowAction{
+  min-height:32px;
+  padding:0 12px;
+  font-size:12px;
+  font-weight:900;
 }
 
 .productListInspectorStack{
@@ -543,6 +619,7 @@
 .productListSkeletonMeta{ width:150px; height:14px; }
 .productListSkeletonBadge{ width:84px; height:28px; border-radius:999px; }
 .productListSkeletonChannels{ width:136px; height:28px; border-radius:999px; }
+.productListSkeletonAction{ width:82px; height:32px; border-radius:999px; }
 
 @keyframes productListShimmer{
   0%{ background-position:200% 0; }
@@ -550,6 +627,10 @@
 }
 
 @media (max-width: 1400px){
+  .productListWorkspace.workspaceFrameTwo{
+    grid-template-columns:1fr;
+  }
+
   .productListFiltersGrid{
     grid-template-columns:repeat(3, minmax(0, 1fr));
   }
