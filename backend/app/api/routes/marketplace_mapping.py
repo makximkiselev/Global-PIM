@@ -1310,6 +1310,16 @@ def _current_export_map(doc: Dict[str, Any], provider: str) -> Dict[str, str]:
     return out
 
 
+def _mapped_export_value_is_allowed(output_value: str, allowed_values: List[str]) -> bool:
+    value = str(output_value or "").strip()
+    if not value:
+        return False
+    if not allowed_values:
+        return True
+    allowed_keys = {normalize_value_key(allowed) for allowed in allowed_values if normalize_value_key(allowed)}
+    return normalize_value_key(value) in allowed_keys
+
+
 def _score_value_pair(pim_value: str, allowed_value: str) -> float:
     pim = _norm_name(pim_value)
     allowed = _norm_name(allowed_value)
@@ -2338,6 +2348,8 @@ class ValueAiSuggestReq(BaseModel):
 
 _ATTR_AI_WORKFLOW = "marketplace_attribute_ai_match"
 _ATTR_AI_JOB_TTL_SECONDS = 300.0
+_VALUE_AI_WORKFLOW = "marketplace_value_ai_match"
+_VALUE_AI_JOB_TTL_SECONDS = 300.0
 
 
 def _backend_root() -> Path:
@@ -2358,6 +2370,33 @@ def _start_attr_ai_match_worker_process(job_id: str, organization_id: Optional[s
         sys.executable,
         "-m",
         "app.workers.marketplace_attribute_ai_match",
+        "--job-id",
+        job_id,
+    ]
+    if organization_id:
+        command.extend(["--organization-id", organization_id])
+
+    subprocess.Popen(
+        command,
+        cwd=str(_repo_root()),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def _start_value_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    env = os.environ.copy()
+    backend_root = str(_backend_root())
+    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
+
+    command = [
+        sys.executable,
+        "-m",
+        "app.workers.marketplace_value_ai_match",
         "--job-id",
         job_id,
     ]
@@ -2399,6 +2438,24 @@ def _claim_attr_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
     )
 
 
+def _save_value_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    upsert_pim_workflow_run(job, workflow=_VALUE_AI_WORKFLOW)
+    return job
+
+
+def _claim_value_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
+    return claim_pim_workflow_run_as_running(
+        job_id,
+        workflow=_VALUE_AI_WORKFLOW,
+        payload_updates={
+            "phase": "matching",
+            "message": "AI сопоставляет значения PIM со справочником площадки.",
+            "started_at": _now_iso(),
+            "updated_ts": time.time(),
+        },
+    )
+
+
 def _prune_attr_ai_jobs() -> None:
     now = time.time()
     stale_after = max(_ATTR_AI_JOB_TTL_SECONDS, _ai_match_timeout_seconds() * 2.5)
@@ -2414,6 +2471,23 @@ def _prune_attr_ai_jobs() -> None:
                 "error": "STALE_AI_MATCH_JOB",
             })
             _save_attr_ai_job(job)
+
+
+def _prune_value_ai_jobs() -> None:
+    now = time.time()
+    stale_after = max(_VALUE_AI_JOB_TTL_SECONDS, _ai_match_timeout_seconds() * 2.5)
+    for job in list_pim_workflow_runs(workflow=_VALUE_AI_WORKFLOW, statuses=["queued", "running"], limit=200):
+        updated = _job_ts(job.get("updated_ts") or job.get("created_ts"))
+        if updated and now - updated > stale_after:
+            job.update({
+                "status": "failed",
+                "phase": "stale",
+                "message": "AI-сопоставление значений было прервано. Запустите подбор заново.",
+                "finished_at": _now_iso(),
+                "updated_ts": now,
+                "error": "STALE_VALUE_AI_MATCH_JOB",
+            })
+            _save_value_ai_job(job)
 
 
 def _public_attr_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -2434,6 +2508,26 @@ def _public_attr_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
         "error": job.get("error") or "",
     }
     return payload
+
+
+def _public_value_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "job_id": str(job.get("job_id") or ""),
+        "catalog_category_id": str(job.get("catalog_category_id") or ""),
+        "dict_id": str(job.get("dict_id") or ""),
+        "provider": str(job.get("provider") or ""),
+        "status": str(job.get("status") or "queued"),
+        "phase": str(job.get("phase") or ""),
+        "message": str(job.get("message") or ""),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "engine": job.get("engine"),
+        "ai_error": job.get("ai_error") or "",
+        "summary": job.get("summary"),
+        "error": job.get("error") or "",
+    }
 
 
 async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiMatchReq) -> None:
@@ -2472,6 +2566,49 @@ async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiM
             "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
         })
         _save_attr_ai_job(job)
+
+
+async def _run_value_ai_match_job(job_id: str, catalog_category_id: str, dict_id: str, req: ValueAiSuggestReq) -> None:
+    job = get_pim_workflow_run(job_id, workflow=_VALUE_AI_WORKFLOW)
+    if not job:
+        return
+    job.update({
+        "status": "running",
+        "phase": "matching",
+        "message": "AI сопоставляет значения PIM со справочником площадки.",
+        "started_at": _now_iso(),
+        "updated_ts": time.time(),
+    })
+    _save_value_ai_job(job)
+    try:
+        result = await mapping_value_ai_suggest(catalog_category_id, dict_id, req)
+        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+        suggestions_count = int(summary.get("suggestions") or 0) if isinstance(summary, dict) else 0
+        job.update({
+            "status": "completed",
+            "phase": "completed",
+            "message": (
+                f"AI-сопоставление значений завершено: {suggestions_count} знач."
+                if suggestions_count
+                else str(result.get("message") or "AI-сопоставление значений завершено.")
+            ),
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "engine": summary.get("engine") if isinstance(summary, dict) else None,
+            "ai_error": result.get("ai_error") or "",
+            "summary": summary,
+        })
+        _save_value_ai_job(job)
+    except Exception as exc:
+        job.update({
+            "status": "failed",
+            "phase": "failed",
+            "message": "AI-сопоставление значений не завершилось. Запустите подбор заново.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+        })
+        _save_value_ai_job(job)
 
 
 def _json_extract(text: str) -> Optional[Dict[str, Any]]:
@@ -4262,9 +4399,12 @@ async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: 
 
     doc = load_dict(did)
     pim_values = _dictionary_values(doc)
-    allowed_values = _provider_allowed_values(doc, provider)
+    dictionary_allowed_values = _provider_allowed_values(doc, provider)
+    category_allowed_values: List[str] = []
+    allowed_values = dictionary_allowed_values
     if not allowed_values:
-        allowed_values = _provider_allowed_values_for_category_dict(cid, did, provider)
+        category_allowed_values = _provider_allowed_values_for_category_dict(cid, did, provider)
+        allowed_values = category_allowed_values
     if not pim_values:
         return {
             "ok": True,
@@ -4287,12 +4427,18 @@ async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: 
         }
 
     existing_map = _current_export_map(doc, provider)
-    missing_values = [
-        value
-        for value in pim_values
-        if normalize_value_key(value) not in existing_map
-        and not bool(provider_export_value_details(did, provider, value).get("mapped", True))
-    ]
+    missing_values: List[str] = []
+    for value in pim_values:
+        key = normalize_value_key(value)
+        existing_output = existing_map.get(key)
+        if existing_output and _mapped_export_value_is_allowed(existing_output, allowed_values):
+            continue
+        if dictionary_allowed_values:
+            details = provider_export_value_details(did, provider, value)
+            output_value = str(details.get("value") or "").strip()
+            if bool(details.get("mapped", True)) and _mapped_export_value_is_allowed(output_value, allowed_values):
+                continue
+        missing_values.append(value)
     if not missing_values:
         return {
             "ok": True,
@@ -4369,6 +4515,60 @@ async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: 
         "ai_error": ai_error,
         "item": doc if applied else None,
     }
+
+
+@router.post("/import/values/{catalog_category_id}/dictionaries/{dict_id}/ai-suggest/jobs")
+async def mapping_value_ai_suggest_job_start(catalog_category_id: str, dict_id: str, req: ValueAiSuggestReq) -> Dict[str, Any]:
+    cid = str(catalog_category_id or "").strip()
+    did = str(dict_id or "").strip()
+    provider = str(req.provider or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
+    if not did:
+        raise HTTPException(status_code=400, detail="DICT_ID_REQUIRED")
+    if provider not in set(MAPPING_PROVIDERS):
+        raise HTTPException(status_code=400, detail="PROVIDER_INVALID")
+
+    _prune_value_ai_jobs()
+    for job in list_pim_workflow_runs(workflow=_VALUE_AI_WORKFLOW, statuses=["queued", "running"], limit=100):
+        if (
+            str(job.get("catalog_category_id") or "") == cid
+            and str(job.get("dict_id") or "") == did
+            and str(job.get("provider") or "") == provider
+            and str(job.get("status") or "") in {"queued", "running"}
+        ):
+            return _public_value_ai_job(job)
+
+    job_id = f"value_ai_job_{uuid4().hex}"
+    job = {
+        "id": job_id,
+        "run_id": job_id,
+        "job_id": job_id,
+        "catalog_category_id": cid,
+        "dict_id": did,
+        "provider": provider,
+        "status": "queued",
+        "phase": "queued",
+        "message": "AI-сопоставление значений поставлено в очередь.",
+        "created_at": _now_iso(),
+        "created_ts": time.time(),
+        "updated_ts": time.time(),
+        "apply": bool(req.apply),
+    }
+    _save_value_ai_job(job)
+    organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
+    _start_value_ai_match_worker_process(job_id, organization_id)
+    return _public_value_ai_job(job)
+
+
+@router.get("/import/values/ai-suggest/jobs/{job_id}")
+async def mapping_value_ai_suggest_job_status(job_id: str) -> Dict[str, Any]:
+    _prune_value_ai_jobs()
+    jid = str(job_id or "").strip()
+    job = get_pim_workflow_run(jid, workflow=_VALUE_AI_WORKFLOW)
+    if not job:
+        raise HTTPException(status_code=404, detail="VALUE_AI_MATCH_JOB_NOT_FOUND")
+    return _public_value_ai_job(job)
 
 
 @router.put("/import/attributes/{catalog_category_id}")

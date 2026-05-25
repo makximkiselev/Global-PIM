@@ -609,6 +609,11 @@ Next fix in the category flow:
    - value mapping now has an AI suggestion endpoint and UI action for a selected PIM dictionary/provider:
      `POST /api/marketplaces/mapping/import/values/{category_id}/dictionaries/{dict_id}/ai-suggest`;
      the endpoint uses the same allowed-value evidence as the value tab, validates that every suggested output is an actual provider allowed value, writes accepted pairs into dictionary `meta.export_map`, and records AI/rule evidence in `meta.value_ai`.
+   - value AI matching also has a persisted job path for long dictionaries/Ollama calls:
+     `POST /api/marketplaces/mapping/import/values/{category_id}/dictionaries/{dict_id}/ai-suggest/jobs`,
+     `GET /api/marketplaces/mapping/import/values/ai-suggest/jobs/{job_id}`;
+     queued/running jobs are saved in `pim_workflow_runs` as `marketplace_value_ai_match`, stale jobs are failed after a bounded window, and `global-pim-value-ai-worker.service` can resume queued work after restart.
+   - when provider allowed values come only from category value bindings, value AI now treats missing `export_map` rows as unmapped even if the generic exporter would fall back to free text. This prevents false `already_covered` and forces a real PIM value -> provider allowed value pair.
 3. Long full-category export preparation now has a persisted backend job path:
    - `POST /api/catalog/exchange/export/jobs` creates/reuses a queued job;
    - `GET /api/catalog/exchange/export/jobs/{job_id}` returns queued/running/completed/failed status and the saved run result;

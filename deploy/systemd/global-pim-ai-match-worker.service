@@ -1,0 +1,16 @@
+[Unit]
+Description=Global PIM Attribute AI Matching Worker
+After=network.target global-pim.service
+Wants=global-pim.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/projects/global-pim/backend
+EnvironmentFile=/opt/projects/global-pim/backend/.env
+ExecStart=/opt/projects/global-pim/.venv/bin/python -m app.workers.marketplace_attribute_ai_match --loop --poll-interval 5 --limit 5 --organization-id org_default
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

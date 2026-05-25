@@ -60,6 +60,21 @@ type ValuesResp = {
   count: number;
 };
 
+type ValueAiJobResp = {
+  ok?: boolean;
+  job_id?: string;
+  status?: string;
+  phase?: string;
+  message?: string;
+  error?: string;
+  ai_error?: string;
+  summary?: {
+    suggestions?: number;
+    ai_suggestions?: number;
+    rule_suggestions?: number;
+  };
+};
+
 type Props = {
   selectedCategoryId?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
@@ -411,13 +426,30 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     setAiValueLoading(key);
     setAiValueMessage("");
     try {
-      const result = await api<{ summary?: { suggestions?: number; ai_suggestions?: number; rule_suggestions?: number }; ai_error?: string; message?: string }>(
-        `/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}/dictionaries/${encodeURIComponent(activeItem.dict_id)}/ai-suggest`,
+      const job = await api<ValueAiJobResp>(
+        `/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}/dictionaries/${encodeURIComponent(activeItem.dict_id)}/ai-suggest/jobs`,
         {
           method: "POST",
           body: JSON.stringify({ provider: provider.code, apply: true }),
         },
       );
+      const jobId = String(job?.job_id || "");
+      if (!jobId) throw new Error("VALUE_AI_JOB_NOT_CREATED");
+      setAiValueMessage(job?.message || "AI-сопоставление значений поставлено в очередь.");
+
+      let result: ValueAiJobResp = job;
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        if (!["queued", "running"].includes(String(result?.status || ""))) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        result = await api<ValueAiJobResp>(`/marketplaces/mapping/import/values/ai-suggest/jobs/${encodeURIComponent(jobId)}`);
+        if (result?.message) setAiValueMessage(result.message);
+      }
+      if (["queued", "running"].includes(String(result?.status || ""))) {
+        throw new Error("VALUE_AI_JOB_TIMEOUT");
+      }
+      if (String(result?.status || "") === "failed") {
+        throw new Error(result?.error || result?.message || "VALUE_AI_JOB_FAILED");
+      }
       const suggestions = Number(result?.summary?.suggestions || 0);
       const aiSuggestions = Number(result?.summary?.ai_suggestions || 0);
       const ruleSuggestions = Number(result?.summary?.rule_suggestions || 0);

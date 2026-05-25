@@ -15,6 +15,7 @@ APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
 APP_SERVER_PATH="${APP_SERVER_PATH:-/opt/projects/global-pim}"
 APP_SERVICE_NAME="${APP_SERVICE_NAME:-global-pim.service}"
 APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME:-global-pim-ai-match-worker.service}"
+APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME:-global-pim-value-ai-worker.service}"
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME:-global-pim-export-worker.service}"
 APP_PUBLIC_BASE_URL="${APP_PUBLIC_BASE_URL:-https://pim.id-smart.ru}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
@@ -31,12 +32,15 @@ Commands:
   public-health  Check public health endpoint
   status         Show systemd service status
   worker-status  Show AI match worker service status
+  value-worker-status Show value AI worker service status
   export-worker-status Show export worker service status
   logs           Show last 200 service log lines
   worker-logs    Show last 200 AI match worker log lines
+  value-worker-logs Show last 200 value AI worker log lines
   export-worker-logs Show last 200 export worker log lines
   restart        Restart service and wait for local health
   restart-worker Restart AI match worker service
+  restart-value-worker Restart value AI worker service
   restart-export-worker Restart export worker service
   exec <cmd>     Run a diagnostic command on the server
   path           Print remote app path
@@ -96,6 +100,9 @@ case "${command_name}" in
   worker-status)
     ssh_run "systemctl status ${APP_WORKER_SERVICE_NAME} --no-pager"
     ;;
+  value-worker-status)
+    ssh_run "systemctl status ${APP_VALUE_WORKER_SERVICE_NAME} --no-pager"
+    ;;
   export-worker-status)
     ssh_run "systemctl status ${APP_EXPORT_WORKER_SERVICE_NAME} --no-pager"
     ;;
@@ -105,6 +112,9 @@ case "${command_name}" in
   worker-logs)
     ssh_run "journalctl -u ${APP_WORKER_SERVICE_NAME} -n 200 --no-pager"
     ;;
+  value-worker-logs)
+    ssh_run "journalctl -u ${APP_VALUE_WORKER_SERVICE_NAME} -n 200 --no-pager"
+    ;;
   export-worker-logs)
     ssh_run "journalctl -u ${APP_EXPORT_WORKER_SERVICE_NAME} -n 200 --no-pager"
     ;;
@@ -113,6 +123,9 @@ case "${command_name}" in
     ;;
   restart-worker)
     ssh_run "systemctl restart ${APP_WORKER_SERVICE_NAME}; systemctl is-active ${APP_WORKER_SERVICE_NAME}"
+    ;;
+  restart-value-worker)
+    ssh_run "systemctl restart ${APP_VALUE_WORKER_SERVICE_NAME}; systemctl is-active ${APP_VALUE_WORKER_SERVICE_NAME}"
     ;;
   restart-export-worker)
     ssh_run "systemctl restart ${APP_EXPORT_WORKER_SERVICE_NAME}; systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME}"
