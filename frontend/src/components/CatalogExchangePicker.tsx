@@ -66,6 +66,7 @@ export default function CatalogExchangePicker(props: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [productItems, setProductItems] = useState<ExchangeProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [scopeMode, setScopeMode] = useState<"category" | "products">(selectedProductIds.length ? "products" : "category");
 
   const nodeById = useMemo(() => new Map((nodes || []).map((n) => [n.id, n])), [nodes]);
   const childrenByParent = useMemo(() => {
@@ -159,6 +160,10 @@ export default function CatalogExchangePicker(props: Props) {
       : "category";
 
   useEffect(() => {
+    if (selectedProductIds.length) setScopeMode("products");
+  }, [selectedProductIds.length]);
+
+  useEffect(() => {
     const exactIds = selectedProductIds.filter(Boolean);
     if (!exactIds.length) return;
     let cancelled = false;
@@ -225,6 +230,10 @@ export default function CatalogExchangePicker(props: Props) {
   }, [includeDescendants, productQuery, selectedNodeIds, selectedProductSet]);
 
   function toggleNode(id: string, checked: boolean) {
+    if (checked) {
+      setScopeMode("category");
+      onSelectedProductIdsChange([]);
+    }
     const next = new Set(selectedNodeIds || []);
     if (checked) next.add(id);
     else next.delete(id);
@@ -232,6 +241,11 @@ export default function CatalogExchangePicker(props: Props) {
   }
 
   function toggleProduct(id: string, checked: boolean) {
+    if (checked) {
+      setScopeMode("products");
+      onSelectedNodeIdsChange([]);
+      onIncludeDescendantsChange(false);
+    }
     const next = new Set(selectedProductIds || []);
     if (checked) next.add(id);
     else next.delete(id);
@@ -255,6 +269,7 @@ export default function CatalogExchangePicker(props: Props) {
   }
 
   function changeCategoryScope(mode: CategoryScopeMode) {
+    setScopeMode("category");
     if (mode === "all") {
       onSelectedNodeIdsChange([]);
       onSelectedProductIdsChange([]);
@@ -262,6 +277,16 @@ export default function CatalogExchangePicker(props: Props) {
     }
     if (!hasSelectedCategoryScope) return;
     onIncludeDescendantsChange(mode === "branch");
+  }
+
+  function setExportScopeMode(nextMode: "category" | "products") {
+    setScopeMode(nextMode);
+    if (nextMode === "category") {
+      onSelectedProductIdsChange([]);
+    } else {
+      onSelectedNodeIdsChange([]);
+      onIncludeDescendantsChange(false);
+    }
   }
 
   function renderTree(parentId: string | null, depth = 0): JSX.Element[] {
@@ -367,8 +392,30 @@ export default function CatalogExchangePicker(props: Props) {
 
   return (
     <div className={`cx-pickerGrid${embedded ? " isEmbedded" : ""}`}>
-      {selectedProductIds.length ? productPanel : categoryPanel}
-      {selectedProductIds.length ? categoryPanel : productPanel}
+      <section className="card cx-scopeModePanel">
+        <div>
+          <strong>Область выгрузки</strong>
+          <span>{scopeMode === "products" ? "Экспортируются только выбранные SKU." : "Экспортируется выбранная категория или ветка."}</span>
+        </div>
+        <div className="cx-scopeModeSwitch">
+          <button
+            type="button"
+            className={scopeMode === "category" ? "isActive" : ""}
+            onClick={() => setExportScopeMode("category")}
+          >
+            Категория
+          </button>
+          <button
+            type="button"
+            className={scopeMode === "products" ? "isActive" : ""}
+            onClick={() => setExportScopeMode("products")}
+          >
+            Отдельные SKU
+          </button>
+        </div>
+      </section>
+      {scopeMode === "products" ? productPanel : categoryPanel}
+      {scopeMode === "products" ? categoryPanel : productPanel}
     </div>
   );
 }

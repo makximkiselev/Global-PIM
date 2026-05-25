@@ -32,6 +32,12 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
     - backup before deletion: `/opt/projects/global-pim/backups/info-model-reset-20260522-123325.json`;
     - service health after restart: `{"ok": true}`;
     - products, catalog, category marketplace bindings, competitor links/evidence, dictionaries/global attributes, media, users, and connector settings were preserved.
+12. Manual walkthrough reset on production on 2026-05-25:
+    - deleted walkthrough SKU `product_1052 / GT 52420`;
+    - cleared templates, marketplace attribute mappings, and attribute value refs;
+    - backup before deletion: `/opt/projects/global-pim/backups/manual-flow-reset-20260525-111539.json`;
+    - service health after restart: `{"ok": true}`;
+    - catalog, category marketplace bindings, competitor links/evidence, dictionaries/global attributes, media, users, and connector settings were preserved.
 
 ## Work Rules
 
@@ -243,13 +249,13 @@ Current state:
 7. Competitor unmatched specs are review-only candidates with source provenance (`restore`/`store77`) and do not auto-approve.
 8. Synonyms such as `Объем встроенной памяти` must collapse into the global `Встроенная память` attribute during approval.
 9. Draft candidates include `global_match` and `suggested_action`, so UI can show whether the field should reuse an existing global attribute or create a new one.
-10. Draft rows show duplicate prevention directly: `Уже есть в PIM` changes the action label to `Использовать поле`; new fields are labelled `Новое поле`.
+10. Draft rows show duplicate prevention directly: `Уже есть в PIM` changes the action label to `Переиспользовать PIM-поле`; new fields are labelled `Новое поле` and use `Добавить новое PIM-поле`.
 11. Draft candidates now include `source_summary` and `review_flags`:
    - UI separates product, marketplace, and competitor evidence in every row;
    - competitor-only fields are explicitly marked as review-only;
    - marketplace-only fields tell the user to verify how product values will be filled;
    - weak global matches show reason and score before approval.
-12. Wrong global attribute reuse can be corrected before approval: draft candidate update accepts `global_match: null`, switches the candidate to `create_attribute`, and UI exposes this as `Создать как новое`.
+12. Wrong global attribute reuse can be corrected before approval: draft candidate update accepts `global_match: null`, switches the candidate to `create_attribute`, and UI exposes this as `Не переиспользовать, создать новое`.
 13. Draft screen has a compact model-quality audit panel for competitor-only, marketplace-only, weak global-match, low-confidence, select-without-values, and duplicate-code candidates.
 14. Draft list has quick filters for `Только конкуренты`, `Только площадки`, and `Слабая связь PIM`, using the same evidence metadata as the audit panel.
 15. Production audit on 2026-05-21 for weak/empty headphone model before full reset:
@@ -270,7 +276,7 @@ Known problems:
 
 1. The template/model screen is still heavy for a new user.
 2. Product fields can outnumber approved model fields after resets/rebuilds because marketplace mapping upsert also includes protected export/core rows.
-4. There is not enough UI clarity around “add field”, “reuse global field”, “ignore source field”, and “map to marketplace field”.
+4. Marketplace field mapping from the model builder is still a separate workspace step; draft decisions are clearer, but the transition needs browser QA during the manual walkthrough.
 5. Draft collection for categories with weak models can still pull noisy marketplace dictionaries/examples into candidate fields. These must stay review-only and should be visually separated from clean marketplace-required fields and competitor evidence.
 
 Next tasks:
@@ -499,6 +505,7 @@ Current state:
 6. After create, user lands in product card on competitor workflow.
 7. Generated variant rows now allow editing title, SKU GT, and SKU PIM before creation.
 8. Creation blocks duplicate manual SKU GT inside the variant matrix before calling backend.
+9. Variant-family creation now opens the created product group directly, so the next step is group-level SKU review and enrichment instead of a single product card.
 
 Known problems:
 
@@ -530,12 +537,17 @@ Current state:
    - media: 4 S3 images from re-store;
    - competitors: re-store confirmed, store77 now shows a deterministic review candidate after single-SKU rescan;
    - export-preview: one SKU only, selected safe targets are GT USD and Ozon.
+9. Export picker now has an explicit area switch:
+   - `Категория` exports selected category/all branch;
+   - `Отдельные SKU` exports only manually selected products;
+   - selecting SKU clears category export scope to avoid accidental mixed/broad batches.
+10. Legacy `/product-groups` route redirects to `/catalog/groups`, so old links do not land on an empty shell.
 
 Known problems:
 
 1. Catalog/source/tree components are still not fully unified.
 2. Some screens still have local layout implementations.
-3. Export readiness needs stronger protection against accidental broad category exports.
+3. Export readiness needs stronger protection against accidental broad final submissions after the readiness batch.
 4. Product card description/source evidence must be rechecked after deploy to confirm the compact UI is enough for real content work.
 5. iPhone 17 Pro Max single-SKU export blocker was closed for `product_1052`; keep media import/enrichment reliable for the rest of the line.
 

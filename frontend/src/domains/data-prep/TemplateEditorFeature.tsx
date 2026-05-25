@@ -1292,7 +1292,7 @@ export default function TemplateEditor() {
                               <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
                               {candidate.status !== "accepted" ? (
                                 <Button onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
-                                  {candidate.global_match ? "Использовать поле" : "Создать поле"}
+                                  {candidate.global_match ? "Переиспользовать PIM-поле" : "Добавить новое PIM-поле"}
                                 </Button>
                               ) : null}
                               {candidate.status !== "accepted" && candidate.global_match ? (
@@ -1305,12 +1305,12 @@ export default function TemplateEditor() {
                                   }
                                   disabled={draftBusy}
                                 >
-                                  Создать как новое
+                                  Не переиспользовать, создать новое
                                 </Button>
                               ) : null}
                               {candidate.status !== "rejected" ? (
                                 <Button onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
-                                  Не использовать
+                                  Не добавлять в модель
                                 </Button>
                               ) : null}
                             </div>

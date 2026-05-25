@@ -76,6 +76,7 @@ function ProtectedApp() {
         <Route path="/" element={<RequirePage page="dashboard"><DashboardRoute /></RequirePage>} />
         <Route path="/catalog" element={<RequirePage page="catalog"><CatalogRoute /></RequirePage>} />
         <Route path="/catalog/groups" element={<RequirePage page="product_groups"><ProductGroupsRoute /></RequirePage>} />
+        <Route path="/product-groups" element={<Navigate to="/catalog/groups" replace />} />
         <Route path="/products/media" element={<RequirePage page="infographics"><Placeholder title="Медиа товаров" /></RequirePage>} />
         <Route path="/media" element={<Navigate to="/products/media" replace />} />
         <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />

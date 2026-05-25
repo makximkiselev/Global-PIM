@@ -1304,6 +1304,7 @@ export default function ProductNewFeature() {
         })),
       };
       const res = await postJson<{
+        group?: { id: string; name?: string } | null;
         products: Array<{ id: string; title: string }>;
         first_product?: { id: string; title: string } | null;
       }>(API_PRODUCT_CREATE_FAMILY, createPayload);
@@ -1311,7 +1312,12 @@ export default function ProductNewFeature() {
       const firstCreated = res.first_product || res.products?.[0];
       if (firstCreated) {
         setCreated(firstCreated);
-        navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=competitors&created=1`);
+        const groupId = String(res.group?.id || "").trim();
+        if (productType === "multi" && groupId) {
+          navigate(`/catalog/groups?group=${encodeURIComponent(groupId)}&created=1`);
+        } else {
+          navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=competitors&created=1`);
+        }
       }
     } catch (e: any) {
       setSaveErr(e?.message || "SAVE_FAILED");
