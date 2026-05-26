@@ -1050,6 +1050,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [modalCatalogCategoryId, setModalCatalogCategoryId] = useState("");
   const [modalSelectedProviderCategoryId, setModalSelectedProviderCategoryId] = useState("");
   const [modalQuery, setModalQuery] = useState("");
+  const [modalManualProviderCategoryId, setModalManualProviderCategoryId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState("");
@@ -1862,6 +1863,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setModalProvider(providerCode);
     setModalSelectedProviderCategoryId(initialProviderCategoryId || "");
     setModalQuery("");
+    setModalManualProviderCategoryId("");
     setModalOpen(true);
     void ensureProviderCategories(providerCode);
   }
@@ -2249,7 +2251,24 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     await saveLinkFor(modalCatalogCategoryId, modalProvider, providerCategoryId, true);
   }
   async function saveModalSelection() {
-    const selected = String(modalSelectedProviderCategoryId || "").trim();
+    const manual = String(modalManualProviderCategoryId || "").trim();
+    const selected = manual || String(modalSelectedProviderCategoryId || "").trim();
+    if (manual && modalProvider === "ozon") {
+      setSaving(true);
+      setErr(null);
+      try {
+        await api("/marketplaces/mapping/import/categories/validate-provider-category", {
+          method: "POST",
+          body: JSON.stringify({ provider: modalProvider, provider_category_id: manual }),
+        });
+        await ensureProviderCategories(modalProvider);
+      } catch (e) {
+        setSaving(false);
+        setErr((e as Error).message || "Ozon не подтвердил category/type через API характеристик");
+        return;
+      }
+      setSaving(false);
+    }
     await saveLink(selected || null);
   }
 
@@ -4178,6 +4197,26 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               <div className="mm-categoryPickerHint">
                 Связь, заданная на категории, наследуется вниз. Если у дочерних категорий уже есть собственные привязки, сначала очистите их отдельной операцией из правого блока.
               </div>
+
+              {modalProvider === "ozon" ? (
+                <div className="mm-manualProviderCategory">
+                  <div>
+                    <div className="mm-categoryPickerLabel">Ozon category/type вручную</div>
+                    <div className="muted">
+                      Используйте, если category tree Ozon не показывает ветку, но API характеристик принимает category/type.
+                    </div>
+                  </div>
+                  <input
+                    className="pn-input"
+                    placeholder="Например: type:17028924:115947064"
+                    value={modalManualProviderCategoryId}
+                    onChange={(e) => {
+                      setModalManualProviderCategoryId(e.target.value);
+                      if (e.target.value.trim()) setModalSelectedProviderCategoryId(e.target.value.trim());
+                    }}
+                  />
+                </div>
+              ) : null}
 
               <div className="pg-addList mm-categoryPickerList">
                 <button

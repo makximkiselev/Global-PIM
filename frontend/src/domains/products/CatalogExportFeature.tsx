@@ -110,6 +110,9 @@ function blockerFixHref(blocker: ExportBlocker, reason: string): string {
   if (category && (lower.includes("значен") || lower.includes("dictionary"))) {
     return `/sources?tab=values&category=${encodeURIComponent(category)}`;
   }
+  if (product && lower.includes("конкурент")) {
+    return `/products/${encodeURIComponent(product)}?tab=competitors`;
+  }
   if (product && (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа"))) {
     return `/products/${encodeURIComponent(product)}?tab=media`;
   }
@@ -125,6 +128,7 @@ function blockerFixLabel(reason: string): string {
   if (lower.includes("категор")) return "Открыть категории";
   if (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр")) return "Открыть параметры";
   if (lower.includes("значен")) return "Открыть значения";
+  if (lower.includes("конкурент")) return "Открыть конкурентов";
   if (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа")) return "Открыть медиа";
   if (lower.includes("описание")) return "Открыть описание";
   return "Открыть место исправления";

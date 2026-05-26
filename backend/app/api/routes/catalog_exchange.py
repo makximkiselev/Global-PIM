@@ -1331,7 +1331,11 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         if not name:
             missing.append("Название товара не заполнено")
         if not pictures:
-            missing.append("Нет изображений")
+            confirmed_links = _confirmed_links_for_product(pid)
+            if confirmed_links:
+                missing.append("Нет изображений: проверьте медиа товара или повторите загрузку из подтвержденных источников")
+            else:
+                missing.append("Нет изображений: сначала подтвердите карточку конкурента или импортируйте фото с площадки")
         if not type_value:
             missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
         if not vendor:

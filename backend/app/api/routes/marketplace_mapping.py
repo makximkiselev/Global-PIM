@@ -369,6 +369,34 @@ def _provider_category_name(provider: str, provider_category_id: str) -> str:
     return ""
 
 
+def _is_provider_category_known_or_validated(
+    provider: str,
+    provider_category_id: str,
+    provider_items: List[Dict[str, Any]],
+) -> bool:
+    pid = str(provider_category_id or "").strip()
+    if not pid:
+        return True
+    item_ids = {str(item.get("id") or "").strip() for item in provider_items if isinstance(item, dict)}
+    if pid in item_ids:
+        return True
+    if provider != "ozon":
+        return False
+    lookup_id = _normalize_provider_category_lookup_id(provider, pid)
+    for item in provider_items:
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("id") or "").strip()
+        category_id = str(item.get("category_id") or "").strip()
+        if lookup_id not in {item_id, category_id}:
+            continue
+        validated_titles = item.get("attribute_validated_titles")
+        validated_ids = item.get("attribute_validated_client_ids")
+        if (isinstance(validated_titles, list) and validated_titles) or (isinstance(validated_ids, list) and validated_ids):
+            return True
+    return False
+
+
 def _load_mappings() -> Dict[str, Dict[str, str]]:
     items = load_category_mappings()
     out: Dict[str, Dict[str, str]] = {}
@@ -2348,6 +2376,67 @@ def mapping_issues() -> Dict[str, Any]:
     return {"ok": True, **audit_category_mapping_issues(limit=100)}
 
 
+@router.post("/import/categories/validate-provider-category")
+async def mapping_validate_provider_category(req: ValidateProviderCategoryReq) -> Dict[str, Any]:
+    provider = str(req.provider or "").strip()
+    provider_category_id = str(req.provider_category_id or "").strip()
+    if provider != "ozon":
+        raise HTTPException(status_code=400, detail="PROVIDER_VALIDATION_UNSUPPORTED")
+    if not provider_category_id:
+        raise HTTPException(status_code=400, detail="PROVIDER_CATEGORY_REQUIRED")
+
+    from app.api.routes import connectors_status, ozon_market  # Local import avoids route import cycle.
+
+    stores = connectors_status._enabled_ozon_stores(current_tenant_organization_id())  # noqa: SLF001
+    if not stores:
+        raise HTTPException(status_code=400, detail="OZON_IMPORT_STORES_MISSING")
+
+    successes: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    for store in stores:
+        try:
+            result = await ozon_market.import_category_attributes(
+                ozon_market.ImportCategoryAttrsReq(
+                    category_id=provider_category_id,
+                    language="DEFAULT",
+                    import_values=False,
+                    token=str(store.get("api_key") or ""),
+                    client_id=str(store.get("client_id") or ""),
+                )
+            )
+            ozon_market.mark_category_attributes_validated(
+                provider_category_id,
+                store_id=str(store.get("id") or ""),
+                store_title=str(store.get("title") or ""),
+                client_id=str(store.get("client_id") or ""),
+                type_ids=result.get("type_ids_used") if isinstance(result.get("type_ids_used"), list) else [],
+            )
+            successes.append(
+                {
+                    "store_id": str(store.get("id") or ""),
+                    "store_title": str(store.get("title") or ""),
+                    "client_id": str(store.get("client_id") or ""),
+                    "attributes_count": int(result.get("attributes_count") or 0),
+                    "type_ids_used": result.get("type_ids_used") if isinstance(result.get("type_ids_used"), list) else [],
+                }
+            )
+        except Exception as e:
+            errors.append(f"{store.get('title') or store.get('client_id')}: {e}")
+
+    if not successes:
+        tail = " | ".join(errors[-4:]) if errors else "NO_RESPONSE"
+        raise HTTPException(status_code=404, detail=f"OZON_CATEGORY_NOT_VALIDATED {tail}")
+
+    _invalidate_import_categories_cache()
+    return {
+        "ok": True,
+        "provider": provider,
+        "provider_category_id": provider_category_id,
+        "validated_stores": successes,
+        "errors": errors,
+    }
+
+
 @router.get("/import/attributes/bootstrap")
 def mapping_attribute_bootstrap() -> Dict[str, Any]:
     now = time.monotonic()
@@ -2381,6 +2470,11 @@ class LinkCategoryReq(BaseModel):
     provider: str = Field(min_length=1)
     provider_category_id: Optional[str] = None
     force_clear_descendants: bool = False
+
+
+class ValidateProviderCategoryReq(BaseModel):
+    provider: str = Field(min_length=1)
+    provider_category_id: str = Field(min_length=1)
 
 
 class ClearDescendantBindingsReq(BaseModel):
@@ -3947,7 +4041,7 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
     if not provider_items:
         raise HTTPException(status_code=400, detail="PROVIDER_NOT_CONNECTED")
 
-    if provider_category_id and provider_category_id not in {x.get("id") for x in provider_items}:
+    if provider_category_id and not _is_provider_category_known_or_validated(provider, provider_category_id, provider_items):
         raise HTTPException(status_code=404, detail="PROVIDER_CATEGORY_NOT_FOUND")
 
     lock = with_lock("marketplace_category_mapping")

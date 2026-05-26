@@ -650,6 +650,15 @@ export default function ProductCompetitorPanel({
                   <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
                   <div><span>{reasonCaption(selected)}</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>
                 </div>
+                {hasBlockingSimConflict(selected) ? (
+                  <p className="productCompetitorInspectorText">
+                    Подтверждение заблокировано: SIM-профиль товара и карточки конкурента распознаны и отличаются. Выберите другую карточку или отклоните этот вариант.
+                  </p>
+                ) : !String(selected.candidate_sim_profile || "").trim() ? (
+                  <p className="productCompetitorInspectorText">
+                    SIM у конкурента не распознан автоматически. Можно подтвердить вручную, если модель, память и цвет совпадают.
+                  </p>
+                ) : null}
                 {selected.status === "needs_review" ? (
                   <div className="productCompetitorModeration">
                     <Button

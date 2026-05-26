@@ -266,6 +266,39 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(body["items"][0]["type"], "category_needs_reselect")
         self.assertEqual(body["items"][0]["to"], "/sources-mapping?tab=sources&category=cat-1")
 
+    def test_mapping_link_allows_ozon_api_validated_category_missing_from_tree(self) -> None:
+        saved: dict[str, dict[str, str]] = {}
+        with (
+            patch.object(marketplace_mapping_routes, "_load_catalog_nodes", return_value=[{"id": "cat-1", "name": "TV", "parent_id": None}]),
+            patch.object(marketplace_mapping_routes, "_catalog_rows", return_value=[{"id": "cat-1", "name": "TV", "path": "TV", "is_leaf": True}]),
+            patch.object(marketplace_mapping_routes, "_load_provider_categories", return_value=[{"id": "17028632", "name": "Игровые приставки", "path": "Электроника / Игровые приставки"}]),
+            patch.object(marketplace_mapping_routes, "_load_mappings", return_value={}),
+            patch.object(marketplace_mapping_routes, "_save_mappings", side_effect=lambda items: saved.update(deepcopy(items))),
+            patch.object(marketplace_mapping_routes, "_tree_maps", return_value=({"cat-1": None}, {"": ["cat-1"]})),
+            patch.object(marketplace_mapping_routes, "_descendant_ids", return_value=[]),
+            patch.object(marketplace_mapping_routes, "_invalidate_import_categories_cache", return_value=None),
+            patch.object(marketplace_mapping_routes, "_cache_entry", return_value={"ts": 0.0, "payload": None}),
+            patch.object(marketplace_mapping_routes, "_persistent_cache_clear", return_value=None),
+            patch.object(marketplace_mapping_routes, "_persistent_attr_details_cache_clear_all", return_value=None),
+            patch.object(marketplace_mapping_routes, "_close_mapping_review_issue", return_value=None),
+            patch.object(
+                marketplace_mapping_routes,
+                "_is_provider_category_known_or_validated",
+                return_value=True,
+            ),
+        ):
+            response = self.client.post(
+                "/api/marketplaces/mapping/import/categories/link",
+                json={
+                    "catalog_category_id": "cat-1",
+                    "provider": "ozon",
+                    "provider_category_id": "type:17028924:115947064",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(saved["cat-1"]["ozon"], "type:17028924:115947064")
+
     def test_comfyui_status_without_url_is_not_connection_failure(self) -> None:
         with (
             patch.dict(os.environ, {"COMFYUI_BASE_URL": "", "COMFYUI_API_KEY": ""}, clear=False),
