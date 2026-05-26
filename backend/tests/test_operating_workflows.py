@@ -2155,6 +2155,35 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(attrs["8229"], "Смартфон")
         self.assertEqual(attrs["9048"], "iPhone 17 Pro")
 
+    def test_ozon_export_preview_derives_watch_type_and_brand_from_title(self) -> None:
+        product = {
+            "id": "product_watch",
+            "sku_gt": "53286",
+            "title": "Часы Apple Watch Ultra 3 Natural Titanium Black Alpine Loop M",
+            "category_id": "cat-watch",
+            "content": {
+                "media_images": [{"url": "/api/uploads/media_images/watch.webp"}],
+                "description": "Apple Watch Ultra 3",
+                "features": [],
+            },
+        }
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[product]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-watch", "parent_id": None, "name": "Умные часы"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-watch": {"ozon": "watch-ozon"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-watch": []}),
+            patch.object(catalog_exchange, "load_competitor_mapping_db", return_value={}),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_watch"], 10)
+
+        item = response["items"][0]
+        self.assertNotIn("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст", item["missing"])
+        self.assertNotIn("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст", item["missing"])
+        attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
+        self.assertEqual(attrs["8229"], "Умные часы")
+        self.assertEqual(attrs["85"], "Apple")
+
     def test_variant_sibling_hydration_covers_ipad_storage_variants(self) -> None:
         donor = {
             "id": "product_ipad_donor",

@@ -1168,8 +1168,30 @@ def _infer_ozon_type(product: Dict[str, Any]) -> str:
         return "Планшет"
     if "наушник" in haystack or "airpods" in haystack:
         return "Наушники"
+    if "умные часы" in haystack or "часы apple watch" in haystack or "apple watch" in haystack or "smart watch" in haystack or "smartwatch" in haystack:
+        return "Умные часы"
     if "приставк" in haystack or "телевизор" in haystack:
         return "ТВ-приставка"
+    return ""
+
+
+def _infer_brand(product: Dict[str, Any]) -> str:
+    haystack = f"{product.get('title') or ''} {product.get('brand') or ''}".lower()
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    haystack = f"{haystack} {content.get('brand') or ''}".lower()
+    known_brands = [
+        ("apple", "Apple"),
+        ("samsung", "Samsung"),
+        ("xiaomi", "Xiaomi"),
+        ("honor", "HONOR"),
+        ("huawei", "HUAWEI"),
+        ("google", "Google"),
+        ("meta", "Meta"),
+        ("oculus", "Oculus"),
+    ]
+    for needle, brand in known_brands:
+        if re.search(rf"(^|[^a-zа-я0-9]){re.escape(needle)}([^a-zа-я0-9]|$)", haystack, flags=re.IGNORECASE):
+            return brand
     return ""
 
 
@@ -1179,7 +1201,7 @@ def _infer_ozon_model_name(product: Dict[str, Any]) -> str:
         return ""
     value = re.sub(r"\([^)]*\)", " ", raw)
     value = re.sub(r"\s+", " ", value).strip()
-    value = re.sub(r"^(?:смартфон|телефон|мобильный телефон|планшет|ноутбук|наушники)\s+", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^(?:смартфон|телефон|мобильный телефон|планшет|ноутбук|наушники|часы|умные часы)\s+", "", value, flags=re.IGNORECASE)
     value = re.sub(r"^(?:apple|samsung|xiaomi|honor|huawei|google|meta|oculus)\s+", "", value, flags=re.IGNORECASE)
     value = re.split(r"\b\d+\s*(?:gb|гб|tb|тб|mb|мб)\b", value, maxsplit=1, flags=re.IGNORECASE)[0]
     value = re.sub(r"\b(?:esim|sim|dual|nano|global|ru|eac)\b.*$", "", value, flags=re.IGNORECASE)
@@ -1300,6 +1322,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         name_row = _provider_row(rows, "ozon", "4180")
         description_row = _provider_row(rows, "ozon", "4191")
         vendor = _extract_product_value(product, str((brand_row or {}).get("catalog_name") or "Бренд"))
+        vendor = vendor or _infer_brand(product)
         name = _extract_product_value(product, str((name_row or {}).get("catalog_name") or "Наименование товара")) or str(product.get("title") or "").strip()
         description = _extract_product_value(product, str((description_row or {}).get("catalog_name") or "Описание товара"))
         type_value = _extract_product_value(product, str((type_row or {}).get("catalog_name") or "Тип"))
