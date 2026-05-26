@@ -610,6 +610,10 @@ Rules:
 23. Export preparation now runs bounded marketplace hydration for the selected SKU/store set before readiness checks, so first-party marketplace photos/descriptions/brand data are pulled into PIM before batch blockers are calculated.
 24. Export preparation also fills missing media/description/brand from sibling variants with the same category, iPhone model, storage, and color. This covers line variants such as `eSIM`, `Sim+eSIM`, and `2Sim` where only the SIM axis differs.
 25. After the manual reset, one clean SKU proof is ready again: `product_1065 / GT 52433` produced export run `export_4a7603c091` for safe targets `Я.Маркет GT USD` and `OZON Global Trade AE`; result is 2 ready target rows, 0 blockers.
+26. Ozon category/type linking now treats `description-category/tree` and `description-category/attribute` as two separate signals:
+   - tree presence means the category is visible in the store's category tree;
+   - attributes validation means the store API accepts this `description_category_id` / `type_id` pair even if the tree endpoint does not expose it;
+   - UI must show both sources and allow manual Ozon `category/type` validation before linking.
 
 ## Current Production Finding
 
@@ -658,6 +662,7 @@ Next fix in the category flow:
 8. Info-model draft rows now show evidence mix and review flags per candidate, including competitor-only fields, marketplace-only fields, low-confidence matches, and weak global attribute reuse.
 9. Info-model draft rows with a weak/wrong global reuse suggestion can be switched to a new canonical field before approval with `Создать как новое`.
 10. Info-model draft header now summarizes model-quality risks before approval: competitor-only, marketplace-only, weak PIM reuse, low confidence, empty select dictionaries, and duplicate codes.
+11. Ozon source mapping can be unblocked manually when the tree is incomplete: enter a `type:<description_category_id>:<type_id>` value, validate it through the Ozon attributes API for enabled stores, then save the category binding only after the API confirms at least one store.
 
 ## Verification Commands
 
