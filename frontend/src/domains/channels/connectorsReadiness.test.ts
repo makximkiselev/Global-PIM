@@ -18,9 +18,17 @@ describe("connectorsReadiness", () => {
     expect(methodIntent({ code: "categories_tree", title: "Импорт дерева категорий" }).label).toBe("Категории");
     expect(methodIntent({ code: "offer_content", title: "Импорт контента товаров" }).label).toBe("Товары");
     expect(methodIntent({ code: "comfyui_generator", title: "Проверка доступности генератора" }).label).toBe("Медиа");
+    expect(methodIntent({ code: "healthcheck", title: "Проверка доступности генератора" }).label).toBe("Медиа");
   });
 
   it("maps low-level connector errors to user-readable blockers", () => {
+    expect(
+      humanConnectorError(
+        "OZON_CATEGORY_ATTRIBUTES_PARTIAL 28/29 imported; 17028924: 400: OZON_TYPE_ID_NOT_RESOLVED",
+      ),
+    ).toContain("Ozon загрузил параметры не полностью");
+    expect(humanConnectorError("OZON_TYPE_ID_NOT_RESOLVED")).toContain("Проверьте связь PIM-категории");
+    expect(humanConnectorError("not_configured")).toContain("Генератор медиа не настроен");
     expect(humanConnectorError("descriptionTypeId is required for description category")).toContain(
       "Ozon не смог загрузить параметры категории",
     );

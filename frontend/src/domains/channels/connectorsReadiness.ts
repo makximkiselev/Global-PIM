@@ -23,7 +23,7 @@ export function methodIntent(method: Pick<ConnectorMethodLike, "code" | "title">
   if (text.includes("контент") || text.includes("товар") || text.includes("rating") || text.includes("статус")) {
     return { label: "Товары", impact: "Нужен для насыщения текущего каталога и проверки карточек." };
   }
-  if (text.includes("generator") || text.includes("comfy")) {
+  if (text.includes("generator") || text.includes("comfy") || text.includes("генератор")) {
     return { label: "Медиа", impact: "Влияет только на генерацию визуалов, не блокирует каталог и экспорт." };
   }
   return { label: "Контур", impact: "Проверка технической доступности источника." };
@@ -39,6 +39,20 @@ export function humanConnectorError(raw: string) {
   const text = String(raw || "").trim();
   if (!text) return "Нет подробностей ошибки.";
   const lower = text.toLowerCase();
+  if (lower.includes("ozon_category_attributes_partial")) {
+    const progress = text.match(/ozon_category_attributes_partial\s+(\d+)\/(\d+)/i);
+    const suffix = progress ? ` Загружено ${progress[1]} из ${progress[2]} категорий.` : "";
+    if (lower.includes("ozon_type_id_not_resolved")) {
+      return `Ozon загрузил параметры не полностью: для одной из связанных категорий не найден type id.${suffix} Проверьте сопоставление категории Ozon и повторите импорт параметров.`;
+    }
+    return `Ozon загрузил параметры не полностью.${suffix} Откройте детали импорта, проверьте проблемные категории и повторите загрузку.`;
+  }
+  if (lower.includes("ozon_type_id_not_resolved")) {
+    return "Ozon не смог определить type id для категории. Проверьте связь PIM-категории с категорией Ozon и повторите импорт параметров.";
+  }
+  if (lower === "not_configured" || lower.includes("comfyui_not_ready")) {
+    return "Генератор медиа не настроен. Это не блокирует каталог, параметры и экспорт, но блокирует генерацию инфографики.";
+  }
   if (lower.includes("descriptiontypeid") || lower.includes("description category")) {
     return "Ozon не смог загрузить параметры категории: в запрос попал пустой или некорректный description type id. Это блокирует автосбор параметров Ozon для новых моделей.";
   }
