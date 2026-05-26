@@ -621,6 +621,72 @@ def _tree_roots_for_merge(raw_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     return []
 
 
+async def import_categories_tree_for_credentials(
+    credentials: List[Dict[str, Any]],
+    language: str = "DEFAULT",
+) -> Dict[str, Any]:
+    normalized_language = (language or "DEFAULT").strip().upper()
+    creds: List[Tuple[str, str, str]] = []
+    for index, row in enumerate(credentials or []):
+        if not isinstance(row, dict):
+            continue
+        token = str(row.get("api_key") or row.get("token") or "").strip()
+        client_id = str(row.get("client_id") or "").strip()
+        if not token or not client_id:
+            continue
+        label = str(row.get("title") or row.get("id") or f"store_{index + 1}").strip()
+        creds.append((label, token, client_id))
+
+    uniq: List[Tuple[str, str, str]] = []
+    seen_pairs: Set[str] = set()
+    for label, token, client_id in creds:
+        key = f"{token}::{client_id}"
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        uniq.append((label, token, client_id))
+
+    all_roots: List[Dict[str, Any]] = []
+    all_flats: List[List[Dict[str, Any]]] = []
+    imported_sources: List[str] = []
+    source_errors: List[str] = []
+
+    for label, token, client_id in uniq:
+        try:
+            raw = await _fetch_categories_tree_raw(normalized_language, token, client_id)
+            flat_part = _normalize_tree(raw if isinstance(raw, dict) else {})
+            all_roots.extend(_tree_roots_for_merge(raw if isinstance(raw, dict) else {}))
+            all_flats.append(flat_part)
+            imported_sources.append(label)
+        except Exception as e:
+            source_errors.append(f"{label}: {e}")
+            continue
+
+    if not all_flats:
+        tail = " | ".join(source_errors[-6:]) if source_errors else "NO_RESPONSE"
+        raise HTTPException(status_code=502, detail=f"OZON_HTTP_FAILED {tail}")
+
+    body = {"result": all_roots}
+    flat = _merge_flat_categories(all_flats)
+    doc = {
+        "imported_at": _now_iso(),
+        "language": normalized_language,
+        "raw": body,
+        "flat": flat,
+        "count": len(flat),
+        "sources_used": imported_sources,
+        "sources_errors": source_errors,
+    }
+    write_doc(CATEGORIES_TREE_PATH, doc)
+    return {
+        "ok": True,
+        "count": len(flat),
+        "imported_at": doc["imported_at"],
+        "sources_used": imported_sources,
+        "sources_errors": source_errors,
+    }
+
+
 @router.post("/import/categories-tree")
 async def import_categories_tree(req: ImportCategoriesReq) -> Dict[str, Any]:
     token_primary = (req.token or "").strip() or _env_api_key()
@@ -646,45 +712,10 @@ async def import_categories_tree(req: ImportCategoriesReq) -> Dict[str, Any]:
         uniq.append((label, tok, cid))
     creds = uniq
 
-    all_roots: List[Dict[str, Any]] = []
-    all_flats: List[List[Dict[str, Any]]] = []
-    imported_sources: List[str] = []
-    source_errors: List[str] = []
-
-    for label, tok, cid in creds:
-        try:
-            raw = await _fetch_categories_tree_raw(language, tok, cid)
-            flat_part = _normalize_tree(raw if isinstance(raw, dict) else {})
-            all_roots.extend(_tree_roots_for_merge(raw if isinstance(raw, dict) else {}))
-            all_flats.append(flat_part)
-            imported_sources.append(label)
-        except Exception as e:
-            source_errors.append(f"{label}: {e}")
-            continue
-
-    if not all_flats:
-        tail = " | ".join(source_errors[-6:]) if source_errors else "NO_RESPONSE"
-        raise HTTPException(status_code=502, detail=f"OZON_HTTP_FAILED {tail}")
-
-    body = {"result": all_roots}
-    flat = _merge_flat_categories(all_flats)
-    doc = {
-        "imported_at": _now_iso(),
-        "language": language,
-        "raw": body,
-        "flat": flat,
-        "count": len(flat),
-        "sources_used": imported_sources,
-        "sources_errors": source_errors,
-    }
-    write_doc(CATEGORIES_TREE_PATH, doc)
-    return {
-        "ok": True,
-        "count": len(flat),
-        "imported_at": doc["imported_at"],
-        "sources_used": imported_sources,
-        "sources_errors": source_errors,
-    }
+    return await import_categories_tree_for_credentials(
+        [{"title": label, "api_key": token, "client_id": client_id} for label, token, client_id in creds],
+        language=language,
+    )
 
 
 @router.post("/import/category-attributes")

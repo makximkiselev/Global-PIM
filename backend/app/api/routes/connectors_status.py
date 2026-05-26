@@ -288,6 +288,22 @@ def _first_enabled_ozon_store(organization_id: Optional[str] = None) -> Dict[str
     return {}
 
 
+def _enabled_ozon_stores(organization_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    state = _load_state(organization_id)
+    prow = state.get("providers", {}).get("ozon", {})
+    stores = prow.get("import_stores") if isinstance(prow, dict) else []
+    out: List[Dict[str, Any]] = []
+    if isinstance(stores, list):
+        for store in stores:
+            if not isinstance(store, dict):
+                continue
+            if not bool(store.get("enabled")):
+                continue
+            if str(store.get("client_id") or "").strip() and str(store.get("api_key") or "").strip():
+                out.append(store)
+    return out
+
+
 def _normalize_store_auth_mode(value: Any) -> str:
     mode = str(value or "").strip().lower() or "auto"
     return mode if mode in {"auto", "api-key", "oauth", "bearer"} else "auto"
@@ -340,13 +356,11 @@ async def _run_yandex_offer_cards_import(organization_id: Optional[str] = None) 
 
 
 async def _run_ozon_categories_tree(organization_id: Optional[str] = None) -> None:
-    store = _first_enabled_ozon_store(organization_id)
-    req = ozon_market.ImportCategoriesReq(
-        language="DEFAULT",
-        token=str(store.get("api_key") or "").strip() or None,
-        client_id=str(store.get("client_id") or "").strip() or None,
-    )
-    await ozon_market.import_categories_tree(req)
+    stores = _enabled_ozon_stores(organization_id)
+    if stores:
+        await ozon_market.import_categories_tree_for_credentials(stores, language="DEFAULT")
+        return
+    await ozon_market.import_categories_tree(ozon_market.ImportCategoriesReq(language="DEFAULT"))
 
 
 async def _run_ozon_category_attributes(organization_id: Optional[str] = None) -> None:
