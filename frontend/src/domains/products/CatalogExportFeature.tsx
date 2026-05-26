@@ -89,23 +89,6 @@ type MetricItem = {
   accent?: boolean;
 };
 
-function defaultExportStoreIds(providerCode: string, stores: Store[]): string[] {
-  const enabled = stores.filter((store) => store.enabled !== false && store.id);
-  const pool = enabled.length ? enabled : stores.filter((store) => store.id);
-  const titleMatches = (store: Store, patterns: RegExp[]) => {
-    const haystack = `${store.title || ""} ${store.id || ""}`.toLowerCase();
-    return patterns.some((pattern) => pattern.test(haystack));
-  };
-  const safePatterns = providerCode === "yandex_market"
-    ? [/gt\s*usd/i]
-    : providerCode === "ozon"
-      ? [/global\s*trade\s*ae/i]
-      : [];
-  const preferred = safePatterns.length ? pool.filter((store) => titleMatches(store, safePatterns)) : [];
-  const selected = preferred.length ? preferred : pool.slice(0, 1);
-  return selected.map((store) => store.id).filter(Boolean);
-}
-
 function SummaryMetricRow({ items }: { items: MetricItem[] }) {
   return (
     <section className="cx-summaryStrip card">
@@ -186,7 +169,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [includeDescendants, setIncludeDescendants] = useState(true);
-  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({ yandex_market: true, ozon: false });
+  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [selectedStores, setSelectedStores] = useState<Record<string, string[]>>({});
   const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -221,19 +204,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
           }))
           .filter((provider) => (provider.import_stores || []).length > 0);
         setProviders(exportProviders);
-        const nextSelectedProviders: Record<string, boolean> = {};
-        const nextSelectedStores: Record<string, string[]> = {};
-        for (const provider of exportProviders) {
-          const storeIds = defaultExportStoreIds(provider.code, provider.import_stores || []);
-          nextSelectedProviders[provider.code] = storeIds.length > 0;
-          if (storeIds.length) nextSelectedStores[provider.code] = storeIds;
-        }
-        setSelectedProviders({
-          yandex_market: false,
-          ozon: false,
-          ...nextSelectedProviders,
-        });
-        setSelectedStores(nextSelectedStores);
+        setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [provider.code, false])));
+        setSelectedStores({});
       } catch (e) {
         setErr((e as Error).message || "Не удалось загрузить данные экспорта");
       } finally {
@@ -540,12 +512,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           type="checkbox"
                           checked={checked}
                           onChange={(e) => {
-                            const enabled = e.target.checked;
-                            setSelectedProviders((prev) => ({ ...prev, [provider.code]: enabled }));
-                            if (enabled && !(selectedStores[provider.code] || []).length) {
-                              const storeIds = defaultExportStoreIds(provider.code, stores);
-                              if (storeIds.length) setSelectedStores((prev) => ({ ...prev, [provider.code]: storeIds }));
-                            }
+                            setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
                           }}
                         />
                         <span>{provider.title}</span>
