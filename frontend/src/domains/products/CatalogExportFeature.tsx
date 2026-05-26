@@ -112,22 +112,29 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
   const target = String(detail?.target || "").trim();
+  const sourcesHref = (tab: "sources" | "params" | "values") => {
+    const params = new URLSearchParams();
+    params.set("tab", tab);
+    if (category) params.set("category", category);
+    if (product) params.set("product", product);
+    return `/sources?${params.toString()}`;
+  };
   if (product && target === "competitors") return `/products/${encodeURIComponent(product)}?tab=competitors`;
   if (product && target === "media") return `/products/${encodeURIComponent(product)}?tab=media`;
   if (product && target === "description") return `/products/${encodeURIComponent(product)}?tab=description`;
-  if (category && target === "sources") return `/sources?tab=sources&category=${encodeURIComponent(category)}`;
-  if (category && target === "params") return `/sources?tab=params&category=${encodeURIComponent(category)}`;
-  if (category && target === "values") return `/sources?tab=values&category=${encodeURIComponent(category)}`;
+  if (category && target === "sources") return sourcesHref("sources");
+  if (category && target === "params") return sourcesHref("params");
+  if (category && target === "values") return sourcesHref("values");
   if (product && target === "product") return `/products/${encodeURIComponent(product)}`;
   const lower = reason.toLowerCase();
   if (category && (lower.includes("категор") || lower.includes("marketcategoryid"))) {
-    return `/sources?tab=sources&category=${encodeURIComponent(category)}`;
+    return sourcesHref("sources");
   }
   if (category && (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр"))) {
-    return `/sources?tab=params&category=${encodeURIComponent(category)}`;
+    return sourcesHref("params");
   }
   if (category && (lower.includes("значен") || lower.includes("dictionary"))) {
-    return `/sources?tab=values&category=${encodeURIComponent(category)}`;
+    return sourcesHref("values");
   }
   if (product && lower.includes("конкурент")) {
     return `/products/${encodeURIComponent(product)}?tab=competitors`;
@@ -139,7 +146,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
     return `/products/${encodeURIComponent(product)}?tab=description`;
   }
   if (product) return `/products/${encodeURIComponent(product)}`;
-  return category ? `/sources?tab=params&category=${encodeURIComponent(category)}` : "/catalog/exchange?tab=export";
+  return category ? sourcesHref("params") : "/catalog/exchange?tab=export";
 }
 
 function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
