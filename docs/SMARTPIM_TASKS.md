@@ -531,6 +531,7 @@ Current state:
 3. Export page must keep GT USD and Ozon as safe selected targets during tests.
 4. Product media deduplication was cleaned; S3-backed media renders for checked products.
 5. Export page now requires a confirmation dialog before batch preparation and explicitly lists selected scope, SKU estimate, target count, and store labels.
+   Broad scopes additionally require an explicit checkbox before preparation can start, and a selected branch can be narrowed to the current category directly from the confirmation dialog.
 6. Product card parameter values are now compacted in the queue/source evidence; long text opens through a details panel instead of stretching the workbench.
 7. Product media cards now show source and short object name instead of raw internal URLs.
 8. Vertical QA baseline for `product_1092 / 53425` on 2026-05-20:
@@ -557,7 +558,7 @@ Next tasks:
 1. Continue replacing page-specific workspace fragments with shared primitives.
 2. Add one persistent category/SKU next-action state across catalog, sources, product card, and export.
 3. Move long source descriptions into evidence/details panels, not visible canonical fields.
-4. Add a guardrail that defaults export checks to one SKU or asks for explicit confirmation before broad category batches.
+4. Add a guardrail that defaults export checks to one SKU or asks for explicit confirmation before broad category batches. The broad-scope confirmation checkbox is implemented; continue nudging users toward selected SKU/category checks in the next-action state.
 5. Continue applying the same one-SKU media/enrichment/export check to the next iPhone variants in the line.
 
 ### P1 DB Consolidation

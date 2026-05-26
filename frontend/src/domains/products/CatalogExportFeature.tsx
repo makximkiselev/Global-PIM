@@ -183,6 +183,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [preparingMessage, setPreparingMessage] = useState("");
   const [jobId, setJobId] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [broadScopeConfirmed, setBroadScopeConfirmed] = useState(false);
   const initialCategoryId = String(searchParams.get("category") || "").trim();
   const initialProductIds = [
     ...String(searchParams.get("product") || "").split(","),
@@ -324,6 +325,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
 
   function requestExport() {
     if (activeTargets.length === 0 || loading) return;
+    setBroadScopeConfirmed(false);
     setConfirmOpen(true);
   }
 
@@ -749,9 +751,26 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 ? "Это широкая проверка до 50 SKU. Для финальной отправки лучше выбрать конкретные SKU или узкую категорию."
                 : "Сейчас будет только batch-подготовка и проверка данных по выбранным магазинам. Проверь список целей перед запуском."}
             </div>
+            {broadExportScope ? (
+              <div className="cx-confirmGuard">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={broadScopeConfirmed}
+                    onChange={(event) => setBroadScopeConfirmed(event.target.checked)}
+                  />
+                  <span>Понимаю, что запускаю широкую проверку до 50 SKU по ветке или всему каталогу</span>
+                </label>
+                {selectedNodeIds.length === 1 && includeDescendants ? (
+                  <button className="btn sm" type="button" onClick={() => setIncludeDescendants(false)}>
+                    Проверить только эту категорию
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="cx-confirmActions">
               <Button onClick={() => setConfirmOpen(false)}>Отмена</Button>
-              <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0}>
+              <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0 || (broadExportScope && !broadScopeConfirmed)}>
                 {loading ? "Готовлю…" : "Подтвердить и подготовить"}
               </Button>
             </div>
