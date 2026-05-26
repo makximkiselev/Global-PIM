@@ -17,7 +17,7 @@ type MappingBootstrapResp = {
   catalog_items?: Array<{ id: string; name: string; path?: string }>;
   mappings?: Record<string, Record<string, string>>;
 };
-const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v1";
+const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v2";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
 const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
@@ -48,7 +48,7 @@ async function loadMappingBootstrap() {
       // ignore cache read errors
     }
   }
-  const data = await api<MappingBootstrapResp>("/marketplaces/mapping/import/categories");
+  const data = await api<MappingBootstrapResp>("/marketplaces/mapping/import/categories/bootstrap");
   mappingBootstrapCache = data;
   if (typeof window !== "undefined") {
     try {

@@ -23,7 +23,7 @@ type SourcesMarketplaceSectionProps = {
 
 const SOURCES_MAPPING_CACHE_TTL_MS = 24 * 60 * 60_000;
 const SOURCES_STATIC_CACHE_TTL_MS = 24 * 60 * 60_000;
-const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v3";
+const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v4";
 const SOURCES_ATTR_BOOTSTRAP_CACHE_KEY = "mm_sources_attr_bootstrap_cache_v3";
 const SOURCES_ATTR_DETAILS_CACHE_PREFIX = "mm_sources_attr_details_cache_v3:";
 let categoriesMappingCache: { ts: number; data: CategoriesResp | null } = { ts: 0, data: null };
@@ -132,6 +132,7 @@ type CategoriesResp = {
   catalog_items: CatalogCategory[];
   providers: Provider[];
   provider_categories: Record<string, ProviderCategory[]>;
+  provider_categories_lazy?: boolean;
   mappings: Record<string, Record<string, string>>;
   binding_states?: Record<string, Record<string, {
     state: "direct" | "inherited_from_parent" | "aggregated_from_children" | "none";
@@ -993,6 +994,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [catalogItems, setCatalogItems] = useState<CatalogCategory[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [providerCategories, setProviderCategories] = useState<Record<string, ProviderCategory[]>>({});
+  const [providerCategoriesLazy, setProviderCategoriesLazy] = useState(false);
   const [mappings, setMappings] = useState<Record<string, Record<string, string>>>({});
 
   const [attrCategories, setAttrCategories] = useState<AttrCategoryItem[]>([]);
@@ -1113,6 +1115,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setCatalogItems(data.catalog_items || []);
       setProviders(data.providers || []);
       setProviderCategories(data.provider_categories || {});
+      setProviderCategoriesLazy(!!data.provider_categories_lazy);
       setMappings(data.mappings || {});
       setBindingStates(data.binding_states || {});
       setCompetitorStates(data.competitor_states || {});
@@ -1125,6 +1128,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setCatalogItems(persisted.catalog_items || []);
       setProviders(persisted.providers || []);
       setProviderCategories(persisted.provider_categories || {});
+      setProviderCategoriesLazy(!!persisted.provider_categories_lazy);
       setMappings(persisted.mappings || {});
       setBindingStates(persisted.binding_states || {});
       setCompetitorStates(persisted.competitor_states || {});
@@ -1133,13 +1137,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setLoading(true);
     setErr(null);
     try {
-      const data = await api<CategoriesResp>("/marketplaces/mapping/import/categories");
+      const data = await api<CategoriesResp>("/marketplaces/mapping/import/categories/bootstrap");
       categoriesMappingCache = { ts: Date.now(), data };
       savePersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY, data);
       setCatalogNodes(data.catalog_nodes || []);
       setCatalogItems(data.catalog_items || []);
       setProviders(data.providers || []);
       setProviderCategories(data.provider_categories || {});
+      setProviderCategoriesLazy(!!data.provider_categories_lazy);
       setMappings(data.mappings || {});
       setBindingStates(data.binding_states || {});
       setCompetitorStates(data.competitor_states || {});
@@ -1158,6 +1163,35 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setMappingIssues((data.items || []).filter((item) => String(item.status || "open") === "open"));
     } catch {
       setMappingIssues([]);
+    }
+  }
+
+  async function ensureProviderCategories(providerCode: string) {
+    const provider = providers.find((item) => item.code === providerCode);
+    const current = providerCategories[providerCode] || [];
+    const expectedCount = Number(provider?.count || 0);
+    if (!providerCategoriesLazy && current.length > 0) return;
+    if (expectedCount > 0 && current.length >= expectedCount) return;
+    try {
+      const data = await api<{ ok: boolean; items?: ProviderCategory[]; count?: number }>(
+        `/marketplaces/mapping/import/categories/provider/${encodeURIComponent(providerCode)}`,
+      );
+      const items = data.items || [];
+      setProviderCategories((prev) => ({ ...prev, [providerCode]: items }));
+      categoriesMappingCache = {
+        ts: Date.now(),
+        data: categoriesMappingCache.data
+          ? {
+              ...categoriesMappingCache.data,
+              provider_categories: {
+                ...(categoriesMappingCache.data.provider_categories || {}),
+                [providerCode]: items,
+              },
+            }
+          : categoriesMappingCache.data,
+      };
+    } catch (e) {
+      setErr((e as Error).message || "Ошибка загрузки категорий площадки");
     }
   }
 
@@ -1826,6 +1860,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setModalSelectedProviderCategoryId(initialProviderCategoryId || "");
     setModalQuery("");
     setModalOpen(true);
+    void ensureProviderCategories(providerCode);
   }
 
   function splitPath(path: string) {
