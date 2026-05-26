@@ -1271,6 +1271,8 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
     parent_by_id = _parent_map(nodes)
     mappings = _load_category_mapping()
     attr_rows_by_cid = _load_attr_mapping_rows()
+    competitor_db = load_competitor_mapping_db()
+    discovery = competitor_db.get("discovery") if isinstance(competitor_db.get("discovery"), dict) else {}
 
     items: List[Dict[str, Any]] = []
     ready_count = 0
@@ -1360,7 +1362,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             missing.append("Название товара не заполнено")
             missing_details.append(_missing_detail("missing_title", "Название товара не заполнено", "description"))
         if not pictures:
-            confirmed_links = _confirmed_links_for_product(pid)
+            confirmed_links = _confirmed_links_for_product(discovery, pid)
             if confirmed_links:
                 message = "Нет изображений: проверьте медиа товара или повторите загрузку из подтвержденных источников"
                 missing.append(message)
