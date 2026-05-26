@@ -89,9 +89,21 @@ type MetricItem = {
   accent?: boolean;
 };
 
-function defaultExportStoreIds(stores: Store[]): string[] {
-  const enabled = stores.filter((store) => store.enabled !== false).map((store) => store.id).filter(Boolean);
-  return enabled.length ? enabled : stores.map((store) => store.id).filter(Boolean);
+function defaultExportStoreIds(providerCode: string, stores: Store[]): string[] {
+  const enabled = stores.filter((store) => store.enabled !== false && store.id);
+  const pool = enabled.length ? enabled : stores.filter((store) => store.id);
+  const titleMatches = (store: Store, patterns: RegExp[]) => {
+    const haystack = `${store.title || ""} ${store.id || ""}`.toLowerCase();
+    return patterns.some((pattern) => pattern.test(haystack));
+  };
+  const safePatterns = providerCode === "yandex_market"
+    ? [/gt\s*usd/i]
+    : providerCode === "ozon"
+      ? [/global\s*trade\s*ae/i]
+      : [];
+  const preferred = safePatterns.length ? pool.filter((store) => titleMatches(store, safePatterns)) : [];
+  const selected = preferred.length ? preferred : pool.slice(0, 1);
+  return selected.map((store) => store.id).filter(Boolean);
 }
 
 function SummaryMetricRow({ items }: { items: MetricItem[] }) {
@@ -212,7 +224,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         const nextSelectedProviders: Record<string, boolean> = {};
         const nextSelectedStores: Record<string, string[]> = {};
         for (const provider of exportProviders) {
-          const storeIds = defaultExportStoreIds(provider.import_stores || []);
+          const storeIds = defaultExportStoreIds(provider.code, provider.import_stores || []);
           nextSelectedProviders[provider.code] = storeIds.length > 0;
           if (storeIds.length) nextSelectedStores[provider.code] = storeIds;
         }
@@ -531,7 +543,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                             const enabled = e.target.checked;
                             setSelectedProviders((prev) => ({ ...prev, [provider.code]: enabled }));
                             if (enabled && !(selectedStores[provider.code] || []).length) {
-                              const storeIds = defaultExportStoreIds(stores);
+                              const storeIds = defaultExportStoreIds(provider.code, stores);
                               if (storeIds.length) setSelectedStores((prev) => ({ ...prev, [provider.code]: storeIds }));
                             }
                           }}

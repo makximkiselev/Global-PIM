@@ -528,7 +528,7 @@ Current state:
 
 1. Catalog was simplified and no longer behaves like a dashboard at the top.
 2. Product table is more usable and category context is retained.
-3. Export page must keep GT USD and Ozon as safe selected targets during tests.
+3. Export page defaults to safe stores for readiness tests: `GT USD` for Я.Маркет and `Global Trade AE` for Ozon when those stores exist. Other enabled stores remain visible but must be selected explicitly.
 4. Product media deduplication was cleaned; S3-backed media renders for checked products.
 5. Export page now requires a confirmation dialog before batch preparation and explicitly lists selected scope, SKU estimate, target count, and store labels.
    Broad scopes additionally require an explicit checkbox before preparation can start, and a selected branch can be narrowed to the current category directly from the confirmation dialog.
