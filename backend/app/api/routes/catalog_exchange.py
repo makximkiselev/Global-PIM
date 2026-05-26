@@ -1383,26 +1383,16 @@ def _export_batch_from_preview(
     ready_count = int(preview.get("ready_count") or 0)
     not_ready_count = int(preview.get("not_ready_count") or max(0, count - ready_count))
     blockers: List[Dict[str, Any]] = []
-    blocked_product_ids: Set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             continue
         missing = item.get("missing") if isinstance(item.get("missing"), list) else []
         missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
         payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
-        if provider == "ozon":
-            ok_for_store, store_message = _ozon_store_supports_category(
-                store,
-                payload_item.get("description_category_id") or payload_item.get("descriptionCategoryId"),
-            )
-            if not ok_for_store and store_message:
-                missing_clean.append(store_message)
         if not missing_clean:
             continue
         offer_id = str(payload_item.get("offerId") or payload_item.get("offer_id") or "").strip()
         product_id = str(item.get("product_id") or "").strip()
-        if product_id:
-            blocked_product_ids.add(product_id)
         blockers.append(
             {
                 "product_id": product_id,
@@ -1412,9 +1402,6 @@ def _export_batch_from_preview(
                 "missing": missing_clean,
             }
         )
-    if provider == "ozon" and blocked_product_ids:
-        not_ready_count = len(blocked_product_ids)
-        ready_count = max(0, count - not_ready_count)
     return {
         "provider": provider,
         "store_id": str(store.get("id") or "default"),

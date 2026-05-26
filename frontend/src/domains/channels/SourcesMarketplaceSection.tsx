@@ -1877,8 +1877,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       : [];
     if (!titles.length) return "";
     return titles.length === 1
-      ? `Доступна в магазине: ${titles[0]}`
-      : `Доступна в магазинах: ${titles.join(", ")}`;
+      ? `Найдена в дереве магазина: ${titles[0]}`
+      : `Найдена в деревьях магазинов: ${titles.join(", ")}`;
   }
 
   const hasExpandedNodes = useMemo(

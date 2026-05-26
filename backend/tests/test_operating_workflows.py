@@ -2594,7 +2594,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn(("dict_protection", "ozon", "IP68 допускается погружение"), calls)
         self.assertNotIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
-    def test_ozon_export_batch_blocks_category_unavailable_for_store(self) -> None:
+    def test_ozon_export_batch_does_not_block_on_tree_source_only(self) -> None:
         preview = {
             "count": 1,
             "ready_count": 1,
@@ -2625,10 +2625,10 @@ class OperatingWorkflowTests(unittest.TestCase):
                 preview=preview,
             )
 
-        self.assertEqual(batch["status"], "blocked")
-        self.assertEqual(batch["ready_count"], 0)
-        self.assertEqual(batch["not_ready_count"], 1)
-        self.assertIn("Ozon: категория недоступна в магазине Global Trade AE", batch["blockers"][0]["missing"][0])
+        self.assertEqual(batch["status"], "ready")
+        self.assertEqual(batch["ready_count"], 1)
+        self.assertEqual(batch["not_ready_count"], 0)
+        self.assertEqual(batch["blockers"], [])
 
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
