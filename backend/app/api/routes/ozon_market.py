@@ -629,6 +629,52 @@ def _merge_flat_categories(flats: List[List[Dict[str, Any]]]) -> List[Dict[str, 
     return out
 
 
+def mark_category_attributes_validated(
+    category_ref: str,
+    *,
+    store_id: str = "",
+    store_title: str = "",
+    client_id: str = "",
+    type_ids: Optional[List[int]] = None,
+) -> None:
+    category_id, parsed_type_id = _parse_ozon_category_ref(category_ref)
+    if not category_id:
+        return
+    target_ids = {category_id}
+    for tid in type_ids or ([] if parsed_type_id is None else [parsed_type_id]):
+        if int(tid or 0) > 0:
+            target_ids.add(f"type:{category_id}:{int(tid)}")
+
+    doc = read_doc(CATEGORIES_TREE_PATH, default={})
+    if not isinstance(doc, dict):
+        doc = {"flat": []}
+    flat = doc.get("flat") if isinstance(doc.get("flat"), list) else []
+    by_id = {str(row.get("id") or "").strip(): row for row in flat if isinstance(row, dict)}
+
+    for target_id in sorted(target_ids):
+        row = by_id.get(target_id)
+        if not row:
+            row = {
+                "id": target_id,
+                "name": target_id,
+                "path": target_id,
+                "is_leaf": target_id.startswith("type:"),
+                "node_kind": "type" if target_id.startswith("type:") else "category",
+                "category_id": category_id,
+                "type_id": str(target_id.split(":")[2]) if target_id.startswith("type:") and len(target_id.split(":")) >= 3 else None,
+            }
+            flat.append(row)
+            by_id[target_id] = row
+        row["attribute_validated_store_ids"] = _merge_source_list(row.get("attribute_validated_store_ids"), store_id)
+        row["attribute_validated_titles"] = _merge_source_list(row.get("attribute_validated_titles"), store_title)
+        row["attribute_validated_client_ids"] = _merge_source_list(row.get("attribute_validated_client_ids"), client_id)
+
+    doc["flat"] = flat
+    doc["count"] = len(flat)
+    doc["updated_at"] = _now_iso()
+    write_doc(CATEGORIES_TREE_PATH, doc)
+
+
 def _tree_roots_for_merge(raw_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     result = raw_doc.get("result") if isinstance(raw_doc, dict) else None
     if isinstance(result, list):

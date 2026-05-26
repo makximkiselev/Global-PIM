@@ -223,6 +223,34 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(merged[0]["source_titles"], ["Global Trade AE", "Тестовый магазин"])
         self.assertEqual(merged[0]["source_client_ids"], ["3961082", "2541732"])
 
+    def test_ozon_category_attribute_validation_updates_tree_row(self) -> None:
+        doc = {
+            "flat": [
+                {
+                    "id": "17028924",
+                    "name": "ТВ-приставки",
+                    "path": "Электроника / ТВ-приставки",
+                }
+            ],
+            "count": 1,
+        }
+        saved: dict[str, object] = {}
+        with (
+            patch.object(ozon_market_routes, "read_doc", return_value=deepcopy(doc)),
+            patch.object(ozon_market_routes, "write_doc", side_effect=lambda _path, payload: saved.update(deepcopy(payload))),
+        ):
+            ozon_market_routes.mark_category_attributes_validated(
+                "17028924",
+                store_id="ozon-a",
+                store_title="Global Trade AE",
+                client_id="3961082",
+                type_ids=[115947064],
+            )
+
+        rows = {str(row["id"]): row for row in saved["flat"]}
+        self.assertEqual(rows["17028924"]["attribute_validated_titles"], ["Global Trade AE"])
+        self.assertEqual(rows["type:17028924:115947064"]["attribute_validated_client_ids"], ["3961082"])
+
     def test_mapping_issues_report_ozon_category_without_type(self) -> None:
         with (
             patch.object(marketplace_mapping_routes, "_load_catalog_nodes", return_value=[{"id": "cat-1", "name": "Смартфоны", "parent_id": None}]),

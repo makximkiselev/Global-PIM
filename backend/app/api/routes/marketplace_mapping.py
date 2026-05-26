@@ -327,6 +327,21 @@ def _load_provider_categories(provider: str) -> List[Dict[str, Any]]:
                     for item in (x.get("source_client_ids") if isinstance(x.get("source_client_ids"), list) else [])
                     if str(item or "").strip()
                 ],
+                "attribute_validated_store_ids": [
+                    str(item or "").strip()
+                    for item in (x.get("attribute_validated_store_ids") if isinstance(x.get("attribute_validated_store_ids"), list) else [])
+                    if str(item or "").strip()
+                ],
+                "attribute_validated_titles": [
+                    str(item or "").strip()
+                    for item in (x.get("attribute_validated_titles") if isinstance(x.get("attribute_validated_titles"), list) else [])
+                    if str(item or "").strip()
+                ],
+                "attribute_validated_client_ids": [
+                    str(item or "").strip()
+                    for item in (x.get("attribute_validated_client_ids") if isinstance(x.get("attribute_validated_client_ids"), list) else [])
+                    if str(item or "").strip()
+                ],
             }
         )
     out.sort(key=lambda x: (x.get("path") or "").lower())

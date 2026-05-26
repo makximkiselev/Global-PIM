@@ -367,29 +367,41 @@ async def _run_ozon_categories_tree(organization_id: Optional[str] = None) -> No
 
 async def _run_ozon_category_attributes(organization_id: Optional[str] = None) -> None:
     ids = _mapped_provider_category_ids("ozon")
-    store = _first_enabled_ozon_store(organization_id)
+    stores = _enabled_ozon_stores(organization_id) or [_first_enabled_ozon_store(organization_id)]
     successes = 0
+    total_attempts = 0
     errors: List[str] = []
     for cid in ids:
-        req = ozon_market.ImportCategoryAttrsReq(
-            category_id=cid,
-            language="DEFAULT",
-            import_values=False,
-            token=str(store.get("api_key") or "").strip() or None,
-            client_id=str(store.get("client_id") or "").strip() or None,
-        )
-        try:
-            await ozon_market.import_category_attributes(req)
-            successes += 1
-        except Exception as e:
-            errors.append(f"{cid}: {e}")
-            continue
+        for store in stores:
+            total_attempts += 1
+            req = ozon_market.ImportCategoryAttrsReq(
+                category_id=cid,
+                language="DEFAULT",
+                import_values=False,
+                token=str(store.get("api_key") or "").strip() or None,
+                client_id=str(store.get("client_id") or "").strip() or None,
+            )
+            try:
+                result = await ozon_market.import_category_attributes(req)
+                successes += 1
+                ozon_market.mark_category_attributes_validated(
+                    cid,
+                    store_id=str(store.get("id") or "").strip(),
+                    store_title=str(store.get("title") or "").strip(),
+                    client_id=str(store.get("client_id") or "").strip(),
+                    type_ids=result.get("type_ids_used") if isinstance(result.get("type_ids_used"), list) else [],
+                )
+            except Exception as e:
+                errors.append(f"{cid} / {store.get('title') or store.get('client_id')}: {e}")
+                continue
     if ids and successes == 0 and errors:
         tail = " | ".join(errors[-5:])
         raise HTTPException(status_code=502, detail=f"OZON_CATEGORY_ATTRIBUTES_FAILED {tail}")
     if errors:
         tail = " | ".join(errors[-5:])
-        raise ConnectorSoftWarning(f"OZON_CATEGORY_ATTRIBUTES_PARTIAL {successes}/{len(ids)} imported; {tail}")
+        raise ConnectorSoftWarning(f"OZON_CATEGORY_ATTRIBUTES_PARTIAL {successes}/{max(total_attempts, len(ids))} imported; {tail}")
+    if successes:
+        marketplace_mapping._invalidate_import_categories_cache()  # noqa: SLF001 - scheduler must refresh source validation badges.
 
 
 async def _run_ozon_product_content_status(organization_id: Optional[str] = None) -> None:

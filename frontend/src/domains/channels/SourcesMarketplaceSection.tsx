@@ -118,6 +118,9 @@ type ProviderCategory = {
   source_store_ids?: string[];
   source_titles?: string[];
   source_client_ids?: string[];
+  attribute_validated_store_ids?: string[];
+  attribute_validated_titles?: string[];
+  attribute_validated_client_ids?: string[];
 };
 type CatalogNode = {
   id: string;
@@ -1875,10 +1878,22 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const titles = Array.isArray(category.source_titles)
       ? category.source_titles.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
-    if (!titles.length) return "";
-    return titles.length === 1
-      ? `Найдена в дереве магазина: ${titles[0]}`
-      : `Найдена в деревьях магазинов: ${titles.join(", ")}`;
+    const validatedTitles = Array.isArray(category.attribute_validated_titles)
+      ? category.attribute_validated_titles.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    const parts: string[] = [];
+    if (titles.length) {
+      parts.push(titles.length === 1
+        ? `найдена в дереве: ${titles[0]}`
+        : `найдена в деревьях: ${titles.join(", ")}`);
+    }
+    if (validatedTitles.length) {
+      parts.push(validatedTitles.length === 1
+        ? `характеристики API: ${validatedTitles[0]}`
+        : `характеристики API: ${validatedTitles.join(", ")}`);
+    }
+    if (!parts.length) return "";
+    return parts.join("; ");
   }
 
   const hasExpandedNodes = useMemo(
