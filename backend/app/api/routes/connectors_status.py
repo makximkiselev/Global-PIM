@@ -359,8 +359,10 @@ async def _run_ozon_categories_tree(organization_id: Optional[str] = None) -> No
     stores = _enabled_ozon_stores(organization_id)
     if stores:
         await ozon_market.import_categories_tree_for_credentials(stores, language="DEFAULT")
+        marketplace_mapping._invalidate_import_categories_cache()  # noqa: SLF001 - scheduler must refresh category UI cache.
         return
     await ozon_market.import_categories_tree(ozon_market.ImportCategoriesReq(language="DEFAULT"))
+    marketplace_mapping._invalidate_import_categories_cache()  # noqa: SLF001 - scheduler must refresh category UI cache.
 
 
 async def _run_ozon_category_attributes(organization_id: Optional[str] = None) -> None:

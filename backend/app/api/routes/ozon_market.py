@@ -584,6 +584,20 @@ async def _post_api_key(path: str, payload: Dict[str, Any], api_key: str, client
     return res.json() if res.content else {}
 
 
+def _merge_source_list(*values: Any) -> List[str]:
+    out: List[str] = []
+    seen: Set[str] = set()
+    for value in values:
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+    return out
+
+
 def _merge_flat_categories(flats: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     by_id: Dict[str, Dict[str, Any]] = {}
     for flat in flats:
@@ -597,6 +611,11 @@ def _merge_flat_categories(flats: List[List[Dict[str, Any]]]) -> List[Dict[str, 
             if prev is None:
                 by_id[rid] = dict(row)
                 continue
+            merged_sources = {
+                "source_store_ids": _merge_source_list(prev.get("source_store_ids"), row.get("source_store_ids")),
+                "source_titles": _merge_source_list(prev.get("source_titles"), row.get("source_titles")),
+                "source_client_ids": _merge_source_list(prev.get("source_client_ids"), row.get("source_client_ids")),
+            }
             # Keep deeper/longer path record if available.
             prev_depth = int(prev.get("depth") or 0)
             cur_depth = int(row.get("depth") or 0)
@@ -604,6 +623,7 @@ def _merge_flat_categories(flats: List[List[Dict[str, Any]]]) -> List[Dict[str, 
             cur_path = str(row.get("path") or "")
             if cur_depth > prev_depth or len(cur_path) > len(prev_path):
                 by_id[rid] = dict(row)
+            by_id[rid].update(merged_sources)
     out = list(by_id.values())
     out.sort(key=lambda x: (str(x.get("path") or x.get("name") or "").lower(), str(x.get("id") or "")))
     return out
@@ -626,7 +646,7 @@ async def import_categories_tree_for_credentials(
     language: str = "DEFAULT",
 ) -> Dict[str, Any]:
     normalized_language = (language or "DEFAULT").strip().upper()
-    creds: List[Tuple[str, str, str]] = []
+    creds: List[Tuple[str, str, str, str]] = []
     for index, row in enumerate(credentials or []):
         if not isinstance(row, dict):
             continue
@@ -635,26 +655,31 @@ async def import_categories_tree_for_credentials(
         if not token or not client_id:
             continue
         label = str(row.get("title") or row.get("id") or f"store_{index + 1}").strip()
-        creds.append((label, token, client_id))
+        store_id = str(row.get("id") or row.get("store_id") or client_id or label).strip()
+        creds.append((label, token, client_id, store_id))
 
-    uniq: List[Tuple[str, str, str]] = []
+    uniq: List[Tuple[str, str, str, str]] = []
     seen_pairs: Set[str] = set()
-    for label, token, client_id in creds:
+    for label, token, client_id, store_id in creds:
         key = f"{token}::{client_id}"
         if key in seen_pairs:
             continue
         seen_pairs.add(key)
-        uniq.append((label, token, client_id))
+        uniq.append((label, token, client_id, store_id))
 
     all_roots: List[Dict[str, Any]] = []
     all_flats: List[List[Dict[str, Any]]] = []
     imported_sources: List[str] = []
     source_errors: List[str] = []
 
-    for label, token, client_id in uniq:
+    for label, token, client_id, store_id in uniq:
         try:
             raw = await _fetch_categories_tree_raw(normalized_language, token, client_id)
             flat_part = _normalize_tree(raw if isinstance(raw, dict) else {})
+            for row in flat_part:
+                row["source_store_ids"] = [store_id] if store_id else []
+                row["source_titles"] = [label] if label else []
+                row["source_client_ids"] = [client_id] if client_id else []
             all_roots.extend(_tree_roots_for_merge(raw if isinstance(raw, dict) else {}))
             all_flats.append(flat_part)
             imported_sources.append(label)

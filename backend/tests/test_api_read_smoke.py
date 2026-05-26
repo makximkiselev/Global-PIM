@@ -192,6 +192,37 @@ class ApiReadSmokeTests(unittest.TestCase):
         with patch.object(ozon_market_routes, "read_doc", return_value=doc):
             self.assertEqual(ozon_market_routes._resolve_type_ids("17028644"), [91477, 91478])
 
+    def test_ozon_category_merge_preserves_store_sources(self) -> None:
+        merged = ozon_market_routes._merge_flat_categories(
+            [
+                [
+                    {
+                        "id": "17028924",
+                        "name": "ТВ-приставки",
+                        "path": "Электроника / ТВ-приставки",
+                        "source_store_ids": ["ozon-a"],
+                        "source_titles": ["Global Trade AE"],
+                        "source_client_ids": ["3961082"],
+                    }
+                ],
+                [
+                    {
+                        "id": "17028924",
+                        "name": "ТВ-приставки",
+                        "path": "Электроника / ТВ-приставки",
+                        "source_store_ids": ["ozon-b"],
+                        "source_titles": ["Тестовый магазин"],
+                        "source_client_ids": ["2541732"],
+                    }
+                ],
+            ]
+        )
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["source_store_ids"], ["ozon-a", "ozon-b"])
+        self.assertEqual(merged[0]["source_titles"], ["Global Trade AE", "Тестовый магазин"])
+        self.assertEqual(merged[0]["source_client_ids"], ["3961082", "2541732"])
+
     def test_mapping_issues_report_ozon_category_without_type(self) -> None:
         with (
             patch.object(marketplace_mapping_routes, "_load_catalog_nodes", return_value=[{"id": "cat-1", "name": "Смартфоны", "parent_id": None}]),

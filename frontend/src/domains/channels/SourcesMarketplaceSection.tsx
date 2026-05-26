@@ -115,6 +115,9 @@ type ProviderCategory = {
   name: string;
   path: string;
   is_leaf: boolean;
+  source_store_ids?: string[];
+  source_titles?: string[];
+  source_client_ids?: string[];
 };
 type CatalogNode = {
   id: string;
@@ -1832,6 +1835,17 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return { node, crumbs };
   }
 
+  function categorySourceLabel(providerCode: string, category?: ProviderCategory | null): string {
+    if (providerCode !== "ozon" || !category) return "";
+    const titles = Array.isArray(category.source_titles)
+      ? category.source_titles.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    if (!titles.length) return "";
+    return titles.length === 1
+      ? `Доступна в магазине: ${titles[0]}`
+      : `Доступна в магазинах: ${titles.join(", ")}`;
+  }
+
   const hasExpandedNodes = useMemo(
     () =>
       Object.entries(treeExpanded).some(
@@ -3102,6 +3116,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         <>
                                           <div className="mm-providerPath">{mp.node}</div>
                                           {mp.crumbs ? <div className="mm-breadcrumbs">{mp.crumbs}</div> : null}
+                                          {categorySourceLabel(prov.code, mappedCat) ? (
+                                            <div className="mm-categorySourceBadge">{categorySourceLabel(prov.code, mappedCat)}</div>
+                                          ) : null}
                                           {inheritedOnly && inheritedFrom ? (
                                             <button type="button" className="mm-aggLink" onClick={() => revealCatalogNode(inheritedFrom)}>
                                               Перейти к родительской категории
@@ -4134,6 +4151,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     <div>
                       <div className="mm-categoryPickerItemTitle">{splitPath(it.path || it.name).node}</div>
                       {splitPath(it.path || it.name).crumbs ? <div className="mm-breadcrumbs">{splitPath(it.path || it.name).crumbs}</div> : null}
+                      {categorySourceLabel(modalProvider, it) ? (
+                        <div className="mm-categorySourceBadge">{categorySourceLabel(modalProvider, it)}</div>
+                      ) : null}
                     </div>
                   </button>
                 ))}

@@ -312,6 +312,21 @@ def _load_provider_categories(provider: str) -> List[Dict[str, Any]]:
                 "name": str(x.get("name") or ""),
                 "path": str(x.get("path") or x.get("name") or cid),
                 "is_leaf": bool(x.get("is_leaf", False)),
+                "source_store_ids": [
+                    str(item or "").strip()
+                    for item in (x.get("source_store_ids") if isinstance(x.get("source_store_ids"), list) else [])
+                    if str(item or "").strip()
+                ],
+                "source_titles": [
+                    str(item or "").strip()
+                    for item in (x.get("source_titles") if isinstance(x.get("source_titles"), list) else [])
+                    if str(item or "").strip()
+                ],
+                "source_client_ids": [
+                    str(item or "").strip()
+                    for item in (x.get("source_client_ids") if isinstance(x.get("source_client_ids"), list) else [])
+                    if str(item or "").strip()
+                ],
             }
         )
     out.sort(key=lambda x: (x.get("path") or "").lower())

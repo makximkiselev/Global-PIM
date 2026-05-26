@@ -68,6 +68,7 @@ PRODUCTS_PATH = DATA_DIR / "products.json"
 CATALOG_PATH = DATA_DIR / "catalog_nodes.json"
 IMPORT_RUNS_PATH = DATA_DIR / "catalog_import_runs.json"
 EXPORT_RUNS_PATH = DATA_DIR / "catalog_export_runs.json"
+OZON_CATEGORIES_TREE_PATH = DATA_DIR / "marketplaces" / "ozon" / "categories_tree.json"
 
 _EXPORT_WORKFLOW = "catalog_export_prepare"
 _EXPORT_JOB_TTL_SECONDS = 900.0
@@ -1177,6 +1178,68 @@ def _upsert_ozon_attribute(attributes: List[Dict[str, Any]], attr_id: str, name:
     )
 
 
+def _normalize_ozon_category_ref(category_ref: Any) -> str:
+    ref = str(category_ref or "").strip()
+    if ref.startswith("type:"):
+        parts = ref.split(":")
+        if len(parts) >= 3 and str(parts[1] or "").strip():
+            return str(parts[1] or "").strip()
+    return ref
+
+
+def _ozon_category_store_sources(category_ref: Any) -> Optional[Dict[str, List[str]]]:
+    lookup_id = _normalize_ozon_category_ref(category_ref)
+    if not lookup_id:
+        return None
+    doc = read_doc(OZON_CATEGORIES_TREE_PATH, default={})
+    flat = doc.get("flat") if isinstance(doc, dict) else []
+    if not isinstance(flat, list):
+        return None
+    for row in flat:
+        if not isinstance(row, dict):
+            continue
+        row_id = str(row.get("id") or "").strip()
+        row_category_id = str(row.get("category_id") or "").strip()
+        if lookup_id not in {row_id, row_category_id}:
+            continue
+        sources = {
+            "source_store_ids": [
+                str(item or "").strip()
+                for item in (row.get("source_store_ids") if isinstance(row.get("source_store_ids"), list) else [])
+                if str(item or "").strip()
+            ],
+            "source_titles": [
+                str(item or "").strip()
+                for item in (row.get("source_titles") if isinstance(row.get("source_titles"), list) else [])
+                if str(item or "").strip()
+            ],
+            "source_client_ids": [
+                str(item or "").strip()
+                for item in (row.get("source_client_ids") if isinstance(row.get("source_client_ids"), list) else [])
+                if str(item or "").strip()
+            ],
+        }
+        if sources["source_store_ids"] or sources["source_client_ids"] or sources["source_titles"]:
+            return sources
+        return None
+    return None
+
+
+def _ozon_store_supports_category(store: Dict[str, Any], category_ref: Any) -> tuple[bool, str]:
+    sources = _ozon_category_store_sources(category_ref)
+    if not sources:
+        return True, ""
+    source_store_ids = {str(item or "").strip() for item in sources.get("source_store_ids") or [] if str(item or "").strip()}
+    source_client_ids = {str(item or "").strip() for item in sources.get("source_client_ids") or [] if str(item or "").strip()}
+    store_id = str(store.get("id") or "").strip()
+    client_id = str(store.get("client_id") or store.get("business_id") or "").strip()
+    if (store_id and store_id in source_store_ids) or (client_id and client_id in source_client_ids):
+        return True, ""
+    store_title = str(store.get("title") or store_id or client_id or "выбранном магазине").strip()
+    available = ", ".join(sources.get("source_titles") or []) or "других Ozon-магазинах"
+    return False, f"Ozon: категория недоступна в магазине {store_title}. Доступна в: {available}"
+
+
 def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
     ids_filter = {str(x or "").strip() for x in (product_ids or []) if str(x or "").strip()}
     products = query_products_full(ids=sorted(ids_filter)) if ids_filter else _load_products()
@@ -1320,24 +1383,38 @@ def _export_batch_from_preview(
     ready_count = int(preview.get("ready_count") or 0)
     not_ready_count = int(preview.get("not_ready_count") or max(0, count - ready_count))
     blockers: List[Dict[str, Any]] = []
+    blocked_product_ids: Set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             continue
         missing = item.get("missing") if isinstance(item.get("missing"), list) else []
         missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
+        payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
+        if provider == "ozon":
+            ok_for_store, store_message = _ozon_store_supports_category(
+                store,
+                payload_item.get("description_category_id") or payload_item.get("descriptionCategoryId"),
+            )
+            if not ok_for_store and store_message:
+                missing_clean.append(store_message)
         if not missing_clean:
             continue
-        payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
         offer_id = str(payload_item.get("offerId") or payload_item.get("offer_id") or "").strip()
+        product_id = str(item.get("product_id") or "").strip()
+        if product_id:
+            blocked_product_ids.add(product_id)
         blockers.append(
             {
-                "product_id": str(item.get("product_id") or "").strip(),
+                "product_id": product_id,
                 "offer_id": offer_id,
                 "product_title": str(item.get("product_title") or "").strip(),
                 "category_id": str(item.get("category_id") or "").strip(),
                 "missing": missing_clean,
             }
         )
+    if provider == "ozon" and blocked_product_ids:
+        not_ready_count = len(blocked_product_ids)
+        ready_count = max(0, count - not_ready_count)
     return {
         "provider": provider,
         "store_id": str(store.get("id") or "default"),

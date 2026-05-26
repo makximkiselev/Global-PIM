@@ -2594,6 +2594,42 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn(("dict_protection", "ozon", "IP68 допускается погружение"), calls)
         self.assertNotIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
+    def test_ozon_export_batch_blocks_category_unavailable_for_store(self) -> None:
+        preview = {
+            "count": 1,
+            "ready_count": 1,
+            "not_ready_count": 0,
+            "items": [
+                {
+                    "product_id": "product_1",
+                    "product_title": "TV Box",
+                    "category_id": "cat-tv",
+                    "ready": True,
+                    "missing": [],
+                    "payload_item": {
+                        "offer_id": "GT-1",
+                        "description_category_id": "17028924",
+                    },
+                }
+            ],
+        }
+
+        with patch.object(
+            catalog_exchange,
+            "_ozon_category_store_sources",
+            return_value={"source_store_ids": ["ozon-store-b"], "source_titles": ["Тестовый магазин"]},
+        ):
+            batch = catalog_exchange._export_batch_from_preview(
+                provider="ozon",
+                store={"id": "ozon-store-a", "title": "Global Trade AE"},
+                preview=preview,
+            )
+
+        self.assertEqual(batch["status"], "blocked")
+        self.assertEqual(batch["ready_count"], 0)
+        self.assertEqual(batch["not_ready_count"], 1)
+        self.assertIn("Ozon: категория недоступна в магазине Global Trade AE", batch["blockers"][0]["missing"][0])
+
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
 
