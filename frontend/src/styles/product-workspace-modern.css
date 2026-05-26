@@ -648,6 +648,25 @@
   gap:9px;
 }
 
+.productValidationExportAction{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+  padding:11px;
+  border:1px solid rgba(var(--brand-rgb), .20);
+  border-radius:16px;
+  background:rgba(var(--brand-rgb), .08);
+}
+
+.productValidationExportAction span{
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:800;
+  line-height:1.35;
+}
+
 .productValidationTask,
 .productValidationGroup{
   display:grid;

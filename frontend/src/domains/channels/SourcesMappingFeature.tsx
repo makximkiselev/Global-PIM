@@ -26,6 +26,43 @@ const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
   { key: "values", label: "Значения", hint: "Написания для выгрузки" },
 ];
 
+function sourcesNextAction(tab: SourcesTab, categoryId: string) {
+  if (!categoryId) {
+    return {
+      title: "Выберите категорию",
+      detail: "Сначала выберите рабочую ветку каталога, чтобы видеть привязки площадок, параметры и значения в одном контексте.",
+      label: "Категории",
+      href: "/sources?tab=sources",
+      tone: "pending",
+    };
+  }
+  if (tab === "sources") {
+    return {
+      title: "Собрать параметры",
+      detail: "Когда категория площадки и конкурентные карточки выбраны, переходите к черновику PIM-параметров.",
+      label: "К параметрам",
+      href: `/sources?tab=params&category=${encodeURIComponent(categoryId)}`,
+      tone: "pending",
+    };
+  }
+  if (tab === "params") {
+    return {
+      title: "Нормализовать значения",
+      detail: "После связки полей проверьте справочники, boolean/enum значения и provider-specific output.",
+      label: "К значениям",
+      href: `/sources?tab=values&category=${encodeURIComponent(categoryId)}`,
+      tone: "pending",
+    };
+  }
+  return {
+    title: "Проверить экспорт категории",
+    detail: "После значений запустите readiness batch. Для финальной проверки лучше выбрать отдельный SKU.",
+    label: "Проверить экспорт",
+    href: `/catalog/exchange?tab=export&category=${encodeURIComponent(categoryId)}`,
+    tone: "active",
+  };
+}
+
 function normalizeTab(value: string | null): SourcesTab {
   if (value === "mp_categories" || value === "marketplace_categories") return "sources";
   if (value === "params") return "params";
@@ -67,6 +104,7 @@ export default function SourcesMappingFeature() {
   const initialCategoryId = searchParams.get("category") || "";
   const providerParam = String(searchParams.get("provider") || "").trim();
   const providerCategoryParam = String(searchParams.get("provider_category") || "").trim();
+  const productParam = String(searchParams.get("product") || "").trim();
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
@@ -82,6 +120,7 @@ export default function SourcesMappingFeature() {
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
+  const nextAction = useMemo(() => sourcesNextAction(tab, selectedCategoryId), [selectedCategoryId, tab]);
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
@@ -255,6 +294,23 @@ export default function SourcesMappingFeature() {
           },
         ]}
       />
+
+      <div className="sourcesMappingContextCard">
+        <div>
+          <span>Рабочий контекст</span>
+          <strong>{selectedCategoryName || "Категория не выбрана"}</strong>
+          <p>
+            {productParam
+              ? `Переход из SKU ${productParam}: правки применяются к категории, а проверку результата лучше запускать по этому SKU.`
+              : "Все вкладки ниже работают в одной категории: источники, поля, значения и проверка экспорта."}
+          </p>
+        </div>
+        <div className="sourcesMappingContextActions">
+          {productParam ? <a className="btn" href={`/products/${encodeURIComponent(productParam)}`}>Открыть SKU</a> : null}
+          <a className="btn" href={selectedCategoryId ? `/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}` : "/catalog/exchange?tab=export"}>Экспорт категории</a>
+          <a className="btn primary" href={nextAction.href}>{nextAction.label}</a>
+        </div>
+      </div>
 
       <div className="sourcesMappingCanvas">
         {tab === "params" && categoryResolving ? (

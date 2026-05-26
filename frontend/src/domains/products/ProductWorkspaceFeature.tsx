@@ -196,6 +196,15 @@ const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
 
 const SECTION_IDS = new Set<SectionId>(SECTION_LABELS.map((section) => section.id));
 
+const PRODUCT_NAV_ITEMS: Array<{ id: SectionId; label: string; meta: string }> = [
+  { id: "overview", label: "Описание", meta: "карточка и базовые факты" },
+  { id: "competitors", label: "Источники", meta: "конкуренты и насыщение" },
+  { id: "media", label: "Медиа", meta: "фото и порядок экспорта" },
+  { id: "attributes", label: "Параметры", meta: "значения SKU" },
+  { id: "validation", label: "Экспорт", meta: "проверка перед выгрузкой" },
+  { id: "variants", label: "Варианты", meta: "семейство SKU" },
+];
+
 function sectionFromTab(value: string | null): SectionId {
   const tab = normalizeText(value).toLowerCase();
   if (tab === "params" || tab === "features" || tab === "parameters") return "attributes";
@@ -546,7 +555,7 @@ function ProductWorkspaceSectionNav({
     <nav className="productWorkspaceNav" aria-label="Навигация по товару">
       <div className="productWorkspaceNavTitle">Меню товара</div>
       <div className="productWorkspaceNavList">
-        {SECTION_LABELS.map((section) => (
+        {PRODUCT_NAV_ITEMS.map((section) => (
           <button
             key={section.id}
             type="button"
@@ -859,6 +868,7 @@ function ProductValidationWorkbench({
   features,
   media,
   description,
+  exportHref,
   onOpenFeature,
   onOpenMedia,
   onOpenCompetitors,
@@ -866,6 +876,7 @@ function ProductValidationWorkbench({
   features: ProductFeatureValue[];
   media: ProductMedia[];
   description: string;
+  exportHref: string;
   onOpenFeature: (feature: ProductFeatureValue) => void;
   onOpenMedia: () => void;
   onOpenCompetitors: () => void;
@@ -940,6 +951,10 @@ function ProductValidationWorkbench({
               <strong>{blockers.length ? `${blockers.length} задач` : "Блокеров нет"}</strong>
             </div>
             <Badge tone={blockers.length ? "danger" : "active"}>{blockers.length ? "нужно исправить" : "готово"}</Badge>
+          </div>
+          <div className="productValidationExportAction">
+            <Link className="btn primary" to={exportHref}>Проверить экспорт SKU</Link>
+            <span>Readiness batch покажет реальные блокеры площадок и прямые места исправления.</span>
           </div>
           {blockers.length ? (
             <div className="productValidationTaskList">
@@ -1999,6 +2014,7 @@ function ProductWorkspaceFeature() {
                   features={features}
                   media={media}
                   description={normalizeText(product.content?.description)}
+                  exportHref={productExportHref(product.id)}
                   onOpenFeature={handleOpenFeature}
                   onOpenMedia={() => handleSectionSelect("media")}
                   onOpenCompetitors={() => handleSectionSelect("competitors")}
