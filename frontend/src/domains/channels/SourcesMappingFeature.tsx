@@ -27,16 +27,17 @@ const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
   { key: "values", label: "Значения", hint: "Написания для выгрузки" },
 ];
 
-function readStoredProductContext(): { productId: string; categoryId: string } {
-  if (typeof window === "undefined") return { productId: "", categoryId: "" };
+function readStoredProductContext(): { productId: string; categoryId: string; categoryName: string } {
+  if (typeof window === "undefined") return { productId: "", categoryId: "", categoryName: "" };
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PRODUCT_CONTEXT_CACHE_KEY) || "{}");
     return {
       productId: String(parsed?.productId || "").trim(),
       categoryId: String(parsed?.categoryId || "").trim(),
+      categoryName: String(parsed?.categoryName || "").trim(),
     };
   } catch {
-    return { productId: "", categoryId: "" };
+    return { productId: "", categoryId: "", categoryName: "" };
   }
 }
 
@@ -138,7 +139,7 @@ export default function SourcesMappingFeature() {
   const productParam = String(searchParams.get("product") || storedContext.productId || "").trim();
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
-  const [selectedCategoryName, setSelectedCategoryName] = useState("");
+  const [selectedCategoryName, setSelectedCategoryName] = useState(storedContext.categoryName);
   const [categoryResolving, setCategoryResolving] = useState(
     (initialTab === "params" && !initialCategoryId) || !!providerCategoryParam,
   );
@@ -169,12 +170,13 @@ export default function SourcesMappingFeature() {
       window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
         productId: productParam,
         categoryId: selectedCategoryId,
+        categoryName: selectedCategoryName,
         updatedAt: new Date().toISOString(),
       }));
     } catch {
       // Context persistence is optional; explicit URL params remain authoritative.
     }
-  }, [productParam, selectedCategoryId]);
+  }, [productParam, selectedCategoryId, selectedCategoryName]);
 
   useEffect(() => {
     if (!selectedCategoryId || selectedCategoryName) return;

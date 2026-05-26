@@ -1402,6 +1402,7 @@ function ProductWorkspaceFeature() {
       window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
         productId: product.id,
         categoryId: normalizeText(product.category_id),
+        categoryName: categoryPath || normalizeText(product.category_id),
         title: normalizeText(product.title),
         skuGt: normalizeText(product.sku_gt),
         updatedAt: new Date().toISOString(),
@@ -1409,7 +1410,7 @@ function ProductWorkspaceFeature() {
     } catch {
       // URL params still carry context when localStorage is unavailable.
     }
-  }, [product?.category_id, product?.id, product?.sku_gt, product?.title]);
+  }, [categoryPath, product?.category_id, product?.id, product?.sku_gt, product?.title]);
 
   async function saveMediaImages(nextMedia: ProductMedia[]) {
     if (!product) return;
