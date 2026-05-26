@@ -177,6 +177,26 @@ export default function SourcesMappingFeature() {
   }, [productParam, selectedCategoryId]);
 
   useEffect(() => {
+    if (!selectedCategoryId || selectedCategoryName) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await loadMappingBootstrap();
+        if (cancelled) return;
+        const currentItem = (data.catalog_items || []).find((item) => item.id === selectedCategoryId);
+        const currentNode = (data.catalog_nodes || []).find((item) => item.id === selectedCategoryId);
+        const nextName = currentItem?.name || currentItem?.path || currentNode?.name || "";
+        if (nextName) setSelectedCategoryName((prev) => (prev === nextName ? prev : nextName));
+      } catch {
+        // The id is still enough to keep links/actions correct; the name can resolve on the next successful bootstrap.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId, selectedCategoryName]);
+
+  useEffect(() => {
     if (!providerParam || !providerCategoryParam) return;
     let cancelled = false;
     (async () => {
