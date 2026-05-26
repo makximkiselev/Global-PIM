@@ -724,7 +724,8 @@ For every page/tab after editing:
    - if `pim_channel_links` has `candidate` or `confirmed` competitor links, export preparation should enrich `content.media_images` from those links;
    - if no competitor links exist for the SKU, the blocker belongs to the competitor-matching step, not the media-import step.
 7. Competitor image URLs that are extracted but cannot be imported into storage should remain visible as `content.media_images[].status = needs_review`; do not collapse them back into “Нет изображений”.
-8. Ozon category availability has two valid sources:
+8. Export blocker UI should prefer backend `missing_details[].target` over text matching. `competitors` opens the competitor workspace, `media` opens product media, `params`/`values`/`sources` open the relevant mapping tab.
+9. Ozon category availability has two valid sources:
    - `description-category/tree` for visible catalog navigation;
    - `description-category/attribute` for real export/import compatibility.
    If a category/type pair is missing from the tree but the attributes API accepts it, keep it usable, show the validation source in UI, and do not block export solely by tree provenance.

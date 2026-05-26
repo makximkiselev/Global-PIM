@@ -41,7 +41,14 @@ type ExportRunResp = {
     not_ready_count?: number;
     blockers_count?: number;
     count: number;
-    blockers?: Array<{ product_id: string; offer_id?: string; product_title?: string; category_id?: string; missing: string[] }>;
+    blockers?: Array<{
+      product_id: string;
+      offer_id?: string;
+      product_title?: string;
+      category_id?: string;
+      missing: string[];
+      missing_details?: ExportMissingDetail[];
+    }>;
   }>;
 };
 type LatestExportRunResp = { ok: boolean; run: ExportRunResp };
@@ -65,6 +72,15 @@ type ExportBlocker = {
   product_title?: string;
   category_id?: string;
   missing: string[];
+  missing_details: ExportMissingDetail[];
+};
+
+type ExportMissingDetail = {
+  code?: string;
+  message?: string;
+  target?: "competitors" | "media" | "description" | "sources" | "params" | "values" | "product" | string;
+  parameter?: string;
+  count?: number;
 };
 
 type MetricItem = {
@@ -97,9 +113,17 @@ function providerTitle(provider: string): string {
   return provider;
 }
 
-function blockerFixHref(blocker: ExportBlocker, reason: string): string {
+function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
+  const target = String(detail?.target || "").trim();
+  if (product && target === "competitors") return `/products/${encodeURIComponent(product)}?tab=competitors`;
+  if (product && target === "media") return `/products/${encodeURIComponent(product)}?tab=media`;
+  if (product && target === "description") return `/products/${encodeURIComponent(product)}?tab=description`;
+  if (category && target === "sources") return `/sources?tab=sources&category=${encodeURIComponent(category)}`;
+  if (category && target === "params") return `/sources?tab=params&category=${encodeURIComponent(category)}`;
+  if (category && target === "values") return `/sources?tab=values&category=${encodeURIComponent(category)}`;
+  if (product && target === "product") return `/products/${encodeURIComponent(product)}`;
   const lower = reason.toLowerCase();
   if (category && (lower.includes("категор") || lower.includes("marketcategoryid"))) {
     return `/sources?tab=sources&category=${encodeURIComponent(category)}`;
@@ -123,7 +147,15 @@ function blockerFixHref(blocker: ExportBlocker, reason: string): string {
   return category ? `/sources?tab=params&category=${encodeURIComponent(category)}` : "/catalog/exchange?tab=export";
 }
 
-function blockerFixLabel(reason: string): string {
+function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
+  const target = String(detail?.target || "").trim();
+  if (target === "competitors") return "Открыть конкурентов";
+  if (target === "media") return detail?.code === "media_review_required" ? "Проверить медиа" : "Открыть медиа";
+  if (target === "description") return "Открыть описание";
+  if (target === "sources") return "Открыть категории";
+  if (target === "params") return "Открыть параметры";
+  if (target === "values") return "Открыть значения";
+  if (target === "product") return "Открыть SKU";
   const lower = reason.toLowerCase();
   if (lower.includes("категор")) return "Открыть категории";
   if (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр")) return "Открыть параметры";
@@ -273,6 +305,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
           missing.join("|"),
         ].join("::");
         if (!byKey.has(key)) {
+          const missingDetails = (blocker.missing_details || []).filter(Boolean);
           byKey.set(key, {
             provider: batch.provider,
             providerTitle: providerTitle(batch.provider),
@@ -281,6 +314,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             product_title: blocker.product_title,
             category_id: blocker.category_id,
             missing,
+            missing_details: missingDetails,
           });
         }
       }
@@ -644,20 +678,26 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                               <Link to={`/products/${encodeURIComponent(blocker.product_id)}`}>{blocker.product_title || blocker.product_id}</Link>
                             </div>
                             <ul>
-                              {blocker.missing.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}
+                              {blocker.missing.slice(0, 4).map((reason, index) => {
+                                const detail = blocker.missing_details[index];
+                                return <li key={reason}>{detail?.message || reason}</li>;
+                              })}
                             </ul>
                             <div className="cx-exportBlockerActions">
                               <Link className="btn" to={`/products/${encodeURIComponent(blocker.product_id)}`}>Открыть SKU</Link>
-                              {blocker.missing.slice(0, 4).map((reason, index) => (
+                              {blocker.missing.slice(0, 4).map((reason, index) => {
+                                const detail = blocker.missing_details[index];
+                                return (
                                 <Link
                                   key={`${reason}:${index}`}
                                   className={`btn ${index === 0 ? "btn-primary" : ""}`}
-                                  to={blockerFixHref(blocker, reason)}
+                                  to={blockerFixHref(blocker, reason, detail)}
                                   title={reason}
                                 >
-                                  {blockerFixLabel(reason)}
+                                  {blockerFixLabel(reason, detail)}
                                 </Link>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                       ))}

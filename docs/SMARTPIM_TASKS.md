@@ -637,7 +637,11 @@ Second category export proof:
 
 Next fix in the category flow:
 
-1. The UI should keep separating “нет ссылок конкурентов” as a previous-step blocker from “ссылка есть, медиа найдено, нужна проверка” as a media-check state.
+1. Export blockers now carry machine-readable `missing_details` with a target workspace:
+   - no confirmed competitor/product source for images -> `competitors`;
+   - confirmed source exists but images are not imported -> `media`;
+   - selected `needs_review`/external-hotlink media exists -> `media` review blocker, not silent readiness;
+   - parameter/category/value blockers route to `sources`, `params`, or `values` without guessing from text.
 2. Continue value/dictionary QA on the ready branches, especially provider-specific controlled values.
    - value readiness now checks real PIM dictionary values against provider output coverage, not the full provider allowed-value list;
    - production value check after deploy: `iPhone 17 Pro Max` has 0 value blockers and 26 unit checks; `iPad Air 11 M3` has 0 value blockers and 24 unit checks;

@@ -2549,6 +2549,68 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(item["ready"], False)
         self.assertIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
+    def test_ozon_export_preview_classifies_missing_media_without_competitor_link(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "features": [{"code": "brand", "name": "Бренд", "value": "Apple"}],
+            },
+        }
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "oz-phone"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": []}),
+            patch.object(catalog_exchange, "_confirmed_links_for_product", return_value=[]),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        detail = response["items"][0]["missing_details"][0]
+        self.assertEqual(detail["code"], "competitor_link_required")
+        self.assertEqual(detail["target"], "competitors")
+        self.assertIn("конкурента", detail["message"])
+
+    def test_ozon_export_preview_classifies_review_media_as_media_check(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [
+                    {
+                        "url": "https://restore.example.test/iphone.jpg",
+                        "status": "needs_review",
+                        "selected": True,
+                    }
+                ],
+                "features": [{"code": "brand", "name": "Бренд", "value": "Apple"}],
+            },
+        }
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "oz-phone"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": []}),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], False)
+        detail = item["missing_details"][0]
+        self.assertEqual(detail["code"], "media_review_required")
+        self.assertEqual(detail["target"], "media")
+        self.assertIn("требует проверки", detail["message"])
+
     def test_ozon_export_preview_uses_provider_specific_output_value(self) -> None:
         product = {
             "id": "product_1",

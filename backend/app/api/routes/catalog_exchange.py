@@ -110,6 +110,30 @@ def _load_nodes() -> List[Dict[str, Any]]:
     return load_catalog_nodes()
 
 
+def _media_items_for_export_review(media: Any) -> List[Dict[str, Any]]:
+    return [
+        item
+        for item in (media if isinstance(media, list) else [])
+        if isinstance(item, dict) and item.get("selected") is not False and str(item.get("url") or "").strip()
+    ]
+
+
+def _media_review_count(media: Any) -> int:
+    count = 0
+    for item in _media_items_for_export_review(media):
+        status = str(item.get("status") or "").strip().lower()
+        source_type = str(item.get("source_type") or "").strip().lower()
+        if status == "needs_review" or item.get("needs_review") is True or source_type == "external_hotlink":
+            count += 1
+    return count
+
+
+def _missing_detail(code: str, message: str, target: str, **extra: Any) -> Dict[str, Any]:
+    out = {"code": code, "message": message, "target": target}
+    out.update({k: v for k, v in extra.items() if v not in (None, "")})
+    return out
+
+
 def _load_runs(path: Path) -> Dict[str, Any]:
     doc = read_doc(path, default={"runs": {}})
     runs = doc.get("runs") if isinstance(doc, dict) else {}
@@ -1322,28 +1346,46 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
 
         missing: List[str] = []
+        missing_details: List[Dict[str, Any]] = []
         if status in {"archived", "archive"}:
             missing.append("Товар в архиве")
+            missing_details.append(_missing_detail("archived_product", "Товар в архиве", "product"))
         if not offer_id:
             missing.append("SKU GT (offer_id) не заполнен")
+            missing_details.append(_missing_detail("missing_offer_id", "SKU GT (offer_id) не заполнен", "description"))
         if not ozon_category_id:
             missing.append("Нет сопоставления категории с Ozon")
+            missing_details.append(_missing_detail("category_mapping_required", "Нет сопоставления категории с Ozon", "sources"))
         if not name:
             missing.append("Название товара не заполнено")
+            missing_details.append(_missing_detail("missing_title", "Название товара не заполнено", "description"))
         if not pictures:
             confirmed_links = _confirmed_links_for_product(pid)
             if confirmed_links:
-                missing.append("Нет изображений: проверьте медиа товара или повторите загрузку из подтвержденных источников")
+                message = "Нет изображений: проверьте медиа товара или повторите загрузку из подтвержденных источников"
+                missing.append(message)
+                missing_details.append(_missing_detail("media_import_required", message, "media"))
             else:
-                missing.append("Нет изображений: сначала подтвердите карточку конкурента или импортируйте фото с площадки")
+                message = "Нет изображений: сначала подтвердите карточку конкурента или импортируйте фото с площадки"
+                missing.append(message)
+                missing_details.append(_missing_detail("competitor_link_required", message, "competitors"))
+        elif _media_review_count(media) > 0:
+            message = "Медиа найдено, но часть изображений требует проверки перед выгрузкой"
+            missing.append(message)
+            missing_details.append(_missing_detail("media_review_required", message, "media", count=_media_review_count(media)))
         if not type_value:
             missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Тип' не сопоставлен/пуст", "params", parameter="Тип"))
         if not vendor:
             missing.append("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст")
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст", "params", parameter="Бренд"))
         if not model_group:
             missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст", "params", parameter="Название модели"))
         for pname in sorted(set(value_mapping_missing)):
-            missing.append(f"{pname}: значение не сопоставлено с Ozon")
+            message = f"{pname}: значение не сопоставлено с Ozon"
+            missing.append(message)
+            missing_details.append(_missing_detail("value_mapping_required", message, "values", parameter=pname))
 
         ready = len(missing) == 0
         if ready:
@@ -1356,6 +1398,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 "category_id": category_id,
                 "ready": ready,
                 "missing": missing,
+                "missing_details": missing_details,
                 "payload_item": {
                     "offer_id": offer_id,
                     "name": name,
@@ -1392,6 +1435,8 @@ def _export_batch_from_preview(
             continue
         missing = item.get("missing") if isinstance(item.get("missing"), list) else []
         missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
+        missing_details = item.get("missing_details") if isinstance(item.get("missing_details"), list) else []
+        missing_details_clean = [x for x in missing_details if isinstance(x, dict)]
         payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
         if not missing_clean:
             continue
@@ -1404,6 +1449,7 @@ def _export_batch_from_preview(
                 "product_title": str(item.get("product_title") or "").strip(),
                 "category_id": str(item.get("category_id") or "").strip(),
                 "missing": missing_clean,
+                "missing_details": missing_details_clean,
             }
         )
     return {
