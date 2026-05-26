@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  connectorBlockerAction,
   connectorStatusClass,
   humanConnectorError,
   methodIntent,
@@ -38,6 +39,30 @@ describe("connectorsReadiness", () => {
     expect(humanConnectorError("COMFYUI_UNREACHABLE: connection attempts failed")).toContain(
       "Генератор медиа недоступен",
     );
+  });
+
+  it("builds blocker navigation to the place where the issue can be fixed", () => {
+    const ozonAction = connectorBlockerAction("ozon", {
+      code: "category_attributes",
+      status: "warn",
+      last_error: "OZON_CATEGORY_ATTRIBUTES_PARTIAL 28/29 imported; 17028924: 400: OZON_TYPE_ID_NOT_RESOLVED",
+      title: "Импорт характеристик категорий",
+    });
+
+    expect(ozonAction.href).toContain("/sources?");
+    expect(ozonAction.href).toContain("provider=ozon");
+    expect(ozonAction.href).toContain("provider_category=17028924");
+    expect(ozonAction.label).toContain("17028924");
+
+    const comfyAction = connectorBlockerAction("comfyui", {
+      code: "healthcheck",
+      status: "warn",
+      last_error: "not_configured",
+      title: "Проверка доступности генератора",
+    });
+
+    expect(comfyAction.href).toBe("/connectors/status?tab=marketplaces&provider=comfyui");
+    expect(comfyAction.label).toContain("генератора");
   });
 
   it("keeps status labels and css classes stable", () => {

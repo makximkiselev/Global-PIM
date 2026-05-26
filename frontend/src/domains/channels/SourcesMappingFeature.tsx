@@ -22,7 +22,7 @@ let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
 const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
   { key: "sources", label: "Категории", hint: "Площадки и конкурентные источники" },
-  { key: "params", label: "Параметры", hint: "Поля PIM и поля площадок" },
+  { key: "params", label: "Черновик параметров", hint: "Evidence -> PIM поля" },
   { key: "values", label: "Значения", hint: "Написания для выгрузки" },
 ];
 
@@ -65,60 +65,75 @@ export default function SourcesMappingFeature() {
   const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
   const initialCategoryId = searchParams.get("category") || "";
+  const providerParam = String(searchParams.get("provider") || "").trim();
+  const providerCategoryParam = String(searchParams.get("provider_category") || "").trim();
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
-  const [categoryResolving, setCategoryResolving] = useState(initialTab === "params" && !initialCategoryId);
+  const [categoryResolving, setCategoryResolving] = useState(
+    (initialTab === "params" && !initialCategoryId) || !!providerCategoryParam,
+  );
   const tabDescription = useMemo(
     () =>
       tab === "sources"
         ? "Выберите PIM-категорию, сопоставьте площадки и подтвердите конкурентные карточки для насыщения товаров."
         : tab === "params"
-          ? "Свяжите параметры инфо-модели с полями каналов и проверьте обязательные поля для выгрузки."
+          ? "Соберите черновик PIM-параметров из площадок, конкурентов и товарных данных, затем утверждайте модель."
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
-  const selectedCategoryContext = selectedCategoryName ? `Категория: ${selectedCategoryName}` : undefined;
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
     const nextCategoryId = searchParams.get("category") || "";
+    const nextProviderCategoryId = String(searchParams.get("provider_category") || "").trim();
     setTabState((prev) => (prev === nextTab ? prev : nextTab));
     setSelectedCategoryId(nextCategoryId);
     setSelectedCategoryName((prev) => (nextCategoryId ? prev : ""));
-    setCategoryResolving(nextTab === "params" && !nextCategoryId);
+    setCategoryResolving((nextTab === "params" && !nextCategoryId) || !!nextProviderCategoryId);
   }, [searchParams]);
 
   useEffect(() => {
-    if (!selectedCategoryId) {
-      setSelectedCategoryName("");
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await loadMappingBootstrap();
-        if (cancelled) return;
-        const currentItem = (data.catalog_items || []).find((item) => item.id === selectedCategoryId);
-        const nextName = currentItem?.name || currentItem?.path || "";
-        if (nextName) setSelectedCategoryName((prev) => (prev === nextName ? prev : nextName));
-      } catch {
-        if (!cancelled) setSelectedCategoryName((prev) => prev || "");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCategoryId]);
-
-  useEffect(() => {
-    if (tab !== "params" || !selectedCategoryId) return;
+    if (!providerParam || !providerCategoryParam) return;
     let cancelled = false;
     (async () => {
       try {
         const data = await loadMappingBootstrap();
         if (cancelled) return;
         const mappings = data.mappings || {};
+        const matched = (data.catalog_items || []).find(
+          (item) => String(mappings[item.id]?.[providerParam] || "").trim() === providerCategoryParam,
+        );
+        if (matched) {
+          setSelectedCategory(matched.id, matched.name || matched.path || matched.id);
+        }
+      } finally {
+        if (!cancelled) setCategoryResolving(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [providerParam, providerCategoryParam, searchParams]);
+
+  useEffect(() => {
+    if (tab !== "params") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await loadMappingBootstrap();
+        if (cancelled) return;
+        const mappings = data.mappings || {};
+        if (!selectedCategoryId) {
+          const mappedItem = [...(data.catalog_items || [])]
+            .sort((a, b) => String(a.path || a.name || "").localeCompare(String(b.path || b.name || ""), "ru"))
+            .find((item) => Object.values(mappings[item.id] || {}).some((value) => !!String(value || "").trim()));
+          if (mappedItem) {
+            setSelectedCategory(mappedItem.id, mappedItem.name || mappedItem.path || mappedItem.id);
+            return;
+          }
+          return;
+        }
         const currentItem = (data.catalog_items || []).find((item) => item.id === selectedCategoryId);
         if (currentItem?.name) {
           setSelectedCategoryName((prev) => (prev === currentItem.name ? prev : currentItem.name));
@@ -196,7 +211,7 @@ export default function SourcesMappingFeature() {
       <WorkspaceHeader
         eyebrow="Инфо-модели"
         title="Сопоставления"
-        context={selectedCategoryContext}
+        context={selectedCategoryName || undefined}
         subtitle={tabDescription}
         tabs={TAB_ITEMS}
         activeTab={tab}
@@ -209,17 +224,17 @@ export default function SourcesMappingFeature() {
           {
             key: "sources",
             label: "Категории и конкурентные карточки",
-            description: "Сначала свяжи PIM-ветку с площадками и выбери точные карточки re-store/store77.",
+            description: "Сначала свяжи PIM-ветку с площадками, затем подтверди точные карточки re-store/store77 для SKU.",
             href: selectedCategoryId ? `/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
             actionLabel: "Открыть",
             status: tab === "sources" ? "active" : "done",
           },
           {
             key: "params",
-            label: "Поля инфо-модели",
-            description: "Свяжи поля PIM с обязательными и полезными полями Я.Маркет/Ozon.",
+            label: "Черновик PIM-параметров",
+            description: "Создается после marketplace + competitor + product evidence. Площадки одни не являются финальной моделью.",
             href: selectedCategoryId ? `/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
-            actionLabel: "Параметры",
+            actionLabel: "Черновик",
             status: tab === "params" ? "active" : tab === "values" ? "done" : "todo",
           },
           {

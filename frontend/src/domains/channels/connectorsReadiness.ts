@@ -12,6 +12,12 @@ export type ConnectorIntent = {
   impact: string;
 };
 
+export type ConnectorBlockerAction = {
+  label: string;
+  href: string;
+  hint?: string;
+};
+
 export function methodIntent(method: Pick<ConnectorMethodLike, "code" | "title">): ConnectorIntent {
   const text = `${method.code} ${method.title}`.toLowerCase();
   if (text.includes("характер") || text.includes("attribute") || text.includes("param")) {
@@ -64,6 +70,49 @@ export function humanConnectorError(raw: string) {
   }
   if (text.length > 220) return `${text.slice(0, 220)}...`;
   return text;
+}
+
+export function connectorBlockerAction(
+  providerCode: string,
+  method: Pick<ConnectorMethodLike, "code" | "last_error">,
+): ConnectorBlockerAction {
+  const provider = String(providerCode || "").trim();
+  const code = String(method.code || "").trim();
+  const error = String(method.last_error || "").trim();
+  const lower = `${provider} ${code} ${error}`.toLowerCase();
+
+  if (lower.includes("ozon_type_id_not_resolved") || lower.includes("ozon_category_attributes_partial")) {
+    const providerCategoryId = error.match(/(?:^|[;|\s])(\d{5,})\s*:\s*(?:\d{3}:)?\s*ozon_type_id_not_resolved/i)?.[1] || "";
+    const params = new URLSearchParams({ tab: "sources", provider: "ozon" });
+    if (providerCategoryId) params.set("provider_category", providerCategoryId);
+    return {
+      label: providerCategoryId ? `Открыть категорию Ozon ${providerCategoryId}` : "Открыть сопоставление Ozon",
+      href: `/sources?${params.toString()}`,
+      hint: "Проверьте связь категории Ozon с PIM-веткой, затем повторите импорт параметров.",
+    };
+  }
+
+  if (provider === "comfyui" || lower.includes("comfy") || lower.includes("not_configured")) {
+    return {
+      label: "Открыть настройки генератора",
+      href: "/connectors/status?tab=marketplaces&provider=comfyui",
+      hint: "Настройте доступность ComfyUI или отключите генерацию инфографики из текущего процесса.",
+    };
+  }
+
+  if (provider) {
+    return {
+      label: "Открыть источник",
+      href: `/connectors/status?tab=marketplaces&provider=${encodeURIComponent(provider)}`,
+      hint: "Проверьте процесс, доступы и последний запуск источника.",
+    };
+  }
+
+  return {
+    label: "Открыть источники",
+    href: "/connectors/status?tab=marketplaces",
+    hint: "Проверьте источник и повторите процесс после исправления.",
+  };
 }
 
 export function connectorStatusClass(status: ConnectorMethodStatus) {

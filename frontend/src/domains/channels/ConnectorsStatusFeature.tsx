@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
@@ -11,6 +12,7 @@ import TextInput from "../../components/ui/TextInput";
 import Textarea from "../../components/ui/Textarea";
 import {
   connectorStatusClass,
+  connectorBlockerAction,
   humanConnectorError,
   methodIntent,
   methodStatusLabel,
@@ -298,10 +300,12 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     (provider.methods || [])
       .filter((method) => method.status !== "ok")
       .map((method) => ({
+        providerCode: provider.code,
         provider: provider.title,
         method,
         intent: methodIntent(method),
         error: humanConnectorError(method.last_error || ""),
+        action: connectorBlockerAction(provider.code, method),
       })),
   );
   const criticalCount = allMethods.filter((m) => m.status === "critical").length;
@@ -384,16 +388,16 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
           </div>
           <div className="cs-actionStack">
             {issueRows.length ? issueRows.slice(0, 3).map((issue) => (
-              <button
+              <Link
                 key={`${issue.provider}-${issue.method.code}`}
-                type="button"
                 className={`cs-actionItem ${connectorStatusClass(issue.method.status)}`}
-                onClick={() => copyError(issue.method.last_error || issue.error, `${issue.provider}:${issue.method.code}`)}
+                to={issue.action.href}
               >
                 <span>{issue.intent.label}</span>
                 <strong>{issue.provider}</strong>
                 <em>{issue.error}</em>
-              </button>
+                <b>{issue.action.label}</b>
+              </Link>
             )) : (
               <>
                 <div className="cs-actionItem ok">

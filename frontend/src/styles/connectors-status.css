@@ -178,12 +178,19 @@
   text-align:left;
 }
 
-button.cs-actionItem{
+.cs-actionItem{
+  display:block;
+  text-decoration:none;
+}
+
+button.cs-actionItem,
+a.cs-actionItem{
   cursor:pointer;
   transition:transform .2s ease, box-shadow .2s ease;
 }
 
-button.cs-actionItem:hover{
+button.cs-actionItem:hover,
+a.cs-actionItem:hover{
   transform:translateX(3px);
   box-shadow:0 12px 28px rgba(15, 23, 42, .08);
 }
@@ -232,6 +239,15 @@ button.cs-actionItem:hover{
   overflow-wrap:anywhere;
   -webkit-box-orient:vertical;
   -webkit-line-clamp:3;
+}
+
+.cs-actionItem b{
+  display:block;
+  margin-top:10px;
+  color:#0b5fff;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.25;
 }
 
 .cs-providers{
