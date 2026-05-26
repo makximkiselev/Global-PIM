@@ -210,6 +210,98 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function productExportHref(productId: string) {
+  return `/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`;
+}
+
+function sourcesHref(categoryId?: string, tab = "params") {
+  const id = normalizeText(categoryId);
+  return id ? `/sources?tab=${encodeURIComponent(tab)}&category=${encodeURIComponent(id)}` : `/sources?tab=${encodeURIComponent(tab)}`;
+}
+
+type ProductNextAction = {
+  title: string;
+  detail: string;
+  cta: string;
+  href?: string;
+  tab?: SectionId;
+  tone: "active" | "pending" | "danger" | "neutral";
+};
+
+function hasActiveCompetitorLink(channels: ChannelsSummary | null): boolean {
+  return Boolean((channels?.competitors || []).some((item) => toneForStatus(item.status) === "active"));
+}
+
+function buildProductNextAction({
+  product,
+  infoModel,
+  features,
+  media,
+  channels,
+}: {
+  product: ProductData;
+  infoModel: ProductInfoModel | null;
+  features: ProductFeatureValue[];
+  media: ProductMedia[];
+  channels: ChannelsSummary | null;
+}): ProductNextAction {
+  const categoryId = normalizeText(product.category_id);
+  const hasInfoModel = Boolean(infoModel?.has_template || infoModel?.template_id || infoModel?.attributes_count || features.length);
+  const description = normalizeText(product.content?.description);
+  const competitorReady = hasActiveCompetitorLink(channels);
+
+  if (!hasInfoModel) {
+    return {
+      title: "Собрать параметры категории",
+      detail: "Товару нужна рабочая модель параметров перед проверкой выгрузки.",
+      cta: "Открыть сопоставления",
+      href: sourcesHref(categoryId, "params"),
+      tone: "danger",
+    };
+  }
+
+  if (!description) {
+    return {
+      title: "Найти описание из источника",
+      detail: "Описание пустое. Проверьте подтвержденные карточки конкурентов или импорт площадки.",
+      cta: "Открыть конкурентов",
+      tab: "competitors",
+      tone: "pending",
+    };
+  }
+
+  if (!media.length) {
+    return {
+      title: competitorReady ? "Проверить медиа" : "Подтвердить источник медиа",
+      detail: competitorReady
+        ? "Ссылки конкурентов есть, но в карточке нет изображений для экспорта."
+        : "Сначала подтвердите точную карточку конкурента или импортируйте фото с площадки.",
+      cta: competitorReady ? "Открыть медиа" : "Открыть конкурентов",
+      tab: competitorReady ? "media" : "competitors",
+      tone: "danger",
+    };
+  }
+
+  const requiredMissing = features.filter((feature) => feature.required && !featureValue(feature)).length;
+  if (requiredMissing > 0) {
+    return {
+      title: "Заполнить обязательные параметры",
+      detail: `${requiredMissing} обязательных полей еще пустые.`,
+      cta: "Открыть валидацию",
+      tab: "validation",
+      tone: "danger",
+    };
+  }
+
+  return {
+    title: "Проверить экспорт SKU",
+    detail: "Описание, медиа и базовые параметры есть. Запустите readiness batch по безопасным магазинам.",
+    cta: "Открыть экспорт",
+    href: productExportHref(product.id),
+    tone: "active",
+  };
+}
+
 function featureIdentity(value: unknown): string {
   return normalizeText(value).toLowerCase().replace(/[\s-]+/g, "_");
 }
@@ -1287,6 +1379,11 @@ function ProductWorkspaceFeature() {
     return filteredCompetitorIds.filter((id) => selectedCompetitorSet.has(id));
   }, [filteredCompetitorIds, selectedCompetitorSet]);
   const justCreated = searchParams.get("created") === "1";
+  const nextAction = useMemo(() => product
+    ? buildProductNextAction({ product, infoModel, features, media, channels })
+    : null,
+    [channels, features, infoModel, media, product],
+  );
 
   async function saveMediaImages(nextMedia: ProductMedia[]) {
     if (!product) return;
@@ -1600,6 +1697,20 @@ function ProductWorkspaceFeature() {
             <span>Для группы вариантов выберите нужные SKU в блоке ниже, запустите поиск re-store/store77 и загрузите параметры, описание и медиа только из подтвержденных ссылок.</span>
           </div>
           <Button variant="primary" onClick={() => handleSectionSelect("competitors")}>Открыть конкурентов</Button>
+        </Card>
+      ) : null}
+
+      {nextAction ? (
+        <Card className="productWorkspaceNextAction">
+          <div className="productWorkspaceNextActionText">
+            <Badge tone={nextAction.tone}>{nextAction.title}</Badge>
+            <span>{nextAction.detail}</span>
+          </div>
+          {nextAction.href ? (
+            <Link className="btn primary" to={nextAction.href}>{nextAction.cta}</Link>
+          ) : nextAction.tab ? (
+            <Button variant="primary" onClick={() => handleSectionSelect(nextAction.tab as SectionId)}>{nextAction.cta}</Button>
+          ) : null}
         </Card>
       ) : null}
 

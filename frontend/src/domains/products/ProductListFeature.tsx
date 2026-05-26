@@ -171,9 +171,14 @@ function withProductExportHref(productIds: string[]) {
   return `/catalog/export?${param}=${encodeURIComponent(ids.join(","))}`;
 }
 
+function sourcesMappingHref(categoryId?: string | null, tab = "params") {
+  const id = String(categoryId || "").trim();
+  return id ? `/sources?tab=${encodeURIComponent(tab)}&category=${encodeURIComponent(id)}` : `/sources?tab=${encodeURIComponent(tab)}`;
+}
+
 function templateHref(product: ProductItem) {
   const sourceCategoryId = String(product.effective_template_source_category_id || product.category_id || "").trim();
-  return sourceCategoryId ? `/templates/${encodeURIComponent(sourceCategoryId)}` : "/templates";
+  return sourcesMappingHref(sourceCategoryId, "params");
 }
 
 function getProductNextStep(product: ProductItem): {

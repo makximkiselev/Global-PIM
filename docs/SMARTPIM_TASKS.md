@@ -544,6 +544,7 @@ Current state:
    - `Отдельные SKU` exports only manually selected products;
    - selecting SKU clears category export scope to avoid accidental mixed/broad batches.
 10. Legacy `/product-groups` route redirects to `/catalog/groups`, so old links do not land on an empty shell.
+11. Product workspace now shows a persistent next-action card above the main workbench. It routes the SKU to parameter mapping, competitor/media work, validation, or safe single-SKU export based on the current product facts.
 
 Known problems:
 
@@ -556,7 +557,7 @@ Known problems:
 Next tasks:
 
 1. Continue replacing page-specific workspace fragments with shared primitives.
-2. Add one persistent category/SKU next-action state across catalog, sources, product card, and export.
+2. Add one persistent category/SKU next-action state across catalog, sources, product card, and export. Product list and product workspace now share the same scenario intent; next pass should surface this state inside `/sources` headers too.
 3. Move long source descriptions into evidence/details panels, not visible canonical fields.
 4. Add a guardrail that defaults export checks to one SKU or asks for explicit confirmation before broad category batches. The broad-scope confirmation checkbox is implemented; continue nudging users toward selected SKU/category checks in the next-action state.
 5. Continue applying the same one-SKU media/enrichment/export check to the next iPhone variants in the line.

@@ -903,6 +903,31 @@
   line-height:1.45;
 }
 
+.productWorkspaceNextAction{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:14px 16px;
+  border-color:rgba(var(--brand-rgb), .20);
+  background:linear-gradient(180deg, rgba(var(--card-rgb), .96), rgba(var(--bg-rgb), .44));
+}
+
+.productWorkspaceNextActionText{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.productWorkspaceNextActionText span:not(.badge){
+  color:var(--text-soft);
+  font-size:13px;
+  font-weight:800;
+  line-height:1.4;
+}
+
 .productWorkspaceEmptyActions .btn{
   min-height:40px;
   padding:10px 14px;
