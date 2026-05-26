@@ -195,6 +195,7 @@ const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
 ];
 
 const SECTION_IDS = new Set<SectionId>(SECTION_LABELS.map((section) => section.id));
+const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 
 const PRODUCT_NAV_ITEMS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "overview", label: "Описание", meta: "карточка и базовые факты" },
@@ -221,11 +222,6 @@ function normalizeText(value: unknown): string {
 
 function productExportHref(productId: string) {
   return `/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`;
-}
-
-function sourcesHref(categoryId?: string, tab = "params") {
-  const id = normalizeText(categoryId);
-  return id ? `/sources?tab=${encodeURIComponent(tab)}&category=${encodeURIComponent(id)}` : `/sources?tab=${encodeURIComponent(tab)}`;
 }
 
 type ProductNextAction = {
@@ -1400,6 +1396,21 @@ function ProductWorkspaceFeature() {
     [channels, features, infoModel, media, product],
   );
 
+  useEffect(() => {
+    if (!product?.id) return;
+    try {
+      window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
+        productId: product.id,
+        categoryId: normalizeText(product.category_id),
+        title: normalizeText(product.title),
+        skuGt: normalizeText(product.sku_gt),
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // URL params still carry context when localStorage is unavailable.
+    }
+  }, [product?.category_id, product?.id, product?.sku_gt, product?.title]);
+
   async function saveMediaImages(nextMedia: ProductMedia[]) {
     if (!product) return;
     const orderedMedia = nextMedia.map((item, index) => ({
@@ -1905,6 +1916,15 @@ function ProductWorkspaceFeature() {
                         const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const, sources: [] };
                         const itemId = normalizeText(item.id);
                         const isSelected = selectedCompetitorSet.has(itemId);
+                        const actionLabel = isActive
+                          ? "Текущий SKU"
+                          : skuStatus.tone === "pending"
+                            ? "Разобрать"
+                            : skuStatus.tone === "active"
+                              ? "Проверить"
+                              : skuStatus.tone === "danger"
+                                ? "Исправить"
+                                : "Выбрать";
                         return (
                           <div
                             key={item.id}
@@ -1935,7 +1955,7 @@ function ProductWorkspaceFeature() {
                               )}
                             </span>
                             <button type="button" className="pn-competitorSkuAction" onClick={() => setCompetitorProductId(item.id)}>
-                              {isActive ? "Открыт" : "Открыть"}
+                              {actionLabel}
                             </button>
                           </div>
                         );

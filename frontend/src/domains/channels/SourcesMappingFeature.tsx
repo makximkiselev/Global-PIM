@@ -18,6 +18,7 @@ type MappingBootstrapResp = {
   mappings?: Record<string, Record<string, string>>;
 };
 const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v2";
+const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
 const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
@@ -26,13 +27,40 @@ const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
   { key: "values", label: "Значения", hint: "Написания для выгрузки" },
 ];
 
-function sourcesNextAction(tab: SourcesTab, categoryId: string) {
+function readStoredProductContext(): { productId: string; categoryId: string } {
+  if (typeof window === "undefined") return { productId: "", categoryId: "" };
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PRODUCT_CONTEXT_CACHE_KEY) || "{}");
+    return {
+      productId: String(parsed?.productId || "").trim(),
+      categoryId: String(parsed?.categoryId || "").trim(),
+    };
+  } catch {
+    return { productId: "", categoryId: "" };
+  }
+}
+
+function sourcesHref(tab: SourcesTab, categoryId: string, productId: string) {
+  const params = new URLSearchParams();
+  params.set("tab", tab);
+  if (categoryId) params.set("category", categoryId);
+  if (productId) params.set("product", productId);
+  return `/sources?${params.toString()}`;
+}
+
+function exportHref(categoryId: string, productId: string) {
+  if (productId) return `/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`;
+  if (categoryId) return `/catalog/exchange?tab=export&category=${encodeURIComponent(categoryId)}`;
+  return "/catalog/exchange?tab=export";
+}
+
+function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: string) {
   if (!categoryId) {
     return {
       title: "Выберите категорию",
       detail: "Сначала выберите рабочую ветку каталога, чтобы видеть привязки площадок, параметры и значения в одном контексте.",
       label: "Категории",
-      href: "/sources?tab=sources",
+      href: sourcesHref("sources", "", productId),
       tone: "pending",
     };
   }
@@ -41,7 +69,7 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string) {
       title: "Собрать параметры",
       detail: "Когда категория площадки и конкурентные карточки выбраны, переходите к черновику PIM-параметров.",
       label: "К параметрам",
-      href: `/sources?tab=params&category=${encodeURIComponent(categoryId)}`,
+      href: sourcesHref("params", categoryId, productId),
       tone: "pending",
     };
   }
@@ -50,15 +78,17 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string) {
       title: "Нормализовать значения",
       detail: "После связки полей проверьте справочники, boolean/enum значения и provider-specific output.",
       label: "К значениям",
-      href: `/sources?tab=values&category=${encodeURIComponent(categoryId)}`,
+      href: sourcesHref("values", categoryId, productId),
       tone: "pending",
     };
   }
   return {
-    title: "Проверить экспорт категории",
-    detail: "После значений запустите readiness batch. Для финальной проверки лучше выбрать отдельный SKU.",
-    label: "Проверить экспорт",
-    href: `/catalog/exchange?tab=export&category=${encodeURIComponent(categoryId)}`,
+    title: productId ? "Проверить экспорт SKU" : "Проверить экспорт категории",
+    detail: productId
+      ? "После значений запустите readiness batch по исходному SKU."
+      : "После значений запустите readiness batch. Для финальной проверки лучше выбрать отдельный SKU.",
+    label: productId ? "Экспорт SKU" : "Проверить экспорт",
+    href: exportHref(categoryId, productId),
     tone: "active",
   };
 }
@@ -101,10 +131,11 @@ export default function SourcesMappingFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
-  const initialCategoryId = searchParams.get("category") || "";
+  const storedContext = useMemo(() => readStoredProductContext(), []);
+  const initialCategoryId = searchParams.get("category") || storedContext.categoryId || "";
   const providerParam = String(searchParams.get("provider") || "").trim();
   const providerCategoryParam = String(searchParams.get("provider_category") || "").trim();
-  const productParam = String(searchParams.get("product") || "").trim();
+  const productParam = String(searchParams.get("product") || storedContext.productId || "").trim();
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
@@ -120,17 +151,30 @@ export default function SourcesMappingFeature() {
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
-  const nextAction = useMemo(() => sourcesNextAction(tab, selectedCategoryId), [selectedCategoryId, tab]);
+  const nextAction = useMemo(() => sourcesNextAction(tab, selectedCategoryId, productParam), [productParam, selectedCategoryId, tab]);
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
-    const nextCategoryId = searchParams.get("category") || "";
+    const nextCategoryId = searchParams.get("category") || storedContext.categoryId || "";
     const nextProviderCategoryId = String(searchParams.get("provider_category") || "").trim();
     setTabState((prev) => (prev === nextTab ? prev : nextTab));
     setSelectedCategoryId(nextCategoryId);
     setSelectedCategoryName((prev) => (nextCategoryId ? prev : ""));
     setCategoryResolving((nextTab === "params" && !nextCategoryId) || !!nextProviderCategoryId);
-  }, [searchParams]);
+  }, [searchParams, storedContext.categoryId]);
+
+  useEffect(() => {
+    if (!productParam && !selectedCategoryId) return;
+    try {
+      window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
+        productId: productParam,
+        categoryId: selectedCategoryId,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // Context persistence is optional; explicit URL params remain authoritative.
+    }
+  }, [productParam, selectedCategoryId]);
 
   useEffect(() => {
     if (!providerParam || !providerCategoryParam) return;
@@ -264,7 +308,7 @@ export default function SourcesMappingFeature() {
             key: "sources",
             label: "Категории и конкурентные карточки",
             description: "Сначала свяжи PIM-ветку с площадками, затем подтверди точные карточки re-store/store77 для SKU.",
-            href: selectedCategoryId ? `/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            href: selectedCategoryId ? sourcesHref("sources", selectedCategoryId, productParam) : undefined,
             actionLabel: "Открыть",
             status: tab === "sources" ? "active" : "done",
           },
@@ -272,7 +316,7 @@ export default function SourcesMappingFeature() {
             key: "params",
             label: "Черновик PIM-параметров",
             description: "Создается после marketplace + competitor + product evidence. Площадки одни не являются финальной моделью.",
-            href: selectedCategoryId ? `/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            href: selectedCategoryId ? sourcesHref("params", selectedCategoryId, productParam) : undefined,
             actionLabel: "Черновик",
             status: tab === "params" ? "active" : tab === "values" ? "done" : "todo",
           },
@@ -280,7 +324,7 @@ export default function SourcesMappingFeature() {
             key: "values",
             label: "Значения для выгрузки",
             description: "Нормализуй написания: 256 ГБ, eSIM, цвета и справочники площадок.",
-            href: selectedCategoryId ? `/sources?tab=values&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            href: selectedCategoryId ? sourcesHref("values", selectedCategoryId, productParam) : undefined,
             actionLabel: "Значения",
             status: tab === "values" ? "active" : "todo",
           },
@@ -288,7 +332,7 @@ export default function SourcesMappingFeature() {
             key: "export",
             label: "Проверить экспорт",
             description: "Когда категории, поля и значения закрыты, проверь готовность выгрузки.",
-            href: selectedCategoryId ? `/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}` : undefined,
+            href: selectedCategoryId ? exportHref(selectedCategoryId, productParam) : undefined,
             actionLabel: "Экспорт",
             status: "todo",
           },
@@ -307,7 +351,7 @@ export default function SourcesMappingFeature() {
         </div>
         <div className="sourcesMappingContextActions">
           {productParam ? <a className="btn" href={`/products/${encodeURIComponent(productParam)}`}>Открыть SKU</a> : null}
-          <a className="btn" href={selectedCategoryId ? `/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}` : "/catalog/exchange?tab=export"}>Экспорт категории</a>
+          <a className="btn" href={exportHref(selectedCategoryId, productParam)}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</a>
           <a className="btn primary" href={nextAction.href}>{nextAction.label}</a>
         </div>
       </div>

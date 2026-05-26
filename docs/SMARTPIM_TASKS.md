@@ -547,6 +547,8 @@ Current state:
 11. Product workspace now shows a persistent next-action card above the main workbench. It routes the SKU to competitor/media work, validation, or safe single-SKU export based on the current product facts. Existing enriched SKU with description and media go to export readiness even when the old info-model layer was reset.
 12. Product workspace menu is reduced to scenario steps: description, sources, media, parameters, export, variants. Legacy/deep tabs still resolve, but the visible menu no longer exposes every internal panel as a top-level choice.
 13. `/sources` now has a working-context card under the route queue, with current category, optional source SKU context, and the next action for sources -> params -> values -> export.
+14. Product/category workflow context is persisted in browser local storage as a fallback, so `/sources` can restore the last SKU/category even when navigation loses explicit URL parameters.
+15. Competitor SKU rows now use action labels by state (`Разобрать`, `Проверить`, `Исправить`, `Выбрать`, `Текущий SKU`) instead of repeating `Открыть` for every row.
 
 Known problems:
 
@@ -559,7 +561,7 @@ Known problems:
 Next tasks:
 
 1. Continue replacing page-specific workspace fragments with shared primitives.
-2. Add one persistent category/SKU next-action state across catalog, sources, product card, and export. Product list, product workspace, and `/sources` now share the same scenario intent; next pass should persist the selected SKU/category across navigation instead of relying only on URL params.
+2. Add one persistent category/SKU next-action state across catalog, sources, product card, and export. Product list, product workspace, and `/sources` now share the same scenario intent and persist the last product/category context client-side.
 3. Move long source descriptions into evidence/details panels, not visible canonical fields.
 4. Add a guardrail that defaults export checks to one SKU or asks for explicit confirmation before broad category batches. The broad-scope confirmation checkbox is implemented; continue nudging users toward selected SKU/category checks in the next-action state.
 5. Continue applying the same one-SKU media/enrichment/export check to the next iPhone variants in the line.
