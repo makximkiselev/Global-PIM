@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
-from app.core.json_store import read_doc, write_doc
-from app.storage.relational_pim_store import load_catalog_nodes, query_products_full
+from app.core.json_store import JsonStoreError, read_doc, write_doc
+from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
 
 router = APIRouter(prefix="/marketplaces/ozon", tags=["marketplaces-ozon"])
 
@@ -99,9 +99,22 @@ def _load_products() -> List[Dict[str, Any]]:
     return query_products_full()
 
 
+def _save_products(items: List[Dict[str, Any]]) -> None:
+    bulk_upsert_product_items(items)
+
+
 def _save_doc(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     write_doc(path, payload)
+
+
+def _load_doc(path: Path, default: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        return read_doc(path, default=default)
+    except JsonStoreError as exc:
+        if "DATABASE_URL_MISSING" in str(exc):
+            return default
+        raise
 
 
 def _load_nodes() -> List[Dict[str, Any]]:
@@ -137,6 +150,71 @@ def _extract_text_list(values: Any) -> List[str]:
             continue
         seen.add(key)
         out.append(v)
+    return out
+
+
+def _extract_media_urls_from_item(item: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    seen: Set[str] = set()
+
+    def add(value: Any) -> None:
+        if isinstance(value, dict):
+            for key in ("url", "file_name", "link", "src"):
+                add(value.get(key))
+            return
+        if isinstance(value, list):
+            for child in value:
+                add(child)
+            return
+        url = str(value or "").strip()
+        if not url or not url.lower().startswith(("http://", "https://")):
+            return
+        key = url.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(url)
+
+    for key in ("primary_image", "primary_image_url", "images", "images360", "color_image", "image_group_id"):
+        add(item.get(key))
+    return out
+
+
+def _merge_marketplace_media_items(existing: Any, urls: List[str], *, source: str, overwrite_existing: bool) -> List[Dict[str, Any]]:
+    fresh = [
+        {
+            "url": url,
+            "external_url": url,
+            "source": source,
+            "selected": True,
+            "status": "ready",
+        }
+        for url in urls
+        if str(url or "").strip()
+    ]
+    if overwrite_existing:
+        return fresh
+
+    current = existing if isinstance(existing, list) else []
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    def keys_for(item: Dict[str, Any]) -> Set[str]:
+        keys: Set[str] = set()
+        for field in ("external_url", "source_image_url", "url"):
+            value = str(item.get(field) or "").strip()
+            if value:
+                keys.add(value.lower())
+        return keys
+
+    for item in [*current, *fresh]:
+        if not isinstance(item, dict):
+            continue
+        keys = keys_for(item)
+        if not keys or seen.intersection(keys):
+            continue
+        seen.update(keys)
+        out.append(item)
     return out
 
 
@@ -1046,7 +1124,7 @@ def list_attribute_values() -> Dict[str, Any]:
 
 @router.post("/products/sync")
 async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
-    store_creds = _default_import_store_credentials()
+    store_creds = {} if ((req.token or "").strip() and (req.client_id or "").strip()) else _default_import_store_credentials()
     api_key = (req.token or "").strip() or str(store_creds.get("api_key") or "").strip() or _env_api_key()
     client_id = (req.client_id or "").strip() or str(store_creds.get("client_id") or "").strip() or _env_client_id()
     if not api_key:
@@ -1109,17 +1187,18 @@ async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
     if not offer_to_product:
         return {"ok": True, "count": 0, "matched_products": 0, "stores": [{"store_id": store_id, "store_title": store_title}], "items": []}
 
-    info_doc = read_doc(IMPORT_INFO_PATH, default={"items": {}})
+    info_doc = _load_doc(IMPORT_INFO_PATH, default={"items": {}})
     info_items = info_doc.get("items") if isinstance(info_doc, dict) else {}
     if not isinstance(info_items, dict):
         info_items = {}
-    rating_doc = read_doc(PRODUCT_RATING_PATH, default={"items": {}})
+    rating_doc = _load_doc(PRODUCT_RATING_PATH, default={"items": {}})
     rating_items = rating_doc.get("items") if isinstance(rating_doc, dict) else {}
     if not isinstance(rating_items, dict):
         rating_items = {}
 
     found_items: List[Dict[str, Any]] = []
     sku_to_offer: Dict[str, str] = {}
+    changed_products: Dict[str, Dict[str, Any]] = {}
     offer_ids = list(offer_to_product.keys())
     for start in range(0, len(offer_ids), 100):
         chunk = offer_ids[start:start + 100]
@@ -1163,6 +1242,35 @@ async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
             }
             found_items.append(item)
 
+            imported_images = _extract_media_urls_from_item(item)
+            if imported_images:
+                content = product.get("content") if isinstance(product.get("content"), dict) else {}
+                current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+                merged_images = _merge_marketplace_media_items(
+                    current_images,
+                    imported_images,
+                    source="ozon",
+                    overwrite_existing=False,
+                )
+                if merged_images != current_images:
+                    content["media_images"] = merged_images
+                    content.pop("media", None)
+                    source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
+                    media_sources = source_meta.get("media_images") if isinstance(source_meta.get("media_images"), dict) else {}
+                    media_sources["ozon"] = {
+                        "store_id": store_id,
+                        "store_title": store_title,
+                        "client_id": client_id,
+                        "count": len(imported_images),
+                        "updated_at": _now_iso(),
+                    }
+                    source_meta["media_images"] = media_sources
+                    content["source_values"] = source_meta
+                    product["content"] = content
+                    product["updated_at"] = _now_iso()
+                    if pid:
+                        changed_products[pid] = product
+
     skus = [int(x) for x in sku_to_offer.keys() if str(x).isdigit()]
     for start in range(0, len(skus), 100):
         chunk = skus[start:start + 100]
@@ -1194,10 +1302,13 @@ async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
 
     _save_doc(IMPORT_INFO_PATH, {"items": info_items})
     _save_doc(PRODUCT_RATING_PATH, {"items": rating_items})
+    if changed_products:
+        _save_products(list(changed_products.values()))
     return {
         "ok": True,
         "count": len(found_items),
         "matched_products": len(selected),
+        "updated_products": len(changed_products),
         "store_id": store_id,
         "store_title": store_title,
         "items": [

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -209,7 +210,7 @@ async def _resolve_yandex_disk_download_url(public_url: str) -> str:
     if not _is_yandex_disk_public_url(public_url):
         return ""
     try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
             resp = await client.get(
                 YANDEX_DISK_API_BASE,
                 params={"public_key": public_url},
@@ -769,11 +770,16 @@ def _entry_text(entry: Dict[str, Any], *keys: str) -> str:
 def _entry_urls(entry: Dict[str, Any], *keys: str) -> List[str]:
     out: List[str] = []
     seen: Set[str] = set()
-    for container in (
-        entry,
-        entry.get("offer") if isinstance(entry.get("offer"), dict) else None,
-        entry.get("mapping") if isinstance(entry.get("mapping"), dict) else None,
-    ):
+    offer = entry.get("offer") if isinstance(entry.get("offer"), dict) else None
+    mapping = entry.get("mapping") if isinstance(entry.get("mapping"), dict) else None
+    containers: List[Optional[Dict[str, Any]]] = [entry, offer, mapping]
+    for container in (entry, offer, mapping):
+        if not isinstance(container, dict):
+            continue
+        media_files = container.get("mediaFiles")
+        if isinstance(media_files, dict):
+            containers.append(media_files)
+    for container in containers:
         if not isinstance(container, dict):
             continue
         for key in keys:
@@ -792,17 +798,48 @@ def _entry_urls(entry: Dict[str, Any], *keys: str) -> List[str]:
     return out
 
 
-def _filter_importable_media_urls(urls: List[str]) -> List[str]:
+async def _resolve_importable_media_urls(urls: List[str], cache: Optional[Dict[str, str]] = None) -> List[str]:
     out: List[str] = []
     seen: Set[str] = set()
+    pending: List[Tuple[int, str]] = []
     for raw in urls or []:
         url = str(raw or "").strip()
         if not url or url in seen:
             continue
-        seen.add(url)
         if _is_yandex_disk_public_url(url):
+            if cache is not None and url in cache:
+                resolved = cache.get(url) or ""
+                if not resolved:
+                    continue
+                url = resolved
+            else:
+                pending.append((len(out), url))
+                out.append("")
+                seen.add(url)
+                continue
+        if url in seen:
             continue
+        seen.add(url)
         out.append(url)
+    if pending:
+        semaphore = asyncio.Semaphore(8)
+
+        async def resolve(raw_url: str) -> Tuple[str, str]:
+            async with semaphore:
+                resolved = await _resolve_yandex_disk_download_url(raw_url)
+                return raw_url, resolved
+
+        results = await asyncio.gather(*(resolve(url) for _, url in pending), return_exceptions=True)
+        for (index, raw_url), result in zip(pending, results):
+            resolved = ""
+            if isinstance(result, tuple):
+                _, resolved = result
+            if not resolved:
+                resolved = raw_url
+            if cache is not None:
+                cache[raw_url] = resolved
+            out[index] = resolved
+    out = [url for url in out if str(url or "").strip()]
     return out
 
 
@@ -1524,7 +1561,7 @@ def list_category_parameters() -> Dict[str, Any]:
 
 @router.post("/offer-cards/sync")
 async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
-    store_creds = _default_import_store_credentials()
+    store_creds = {} if ((req.token or "").strip() and (req.business_id or "").strip()) else _default_import_store_credentials()
     token = (req.token or "").strip() or str(store_creds.get("token") or "").strip() or _env_token()
     if not token:
         raise HTTPException(status_code=400, detail="YANDEX_MARKET_API_TOKEN_MISSING")
@@ -1630,6 +1667,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 changed_product_ids.add(str(product.get("id") or "").strip())
 
     offer_ids = list(product_by_offer_id.keys())
+    resolved_media_url_cache: Dict[str, str] = {}
     for start in range(0, len(offer_ids), 100):
         chunk = offer_ids[start:start + 100]
         last_error = ""
@@ -1706,8 +1744,14 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
             features = _cleanup_product_features(content.get("features"))
             mapping_entry = offer_mapping_by_id.get(offer_id) or {}
             imported_description = _entry_text(mapping_entry, "description")
-            imported_pictures = _filter_importable_media_urls(_entry_urls(mapping_entry, "pictures"))
-            imported_videos = _filter_importable_media_urls(_entry_urls(mapping_entry, "videos", "videoUrls"))
+            current_images_for_import = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+            current_videos_for_import = content.get("media_videos") if isinstance(content.get("media_videos"), list) else []
+            raw_pictures = _entry_urls(mapping_entry, "pictures")
+            raw_videos = _entry_urls(mapping_entry, "videos", "videoUrls")
+            should_resolve_pictures = bool(req.apply_to_products and raw_pictures and (req.overwrite_existing or not current_images_for_import))
+            should_resolve_videos = bool(req.apply_to_products and raw_videos and (req.overwrite_existing or not current_videos_for_import))
+            imported_pictures = await _resolve_importable_media_urls(raw_pictures, resolved_media_url_cache) if should_resolve_pictures else []
+            imported_videos = await _resolve_importable_media_urls(raw_videos, resolved_media_url_cache) if should_resolve_videos else []
             imported_vendor = _entry_text(mapping_entry, "vendor", "vendorName", "brand")
             imported_barcodes = _entry_values(mapping_entry, "barcodes", "barcode")
             feature_by_code: Dict[str, Dict[str, Any]] = {}
