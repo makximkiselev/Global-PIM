@@ -544,7 +544,7 @@ Current state:
    - `Отдельные SKU` exports only manually selected products;
    - selecting SKU clears category export scope to avoid accidental mixed/broad batches.
 10. Legacy `/product-groups` route redirects to `/catalog/groups`, so old links do not land on an empty shell.
-11. Product workspace now shows a persistent next-action card above the main workbench. It routes the SKU to parameter mapping, competitor/media work, validation, or safe single-SKU export based on the current product facts.
+11. Product workspace now shows a persistent next-action card above the main workbench. It routes the SKU to competitor/media work, validation, or safe single-SKU export based on the current product facts. Existing enriched SKU with description and media go to export readiness even when the old info-model layer was reset.
 
 Known problems:
 

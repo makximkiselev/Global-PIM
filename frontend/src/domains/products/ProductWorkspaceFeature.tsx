@@ -250,16 +250,6 @@ function buildProductNextAction({
   const description = normalizeText(product.content?.description);
   const competitorReady = hasActiveCompetitorLink(channels);
 
-  if (!hasInfoModel) {
-    return {
-      title: "Собрать параметры категории",
-      detail: "Товару нужна рабочая модель параметров перед проверкой выгрузки.",
-      cta: "Открыть сопоставления",
-      href: sourcesHref(categoryId, "params"),
-      tone: "danger",
-    };
-  }
-
   if (!description) {
     return {
       title: "Найти описание из источника",
@@ -290,6 +280,16 @@ function buildProductNextAction({
       cta: "Открыть валидацию",
       tab: "validation",
       tone: "danger",
+    };
+  }
+
+  if (!hasInfoModel && !features.length) {
+    return {
+      title: "Проверить экспорт SKU",
+      detail: "Описание и медиа есть. Readiness batch покажет, каких параметров или значений не хватает для площадок.",
+      cta: "Открыть экспорт",
+      href: productExportHref(product.id),
+      tone: "active",
     };
   }
 
