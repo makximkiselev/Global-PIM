@@ -63,6 +63,36 @@ type ExportJobResp = {
   error?: string;
   run?: ExportRunResp | null;
 };
+type ExportPackageResp = {
+  ok: boolean;
+  package: {
+    version: number;
+    run_id: string;
+    created_at?: string;
+    status: "ready" | "partial" | string;
+    summary?: {
+      batch_count?: number;
+      ready_items?: number;
+      blocked_items?: number;
+      warnings_count?: number;
+    };
+    warnings?: Array<{
+      provider?: string;
+      store_id?: string;
+      store_title?: string;
+      blocked_items?: number;
+    }>;
+    batches?: Array<{
+      provider: string;
+      store_id: string;
+      store_title: string;
+      status: string;
+      ready_count: number;
+      blocked_count: number;
+      items: Array<{ product_id: string; offer_id?: string; payload: Record<string, unknown> }>;
+    }>;
+  };
+};
 
 type ExportBlocker = {
   provider: string;
@@ -191,6 +221,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [err, setErr] = useState("");
   const [preparingMessage, setPreparingMessage] = useState("");
   const [jobId, setJobId] = useState("");
+  const [packageLoading, setPackageLoading] = useState(false);
+  const [exportPackage, setExportPackage] = useState<ExportPackageResp["package"] | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [broadScopeConfirmed, setBroadScopeConfirmed] = useState(false);
   const initialCategoryId = String(searchParams.get("category") || "").trim();
@@ -373,6 +405,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     setRun(null);
     setPreparingMessage("");
     setJobId("");
+    setExportPackage(null);
     const runLimit = selectedProductIds.length ? Math.max(1, selectedProductIds.length) : 50;
     const startedAt = Date.now();
     const controller = new AbortController();
@@ -413,6 +446,33 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     } finally {
       setLoading(false);
       setPreparingMessage("");
+    }
+  }
+
+  async function loadExportPackage(download = false) {
+    const runId = run?.run_id || run?.id || "";
+    if (!runId || packageLoading) return;
+    setPackageLoading(true);
+    setErr("");
+    try {
+      const response = await api<ExportPackageResp>(`/catalog/exchange/export/runs/${encodeURIComponent(runId)}/package`);
+      setExportPackage(response.package);
+      if (download) {
+        const json = JSON.stringify(response.package, null, 2);
+        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${runId}-payload.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      setErr((e as Error).message || "Не удалось собрать export payload.");
+    } finally {
+      setPackageLoading(false);
     }
   }
 
@@ -611,7 +671,61 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                         Проверка прошла по выбранной области и выбранным магазинам. SmartPim подготовил данные карточки для выбранных площадок.
                       </div>
                     </div>
-                    <Badge tone="active">Можно переходить к отправке</Badge>
+                    <div className="cx-exportReadyActions">
+                      <Badge tone="active">Можно переходить к отправке</Badge>
+                      <Button onClick={() => void loadExportPackage(false)} disabled={packageLoading}>
+                        {packageLoading ? "Собираю…" : "Показать payload"}
+                      </Button>
+                      <Button variant="primary" onClick={() => void loadExportPackage(true)} disabled={packageLoading}>
+                        Скачать JSON
+                      </Button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {exportPackage ? (
+                  <section className="card cx-pane">
+                    <div className="cx-paneHead">
+                      <div>
+                        <div className="cx-paneTitle">Payload для отправки</div>
+                        <div className="cx-paneSub">Финальный пакет по текущему run: только готовые строки, сгруппированные по площадке и магазину.</div>
+                      </div>
+                      <Badge tone={exportPackage.status === "ready" ? "active" : "pending"}>
+                        {exportPackage.status === "ready" ? "Готов" : "Частичный"}
+                      </Badge>
+                    </div>
+                    <div className="cx-payloadSummary">
+                      <div><span>Run</span><strong>{exportPackage.run_id}</strong></div>
+                      <div><span>Batch</span><strong>{exportPackage.summary?.batch_count ?? 0}</strong></div>
+                      <div><span>Payload rows</span><strong>{exportPackage.summary?.ready_items ?? 0}</strong></div>
+                      <div><span>Блокеры</span><strong>{exportPackage.summary?.blocked_items ?? 0}</strong></div>
+                    </div>
+                    <div className="cx-resultsTableWrap">
+                      <table className="cx-resultsTable">
+                        <thead>
+                          <tr>
+                            <th>Площадка</th>
+                            <th>Магазин</th>
+                            <th>Payload rows</th>
+                            <th>Статус</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(exportPackage.batches || []).map((batch) => (
+                            <tr key={`${batch.provider}:${batch.store_id}`}>
+                              <td>{providerTitle(batch.provider)}</td>
+                              <td>{batch.store_title || batch.store_id}</td>
+                              <td>{batch.ready_count}</td>
+                              <td>
+                                <Badge tone={batch.status === "ready" ? "active" : "pending"}>
+                                  {batch.status === "ready" ? "Готов" : `${batch.blocked_count} блок.`}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 ) : null}
 

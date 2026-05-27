@@ -2353,6 +2353,10 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "count": 1,
                 "items": [{"product_id": "product_1", "product_title": "Meta Quest 3 128GB", "category_id": "cat-vr", "ready": False, "missing": ["description"]}],
             }),
+            patch.object(catalog_exchange, "_enrich_export_products_from_candidate_media", return_value=set()),
+            patch.object(catalog_exchange, "_hydrate_marketplace_product_content", return_value=[]),
+            patch.object(catalog_exchange, "_hydrate_missing_content_from_variant_siblings", return_value=[]),
+            patch.object(catalog_exchange, "query_products_full", return_value=[{"id": "product_1", "title": "Meta Quest 3 128GB"}]),
             patch.object(catalog_exchange, "_load_runs", return_value={"runs": {}}),
             patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, doc: saved_runs.update(deepcopy(doc))),
             patch.object(catalog_exchange, "uuid4", return_value=type("FakeUuid", (), {"hex": "abcdef1234567890"})()),
@@ -2408,12 +2412,56 @@ class OperatingWorkflowTests(unittest.TestCase):
                 return_value=[{"id": "ym-store-real", "title": "GT USD", "enabled": True}],
             ),
             patch.object(catalog_exchange, "yandex_export_preview", return_value={"ready_count": 1, "count": 1, "items": []}),
+            patch.object(catalog_exchange, "_enrich_export_products_from_candidate_media", return_value=set()),
+            patch.object(catalog_exchange, "_hydrate_marketplace_product_content", return_value=[]),
+            patch.object(catalog_exchange, "_hydrate_missing_content_from_variant_siblings", return_value=[]),
+            patch.object(catalog_exchange, "query_products_full", return_value=[{"id": "product_1", "title": "Meta Quest 3 128GB"}]),
         ):
             with self.assertRaises(HTTPException) as ctx:
                 catalog_exchange.run_catalog_export(req)
 
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("No matching stores selected", str(ctx.exception.detail))
+
+    def test_export_package_contains_only_ready_payload_items(self) -> None:
+        run = {
+            "id": "export_test",
+            "selection": {"product_ids": ["product_1"]},
+            "targets": [{"provider": "yandex_market", "store_ids": ["ym-1"]}],
+            "batches": [
+                {
+                    "provider": "yandex_market",
+                    "store_id": "ym-1",
+                    "store_title": "GT USD",
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {"offerId": "GT-1", "name": "Ready item"},
+                        },
+                        {
+                            "product_id": "product_2",
+                            "ready": False,
+                            "missing": ["Нет изображений"],
+                            "payload_item": {"offerId": "GT-2", "name": "Blocked item"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        package = catalog_exchange._build_export_package(run)
+
+        self.assertEqual(package["run_id"], "export_test")
+        self.assertEqual(package["status"], "partial")
+        self.assertEqual(package["summary"]["ready_items"], 1)
+        self.assertEqual(package["summary"]["blocked_items"], 1)
+        self.assertEqual(package["warnings"][0]["blocked_items"], 1)
+        batch = package["batches"][0]
+        self.assertEqual(batch["status"], "partial")
+        self.assertEqual(batch["ready_count"], 1)
+        self.assertEqual(batch["items"][0]["offer_id"], "GT-1")
+        self.assertEqual(batch["items"][0]["payload"]["name"], "Ready item")
 
     def test_ozon_export_preview_derives_required_type_and_model_name(self) -> None:
         product = {

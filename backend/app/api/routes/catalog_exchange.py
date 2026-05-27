@@ -1539,6 +1539,75 @@ def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, An
     }
 
 
+def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
+    batches = run.get("batches") if isinstance(run.get("batches"), list) else []
+    package_batches: List[Dict[str, Any]] = []
+    ready_items_total = 0
+    blocked_items_total = 0
+    warnings: List[Dict[str, Any]] = []
+
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        items = batch.get("items") if isinstance(batch.get("items"), list) else []
+        ready_items: List[Dict[str, Any]] = []
+        blocked_items = 0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
+            if bool(item.get("ready")) and payload_item:
+                ready_items.append(
+                    {
+                        "product_id": str(item.get("product_id") or "").strip(),
+                        "offer_id": str(payload_item.get("offerId") or payload_item.get("offer_id") or "").strip(),
+                        "payload": payload_item,
+                    }
+                )
+            else:
+                blocked_items += 1
+        ready_items_total += len(ready_items)
+        blocked_items_total += blocked_items
+        if blocked_items:
+            warnings.append(
+                {
+                    "provider": str(batch.get("provider") or "").strip(),
+                    "store_id": str(batch.get("store_id") or "").strip(),
+                    "store_title": str(batch.get("store_title") or "").strip(),
+                    "blocked_items": blocked_items,
+                }
+            )
+        package_batches.append(
+            {
+                "provider": str(batch.get("provider") or "").strip(),
+                "store_id": str(batch.get("store_id") or "").strip(),
+                "store_title": str(batch.get("store_title") or "").strip(),
+                "status": "ready" if blocked_items == 0 else "partial",
+                "ready_count": len(ready_items),
+                "blocked_count": blocked_items,
+                "items": ready_items,
+            }
+        )
+
+    status = "ready" if package_batches and blocked_items_total == 0 else "partial"
+    return {
+        "version": 1,
+        "run_id": str(run.get("id") or run.get("run_id") or "").strip(),
+        "created_at": _now_iso(),
+        "selection": run.get("selection") if isinstance(run.get("selection"), dict) else {},
+        "targets": run.get("targets") if isinstance(run.get("targets"), list) else [],
+        "status": status,
+        "summary": {
+            "batch_count": len(package_batches),
+            "ready_items": ready_items_total,
+            "blocked_items": blocked_items_total,
+            "warnings_count": len(warnings),
+        },
+        "warnings": warnings,
+        "batches": package_batches,
+    }
+
+
 def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
     return "|".join(
         [
@@ -2128,6 +2197,15 @@ def get_catalog_export_run(run_id: str) -> Dict[str, Any]:
     if not isinstance(row, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
     return {"ok": True, "run": row}
+
+
+@router.get("/export/runs/{run_id}/package")
+def get_catalog_export_package(run_id: str) -> Dict[str, Any]:
+    runs = _load_runs(EXPORT_RUNS_PATH)
+    row = (runs.get("runs") or {}).get(run_id)
+    if not isinstance(row, dict):
+        raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
+    return {"ok": True, "package": _build_export_package(row)}
 
 
 @router.get("/export/latest-run")
