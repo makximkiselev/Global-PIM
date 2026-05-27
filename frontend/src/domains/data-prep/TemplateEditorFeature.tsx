@@ -135,7 +135,7 @@ const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
   rejected: "Отклонено",
 };
 
-type DraftFilter = "all" | InfoModelCandidate["status"] | "competitor_only" | "marketplace_only" | "weak_global";
+type DraftFilter = "all" | InfoModelCandidate["status"] | "competitor_only" | "marketplace_only" | "weak_global" | "semantic_duplicates";
 type DraftSort = "decision" | "required" | "duplicates" | "source" | "name";
 
 function normTitle(s: string) {
@@ -299,12 +299,12 @@ function draftSortScore(candidate: InfoModelCandidate, sort: DraftSort) {
   const name = normTitle(candidate.name);
   const sourceText = candidateSources(candidate)[0] || "";
   if (sort === "required") return `${candidate.required ? "0" : "1"}:${candidate.status}:${name}`;
-  if (sort === "duplicates") return `${candidate.global_match ? "0" : "1"}:${candidate.status}:${name}`;
+  if (sort === "duplicates") return `${isSemanticDuplicateCandidate(candidate) ? "0" : candidate.global_match ? "1" : "2"}:${candidate.status}:${name}`;
   if (sort === "source") return `${sourceText}:${name}`;
   if (sort === "name") return name;
   const statusRank = candidate.status === "needs_review" ? "0" : candidate.status === "accepted" ? "1" : "2";
   const requiredRank = candidate.required ? "0" : "1";
-  const duplicateRank = candidate.global_match ? "0" : "1";
+  const duplicateRank = isSemanticDuplicateCandidate(candidate) ? "0" : candidate.global_match ? "1" : "2";
   return `${statusRank}:${requiredRank}:${duplicateRank}:${name}`;
 }
 
@@ -324,6 +324,14 @@ function isMarketplaceOnlyCandidate(candidate: InfoModelCandidate) {
 
 function isWeakGlobalCandidate(candidate: InfoModelCandidate) {
   return Boolean(candidate.global_match) && Number(candidate.global_match?.score || 0) < 0.86;
+}
+
+function hasReviewFlag(candidate: InfoModelCandidate, code: string) {
+  return Boolean((candidate.review_flags || []).some((flag) => flag.code === code));
+}
+
+function isSemanticDuplicateCandidate(candidate: InfoModelCandidate) {
+  return hasReviewFlag(candidate, "merged_alias_sources");
 }
 
 export default function TemplateEditor() {
@@ -546,7 +554,9 @@ export default function TemplateEditor() {
             ? draftCandidates.filter(isMarketplaceOnlyCandidate)
             : draftFilter === "weak_global"
               ? draftCandidates.filter(isWeakGlobalCandidate)
-              : draftCandidates.filter((candidate) => candidate.status === draftFilter);
+              : draftFilter === "semantic_duplicates"
+                ? draftCandidates.filter(isSemanticDuplicateCandidate)
+                : draftCandidates.filter((candidate) => candidate.status === draftFilter);
     return filtered.slice().sort((a, b) => draftSortScore(a, draftSort).localeCompare(draftSortScore(b, draftSort), "ru"));
   }, [draftCandidates, draftFilter, draftSort]);
 
@@ -565,20 +575,17 @@ export default function TemplateEditor() {
     return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
   }, [draftCandidates]);
   const draftAudit = useMemo(() => {
-    const codeCounts = new Map<string, number>();
-    for (const candidate of draftCandidates) {
-      const code = (candidate.code || candidate.name || "").trim().toLowerCase();
-      if (code) codeCounts.set(code, (codeCounts.get(code) || 0) + 1);
-    }
     let competitorOnly = 0;
     let marketplaceOnly = 0;
     let weakGlobalMatch = 0;
     let lowConfidence = 0;
     let selectWithoutValues = 0;
+    let semanticDuplicates = 0;
     for (const candidate of draftCandidates) {
       if (isCompetitorOnlyCandidate(candidate)) competitorOnly += 1;
       if (isMarketplaceOnlyCandidate(candidate)) marketplaceOnly += 1;
       if (isWeakGlobalCandidate(candidate)) weakGlobalMatch += 1;
+      if (isSemanticDuplicateCandidate(candidate)) semanticDuplicates += 1;
       if (Number(candidate.confidence || 0) < 0.7) lowConfidence += 1;
       if (candidate.type === "select" && !(candidate.examples || []).some(Boolean)) selectWithoutValues += 1;
     }
@@ -588,7 +595,7 @@ export default function TemplateEditor() {
       weakGlobalMatch,
       lowConfidence,
       selectWithoutValues,
-      duplicates: Array.from(codeCounts.values()).filter((count) => count > 1).length,
+      duplicates: semanticDuplicates,
     };
   }, [draftCandidates]);
 
@@ -1093,6 +1100,7 @@ export default function TemplateEditor() {
     { key: "rejected", label: `Не используется (${rejectedCandidates})` },
     { key: "competitor_only", label: `Только конкуренты (${draftAudit.competitorOnly})` },
     { key: "marketplace_only", label: `Только площадки (${draftAudit.marketplaceOnly})` },
+    { key: "semantic_duplicates", label: `Повторы смысла (${draftAudit.duplicates})` },
     { key: "weak_global", label: `Слабая связь PIM (${draftAudit.weakGlobalMatch})` },
     { key: "all", label: `Все (${draftCandidates.length})` },
   ] as const;
@@ -1262,7 +1270,7 @@ export default function TemplateEditor() {
                           <span><b>{draftAudit.competitorOnly}</b>только конкуренты</span>
                           <span><b>{draftAudit.weakGlobalMatch}</b>слабая связь PIM</span>
                           <span><b>{draftAudit.lowConfidence}</b>низкая уверенность</span>
-                          <span><b>{draftAudit.duplicates}</b>дубли кодов</span>
+                          <span><b>{draftAudit.duplicates}</b>повторы смысла</span>
                         </div>
                       </div>
                       <details className="tplDraftHelp">

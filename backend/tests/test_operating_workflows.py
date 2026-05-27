@@ -3541,6 +3541,71 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(ozon_source["field_name"], "4180")
         self.assertEqual(ozon_source["field_title"], "Название")
 
+    def test_info_model_draft_merges_only_explicit_semantic_aliases(self) -> None:
+        from app.core.info_models import draft_service
+
+        templates_db = {"templates": {}, "attributes": {}, "category_to_template": {}, "category_to_templates": {}}
+        saved: dict[str, object] = {}
+
+        def save(next_db):
+            saved.clear()
+            saved.update(deepcopy(next_db))
+
+        def read_doc(path, default=None):
+            if str(path).endswith("category_parameters.json"):
+                return {
+                    "items": {
+                        "ym-phone": {
+                            "raw": {
+                                "result": {
+                                    "parameters": [
+                                        {"id": "sim_count", "name": "Кол-во SIM", "required": False, "type": "ENUM"},
+                                        {"id": "os", "name": "Операционная система", "required": False, "type": "ENUM"},
+                                        {"id": "os_version", "name": "Версия ОС", "required": False, "type": "TEXT"},
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            if str(path).endswith("category_attributes.json"):
+                return {
+                    "items": {
+                        "oz-phone": {
+                            "attributes": [
+                                {"id": "sim_cards_count", "name": "Количество SIM-карт", "required": False, "type": "String"},
+                                {"id": "ios_version", "name": "Версия iOS", "required": False, "type": "String"},
+                            ]
+                        }
+                    }
+                }
+            return deepcopy(default)
+
+        with (
+            patch.object(draft_service, "load_templates_db", return_value=deepcopy(templates_db)),
+            patch.object(draft_service, "save_templates_db", side_effect=save),
+            patch.object(draft_service, "query_products_full", return_value=[]),
+            patch.object(draft_service, "load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(draft_service, "load_category_mappings", return_value={"cat-phone": {"yandex_market": "ym-phone", "ozon": "oz-phone"}}),
+            patch.object(draft_service, "read_doc", side_effect=read_doc),
+            patch.object(
+                draft_service,
+                "new_id",
+                side_effect=["tpl-draft-phone", "cand-sim-ym", "cand-os", "cand-os-version", "cand-sim-ozon", "cand-ios-version"],
+            ),
+            patch.object(draft_service, "now_iso", return_value="2026-05-27T00:00:00+00:00"),
+        ):
+            response = draft_service.create_draft_from_sources("cat-phone", {"sources": ["marketplaces"]})
+
+        by_name = {candidate["name"]: candidate for candidate in response["candidates"]}
+        self.assertEqual(by_name["Количество SIM-карт"]["code"], "kolichestvo_sim_kart")
+        self.assertEqual({source["field_title"] for source in by_name["Количество SIM-карт"]["sources"]}, {"Кол-во SIM", "Количество SIM-карт"})
+        self.assertTrue(any(flag["code"] == "merged_alias_sources" for flag in by_name["Количество SIM-карт"]["review_flags"]))
+        self.assertIn("Операционная система", by_name)
+        self.assertIn("Версия ОС", by_name)
+        self.assertIn("Версия iOS", by_name)
+        self.assertEqual(len(response["candidates"]), 4)
+
     def test_info_model_candidate_update_can_clear_wrong_global_match(self) -> None:
         from app.core.info_models import draft_service
 

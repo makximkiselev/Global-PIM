@@ -89,6 +89,15 @@ CANONICAL_ATTRIBUTE_ALIASES: Dict[str, Tuple[str, str]] = {
     "ram": ("Оперативная память", "operativnaya_pamyat"),
     "memory_ram": ("Оперативная память", "operativnaya_pamyat"),
     "system_memory": ("Оперативная память", "operativnaya_pamyat"),
+    "kol_vo_sim": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "kolichestvo_sim": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "kolichestvo_sim_kart": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "chislo_sim": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "chislo_sim_kart": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "sim_count": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "sim_cards_count": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "number_of_sim": ("Количество SIM-карт", "kolichestvo_sim_kart"),
+    "number_of_sim_cards": ("Количество SIM-карт", "kolichestvo_sim_kart"),
 }
 
 
@@ -279,6 +288,13 @@ def _candidate_review_flags(candidate: Dict[str, Any]) -> List[Dict[str, str]]:
     confidence = float(candidate.get("confidence") or 0)
     source_count = int(summary.get("sources_count") or 0)
     examples = candidate.get("examples") if isinstance(candidate.get("examples"), list) else []
+    source_titles: OrderedDict[str, None] = OrderedDict()
+    for source in candidate.get("sources") if isinstance(candidate.get("sources"), list) else []:
+        if not isinstance(source, dict):
+            continue
+        title = _text(source.get("field_title") or source.get("field_name"))
+        if title:
+            source_titles[title] = None
 
     if by_kind.get("competitor") and not (by_kind.get("product") or by_kind.get("marketplace")):
         flags.append(
@@ -286,6 +302,16 @@ def _candidate_review_flags(candidate: Dict[str, Any]) -> List[Dict[str, str]]:
                 "level": "review",
                 "code": "competitor_only",
                 "message": "Есть только у конкурентов: нужно подтвердить, что поле требуется для PIM, а не является описательным шумом.",
+            }
+        )
+    if len(source_titles) > 1:
+        labels = list(source_titles.keys())[:4]
+        suffix = "..." if len(source_titles) > 4 else ""
+        flags.append(
+            {
+                "level": "review",
+                "code": "merged_alias_sources",
+                "message": f"Объединены разные названия одного параметра: {', '.join(labels)}{suffix}. Проверьте, что это один смысл, а не разные характеристики.",
             }
         )
     if by_kind.get("marketplace") and not by_kind.get("product"):
@@ -442,6 +468,7 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
                     }
                 )
             source = row["sources"][0]
+            source.setdefault("field_title", name)
             source["count"] = int(source.get("count") or 0) + 1
             if value and value not in source["examples"]:
                 source["examples"].append(value)
@@ -502,6 +529,7 @@ def _competitor_unmatched_candidates(category_id: str) -> List[Dict[str, Any]]:
                         "provider": _text(provider) or "competitor",
                         "source_name": _text(provider) or "Конкурент",
                         "field_name": name,
+                        "field_title": name,
                         "examples": [],
                         "count": 0,
                     }
