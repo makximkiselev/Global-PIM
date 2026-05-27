@@ -2062,6 +2062,23 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertGreaterEqual(score, 0.78)
         self.assertIn("проверь SIM", reasons[0])
 
+    def test_store77_seed_candidate_supports_samsung_fold7(self) -> None:
+        product = {
+            "id": "product_684",
+            "title": "Смартфон Samsung Galaxy Z Fold7 256Gb Dual nano SIM+eSIM Blue Shadow",
+            "sku_gt": "52394",
+        }
+
+        candidates = competitor_mapping._store77_seed_candidates_for_product(product)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0]["url"],
+            "https://store77.net/telefony_samsung/telefon_samsung_galaxy_z_fold7_12_256gb_blue_shadow/",
+        )
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
+        self.assertIn("store77 URL собран из модели, памяти и цвета Samsung", candidates[0]["confidence_reasons"])
+
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}
         req = CatalogExportRunReq.model_validate(

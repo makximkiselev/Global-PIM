@@ -828,6 +828,24 @@ def _query_terms_for_product(product: Dict[str, Any]) -> List[str]:
             term = " ".join(parts).strip()
             if term and term not in terms:
                 terms.append(term)
+        if "samsung" in normalized and ("fold7" in normalized or ("fold" in normalized and re.search(r"\b7\b", normalized))):
+            memory = memory_terms[0] if memory_terms else ""
+            color = ""
+            if "blue shadow" in normalized:
+                color = "Blue Shadow"
+            elif "silver shadow" in normalized:
+                color = "Silver Shadow"
+            elif "jetblack" in normalized or "jet black" in normalized:
+                color = "JetBlack"
+            elif "mint" in normalized:
+                color = "Mint"
+            for term in (
+                "Samsung Galaxy Z Fold7",
+                "Samsung Galaxy Z Fold 7",
+                " ".join(part for part in ("Samsung Galaxy Z Fold7", memory, color) if part),
+            ):
+                if term and term not in terms:
+                    terms.append(term)
     for key in ("sku_gt", "sku_pim"):
         value = str(product.get(key) or "").strip()
         if value and value not in terms:
@@ -3218,13 +3236,10 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
                 return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
         if out:
             return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
-    for term in _query_terms_for_product(product):
-        url = f"https://store77.net/search/?q={quote_plus(term)}"
-        try:
-            html = await fetch_browser_html(url, timeout_ms=7000)
-        except Exception:
-            continue
-        for candidate in _extract_store77_search_candidates(html, product):
+    if not out:
+        # Deterministic URLs are cheap and give the content manager a review
+        # candidate when Store77 search/category rendering is blocked by JS.
+        for candidate in _store77_seed_candidates_for_product(product):
             candidate_url = str(candidate.get("url") or "")
             if not candidate_url or candidate_url in seen:
                 continue
@@ -3232,10 +3247,15 @@ async def _discover_store77_candidates(product: Dict[str, Any]) -> List[Dict[str
             out.append(candidate)
             if len(out) >= 5:
                 return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
-    if not out:
-        # Deterministic Apple URLs are cheap and give the content manager a
-        # review candidate when Store77 category rendering is temporarily slow.
-        for candidate in _store77_seed_candidates_for_product(product):
+        if out:
+            return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    for term in _query_terms_for_product(product):
+        url = f"https://store77.net/search/?q={quote_plus(term)}"
+        try:
+            html = await fetch_browser_html(url, timeout_ms=7000)
+        except Exception:
+            continue
+        for candidate in _extract_store77_search_candidates(html, product):
             candidate_url = str(candidate.get("url") or "")
             if not candidate_url or candidate_url in seen:
                 continue
@@ -3361,11 +3381,71 @@ def _store77_macbook_seed_candidates_for_product(product: Dict[str, Any]) -> Lis
     ]
 
 
+def _store77_samsung_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_title = str(product.get("title") or "").strip()
+    normalized_title = _norm_match_text(raw_title)
+    profile = _variant_profile(raw_title)
+    if str(profile.get("model") or "") != "samsung_galaxy_z_fold_7":
+        return []
+    memory = str(profile.get("memory") or "").strip()
+    memory_match = re.fullmatch(r"(\d+)(gb|tb)", memory)
+    if not memory_match:
+        return []
+    ram_by_memory = {"256gb": "12", "512gb": "12", "1tb": "16"}
+    ram = ram_by_memory.get(memory)
+    if not ram:
+        return []
+    color_options = [
+        ("jetblack", "JetBlack", ("jetblack", "jet black")),
+        ("blue_shadow", "Blue Shadow", ("blue shadow",)),
+        ("silver_shadow", "Silver Shadow", ("silver shadow",)),
+        ("mint", "Mint", ("mint", "мятный")),
+    ]
+    color_slug = ""
+    color_label = ""
+    for slug, label, aliases in color_options:
+        if profile.get("color") == slug or any(alias in normalized_title for alias in aliases):
+            color_slug = slug
+            color_label = label
+            break
+    if not color_slug:
+        return []
+
+    memory_slug = f"{memory_match.group(1)}{memory_match.group(2)}"
+    url = f"https://store77.net/telefony_samsung/telefon_samsung_galaxy_z_fold7_{ram}_{memory_slug}_{color_slug}/"
+    title = f"Телефон Samsung Galaxy Z Fold7 {ram}/{memory_label_from_slug(memory)} ({color_label})"
+    confidence_score, reasons = _store77_review_confidence_for_candidate(product, title)
+    if confidence_score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+        return []
+    return [
+        {
+            "url": url,
+            "title": title,
+            "confidence_score": min(0.93, max(confidence_score, 0.82)),
+            "confidence_reasons": [*reasons, "store77 URL собран из модели, памяти и цвета Samsung"],
+            "discovery_strategy": "store77_samsung_slug_seed",
+            "match_group_key": _model_memory_color_group_key(raw_title),
+            "product_sim_profile": _sim_profile(raw_title),
+            "candidate_sim_profile": _sim_profile(title),
+        }
+    ]
+
+
+def memory_label_from_slug(memory: str) -> str:
+    match = re.fullmatch(r"(\d+)(gb|tb)", str(memory or "").strip())
+    if not match:
+        return str(memory or "").strip()
+    return f"{match.group(1)}{'Tb' if match.group(2) == 'tb' else 'Gb'}"
+
+
 def _store77_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     raw_title = str(product.get("title") or "").strip()
     normalized_title = _norm_match_text(raw_title)
     category_urls = _store77_category_urls_for_product(product)
     if not category_urls:
+        samsung_candidates = _store77_samsung_seed_candidates_for_product(product)
+        if samsung_candidates:
+            return samsung_candidates
         macbook_candidates = _store77_macbook_seed_candidates_for_product(product)
         if macbook_candidates:
             return macbook_candidates
