@@ -2572,6 +2572,35 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(attrs["8229"], "Умные часы")
         self.assertEqual(attrs["85"], "Apple")
 
+    def test_ozon_export_preview_blocks_empty_parameter_mapping_even_with_system_attrs(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro Max 256Gb",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [{"code": "memory", "name": "Встроенная память", "value": "256 ГБ"}],
+            },
+        }
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "oz-phone"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": []}),
+            patch.object(catalog_exchange, "load_competitor_mapping_db", return_value={}),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], False)
+        self.assertIn("Нет сопоставленных PIM-параметров для Ozon: соберите инфо-модель и свяжите параметры площадки", item["missing"])
+        attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
+        self.assertEqual(attrs["8229"], "Смартфон")
+
     def test_variant_sibling_hydration_covers_ipad_storage_variants(self) -> None:
         donor = {
             "id": "product_ipad_donor",
@@ -2666,6 +2695,40 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotIn("Описание (аннотация) не заполнено", missing)
         self.assertEqual(response["items"][0]["payload_item"]["pictures"], ["https://cdn.example.test/quest.jpg"])
         self.assertEqual(response["items"][0]["payload_item"]["description"], "VR headset")
+
+    def test_yandex_export_preview_blocks_empty_parameter_mapping(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Apple iPhone",
+            "sku_gt": "GT-1",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "memory", "name": "Встроенная память", "value": "256 ГБ"},
+                ],
+            },
+        }
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-phone": {"yandex_market": "ym-phone"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-phone": []}),
+            patch.object(yandex_market, "_load_attr_value_refs", return_value={}),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], False)
+        self.assertEqual(item["payload_item"]["parameterValues"], [])
+        self.assertIn("Нет сопоставленных PIM-параметров для Я.Маркет: соберите инфо-модель и свяжите параметры площадки", item["missing"])
 
     def test_yandex_offer_cards_sync_imports_marketplace_media_without_media_row(self) -> None:
         product = {

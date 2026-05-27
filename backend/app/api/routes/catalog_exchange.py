@@ -1112,6 +1112,19 @@ def _provider_row_enabled(row: Optional[Dict[str, Any]], provider: str) -> bool:
     return any(bool(item.get("export")) for item in _provider_bindings(prow))
 
 
+def _provider_export_binding_count(rows: List[Dict[str, Any]], provider: str) -> int:
+    count = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        prow = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
+        for binding in _provider_bindings(prow):
+            if bool(binding.get("export")) and str(binding.get("id") or "").strip():
+                count += 1
+    return count
+
+
 def _store_secret(store: Dict[str, Any], *keys: str) -> str:
     for key in keys:
         value = str(store.get(key) or "").strip()
@@ -1398,6 +1411,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
 
         attributes: List[Dict[str, Any]] = []
         value_mapping_missing: List[str] = []
+        mapped_attribute_values_count = 0
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -1422,6 +1436,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 attr_id = str(binding.get("id") or "").strip()
                 if not attr_id:
                     continue
+                mapped_attribute_values_count += 1
                 attributes.append(
                     {
                         "id": attr_id,
@@ -1471,6 +1486,14 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             message = "Медиа найдено, но часть изображений требует проверки перед выгрузкой"
             missing.append(message)
             missing_details.append(_missing_detail("media_review_required", message, "media", count=_media_review_count(media)))
+        if _provider_export_binding_count(rows, "ozon") <= 0:
+            message = "Нет сопоставленных PIM-параметров для Ozon: соберите инфо-модель и свяжите параметры площадки"
+            missing.append(message)
+            missing_details.append(_missing_detail("parameter_mapping_required", message, "params"))
+        elif mapped_attribute_values_count <= 0:
+            message = "Параметры для Ozon сопоставлены, но у товара нет заполненных значений для выгрузки"
+            missing.append(message)
+            missing_details.append(_missing_detail("parameter_values_missing", message, "params"))
         if not type_value:
             missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
             missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Тип' не сопоставлен/пуст", "params", parameter="Тип"))

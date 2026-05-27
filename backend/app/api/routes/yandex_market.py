@@ -1135,6 +1135,19 @@ def _provider_bindings(raw: Any) -> List[Dict[str, Any]]:
     return out
 
 
+def _provider_export_binding_count(rows: List[Dict[str, Any]], provider: str) -> int:
+    count = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pmap = row.get("provider_map") if isinstance(row.get("provider_map"), dict) else {}
+        prow = pmap.get(provider) if isinstance(pmap.get(provider), dict) else {}
+        for binding in _provider_bindings(prow):
+            if bool(binding.get("export")) and str(binding.get("id") or "").strip():
+                count += 1
+    return count
+
+
 def _find_provider_system_row(rows: List[Dict[str, Any]], provider_code: str, target_ids: Set[str]) -> Optional[Dict[str, Any]]:
     for row in rows or []:
         if not isinstance(row, dict):
@@ -2112,6 +2125,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         description_enabled = _is_system_content_export_enabled(description_row, "yandex_market")
         parameter_values: List[Dict[str, Any]] = []
         present_param_ids: Set[str] = set()
+        mapped_parameter_values_count = 0
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -2135,6 +2149,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
                 ypid = str(binding.get("id") or "").strip()
                 if not ypid:
                     continue
+                mapped_parameter_values_count += 1
                 present_param_ids.add(ypid)
                 parameter_values.append(
                     {
@@ -2170,6 +2185,14 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         if description_enabled and not description:
             missing.append("Описание (аннотация) не заполнено")
             missing_details.append({"code": "missing_description", "message": "Описание (аннотация) не заполнено", "target": "description"})
+        if _provider_export_binding_count(rows, "yandex_market") <= 0:
+            message = "Нет сопоставленных PIM-параметров для Я.Маркет: соберите инфо-модель и свяжите параметры площадки"
+            missing.append(message)
+            missing_details.append({"code": "parameter_mapping_required", "message": message, "target": "params"})
+        elif mapped_parameter_values_count <= 0:
+            message = "Параметры для Я.Маркет сопоставлены, но у товара нет заполненных значений для выгрузки"
+            missing.append(message)
+            missing_details.append({"code": "parameter_values_missing", "message": message, "target": "params"})
         for pname in sorted(set(value_mapping_missing)):
             message = f"{pname}: значение не сопоставлено с Я.Маркет"
             missing.append(message)
