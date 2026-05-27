@@ -3343,7 +3343,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(material["examples"], [])
         self.assertEqual(material["sources"][0]["examples"], [])
         ring_size = next(candidate for candidate in response["candidates"] if candidate["name"] == "Размер кольца")
-        self.assertEqual(ring_size["status"], "accepted")
+        self.assertEqual(ring_size["status"], "needs_review")
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})
         self.assertEqual({source["field_title"] for source in ring_size["sources"]}, {"Размер кольца"})
         self.assertEqual(ring_size["source_summary"]["by_kind"], {"marketplace": 2})

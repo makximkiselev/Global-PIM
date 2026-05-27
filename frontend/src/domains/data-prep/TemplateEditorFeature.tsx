@@ -136,6 +136,7 @@ const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
 };
 
 type DraftFilter = "all" | InfoModelCandidate["status"] | "competitor_only" | "marketplace_only" | "weak_global";
+type DraftSort = "decision" | "required" | "duplicates" | "source" | "name";
 
 function normTitle(s: string) {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -294,6 +295,19 @@ function draftSourceSummaryText(candidate: InfoModelCandidate) {
   return stats.map((item) => `${item.label}: ${item.count}`).join(" · ");
 }
 
+function draftSortScore(candidate: InfoModelCandidate, sort: DraftSort) {
+  const name = normTitle(candidate.name);
+  const sourceText = candidateSources(candidate)[0] || "";
+  if (sort === "required") return `${candidate.required ? "0" : "1"}:${candidate.status}:${name}`;
+  if (sort === "duplicates") return `${candidate.global_match ? "0" : "1"}:${candidate.status}:${name}`;
+  if (sort === "source") return `${sourceText}:${name}`;
+  if (sort === "name") return name;
+  const statusRank = candidate.status === "needs_review" ? "0" : candidate.status === "accepted" ? "1" : "2";
+  const requiredRank = candidate.required ? "0" : "1";
+  const duplicateRank = candidate.global_match ? "0" : "1";
+  return `${statusRank}:${requiredRank}:${duplicateRank}:${name}`;
+}
+
 function candidateSourceKinds(candidate: InfoModelCandidate) {
   return candidate.source_summary?.by_kind || {};
 }
@@ -329,6 +343,7 @@ export default function TemplateEditor() {
   const [infoModel, setInfoModel] = useState<InfoModelSummary>({ status: "none" });
   const [attrTab, setAttrTabState] = useState<"all" | "base" | "category">(normalizeAttrTab(searchParams.get("tab")));
   const [draftFilter, setDraftFilter] = useState<DraftFilter>("needs_review");
+  const [draftSort, setDraftSort] = useState<DraftSort>("decision");
   const [saving, setSaving] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
 
@@ -522,12 +537,18 @@ export default function TemplateEditor() {
   const reviewCandidates = draftCandidates.filter((candidate) => candidate.status === "needs_review").length;
   const rejectedCandidates = draftCandidates.filter((candidate) => candidate.status === "rejected").length;
   const visibleDraftCandidates = useMemo(() => {
-    if (draftFilter === "all") return draftCandidates;
-    if (draftFilter === "competitor_only") return draftCandidates.filter(isCompetitorOnlyCandidate);
-    if (draftFilter === "marketplace_only") return draftCandidates.filter(isMarketplaceOnlyCandidate);
-    if (draftFilter === "weak_global") return draftCandidates.filter(isWeakGlobalCandidate);
-    return draftCandidates.filter((candidate) => candidate.status === draftFilter);
-  }, [draftCandidates, draftFilter]);
+    const filtered =
+      draftFilter === "all"
+        ? draftCandidates
+        : draftFilter === "competitor_only"
+          ? draftCandidates.filter(isCompetitorOnlyCandidate)
+          : draftFilter === "marketplace_only"
+            ? draftCandidates.filter(isMarketplaceOnlyCandidate)
+            : draftFilter === "weak_global"
+              ? draftCandidates.filter(isWeakGlobalCandidate)
+              : draftCandidates.filter((candidate) => candidate.status === draftFilter);
+    return filtered.slice().sort((a, b) => draftSortScore(a, draftSort).localeCompare(draftSortScore(b, draftSort), "ru"));
+  }, [draftCandidates, draftFilter, draftSort]);
 
   const sourceCoverage = useMemo(() => {
     const byProvider = new Map<string, { provider: string; fields: number; required: number; examples: number }>();
@@ -1256,6 +1277,16 @@ export default function TemplateEditor() {
                       activeKey={draftFilter}
                       onChange={(key) => setDraftFilter(key as DraftFilter)}
                     />
+                    <div className="tplDraftSortBar">
+                      <span>Сортировка</span>
+                      <select value={draftSort} onChange={(event) => setDraftSort(event.target.value as DraftSort)}>
+                        <option value="decision">Сначала требует решения</option>
+                        <option value="required">Сначала обязательные</option>
+                        <option value="duplicates">Сначала возможные повторы</option>
+                        <option value="source">По источникам</option>
+                        <option value="name">По названию</option>
+                      </select>
+                    </div>
                     <div className="tplDraftList">
                       {visibleDraftCandidates.length ? (
                         visibleDraftCandidates.map((candidate) => (

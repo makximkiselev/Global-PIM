@@ -452,7 +452,7 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
         examples = row.get("examples") if isinstance(row.get("examples"), list) else []
         row["type"] = _infer_type(examples)
         row["confidence"] = min(0.95, round(0.45 + (float(row.get("_count") or 0) / product_count) * 0.45, 2))
-        row["status"] = "accepted" if row["confidence"] >= 0.65 else "needs_review"
+        row["status"] = "needs_review"
         row.pop("_count", None)
         out.append(row)
     return out
@@ -614,8 +614,6 @@ def _merge_candidate(base: Dict[str, Any], next_item: Dict[str, Any]) -> Dict[st
     for source in next_item.get("sources") if isinstance(next_item.get("sources"), list) else []:
         if isinstance(source, dict):
             base.setdefault("sources", []).append(source)
-    if base.get("required"):
-        base["status"] = "accepted"
     return base
 
 
@@ -677,7 +675,7 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
             "examples": examples,
             "type": _infer_type_from_kind(_text(param.get("kind")), values),
             "confidence": 0.9 if bool(param.get("required") or False) else 0.72,
-            "status": "accepted" if bool(param.get("required") or False) else "needs_review",
+            "status": "needs_review",
             "sources": [
                 {
                     "kind": "marketplace",
