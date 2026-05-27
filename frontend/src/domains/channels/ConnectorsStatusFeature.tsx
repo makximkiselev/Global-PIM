@@ -42,6 +42,7 @@ type ImportStore = {
   token?: string;
   auth_mode?: "auto" | "api-key" | "oauth" | "bearer";
   enabled: boolean;
+  export_enabled?: boolean;
   notes?: string;
   last_check_at?: string | null;
   last_check_status?: "idle" | "ok" | "error" | string;
@@ -113,6 +114,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   const [storeBusinessId, setStoreBusinessId] = useState("");
   const [storeClientId, setStoreClientId] = useState("");
   const [storeEnabled, setStoreEnabled] = useState(true);
+  const [storeExportEnabled, setStoreExportEnabled] = useState(true);
   const [storeNotes, setStoreNotes] = useState("");
   const [storeToken, setStoreToken] = useState("");
   const [storeAuthMode, setStoreAuthMode] = useState<"auto" | "api-key" | "oauth" | "bearer">("auto");
@@ -190,6 +192,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setStoreBusinessId("");
     setStoreClientId("");
     setStoreEnabled(true);
+    setStoreExportEnabled(true);
     setStoreNotes("");
     setStoreToken("");
     setStoreAuthMode("auto");
@@ -204,6 +207,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setStoreBusinessId(store.business_id || "");
     setStoreClientId(store.client_id || "");
     setStoreEnabled(!!store.enabled);
+    setStoreExportEnabled(store.export_enabled !== false);
     setStoreNotes(store.notes || "");
     setStoreToken(store.token || store.api_key || "");
     setStoreAuthMode((store.auth_mode as "auto" | "api-key" | "oauth" | "bearer") || (provider === "ozon" ? "api-key" : "auto"));
@@ -240,6 +244,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
         token: storeToken.trim(),
         auth_mode: storeAuthMode,
         enabled: storeEnabled,
+        export_enabled: storeExportEnabled,
         notes: storeNotes.trim(),
       };
       const r = storeModalMode === "create"
@@ -482,6 +487,9 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                           <span className={`cs-storeBadge ${store.enabled ? "isEnabled" : "isDisabled"}`}>
                             {store.enabled ? "Включен" : "Выключен"}
                           </span>
+                          <span className={`cs-storeBadge ${store.export_enabled !== false ? "isEnabled" : "isDisabled"}`}>
+                            {store.export_enabled !== false ? "Экспорт" : "Без экспорта"}
+                          </span>
                         </div>
                         <dl className="cs-storeMeta">
                           {provider.code === "yandex_market" ? (
@@ -624,6 +632,10 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
         <label className="cs-checkRow">
           <input type="checkbox" checked={storeEnabled} onChange={(e) => setStoreEnabled(e.target.checked)} />
           <span>Использовать для импорта</span>
+        </label>
+        <label className="cs-checkRow">
+          <input type="checkbox" checked={storeExportEnabled} onChange={(e) => setStoreExportEnabled(e.target.checked)} />
+          <span>Разрешить выгрузку товаров</span>
         </label>
         <div className="cs-modalActions">
           <Button variant="primary" onClick={saveStore} disabled={saving}>

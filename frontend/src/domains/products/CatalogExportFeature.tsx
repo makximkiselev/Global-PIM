@@ -12,7 +12,7 @@ import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
 import "../../styles/catalog-exchange.css";
 
-type Store = { id: string; title: string; enabled?: boolean };
+type Store = { id: string; title: string; enabled?: boolean; export_enabled?: boolean };
 type ProviderRow = { code: string; title: string; import_stores?: Store[] };
 type ConnectorsResp = { providers?: ProviderRow[] };
 type ExportRunResp = {
@@ -246,7 +246,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
           .filter((x) => ["yandex_market", "ozon"].includes(x.code))
           .map((provider) => ({
             ...provider,
-            import_stores: provider.import_stores || [],
+            import_stores: (provider.import_stores || []).filter((store) => store.export_enabled !== false),
           }))
           .filter((provider) => (provider.import_stores || []).length > 0);
         setProviders(exportProviders);

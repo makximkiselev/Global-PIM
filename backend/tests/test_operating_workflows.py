@@ -2423,6 +2423,33 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("No matching stores selected", str(ctx.exception.detail))
 
+    def test_export_run_rejects_store_disabled_for_export(self) -> None:
+        req = CatalogExportRunReq.model_validate(
+            {
+                "selection": {"node_ids": [], "product_ids": ["product_1"], "include_descendants": False},
+                "targets": [{"provider": "ozon", "store_ids": ["ozon-ae"]}],
+                "limit": 20,
+            }
+        )
+
+        with (
+            patch.object(catalog_exchange, "_resolve_products", return_value=[{"id": "product_1", "title": "Meta Quest 3 128GB"}]),
+            patch.object(
+                catalog_exchange.ConnectorsStateReadAdapter,
+                "import_stores",
+                return_value=[{"id": "ozon-ae", "title": "Ozon AE", "enabled": True, "export_enabled": False}],
+            ),
+            patch.object(catalog_exchange, "_enrich_export_products_from_candidate_media", return_value=set()),
+            patch.object(catalog_exchange, "_hydrate_marketplace_product_content", return_value=[]),
+            patch.object(catalog_exchange, "_hydrate_missing_content_from_variant_siblings", return_value=[]),
+            patch.object(catalog_exchange, "query_products_full", return_value=[{"id": "product_1", "title": "Meta Quest 3 128GB"}]),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                catalog_exchange.run_catalog_export(req)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("No matching stores selected", str(ctx.exception.detail))
+
     def test_export_package_contains_only_ready_payload_items(self) -> None:
         run = {
             "id": "export_test",
@@ -2437,7 +2464,7 @@ class OperatingWorkflowTests(unittest.TestCase):
                         {
                             "product_id": "product_1",
                             "ready": True,
-                            "payload_item": {"offerId": "GT-1", "name": "Ready item"},
+                            "payload_item": {"offerId": "GT-1", "name": "Ready item", "manuals": [], "barcodes": [], "parameterValues": []},
                         },
                         {
                             "product_id": "product_2",
@@ -2462,6 +2489,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(batch["ready_count"], 1)
         self.assertEqual(batch["items"][0]["offer_id"], "GT-1")
         self.assertEqual(batch["items"][0]["payload"]["name"], "Ready item")
+        self.assertNotIn("manuals", batch["items"][0]["payload"])
+        self.assertNotIn("barcodes", batch["items"][0]["payload"])
+        self.assertNotIn("parameterValues", batch["items"][0]["payload"])
 
     def test_ozon_export_preview_derives_required_type_and_model_name(self) -> None:
         product = {

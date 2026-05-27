@@ -1038,6 +1038,7 @@ def _ensure_tables_impl() -> None:
                   token TEXT NULL,
                   auth_mode TEXT NULL,
                   enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                  export_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                   notes TEXT NULL,
                   last_check_at TEXT NULL,
                   last_check_status TEXT NULL,
@@ -1061,6 +1062,7 @@ def _ensure_tables_impl() -> None:
                   token TEXT NULL,
                   auth_mode TEXT NULL,
                   enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                  export_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                   notes TEXT NULL,
                   last_check_at TEXT NULL,
                   last_check_status TEXT NULL,
@@ -1190,6 +1192,8 @@ def _ensure_lightweight_schema_migrations() -> None:
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE templates_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
             cur.execute("ALTER TABLE templates_tenant_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
+            cur.execute("ALTER TABLE connector_import_stores_rel ADD COLUMN IF NOT EXISTS export_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+            cur.execute("ALTER TABLE connector_import_stores_tenant_rel ADD COLUMN IF NOT EXISTS export_enabled BOOLEAN NOT NULL DEFAULT TRUE")
             for table_name in ("attribute_mappings_rel", "attribute_mappings_tenant_rel"):
                 cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS yandex_bindings_json JSONB NULL")
                 cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS ozon_bindings_json JSONB NULL")
@@ -6419,6 +6423,7 @@ def _collect_connectors_state_rows(doc: Dict[str, Any]) -> tuple[List[tuple[Any,
                     str(raw.get("token") or "").strip() or None,
                     str(raw.get("auth_mode") or "").strip() or None,
                     bool(raw.get("enabled", True)),
+                    bool(raw.get("export_enabled", raw.get("enabled", True))),
                     str(raw.get("notes") or "").strip() or None,
                     str(raw.get("last_check_at") or "").strip() or None,
                     str(raw.get("last_check_status") or "").strip() or None,
@@ -6464,8 +6469,8 @@ def _replace_connectors_state_tables(doc: Dict[str, Any]) -> None:
                     """
                     INSERT INTO connector_import_stores_rel (
                       provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
-                      enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      enabled, export_enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     store_rows,
                 )
@@ -6507,8 +6512,8 @@ def _replace_connectors_state_tenant_tables(doc: Dict[str, Any], organization_id
                     """
                     INSERT INTO connector_import_stores_tenant_rel (
                       organization_id, provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
-                      enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      enabled, export_enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [(org_id, *row) for row in store_rows],
                 )
@@ -6583,7 +6588,7 @@ def load_connectors_state_doc_legacy() -> Dict[str, Any]:
             cur.execute(
                 """
                 SELECT provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
-                       enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                       enabled, export_enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
                 FROM connector_import_stores_rel
                 ORDER BY provider, title, store_id
                 """
@@ -6630,12 +6635,13 @@ def load_connectors_state_doc_legacy() -> Dict[str, Any]:
                     "token": str(row[6] or "").strip(),
                     "auth_mode": str(row[7] or "").strip(),
                     "enabled": bool(row[8]),
-                    "notes": str(row[9] or "").strip(),
-                    "last_check_at": str(row[10] or "").strip() or None,
-                    "last_check_status": str(row[11] or "").strip(),
-                    "last_check_error": str(row[12] or "").strip(),
-                    "created_at": str(row[13] or "").strip() or None,
-                    "updated_at": str(row[14] or "").strip() or None,
+                    "export_enabled": bool(row[9]),
+                    "notes": str(row[10] or "").strip(),
+                    "last_check_at": str(row[11] or "").strip() or None,
+                    "last_check_status": str(row[12] or "").strip(),
+                    "last_check_error": str(row[13] or "").strip(),
+                    "created_at": str(row[14] or "").strip() or None,
+                    "updated_at": str(row[15] or "").strip() or None,
                 }
             )
 
@@ -6675,7 +6681,7 @@ def load_connectors_state_doc(organization_id: Optional[str] = None) -> Dict[str
             cur.execute(
                 """
                 SELECT provider, store_id, title, business_id, client_id, api_key, token, auth_mode,
-                       enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
+                       enabled, export_enabled, notes, last_check_at, last_check_status, last_check_error, created_at, updated_at
                 FROM connector_import_stores_tenant_rel
                 WHERE organization_id = %s
                 ORDER BY provider, title, store_id
@@ -6724,12 +6730,13 @@ def load_connectors_state_doc(organization_id: Optional[str] = None) -> Dict[str
                     "token": str(row[6] or "").strip(),
                     "auth_mode": str(row[7] or "").strip(),
                     "enabled": bool(row[8]),
-                    "notes": str(row[9] or "").strip(),
-                    "last_check_at": str(row[10] or "").strip() or None,
-                    "last_check_status": str(row[11] or "").strip(),
-                    "last_check_error": str(row[12] or "").strip(),
-                    "created_at": str(row[13] or "").strip() or None,
-                    "updated_at": str(row[14] or "").strip() or None,
+                    "export_enabled": bool(row[9]),
+                    "notes": str(row[10] or "").strip(),
+                    "last_check_at": str(row[11] or "").strip() or None,
+                    "last_check_status": str(row[12] or "").strip(),
+                    "last_check_error": str(row[13] or "").strip(),
+                    "created_at": str(row[14] or "").strip() or None,
+                    "updated_at": str(row[15] or "").strip() or None,
                 }
             )
 

@@ -1033,12 +1033,13 @@ class CatalogExportRunReq(BaseModel):
 
 
 def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selected_store_ids: Set[str]) -> List[Dict[str, Any]]:
+    exportable_stores = [s for s in stores if s.get("export_enabled", s.get("enabled", True)) is not False]
     if selected_store_ids:
-        selected = [s for s in stores if str(s.get("id") or "").strip() in selected_store_ids]
+        selected = [s for s in exportable_stores if str(s.get("id") or "").strip() in selected_store_ids]
         if not selected:
             raise HTTPException(status_code=400, detail=f"No matching stores selected for {provider}")
         return selected
-    enabled = [s for s in stores if bool(s.get("enabled", True))]
+    enabled = [s for s in exportable_stores if bool(s.get("enabled", True))]
     return enabled or [{"id": "default", "title": "Все магазины"}]
 
 
@@ -1539,6 +1540,16 @@ def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, An
     }
 
 
+def _clean_export_payload_item(provider: str, payload_item: Dict[str, Any]) -> Dict[str, Any]:
+    payload = deepcopy(payload_item)
+    provider_code = str(provider or "").strip()
+    if provider_code == "yandex_market":
+        for field in ("barcodes", "manuals", "parameterValues", "videos", "deleteParameters"):
+            if isinstance(payload.get(field), list) and not payload.get(field):
+                payload.pop(field, None)
+    return payload
+
+
 def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
     batches = run.get("batches") if isinstance(run.get("batches"), list) else []
     package_batches: List[Dict[str, Any]] = []
@@ -1557,11 +1568,12 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
                 continue
             payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
             if bool(item.get("ready")) and payload_item:
+                payload = _clean_export_payload_item(str(batch.get("provider") or "").strip(), payload_item)
                 ready_items.append(
                     {
                         "product_id": str(item.get("product_id") or "").strip(),
-                        "offer_id": str(payload_item.get("offerId") or payload_item.get("offer_id") or "").strip(),
-                        "payload": payload_item,
+                        "offer_id": str(payload.get("offerId") or payload.get("offer_id") or "").strip(),
+                        "payload": payload,
                     }
                 )
             else:
