@@ -2537,8 +2537,11 @@ class OperatingWorkflowTests(unittest.TestCase):
         item = response["items"][0]
         self.assertEqual(item["missing"], [])
         attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
+        attr_values = {str(attr["id"]): attr["values"][0] for attr in item["payload_item"]["attributes"]}
         self.assertEqual(attrs["8229"], "Смартфон")
         self.assertEqual(attrs["9048"], "iPhone 17 Pro")
+        self.assertEqual(attrs["22232"], "8517130000 - Смартфоны")
+        self.assertEqual(attr_values["22232"]["dictionary_value_id"], 971400011)
 
     def test_ozon_export_preview_derives_watch_type_and_brand_from_title(self) -> None:
         product = {

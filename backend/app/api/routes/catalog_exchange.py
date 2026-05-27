@@ -1203,6 +1203,31 @@ def _infer_ozon_type(product: Dict[str, Any]) -> str:
     return ""
 
 
+def _infer_ozon_tnved(product: Dict[str, Any], inferred_type: str) -> Optional[Dict[str, Any]]:
+    type_value = str(inferred_type or "").strip().lower()
+    title = str(product.get("title") or "").strip().lower()
+    category_name = ""
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    for candidate in (product.get("category_name"), content.get("category_name")):
+        if str(candidate or "").strip():
+            category_name = str(candidate or "").strip().lower()
+            break
+    haystack = f"{title} {category_name}"
+    if type_value == "смартфон" or "смартфон" in haystack or "iphone" in haystack:
+        return {"value": "8517130000 - Смартфоны", "dictionary_value_id": 971400011}
+    if type_value in {"ноутбук", "планшет"} or "ноутбук" in haystack or "macbook" in haystack or "планшет" in haystack or "ipad" in haystack:
+        return {
+            "value": "8471300000 - Машины вычислительные портативные массой не более 10 кг, содержащие, по крайней мере, из центрального блока обработки данных, клавиатуры и дисплея",
+            "dictionary_value_id": 971399753,
+        }
+    if type_value == "тв-приставка" or "приставк" in haystack:
+        return {
+            "value": "8517620009 - Прочие машины для приема, преобразования и передачи или восстановления голоса, изображений или других данных",
+            "dictionary_value_id": 971400016,
+        }
+    return None
+
+
 def _infer_brand(product: Dict[str, Any]) -> str:
     haystack = f"{product.get('title') or ''} {product.get('brand') or ''}".lower()
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
@@ -1236,17 +1261,27 @@ def _infer_ozon_model_name(product: Dict[str, Any]) -> str:
     return re.sub(r"\s+", " ", value).strip(" -/,")
 
 
-def _upsert_ozon_attribute(attributes: List[Dict[str, Any]], attr_id: str, name: str, value: str, source: str) -> None:
+def _upsert_ozon_attribute(
+    attributes: List[Dict[str, Any]],
+    attr_id: str,
+    name: str,
+    value: str,
+    source: str,
+    dictionary_value_id: Optional[int] = None,
+) -> None:
     clean_value = str(value or "").strip()
     if not clean_value:
         return
     target = str(attr_id or "").strip()
     attributes[:] = [attr for attr in attributes if str(attr.get("id") or "").strip() != target]
+    value_payload: Dict[str, Any] = {"value": clean_value}
+    if dictionary_value_id is not None:
+        value_payload["dictionary_value_id"] = int(dictionary_value_id)
     attributes.append(
         {
             "id": target,
             "name": name,
-            "values": [{"value": clean_value}],
+            "values": [value_payload],
             "sourceCatalogName": source,
         }
     )
@@ -1359,6 +1394,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         inferred_model_group = _infer_ozon_model_name(product)
         type_value = inferred_type or type_value
         model_group = model_group or inferred_model_group
+        tnved = _infer_ozon_tnved(product, type_value)
 
         attributes: List[Dict[str, Any]] = []
         value_mapping_missing: List[str] = []
@@ -1397,6 +1433,15 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         _upsert_ozon_attribute(attributes, "8229", "Тип", type_value, "Системное поле")
         _upsert_ozon_attribute(attributes, "85", "Бренд", vendor, "Системное поле")
         _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
+        if tnved:
+            _upsert_ozon_attribute(
+                attributes,
+                "22232",
+                "ТН ВЭД коды ЕАЭС",
+                str(tnved.get("value") or ""),
+                "Системное поле",
+                int(tnved.get("dictionary_value_id")) if tnved.get("dictionary_value_id") is not None else None,
+            )
 
         missing: List[str] = []
         missing_details: List[Dict[str, Any]] = []
@@ -1435,6 +1480,9 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         if not model_group:
             missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
             missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст", "params", parameter="Название модели"))
+        if not tnved:
+            missing.append("Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен")
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен", "params", parameter="ТН ВЭД коды ЕАЭС"))
         for pname in sorted(set(value_mapping_missing)):
             message = f"{pname}: значение не сопоставлено с Ozon"
             missing.append(message)
