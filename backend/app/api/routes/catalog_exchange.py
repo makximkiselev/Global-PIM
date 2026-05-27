@@ -1737,6 +1737,15 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
     competitor_db = load_competitor_mapping_db()
 
     total_changed_ids: Set[str] = set()
+    sibling_updates = _hydrate_missing_content_from_variant_siblings(
+        [product_map[pid] for pid in target_product_ids if isinstance(product_map.get(pid), dict)]
+    )
+    for product in sibling_updates:
+        product_id = str(product.get("id") or "").strip()
+        if product_id:
+            product_map[product_id] = product
+            total_changed_ids.add(product_id)
+
     product_summaries: List[Dict[str, Any]] = []
     conflicts: List[Dict[str, Any]] = []
 
@@ -1841,6 +1850,7 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
             "count": len(target_product_ids),
             "yandex_result": yandex_result,
             "updated_products": len(total_changed_ids) + int(yandex_result.get("updated_products") or 0),
+            "sibling_hydrated_products": len(sibling_updates),
             "conflicts_count": len(conflicts),
             "import_overview": import_overview,
         },
@@ -1855,6 +1865,7 @@ async def run_catalog_import(req: CatalogImportRunReq) -> Dict[str, Any]:
         "run_id": run_id,
         "count": len(target_product_ids),
         "updated_products": len(total_changed_ids) + int(yandex_result.get("updated_products") or 0),
+        "sibling_hydrated_products": len(sibling_updates),
         "conflicts": conflicts,
         "products": product_summaries,
         "yandex_result": yandex_result,

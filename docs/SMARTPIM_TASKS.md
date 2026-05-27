@@ -230,11 +230,12 @@ Current state:
 3. Export media auto-enrichment, when explicitly enabled by env, uses only confirmed competitor links and skips unconfirmed candidates.
 4. Store77 browser image fetch is lazy fallback only after direct storage import fails, not a prefetch for every export image.
 5. Production check on 2026-05-24 for `iPhone 17 Pro Max`: after enriching GT 52432, export readiness moved from 24 ready / 48 blockers to 26 ready / 46 blockers.
+6. Catalog import/enrichment now runs variant sibling hydration before summarizing products, so media/description/brand already present on one SKU variant can fill sibling SKU of the same model and color before export. Production check on `iPad Air 13 M3` updated 20 SKU from sibling variants and moved the category from 4/32 with media to 24/32 with media; the remaining 8 are colors with no donor media in the current catalog.
 
 Known problems:
 
 1. Remaining blockers are mostly SKU without media in the Sim+eSim/2Sim branch and some 2Sim rows also need brand/description completion.
-2. Frontend build is currently blocked locally by macOS dataless placeholder files in `frontend/package.json`, `frontend/dist/*`, and related metadata files; backend patches were deployed directly to production after tests.
+2. Some colors may still need marketplace/competitor media because no same-color sibling donor exists in the current catalog.
 
 ### P0.3 Info-Model Builder And Global Attributes
 

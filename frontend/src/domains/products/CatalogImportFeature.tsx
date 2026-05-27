@@ -18,6 +18,7 @@ type ImportRunResp = {
   run_id: string;
   count: number;
   updated_products: number;
+  sibling_hydrated_products?: number;
   import_overview?: {
     description_ready?: number;
     images_ready?: number;
@@ -440,6 +441,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   const runMetrics: MetricItem[] = [
     { label: "Товаров в прогоне", value: run?.count || 0 },
     { label: "Обновлено", value: run?.updated_products || 0 },
+    { label: "Из вариантов", value: run?.sibling_hydrated_products || 0 },
     { label: "Яндекс нашел", value: run?.yandex_result?.matched_products || 0 },
     { label: "Конфликтов", value: unresolved.length, accent: unresolved.length > 0 },
   ];
