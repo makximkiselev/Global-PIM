@@ -164,11 +164,20 @@ function withCategoryHref(path: string, categoryId?: string | null, param = "cat
   return id ? `${path}?${param}=${encodeURIComponent(id)}` : path;
 }
 
+function catalogExchangeHref(tab: "import" | "export", categoryId?: string | null) {
+  const params = new URLSearchParams({ tab });
+  const id = String(categoryId || "").trim();
+  if (id) params.set("category", id);
+  return `/catalog/exchange?${params.toString()}`;
+}
+
 function withProductExportHref(productIds: string[]) {
   const ids = productIds.map((id) => String(id || "").trim()).filter(Boolean);
-  if (!ids.length) return "/catalog/export";
+  const params = new URLSearchParams({ tab: "export" });
+  if (!ids.length) return `/catalog/exchange?${params.toString()}`;
   const param = ids.length === 1 ? "product" : "products";
-  return `/catalog/export?${param}=${encodeURIComponent(ids.join(","))}`;
+  params.set(param, ids.join(","));
+  return `/catalog/exchange?${params.toString()}`;
 }
 
 function sourcesMappingHref(categoryId?: string | null, tab = "params") {
@@ -290,10 +299,10 @@ function ProductListEntryBar({
         </div>
       </div>
       <div className="productListEntryActions">
-        <Link className="btn" to={withCategoryHref("/catalog/import", categoryId)}>
+        <Link className="btn" to={catalogExchangeHref("import", categoryId)}>
           Импорт
         </Link>
-        <Link className="btn" to={withCategoryHref("/catalog/export", categoryId)}>
+        <Link className="btn" to={catalogExchangeHref("export", categoryId)}>
           Экспорт
         </Link>
         <Link className="btn primary" to={withCategoryHref("/products/new", categoryId, "category_id")}>

@@ -278,7 +278,7 @@ function CatalogProductPreview({
             <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selectedId)}`}>
               Добавить SKU
             </Link>
-            <Link className="btn" to={`/catalog/import?category=${encodeURIComponent(selectedId)}`}>
+            <Link className="btn" to={`/catalog/exchange?tab=import&category=${encodeURIComponent(selectedId)}`}>
               Импорт Excel
             </Link>
           </div>
