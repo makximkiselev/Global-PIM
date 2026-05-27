@@ -1316,7 +1316,7 @@ export default function ProductNewFeature() {
         if (productType === "multi" && groupId) {
           navigate(`/catalog/groups?group=${encodeURIComponent(groupId)}&created=1`);
         } else {
-          navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=competitors&created=1`);
+          navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=sources&created=1`);
         }
       }
     } catch (e: any) {
@@ -1334,7 +1334,7 @@ export default function ProductNewFeature() {
   const wizardSteps = [
     { label: "Основа", meta: "название, категория, тип" },
     { label: "SKU и варианты", meta: "один SKU или группа" },
-    { label: "Конкуренты", meta: "подбор после создания" },
+    { label: "Источники", meta: "подбор после создания" },
     { label: "Проверка", meta: "создать реальные SKU" },
   ];
   const activeStep = Math.min(currentStep, wizardSteps.length - 1);
@@ -1391,7 +1391,7 @@ export default function ProductNewFeature() {
               <strong>{variants.length ? `${enabledVariantCount}/${variants.length}` : 0}</strong>
             </div>
             <div>
-              <span>Конкуренты</span>
+              <span>Источники</span>
               <strong>{variants.length ? "после создания" : "—"}</strong>
             </div>
           </div>
@@ -1612,14 +1612,14 @@ export default function ProductNewFeature() {
                   </div>
                 </div>
                 <div className="pnWizardNotice">
-                  Ручные ссылки не являются основным сценарием. После создания перейдите к конкурентам: там для каждого SKU будет подбор карточек,
+                  Ручные ссылки не являются основным сценарием. После создания перейдите к источникам: там для каждого SKU будет подбор карточек,
                   подтверждение кандидата и насыщение параметрами/медиа только из подтвержденных ссылок.
                 </div>
                 <div className="pnVariantMatrix">
                   <div className="pnVariantMatrixHead">
                     <span>SKU</span>
                     <span>Вариант</span>
-                    <span>Конкуренты</span>
+                    <span>Источники</span>
                     <span>Следующее действие</span>
                   </div>
                   {variants.filter((variant) => variant.enabled !== false).map((variant) => (
@@ -1647,7 +1647,7 @@ export default function ProductNewFeature() {
                 <div className="pnWizardReviewGrid">
                   <div><span>Тип</span><strong>{productType === "single" ? "Один SKU" : "С вариантами"}</strong></div>
                   <div><span>SKU к созданию</span><strong>{enabledVariantCount}</strong></div>
-                  <div><span>Конкуренты</span><strong>после создания</strong></div>
+                  <div><span>Источники</span><strong>после создания</strong></div>
                   <div><span>Параметры</span><strong>{filledFeatures}</strong></div>
                 </div>
                 <div className="pnWizardNotice">

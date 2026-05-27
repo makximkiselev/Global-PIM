@@ -450,8 +450,8 @@ function ProductListInspector({
           <Link className="btn primary" to={`/products/${encodeURIComponent(product.id)}`}>
             Открыть SKU
           </Link>
-          <Link className="btn" to="/sources-mapping">
-            Открыть mapping
+          <Link className="btn" to={sourcesMappingHref(product.category_id, "sources")}>
+            Открыть сопоставления
           </Link>
           <Link className="btn" to={withProductExportHref([product.id])}>
             Проверить этот SKU
@@ -644,8 +644,8 @@ function ProductBulkActionBar({
         <Link className="btn" to={withProductExportHref(selectedIds)}>
           Проверить выбор
         </Link>
-        <Link className="btn" to="/sources-mapping">
-          К mapping
+        <Link className="btn" to="/sources?tab=sources">
+          К сопоставлениям
         </Link>
         <Button variant="danger" onClick={onDelete}>Удалить выбранные</Button>
         <Button onClick={onClear}>Снять выбор</Button>

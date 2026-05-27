@@ -201,7 +201,7 @@ const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "attributes", label: "Параметры", meta: "значения и источники" },
   { id: "sources", label: "Источники", meta: "импорт, excel, конкуренты" },
   { id: "channels", label: "Площадки", meta: "вывод и альтернативы" },
-  { id: "competitors", label: "Конкуренты", meta: "поиск и насыщение" },
+  { id: "competitors", label: "Источники", meta: "поиск и насыщение" },
   { id: "media", label: "Медиа", meta: "S3 assets" },
   { id: "validation", label: "Валидация", meta: "ошибки перед экспортом" },
   { id: "relations", label: "Связи", meta: "аналоги и комплекты" },
@@ -213,12 +213,12 @@ const SECTION_IDS = new Set<SectionId>(SECTION_LABELS.map((section) => section.i
 const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 
 const PRODUCT_NAV_ITEMS: Array<{ id: SectionId; label: string; meta: string }> = [
-  { id: "overview", label: "Описание", meta: "карточка и базовые факты" },
-  { id: "competitors", label: "Источники", meta: "конкуренты и насыщение" },
-  { id: "media", label: "Медиа", meta: "фото и порядок экспорта" },
-  { id: "attributes", label: "Параметры", meta: "значения SKU" },
-  { id: "validation", label: "Экспорт", meta: "проверка перед выгрузкой" },
-  { id: "variants", label: "Варианты", meta: "семейство SKU" },
+  { id: "overview", label: "Описание", meta: "контекст SKU" },
+  { id: "attributes", label: "Параметры", meta: "значения и источники" },
+  { id: "competitors", label: "Источники", meta: "площадки и конкуренты" },
+  { id: "media", label: "Медиа", meta: "выбор и порядок" },
+  { id: "validation", label: "Проверка", meta: "блокеры экспорта" },
+  { id: "relations", label: "Связи", meta: "family, аналоги, комплекты" },
 ];
 
 function sectionFromTab(value: string | null): SectionId {
@@ -226,7 +226,7 @@ function sectionFromTab(value: string | null): SectionId {
   if (tab === "params" || tab === "features" || tab === "parameters") return "attributes";
   if (tab === "description") return "overview";
   if (tab === "platforms" || tab === "marketplaces") return "channels";
-  if (tab === "competitor" || tab === "competitor_links" || tab === "links") return "competitors";
+  if (tab === "sources" || tab === "competitor" || tab === "competitors" || tab === "competitor_links" || tab === "links") return "competitors";
   if (SECTION_IDS.has(tab as SectionId)) return tab as SectionId;
   return "overview";
 }
@@ -274,7 +274,7 @@ function buildProductNextAction({
     return {
       title: "Найти описание из источника",
       detail: "Описание пустое. Проверьте подтвержденные карточки конкурентов или импорт площадки.",
-      cta: "Открыть конкурентов",
+      cta: "Открыть источники",
       tab: "competitors",
       tone: "pending",
     };
@@ -286,7 +286,7 @@ function buildProductNextAction({
       detail: competitorReady
         ? "Ссылки конкурентов есть, но в карточке нет изображений для экспорта."
         : "Сначала подтвердите точную карточку конкурента или импортируйте фото с площадки.",
-      cta: competitorReady ? "Открыть медиа" : "Открыть конкурентов",
+      cta: competitorReady ? "Открыть медиа" : "Открыть источники",
       tab: competitorReady ? "media" : "competitors",
       tone: "danger",
     };
@@ -573,9 +573,11 @@ function toneForCompetitorSourceStatus(status: string): "active" | "pending" | "
 function ProductWorkspaceSectionNav({
   activeSection,
   onSelect,
+  productId,
 }: {
   activeSection: SectionId;
   onSelect: (id: SectionId) => void;
+  productId: string;
 }) {
   return (
     <nav className="productWorkspaceNav" aria-label="Навигация по товару">
@@ -592,6 +594,10 @@ function ProductWorkspaceSectionNav({
             <span>{section.meta}</span>
           </button>
         ))}
+        <Link className="productWorkspaceNavItem productWorkspaceNavLink" to={productExportHref(productId)}>
+          <strong>Экспорт</strong>
+          <span>проверка и payload</span>
+        </Link>
       </div>
     </nav>
   );
@@ -1128,7 +1134,7 @@ function ProductCommerceHero({
               ))
             ) : (
               <div className="productCommerceSpec isWide">
-                <span>Характеристики</span>
+                <span>Параметры</span>
                 <strong>Пока не заполнены</strong>
               </div>
             )}
@@ -1656,6 +1662,8 @@ function ProductWorkspaceFeature() {
       const next = new URLSearchParams(current);
       if (id === "overview") {
         next.delete("tab");
+      } else if (id === "competitors") {
+        next.set("tab", "sources");
       } else {
         next.set("tab", id);
       }
@@ -1822,10 +1830,10 @@ function ProductWorkspaceFeature() {
       {justCreated ? (
         <Card className="productWorkspaceCreatedGuide">
           <div>
-            <strong>SKU создан. Следующий шаг — подтвердить карточки конкурентов.</strong>
-            <span>Для группы вариантов выберите нужные SKU в блоке ниже, запустите поиск re-store/store77 и загрузите параметры, описание и медиа только из подтвержденных ссылок.</span>
+            <strong>SKU создан. Следующий шаг — подтвердить источники.</strong>
+            <span>Для группы вариантов выберите нужные SKU, запустите поиск re-store/store77 и загрузите параметры, описание и медиа только из подтвержденных ссылок.</span>
           </div>
-          <Button variant="primary" onClick={() => handleSectionSelect("competitors")}>Открыть конкурентов</Button>
+          <Button variant="primary" onClick={() => handleSectionSelect("competitors")}>Открыть источники</Button>
         </Card>
       ) : null}
 
@@ -1849,6 +1857,7 @@ function ProductWorkspaceFeature() {
           <ProductWorkspaceSectionNav
             activeSection={activeSection}
             onSelect={handleSectionSelect}
+            productId={product.id}
           />
         }
         main={

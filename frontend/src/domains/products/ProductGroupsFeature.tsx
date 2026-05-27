@@ -1003,13 +1003,13 @@ export default function ProductGroupsFeature() {
                     <div>
                       <div className="pg-createdGuideTitle">Группа SKU создана</div>
                       <div className="muted">
-                        Проверьте состав линейки, общие факты и отличия. После этого переходите к конкурентам по SKU группы и готовьте выгрузку выбранных товаров.
+                        Проверьте состав линейки, общие факты и отличия. После этого переходите к источникам по SKU группы и готовьте выгрузку выбранных товаров.
                       </div>
                     </div>
                     <div className="pg-createdGuideActions">
                       {firstSelectedGroupProductId ? (
-                        <Link className="btn primary" to={`/products/${encodeURIComponent(firstSelectedGroupProductId)}?tab=competitors&created=1`}>
-                          Открыть конкурентов
+                        <Link className="btn primary" to={`/products/${encodeURIComponent(firstSelectedGroupProductId)}?tab=sources&created=1`}>
+                          Открыть источники
                         </Link>
                       ) : null}
                       <Link className="btn" to={selectedGroupExportHref}>

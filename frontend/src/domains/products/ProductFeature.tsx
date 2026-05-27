@@ -284,7 +284,7 @@ type GroupDetailsResp = {
 
 type VariantParam = { id: string; name: string; code?: string; selected?: boolean };
 type VariantParamsResp = { items: VariantParam[]; selected_ids?: string[] };
-type ProductTab = "variants" | "competitors" | "media" | "features" | "description" | "documents" | "analogs" | "related";
+type ProductTab = "description" | "features" | "sources" | "media" | "validation" | "variants" | "documents" | "analogs" | "related";
 type TemplatesByCategoryResp = {
   template?: { id: string } | null;
   attributes?: Array<{
@@ -442,9 +442,10 @@ export default function ProductFeature() {
 
   const [tab, setTabState] = useState<ProductTab>((() => {
     const raw = searchParams.get("tab");
-    return raw === "competitors" || raw === "media" || raw === "features" || raw === "description" || raw === "documents" || raw === "analogs" || raw === "related"
+    if (raw === "competitors" || raw === "sources") return "sources";
+    return raw === "media" || raw === "features" || raw === "description" || raw === "validation" || raw === "documents" || raw === "analogs" || raw === "related" || raw === "variants"
       ? raw
-      : "variants";
+      : "description";
   })());
   const isNewlyCreated = searchParams.get("created") === "1";
 
@@ -492,9 +493,11 @@ export default function ProductFeature() {
   useEffect(() => {
     const raw = searchParams.get("tab");
     const next =
-      raw === "competitors" || raw === "media" || raw === "features" || raw === "description" || raw === "documents" || raw === "analogs" || raw === "related"
-        ? raw
-        : "variants";
+      raw === "competitors" || raw === "sources"
+        ? "sources"
+        : raw === "media" || raw === "features" || raw === "description" || raw === "validation" || raw === "documents" || raw === "analogs" || raw === "related" || raw === "variants"
+          ? raw
+          : "description";
     setTabState(next);
   }, [searchParams]);
 
@@ -683,7 +686,7 @@ export default function ProductFeature() {
         status: competitorCount ? "Готово" : "Нужно сделать",
         tone: competitorCount ? "ok" : "warn",
         action: "Открыть подбор",
-        onClick: () => setTab("competitors"),
+        onClick: () => setTab("sources"),
       },
       {
         key: "features",
@@ -1524,19 +1527,6 @@ export default function ProductFeature() {
               </button>
             ))}
           </div>
-          <label className="pn-dropLite">
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={async (e) => {
-                await appendImageFiles(e.target.files);
-                e.currentTarget.value = "";
-              }}
-            />
-            Перетащите или выберите изображения
-          </label>
         </div>
 
         <div className="pn-heroMain">
@@ -1669,8 +1659,8 @@ export default function ProductFeature() {
             <div className="pn-cardTitle">{isNewlyCreated ? "Товар создан. Следующий шаг" : "Что дальше по карточке"}</div>
             <div className="pn-muted">
               {isNewlyCreated
-                ? "Сначала подтвердите карточки конкурентов, затем загрузите параметры и медиа."
-                : "Рабочий порядок для контент-менеджера: источники, параметры, медиа и выгрузка."}
+                ? "Сначала заполните описание, подтвердите источники и проверьте параметры перед выгрузкой."
+                : "Один маршрут работы с SKU: описание, параметры, источники, медиа, проверка и экспорт."}
             </div>
           </div>
           <div className="pn-workflowContext">
@@ -1705,33 +1695,61 @@ export default function ProductFeature() {
       </div>
 
       <div className="pn-card">
-        <div className="pn-tabs pn-tabsUnder">
-          <button className={`pn-tab ${tab === "variants" ? "isActive" : ""}`} onClick={() => setTab("variants")} type="button">
-            Варианты
+        <div className="pn-tabs pn-tabsUnder pn-productFlowNav" aria-label="Маршрут карточки товара">
+          <button className={`pn-tab ${tab === "description" ? "isActive" : ""}`} onClick={() => setTab("description")} type="button">
+            Описание
           </button>
-          <button className={`pn-tab ${tab === "competitors" ? "isActive" : ""}`} onClick={() => setTab("competitors")} type="button">
-            Конкуренты
+          <button className={`pn-tab ${tab === "features" ? "isActive" : ""}`} onClick={() => setTab("features")} type="button">
+            Параметры
+          </button>
+          <button className={`pn-tab ${tab === "sources" ? "isActive" : ""}`} onClick={() => setTab("sources")} type="button">
+            Источники
           </button>
           <button className={`pn-tab ${tab === "media" ? "isActive" : ""}`} onClick={() => setTab("media")} type="button">
             Медиа
           </button>
-          <button className={`pn-tab ${tab === "features" ? "isActive" : ""}`} onClick={() => setTab("features")} type="button">
-            Характеристики
+          <button className={`pn-tab ${tab === "validation" ? "isActive" : ""}`} onClick={() => setTab("validation")} type="button">
+            Проверка
           </button>
-          <button className={`pn-tab ${tab === "description" ? "isActive" : ""}`} onClick={() => setTab("description")} type="button">
-            Описание
-          </button>
-          <button className={`pn-tab ${tab === "documents" ? "isActive" : ""}`} onClick={() => setTab("documents")} type="button">
-            Документы
-          </button>
-          <button className={`pn-tab ${tab === "analogs" ? "isActive" : ""}`} onClick={() => setTab("analogs")} type="button">
-            Аналоги
-          </button>
-          <button className={`pn-tab ${tab === "related" ? "isActive" : ""}`} onClick={() => setTab("related")} type="button">
-            Сопутствующие
-          </button>
+          <Link className="pn-tab pn-tabLink" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`}>
+            Экспорт
+          </Link>
         </div>
       </div>
+
+      {tab === "validation" && (
+        <div className="pn-card">
+          <div className="pn-validationHub">
+            <div className="pn-validationHead">
+              <div>
+                <div className="pn-cardTitle">Проверка перед экспортом</div>
+                <div className="pn-muted">Сводная точка для SKU: каналы, family/варианты, документы и товарные связи.</div>
+              </div>
+              <Link className="pn-saveBtn" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`}>
+                Проверить экспорт
+              </Link>
+            </div>
+            <div className="pn-validationGrid">
+              <button className="pn-validationTile" type="button" onClick={() => setTab("variants")}>
+                <strong>Варианты</strong>
+                <span>{groupItems.length ? `${groupItems.length} SKU в family` : "Family не назначена"}</span>
+              </button>
+              <button className="pn-validationTile" type="button" onClick={() => setTab("documents")}>
+                <strong>Документы</strong>
+                <span>{content.documents.length ? `${content.documents.length} файлов` : "Документы не добавлены"}</span>
+              </button>
+              <button className="pn-validationTile" type="button" onClick={() => setTab("analogs")}>
+                <strong>Аналоги</strong>
+                <span>{content.analogs.length ? `${content.analogs.length} связей` : "Связей нет"}</span>
+              </button>
+              <button className="pn-validationTile" type="button" onClick={() => setTab("related")}>
+                <strong>Сопутствующие</strong>
+                <span>{content.related.length ? `${content.related.length} товаров` : "Комплекты не заданы"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab === "variants" && (
         <div className="pn-card">
@@ -1839,7 +1857,7 @@ export default function ProductFeature() {
         </div>
       )}
 
-      {tab === "competitors" && <ProductCompetitorPanel productId={product.id} onEnriched={refreshProductSignals} />}
+      {tab === "sources" && <ProductCompetitorPanel productId={product.id} onEnriched={refreshProductSignals} />}
 
       {tab === "media" && (
         <div className="pn-card">
@@ -2160,7 +2178,7 @@ export default function ProductFeature() {
           <div className="pn-card">
             <div className="pn-sectionHeader">
               <div>
-                <div className="pn-cardTitle">Характеристики</div>
+                <div className="pn-cardTitle">Параметры</div>
                 <div className="pn-muted">Поля берутся из инфо-модели категории, источники и площадки сверяются автоматически.</div>
               </div>
             </div>

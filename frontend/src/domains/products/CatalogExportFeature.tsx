@@ -149,7 +149,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
     if (product) params.set("product", product);
     return `/sources?${params.toString()}`;
   };
-  if (product && target === "competitors") return `/products/${encodeURIComponent(product)}?tab=competitors`;
+  if (product && target === "competitors") return `/products/${encodeURIComponent(product)}?tab=sources`;
   if (product && target === "media") return `/products/${encodeURIComponent(product)}?tab=media`;
   if (product && target === "description") return `/products/${encodeURIComponent(product)}?tab=description`;
   if (target === "import") {
@@ -173,7 +173,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
     return sourcesHref("values");
   }
   if (product && lower.includes("конкурент")) {
-    return `/products/${encodeURIComponent(product)}?tab=competitors`;
+    return `/products/${encodeURIComponent(product)}?tab=sources`;
   }
   if (product && (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа"))) {
     return `/products/${encodeURIComponent(product)}?tab=media`;
@@ -187,7 +187,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
 
 function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   const target = String(detail?.target || "").trim();
-  if (target === "competitors") return "Открыть конкурентов";
+  if (target === "competitors") return "Открыть источники";
   if (target === "media") return detail?.code === "media_review_required" ? "Проверить медиа" : "Открыть медиа";
   if (target === "description") return "Открыть описание";
   if (target === "import") return "Импортировать фото";
@@ -199,7 +199,7 @@ function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   if (lower.includes("категор")) return "Открыть категории";
   if (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр")) return "Открыть параметры";
   if (lower.includes("значен")) return "Открыть значения";
-  if (lower.includes("конкурент")) return "Открыть конкурентов";
+  if (lower.includes("конкурент")) return "Открыть источники";
   if (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа")) return "Открыть медиа";
   if (lower.includes("описание")) return "Открыть описание";
   return "Открыть место исправления";

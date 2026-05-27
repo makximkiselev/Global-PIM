@@ -963,7 +963,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           <div className="paramsAlert isInfo">
             Площадки уже дают список обязательных и полезных полей, но финальная инфо-модель строится после конкурентных карточек и товарных данных.
             Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к черновику параметров.
-            <Link className="btn sm" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть конкурентов</Link>
+            <Link className="btn sm" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть источники</Link>
           </div>
         ) : null}
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
@@ -1351,7 +1351,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       <em>отдельная очередь</em>
                     </div>
                   </div>
-                  <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть конкурентов</Link>
+                  <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть источники</Link>
                 </div>
 
                 <div className="paramsInspectorSection">

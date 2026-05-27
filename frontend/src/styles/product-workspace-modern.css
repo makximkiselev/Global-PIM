@@ -452,6 +452,10 @@
   cursor:pointer;
 }
 
+.productWorkspaceNavLink{
+  text-decoration:none;
+}
+
 .productWorkspaceSkeletonNavItem{
   width:100%;
   height:40px;
