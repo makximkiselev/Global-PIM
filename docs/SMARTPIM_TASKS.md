@@ -89,7 +89,7 @@ Canonical flow:
    - `missing product value`;
    - `required by provider`;
    - `not exported intentionally`.
-   - price is not a PIM/product parameter for export readiness; marketplace creation uses no price where possible, or the explicit technical placeholder `1000000` where the provider requires a price.
+   - price is not a PIM/product parameter for export readiness; Я.Маркет and Ozon export payloads use the explicit technical placeholder `1000000`.
 7. Enrich products and product groups:
    - product group/family holds shared facts for a line;
    - SKU-level values override group values only for variant axes or exceptions;

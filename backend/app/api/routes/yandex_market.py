@@ -45,6 +45,7 @@ PRODUCT_GROUPS_PATH = BASE_DIR / "data" / "product_groups.json"
 
 YANDEX_API_BASE = "https://api.partner.market.yandex.ru"
 YANDEX_DISK_API_BASE = "https://cloud-api.yandex.net/v1/disk/public/resources/download"
+YANDEX_TECHNICAL_EXPORT_PRICE = "1000000"
 
 
 def _now_iso() -> str:
@@ -2216,6 +2217,8 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             "name": name,
             "description": description if description_enabled else "",
             "vendor": vendor,
+            "price": YANDEX_TECHNICAL_EXPORT_PRICE,
+            "price_source": "technical_placeholder",
             "marketCategoryId": yandex_category_id,
             "pictures": pictures if media_enabled else [],
             "manuals": manuals,

@@ -118,7 +118,7 @@ Unified parameter flow:
     - `GET /api/catalog/exchange/export/jobs/{job_id}`;
     - worker service: `global-pim-export-worker.service`.
     The synchronous `/catalog/exchange/export/run` endpoint is compatibility/diagnostic path, not the preferred UI path for broad checks.
-33. export must not derive price from PIM, marketplace imports, competitor pages, or product parameters. If a marketplace API requires a price for technical card creation, use the explicit placeholder `1000000` and mark the source as `technical_placeholder`.
+33. export must not derive price from PIM, marketplace imports, competitor pages, or product parameters. Я.Маркет and Ozon export payloads use the explicit placeholder `1000000` and mark the source as `technical_placeholder`.
 34. info-model draft review must show why each candidate exists before approval:
     - `source_summary.by_kind` separates product, marketplace, and competitor evidence;
     - `review_flags` must call out competitor-only, marketplace-only, low-confidence, single-source, select-without-values, and weak global-match cases;

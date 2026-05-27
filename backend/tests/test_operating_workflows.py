@@ -2658,6 +2658,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         query_mock.assert_called_once_with(ids=["product_1"])
         self.assertEqual(response["count"], 1)
         self.assertEqual(response["items"][0]["payload_item"]["offerId"], "GT-1")
+        self.assertEqual(response["items"][0]["payload_item"]["price"], "1000000")
+        self.assertEqual(response["items"][0]["payload_item"]["price_source"], "technical_placeholder")
         self.assertEqual(response["items"][0]["product_title"], "Meta Quest 3 128GB")
         self.assertEqual(response["items"][0]["category_id"], "cat-vr")
 
@@ -2730,6 +2732,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         item = response["items"][0]
         self.assertEqual(item["ready"], False)
         self.assertEqual(item["payload_item"]["parameterValues"], [])
+        self.assertEqual(item["payload_item"]["price"], "1000000")
+        self.assertEqual(item["payload_item"]["price_source"], "technical_placeholder")
         self.assertIn("Нет сопоставленных PIM-параметров для Я.Маркет: соберите инфо-модель и свяжите параметры площадки", item["missing"])
 
     def test_yandex_offer_cards_sync_imports_marketplace_media_without_media_row(self) -> None:
