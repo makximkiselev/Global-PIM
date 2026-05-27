@@ -149,6 +149,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
     if (product) params.set("product", product);
     return `/sources?${params.toString()}`;
   };
+  if (category && detail?.code === "parameter_mapping_required") return `/templates/${encodeURIComponent(category)}`;
   if (product && target === "competitors") return `/products/${encodeURIComponent(product)}?tab=sources`;
   if (product && target === "media") return `/products/${encodeURIComponent(product)}?tab=media`;
   if (product && target === "description") return `/products/${encodeURIComponent(product)}?tab=description`;
@@ -187,6 +188,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
 
 function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   const target = String(detail?.target || "").trim();
+  if (detail?.code === "parameter_mapping_required") return "Собрать инфо-модель";
   if (target === "competitors") return "Открыть источники";
   if (target === "media") return detail?.code === "media_review_required" ? "Проверить медиа" : "Открыть медиа";
   if (target === "description") return "Открыть описание";

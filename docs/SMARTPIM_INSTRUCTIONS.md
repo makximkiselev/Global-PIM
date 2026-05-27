@@ -126,6 +126,7 @@ Unified parameter flow:
 35. if a draft candidate suggests the wrong global parameter, the user must be able to clear `global_match` before approval and create a new canonical parameter instead of silently reusing the wrong one.
 36. the draft screen should expose aggregate quality counters before approval, so the user can see risky candidate groups without reading every row first.
 37. draft quick filters should let the user isolate competitor-only, marketplace-only, and weak global-match candidates from ordinary status filters.
+38. export readiness must not auto-create or auto-approve info-models. `parameter_mapping_required` blockers should link the user to the info-model editor so the user can manually collect/review/approve the draft.
 
 Media rule:
 
