@@ -135,7 +135,19 @@ const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
   rejected: "Отклонено",
 };
 
-type DraftFilter = "all" | InfoModelCandidate["status"] | "competitor_only" | "marketplace_only" | "weak_global" | "semantic_duplicates";
+type DraftFilter =
+  | "all"
+  | InfoModelCandidate["status"]
+  | "competitor_only"
+  | "marketplace_only"
+  | "weak_global"
+  | "semantic_duplicates"
+  | "layer_features"
+  | "layer_content"
+  | "layer_documents"
+  | "layer_rich_content"
+  | "layer_system"
+  | "layer_media";
 type DraftSort = "decision" | "required" | "duplicates" | "source" | "name";
 
 function normTitle(s: string) {
@@ -222,6 +234,26 @@ function sourceLabel(value: string) {
 
 function typeLabel(value: string) {
   return TYPE_LABEL[value as AttrType] || value || "Текст";
+}
+
+function fieldLayerLabel(value?: string) {
+  const layer = String(value || "features").trim();
+  if (layer === "content") return "Контент";
+  if (layer === "documents") return "Документы";
+  if (layer === "rich_content") return "Rich-content";
+  if (layer === "system") return "Системное";
+  if (layer === "media") return "Медиа";
+  return "Характеристика";
+}
+
+function fieldLayerFillLabel(candidate: InfoModelCandidate) {
+  const fillSource = String(candidate.fill_source || "").trim();
+  if (fillSource === "system") return "заполняется системой";
+  if (fillSource === "product_documents") return "из документов товара";
+  if (fillSource === "rich_content_editor") return "из rich-content";
+  if (fillSource === "product_media") return "из медиа товара";
+  if (fillSource === "content_manager") return "заполняет контент-менеджер";
+  return "заполняется в параметрах";
 }
 
 function matchQualityLabel(confidence?: number) {
@@ -334,6 +366,10 @@ function hasReviewFlag(candidate: InfoModelCandidate, code: string) {
 
 function isSemanticDuplicateCandidate(candidate: InfoModelCandidate) {
   return hasReviewFlag(candidate, "merged_alias_sources");
+}
+
+function isLayerCandidate(candidate: InfoModelCandidate, layer: string) {
+  return String(candidate.field_layer || "features").trim() === layer;
 }
 
 export default function TemplateEditor() {
@@ -558,7 +594,9 @@ export default function TemplateEditor() {
               ? draftCandidates.filter(isWeakGlobalCandidate)
               : draftFilter === "semantic_duplicates"
                 ? draftCandidates.filter(isSemanticDuplicateCandidate)
-                : draftCandidates.filter((candidate) => candidate.status === draftFilter);
+                : draftFilter.startsWith("layer_")
+                  ? draftCandidates.filter((candidate) => isLayerCandidate(candidate, draftFilter.replace("layer_", "")))
+                  : draftCandidates.filter((candidate) => candidate.status === draftFilter);
     return filtered.slice().sort((a, b) => draftSortScore(a, draftSort).localeCompare(draftSortScore(b, draftSort), "ru"));
   }, [draftCandidates, draftFilter, draftSort]);
 
@@ -583,6 +621,7 @@ export default function TemplateEditor() {
     let lowConfidence = 0;
     let selectWithoutValues = 0;
     let semanticDuplicates = 0;
+    const byLayer = { features: 0, content: 0, documents: 0, rich_content: 0, system: 0, media: 0 };
     for (const candidate of draftCandidates) {
       if (isCompetitorOnlyCandidate(candidate)) competitorOnly += 1;
       if (isMarketplaceOnlyCandidate(candidate)) marketplaceOnly += 1;
@@ -590,6 +629,8 @@ export default function TemplateEditor() {
       if (isSemanticDuplicateCandidate(candidate)) semanticDuplicates += 1;
       if (Number(candidate.confidence || 0) < 0.7) lowConfidence += 1;
       if (candidate.type === "select" && !(candidate.examples || []).some(Boolean)) selectWithoutValues += 1;
+      const layer = String(candidate.field_layer || "features").trim() as keyof typeof byLayer;
+      if (layer in byLayer) byLayer[layer] += 1;
     }
     return {
       competitorOnly,
@@ -598,6 +639,7 @@ export default function TemplateEditor() {
       lowConfidence,
       selectWithoutValues,
       duplicates: semanticDuplicates,
+      byLayer,
     };
   }, [draftCandidates]);
 
@@ -1104,6 +1146,12 @@ export default function TemplateEditor() {
     { key: "marketplace_only", label: `Только площадки (${draftAudit.marketplaceOnly})` },
     { key: "semantic_duplicates", label: `Повторы смысла (${draftAudit.duplicates})` },
     { key: "weak_global", label: `Слабая связь PIM (${draftAudit.weakGlobalMatch})` },
+    { key: "layer_features", label: `Характеристики (${draftAudit.byLayer.features})` },
+    { key: "layer_content", label: `Контент (${draftAudit.byLayer.content})` },
+    { key: "layer_documents", label: `Документы (${draftAudit.byLayer.documents})` },
+    { key: "layer_rich_content", label: `Rich-content (${draftAudit.byLayer.rich_content})` },
+    { key: "layer_media", label: `Медиа (${draftAudit.byLayer.media})` },
+    { key: "layer_system", label: `Системные (${draftAudit.byLayer.system})` },
     { key: "all", label: `Все (${draftCandidates.length})` },
   ] as const;
 
@@ -1307,9 +1355,11 @@ export default function TemplateEditor() {
                                 <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
                               </div>
                               <div className="tplDraftMetaLine">
+                                <span>{fieldLayerLabel(candidate.field_layer)}</span>
                                 <span>{typeLabel(candidate.type)}</span>
                                 <span>{matchQualityLabel(candidate.confidence)}</span>
                                 {candidate.required ? <span className="is-required">обязательное</span> : null}
+                                {candidate.locked ? <span className="is-required">только чтение</span> : null}
                               </div>
                               {candidate.global_match ? (
                                 <div className={`tplDraftReuse ${isWeakGlobalCandidate(candidate) ? "is-weak" : ""}`}>
@@ -1352,6 +1402,7 @@ export default function TemplateEditor() {
                               <span>Рекомендация</span>
                               <strong>{draftRecommendation(candidate)}</strong>
                               <small>{draftSourceSummaryText(candidate)}</small>
+                              <small>{fieldLayerFillLabel(candidate)}</small>
                               {candidate.examples?.length ? <em>{candidate.examples.slice(0, 3).join(", ")}</em> : null}
                             </div>
                             <div className="tplDraftActions">

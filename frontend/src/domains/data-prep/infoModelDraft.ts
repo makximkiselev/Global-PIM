@@ -16,6 +16,9 @@ export type InfoModelCandidate = {
   code: string;
   type: "text" | "number" | "select" | string;
   group: string;
+  field_layer?: string;
+  fill_source?: string;
+  locked?: boolean;
   required: boolean;
   confidence: number;
   status: "accepted" | "needs_review" | "rejected";

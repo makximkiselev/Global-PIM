@@ -18,6 +18,9 @@ type ProductFeatureValue = {
   values?: string[];
   required?: boolean;
   param_group?: string;
+  field_layer?: string;
+  fill_source?: string;
+  locked?: boolean;
   source_values?: Record<string, unknown>;
 };
 
@@ -553,6 +556,36 @@ function qualityTone(ready: boolean): "active" | "pending" | "danger" | "neutral
   return ready ? "active" : "pending";
 }
 
+function fieldLayerLabel(value?: string) {
+  const layer = normalizeText(value) || "features";
+  if (layer === "content") return "Контент";
+  if (layer === "documents") return "Документы";
+  if (layer === "rich_content") return "Rich-content";
+  if (layer === "system") return "Системное";
+  if (layer === "media") return "Медиа";
+  return "Характеристика";
+}
+
+function featureFillSourceLabel(feature: ProductFeatureValue) {
+  const fillSource = normalizeText(feature.fill_source);
+  if (fillSource === "system" || feature.locked) return "Заполнено системой";
+  if (fillSource === "product_documents") return "Берется из документов товара";
+  if (fillSource === "rich_content_editor") return "Берется из rich-content";
+  if (fillSource === "product_media") return "Берется из медиа товара";
+  if (fillSource === "content_manager") return "Заполняет контент-менеджер";
+  return "Заполняется как параметр";
+}
+
+function systemFeatureValue(feature: ProductFeatureValue, product: ProductData | null) {
+  if (!product || !(feature.locked || normalizeText(feature.field_layer) === "system")) return "";
+  const key = `${normalizeText(feature.code)} ${normalizeText(feature.name)}`.toLowerCase();
+  if (key.includes("sku_gt")) return normalizeText(product.sku_gt);
+  if (key.includes("sku_pim")) return normalizeText(product.sku_pim);
+  if (key.includes("наименование") || key.includes("title")) return normalizeText(product.title);
+  if (key.includes("бренд") || key.includes("brand")) return inferBrand(product.title, product.content?.features || []);
+  return "";
+}
+
 function toneForStatus(status: string): "active" | "pending" | "danger" | "neutral" {
   const value = normalizeText(status).toLowerCase();
   if (!value) return "neutral";
@@ -758,7 +791,7 @@ function ProductAttributeWorkbench({
                   <strong>{normalizeText(feature.name) || normalizeText(feature.code) || "Параметр"}</strong>
                   <em title={value || undefined}>{value ? compactText(value, 78) : "Не заполнено"}</em>
                 </span>
-                <Badge tone={qualityTone(!!value)}>{sourceCount ? `${sourceCount} источн.` : "ручн."}</Badge>
+                <Badge tone={feature.locked ? "neutral" : qualityTone(!!value)}>{feature.locked ? "системн." : sourceCount ? `${sourceCount} источн.` : "ручн."}</Badge>
               </button>
             );
           })}
@@ -772,10 +805,10 @@ function ProductAttributeWorkbench({
               <div>
                 <span>Canonical value</span>
                 <h2>{normalizeText(selectedFeature.name) || normalizeText(selectedFeature.code) || "Параметр"}</h2>
-                <p>{normalizeText(selectedFeature.code) || "код параметра не задан"}</p>
+                <p>{normalizeText(selectedFeature.code) || "код параметра не задан"} · {fieldLayerLabel(selectedFeature.field_layer)}</p>
               </div>
               <div className="productCanonicalValue">
-                <span>Значение в PIM</span>
+                <span>{featureFillSourceLabel(selectedFeature)}</span>
                 <strong title={selectedValue || undefined}>{selectedValue ? compactText(selectedValue, 180) : "Не заполнено"}</strong>
                 {selectedValue.length > 180 ? (
                   <details className="productLongValue">
@@ -1387,16 +1420,41 @@ function ProductWorkspaceFeature() {
     const attrs = Array.isArray(infoModel?.attributes) ? infoModel?.attributes || [] : [];
     return new Set(attrs.flatMap((attr) => [featureIdentity(attr.code), featureIdentity(attr.name)]).filter(Boolean));
   }, [infoModel]);
+  const templateFeatureByIdentity = useMemo(() => {
+    const attrs = Array.isArray(infoModel?.attributes) ? infoModel?.attributes || [] : [];
+    const out = new Map<string, ProductFeatureValue>();
+    for (const attr of attrs) {
+      const codeKey = featureIdentity(attr.code);
+      const nameKey = featureIdentity(attr.name);
+      if (codeKey) out.set(codeKey, attr);
+      if (nameKey) out.set(nameKey, attr);
+    }
+    return out;
+  }, [infoModel]);
   const hasInfoModel = Boolean(infoModel?.has_template);
   const features = useMemo(() => {
     if (!hasInfoModel) return [];
     if (!templateFeatureCodes.size) return rawFeatures;
-    return rawFeatures.filter((feature) => {
+    const merged = rawFeatures.filter((feature) => {
       const code = featureIdentity(feature.code);
       const name = featureIdentity(feature.name);
       return (code && templateFeatureCodes.has(code)) || (name && templateFeatureCodes.has(name));
+    }).map((feature) => {
+      const meta = templateFeatureByIdentity.get(featureIdentity(feature.code)) || templateFeatureByIdentity.get(featureIdentity(feature.name));
+      const mergedFeature = meta ? { ...meta, ...feature, value: feature.value, source_values: feature.source_values } : feature;
+      const systemValue = systemFeatureValue(mergedFeature, product);
+      return systemValue && !normalizeText(mergedFeature.value) ? { ...mergedFeature, value: systemValue } : mergedFeature;
     });
-  }, [hasInfoModel, rawFeatures, templateFeatureCodes]);
+    const used = new Set(merged.flatMap((feature) => [featureIdentity(feature.code), featureIdentity(feature.name)]).filter(Boolean));
+    for (const attr of templateFeatureByIdentity.values()) {
+      const key = featureIdentity(attr.code) || featureIdentity(attr.name);
+      if (key && !used.has(key)) {
+        merged.push({ ...attr, value: systemFeatureValue(attr, product) });
+        used.add(key);
+      }
+    }
+    return merged;
+  }, [hasInfoModel, product, rawFeatures, templateFeatureCodes, templateFeatureByIdentity]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
   const selectedMediaCount = useMemo(() => media.filter((item) => item.selected !== false).length, [media]);
   const selectedReviewMediaCount = useMemo(

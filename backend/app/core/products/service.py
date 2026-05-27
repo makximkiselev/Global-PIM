@@ -243,6 +243,12 @@ def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
                 "code": _norm(attr.get("code") or attr.get("name")),
                 "name": _norm(attr.get("name") or attr.get("code")),
                 "required": bool(attr.get("required", False)),
+                "type": _norm(attr.get("type")) or "text",
+                "scope": _norm(attr.get("scope")),
+                "param_group": _norm((attr.get("options") if isinstance(attr.get("options"), dict) else {}).get("param_group")),
+                "field_layer": _norm((attr.get("options") if isinstance(attr.get("options"), dict) else {}).get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
+                "fill_source": _norm((attr.get("options") if isinstance(attr.get("options"), dict) else {}).get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
+                "locked": bool(attr.get("locked", False)),
             }
             for attr in attrs
         ],
@@ -265,6 +271,9 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
                 feature["value"] = _norm(product.get("sku_pim"))
             elif code_key in {"наименование_товара", "title"}:
                 feature["value"] = _norm(product.get("title"))
+            feature_options = feature.get("options") if isinstance(feature.get("options"), dict) else {}
+            if bool(feature.get("locked")) or _norm(feature.get("field_layer")) == "system" or _norm(feature_options.get("field_layer")) == "system":
+                feature["locked"] = True
         product["content"] = content
         return product
 
@@ -298,6 +307,9 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
                 "required": bool(attr.get("required", False)),
                 "scope": _norm(attr.get("scope")),
                 "param_group": _norm(options.get("param_group")),
+                "field_layer": _norm(options.get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
+                "fill_source": _norm(options.get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
+                "locked": bool(attr.get("locked")),
                 "source_values": {},
             }
         )

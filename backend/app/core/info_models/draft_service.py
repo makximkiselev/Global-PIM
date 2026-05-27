@@ -181,6 +181,40 @@ def _is_provider_payload_field(name: str, code: str | None = None) -> bool:
     return any(token in haystack for token in PROVIDER_PAYLOAD_FIELD_TOKENS)
 
 
+def _field_layer_from_name(name: str, code: str | None = None) -> Dict[str, Any]:
+    haystack = " ".join(
+        part
+        for part in (
+            _norm_match_text(name),
+            _slugify(name),
+            _norm_match_text(code),
+            _slugify(_text(code)),
+        )
+        if part
+    )
+    if any(token in haystack for token in ("rich контент", "rich_kontent", "rich content", "rich_content", "rich-content", "richcontent")):
+        return {"field_layer": "rich_content", "group": "Rich-content", "fill_source": "rich_content_editor", "locked": False}
+    if any(token in haystack for token in ("pdf", "документ", "dokument", "сертификат", "sertifikat", "инструкция", "instrukciya", "manual")):
+        return {"field_layer": "documents", "group": "Документы", "fill_source": "product_documents", "locked": False}
+    if any(token in haystack for token in ("изображение", "izobrazhenie", "фото", "foto", "фотограф", "fotograf", "картин", "kartin", "видео", "video", "медиа", "media", "image", "images", "picture", "pictures", "thumbnail", "gallery", "photo", "photos")):
+        return {"field_layer": "media", "group": "Медиа", "fill_source": "product_media", "locked": False}
+    if any(token in haystack for token in ("описание", "opisanie", "аннотац", "annotac", "хештег", "heshtag", "hashtag", "hashtags", "ключев", "klyuchev", "seo", "search", "поиск", "poisk")):
+        return {"field_layer": "content", "group": "Контентные поля", "fill_source": "content_manager", "locked": False}
+    if any(token in haystack for token in ("sku", "штрихкод", "shtrihkod", "barcode", "bar_code", "код продавца", "kod_prodavca", "seller_code", "vendor_code", "offer_id", "артикул", "artikul")):
+        return {"field_layer": "system", "group": "Системные", "fill_source": "system", "locked": True}
+    return {"field_layer": "features", "group": "Характеристики", "fill_source": "manual", "locked": False}
+
+
+def _apply_field_layer(candidate: Dict[str, Any], name: str | None = None, code: str | None = None) -> Dict[str, Any]:
+    layer = _field_layer_from_name(name or _text(candidate.get("name")), code or _text(candidate.get("code")))
+    candidate["field_layer"] = candidate.get("field_layer") or layer["field_layer"]
+    candidate["fill_source"] = candidate.get("fill_source") or layer["fill_source"]
+    candidate["locked"] = bool(candidate.get("locked") or layer["locked"])
+    if not _text(candidate.get("group")) or _text(candidate.get("group")) in {"Характеристики", "Требования площадок"}:
+        candidate["group"] = layer["group"]
+    return candidate
+
+
 def _provider_candidate_examples(values: List[str]) -> List[str]:
     clean = [_text(value) for value in values if _text(value)]
     if len(clean) > 40:
@@ -362,6 +396,7 @@ def _finalize_candidate_evidence(candidates: List[Dict[str, Any]]) -> List[Dict[
     for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
+        _apply_field_layer(candidate)
         candidate["source_summary"] = _candidate_source_summary(candidate)
         candidate["review_flags"] = _candidate_review_flags(candidate)
     return candidates
@@ -452,6 +487,7 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
                     "sources": [],
                     "_count": 0,
                 }
+                _apply_field_layer(row, canonical_name, code)
                 by_code[code] = row
             row["_count"] += 1
             if value and value not in row["examples"]:
@@ -516,6 +552,7 @@ def _competitor_unmatched_candidates(category_id: str) -> List[Dict[str, Any]]:
                         "sources": [],
                         "_count": 0,
                     }
+                    _apply_field_layer(row, canonical_name, code)
                     by_code[code] = row
                     source_indexes[code] = {}
                 row["_count"] += 1
@@ -634,6 +671,12 @@ def _load_ozon_params(provider_category_id: str) -> List[Dict[str, Any]]:
 def _merge_candidate(base: Dict[str, Any], next_item: Dict[str, Any]) -> Dict[str, Any]:
     base["required"] = bool(base.get("required") or next_item.get("required"))
     base["confidence"] = max(float(base.get("confidence") or 0), float(next_item.get("confidence") or 0))
+    base["locked"] = bool(base.get("locked") or next_item.get("locked"))
+    for key in ("field_layer", "fill_source"):
+        if not _text(base.get(key)) and _text(next_item.get(key)):
+            base[key] = next_item.get(key)
+    if _text(base.get("group")) in {"", "Характеристики", "Требования площадок"} and _text(next_item.get("group")):
+        base["group"] = next_item.get("group")
     if _text(next_item.get("type")) == "select" and _text(base.get("type")) not in {"select", "json"}:
         base["type"] = "select"
     for value in next_item.get("examples") if isinstance(next_item.get("examples"), list) else []:
@@ -688,8 +731,6 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
         if not name:
             continue
         field_id = _text(param.get("id"))
-        if _is_provider_payload_field(name, field_id):
-            continue
         provider = _text(param.get("provider"))
         canonical_name, code = _provider_attribute_identity(provider, field_id, name)
         values = param.get("values") if isinstance(param.get("values"), list) else []
@@ -716,6 +757,7 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
                 }
             ],
         }
+        _apply_field_layer(candidate, canonical_name, code)
         existing = by_code.get(code)
         by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
     return list(by_code.values())
@@ -874,8 +916,11 @@ def approve_draft(template_id: str) -> Dict[str, Any]:
             "scope": "feature",
             "attribute_id": attribute_id or None,
             "position": len(attrs),
+            "locked": bool(candidate.get("locked")),
             "options": {
                 "param_group": _text(candidate.get("group")) or "Характеристики",
+                "field_layer": _text(candidate.get("field_layer")) or "features",
+                "fill_source": _text(candidate.get("fill_source")) or "manual",
                 "source_candidates": [source_candidate_id] if source_candidate_id else [],
                 "attribute_id": attribute_id or None,
                 "dict_id": dict_id or None,

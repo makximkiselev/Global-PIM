@@ -3325,7 +3325,16 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(
                 draft_service,
                 "new_id",
-                side_effect=["tpl-draft-rings", "cand-brand", "cand-size-ym", "cand-material", "cand-battery", "cand-size-ozon"],
+                side_effect=[
+                    "tpl-draft-rings",
+                    "cand-brand",
+                    "cand-size-ym",
+                    "cand-material",
+                    "cand-thumbnail",
+                    "cand-rich",
+                    "cand-battery",
+                    "cand-size-ozon",
+                ],
             ),
             patch.object(draft_service, "now_iso", return_value="2026-04-27T00:00:00+00:00"),
         ):
@@ -3336,12 +3345,17 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn("Размер кольца", names)
         self.assertIn("Время работы", names)
         self.assertIn("Материал", names)
-        self.assertNotIn("Изображение для миниатюры", names)
-        self.assertNotIn("Rich-контент JSON", names)
+        self.assertIn("Изображение для миниатюры", names)
+        self.assertIn("Rich-контент JSON", names)
         material = next(candidate for candidate in response["candidates"] if candidate["name"] == "Материал")
         self.assertEqual(material["type"], "select")
         self.assertEqual(material["examples"], [])
         self.assertEqual(material["sources"][0]["examples"], [])
+        thumbnail = next(candidate for candidate in response["candidates"] if candidate["name"] == "Изображение для миниатюры")
+        self.assertEqual(thumbnail["field_layer"], "media")
+        rich = next(candidate for candidate in response["candidates"] if candidate["name"] == "Rich-контент JSON")
+        self.assertEqual(rich["field_layer"], "rich_content")
+        self.assertEqual(rich["group"], "Rich-content")
         ring_size = next(candidate for candidate in response["candidates"] if candidate["name"] == "Размер кольца")
         self.assertEqual(ring_size["status"], "needs_review")
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})

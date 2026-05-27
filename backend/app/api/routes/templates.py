@@ -124,6 +124,8 @@ def _build_default_attrs() -> List[Dict[str, Any]]:
             "attribute_id": str(global_attr.get("id") or "").strip() or None,
             "param_group": str(a.get("param_group") or "").strip() or None,
             "layer": "base",
+            "field_layer": "system",
+            "fill_source": "system",
             "system_key": str(a.get("key") or "").strip() or None,
         }
         out.append(
@@ -301,6 +303,8 @@ def _ensure_default_attrs(attrs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "attribute_id": str(global_attr.get("id") or "").strip() or None,
             "param_group": str(d.get("param_group") or "").strip() or None,
             "layer": "base",
+            "field_layer": "system",
+            "fill_source": "system",
             "system_key": str(d.get("key") or "").strip() or None,
         }
         existing = by_code.get(code) or by_name.get(name)
