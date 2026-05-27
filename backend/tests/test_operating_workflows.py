@@ -2100,6 +2100,191 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(brushed_candidate)
         self.assertEqual(brushed_candidate["url"], "https://re-store.ru/catalog/RING4BR9/")
 
+    def test_ai_competitor_examples_use_only_confirmed_source_links(self) -> None:
+        rows = [
+            {
+                "entity_id": "product_seed",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_silver/",
+                "title": "Телефон Apple iPhone 17 Pro 256GB Silver",
+                "status": "confirmed",
+            },
+            {
+                "entity_id": "product_candidate",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_17_pro/telefon_wrong/",
+                "title": "Wrong",
+                "status": "candidate",
+            },
+            {
+                "entity_id": "product_restore",
+                "provider": "restore",
+                "url": "https://re-store.ru/catalog/iphone-test/",
+                "title": "Restore",
+                "status": "confirmed",
+            },
+        ]
+        products_by_id = {
+            "product_seed": {
+                "id": "product_seed",
+                "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+                "sku_gt": "seed",
+            },
+            "product_candidate": {
+                "id": "product_candidate",
+                "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Black (Global)",
+            },
+            "product_restore": {
+                "id": "product_restore",
+                "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            },
+        }
+
+        with (
+            patch.object(competitor_mapping, "list_pim_channel_links", return_value=rows),
+            patch.object(
+                competitor_mapping,
+                "query_products_full",
+                side_effect=lambda ids=None, **_: [products_by_id[item] for item in (ids or []) if item in products_by_id],
+            ),
+        ):
+            examples = competitor_mapping._confirmed_competitor_candidate_examples(
+                {"id": "product_target", "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)"},
+                "store77",
+            )
+
+        self.assertEqual(len(examples), 1)
+        self.assertEqual(examples[0]["product_id"], "product_seed")
+        self.assertIn("store77.net", examples[0]["url"])
+
+    def test_ai_competitor_candidate_discovery_rejects_wrong_domain(self) -> None:
+        product = {
+            "id": "product_target",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            "sku_gt": "50001",
+        }
+        source = {"id": "store77", "domain": "store77.net", "base_url": "https://store77.net", "name": "store77"}
+
+        async def fake_llm_chat_text(**kwargs):
+            return {
+                "model": "test-model",
+                "content": json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "url": "https://example.com/not-allowed",
+                                "title": "Смартфон Apple iPhone 17 Pro 256GB Silver",
+                            }
+                        ]
+                    }
+                ),
+            }
+
+        with (
+            patch.object(
+                competitor_mapping,
+                "_confirmed_competitor_candidate_examples",
+                return_value=[
+                    {
+                        "product_id": "product_seed",
+                        "product_title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+                        "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_silver/",
+                        "title": "Телефон Apple iPhone 17 Pro 256GB Silver",
+                    }
+                ],
+            ),
+            patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
+        ):
+            candidates = asyncio.run(competitor_mapping._discover_ai_competitor_candidates(product, source))
+
+        self.assertEqual(candidates, [])
+
+    def test_ai_competitor_candidate_discovery_uses_confirmed_links_as_memory(self) -> None:
+        product = {
+            "id": "product_target",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            "sku_gt": "50001",
+        }
+        source = {"id": "store77", "domain": "store77.net", "base_url": "https://store77.net", "name": "store77"}
+
+        async def fake_llm_chat_text(**kwargs):
+            user_prompt = kwargs["messages"][1]["content"]
+            self.assertIn("product_seed", user_prompt)
+            self.assertIn("store77.net", user_prompt)
+            return {
+                "model": "test-model",
+                "content": json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_esim_silver/",
+                                "title": "Телефон Apple iPhone 17 Pro 256 ГБ eSIM Silver",
+                                "reason": "same learned slug family",
+                            }
+                        ]
+                    }
+                ),
+            }
+
+        with (
+            patch.object(
+                competitor_mapping,
+                "_confirmed_competitor_candidate_examples",
+                return_value=[
+                    {
+                        "product_id": "product_seed",
+                        "product_title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+                        "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_silver/",
+                        "title": "Телефон Apple iPhone 17 Pro 256GB Silver",
+                    }
+                ],
+            ),
+            patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
+        ):
+            candidates = asyncio.run(competitor_mapping._discover_ai_competitor_candidates(product, source))
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["discovery_strategy"], "ai_confirmed_link_memory")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.45)
+        self.assertIn("AI предложил по подтвержденным привязкам", candidates[0]["confidence_reasons"])
+
+    def test_discovery_run_request_parses_ai_candidate_flag(self) -> None:
+        sources, product_ids, limit, use_ai = competitor_mapping._parse_discovery_run_request(
+            {"sources": ["store77"], "product_ids": ["product_1"], "limit": 1, "use_ai": True}
+        )
+
+        self.assertEqual([item["id"] for item in sources], ["store77"])
+        self.assertEqual(product_ids, ["product_1"])
+        self.assertEqual(limit, 1)
+        self.assertTrue(use_ai)
+
+    def test_product_discovery_uses_ai_when_source_returns_only_hidden_candidates(self) -> None:
+        product = {
+            "id": "product_target",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
+            "sku_gt": "50001",
+        }
+        source = {"id": "store77", "domain": "store77.net", "base_url": "https://store77.net", "name": "store77"}
+        low_candidate = {
+            "url": "https://store77.net/apple_iphone_17_pro/telefon_wrong/",
+            "title": "Чехол для Apple iPhone 17 Pro",
+            "confidence_score": 0.2,
+        }
+        ai_candidate = {
+            "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_esim_silver/",
+            "title": "Телефон Apple iPhone 17 Pro 256 ГБ eSIM Silver",
+            "confidence_score": 0.8,
+            "discovery_strategy": "ai_confirmed_link_memory",
+        }
+
+        with (
+            patch.object(competitor_mapping, "_discover_store77_candidates", return_value=[low_candidate]),
+            patch.object(competitor_mapping, "_discover_ai_competitor_candidates", return_value=[ai_candidate]),
+        ):
+            candidates = asyncio.run(competitor_mapping._discover_product_candidates_for_source(product, source, use_ai=True))
+
+        self.assertEqual(candidates, [low_candidate, ai_candidate])
+
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}
         req = CatalogExportRunReq.model_validate(

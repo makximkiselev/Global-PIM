@@ -72,6 +72,9 @@ _AI_PRODUCT_MAPPING_SPEC_LIMIT = max(4, int(os.getenv("AI_PRODUCT_MAPPING_SPEC_L
 _AI_PRODUCT_MAPPING_TIMEOUT_SECONDS = max(30.0, float(os.getenv("AI_PRODUCT_MAPPING_TIMEOUT_SECONDS", "120") or "120"))
 _AI_TEMPLATE_MAPPING_SPEC_LIMIT = max(6, int(os.getenv("AI_TEMPLATE_MAPPING_SPEC_LIMIT", "8") or "8"))
 _AI_TEMPLATE_MAPPING_TIMEOUT_SECONDS = max(30.0, float(os.getenv("AI_TEMPLATE_MAPPING_TIMEOUT_SECONDS", "120") or "120"))
+_AI_COMPETITOR_DISCOVERY_EXAMPLE_LIMIT = max(2, int(os.getenv("AI_COMPETITOR_DISCOVERY_EXAMPLE_LIMIT", "8") or "8"))
+_AI_COMPETITOR_DISCOVERY_TIMEOUT_SECONDS = max(10.0, float(os.getenv("AI_COMPETITOR_DISCOVERY_TIMEOUT_SECONDS", "35") or "35"))
+_AI_COMPETITOR_DISCOVERY_SUGGESTION_LIMIT = max(1, int(os.getenv("AI_COMPETITOR_DISCOVERY_SUGGESTION_LIMIT", "5") or "5"))
 
 
 # =========================
@@ -590,6 +593,7 @@ def _run_payload(
     sources: List[Dict[str, Any]],
     product_ids: Optional[List[str]],
     limit: int,
+    use_ai: bool = False,
     started_at: Optional[str] = None,
     finished_at: Optional[str] = None,
     created_count: int = 0,
@@ -607,6 +611,7 @@ def _run_payload(
         "sources": [source["id"] for source in sources],
         "requested_product_ids": [str(item or "").strip() for item in (product_ids or []) if str(item or "").strip()],
         "limit": max(1, int(limit or 1)),
+        "use_ai": bool(use_ai),
         "scanned_products_count": scanned_products_count,
         "scanned_pairs_count": scanned_pairs_count,
         "created_count": created_count,
@@ -751,7 +756,172 @@ def _discovery_products(product_ids: Optional[List[str]] = None, limit: int = 50
     return items[: min(requested_limit, 3)]
 
 
-async def _discover_product_candidates_for_source(product: Dict[str, Any], source: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _confirmed_competitor_candidate_examples(
+    product: Dict[str, Any],
+    source_id: str,
+    *,
+    limit: int = _AI_COMPETITOR_DISCOVERY_EXAMPLE_LIMIT,
+) -> List[Dict[str, Any]]:
+    normalized_source_id = str(source_id or "").strip()
+    if normalized_source_id not in ALLOWED_SITES:
+        return []
+    try:
+        rows = list_pim_channel_links(
+            scope="competitor_product",
+            entity_type="product",
+            provider=normalized_source_id,
+            status="confirmed",
+        )
+    except Exception:
+        return []
+    product_ids = [str(row.get("entity_id") or "").strip() for row in rows if isinstance(row, dict) and str(row.get("entity_id") or "").strip()]
+    if not product_ids:
+        return []
+    seen_ids: set[str] = set()
+    compact_ids: List[str] = []
+    for product_id in product_ids:
+        if product_id in seen_ids:
+            continue
+        seen_ids.add(product_id)
+        compact_ids.append(product_id)
+    try:
+        products = query_products_full(ids=compact_ids)
+    except Exception:
+        products = []
+    product_by_id = {
+        str(item.get("id") or "").strip(): item
+        for item in products
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    target_profile = _variant_profile(product.get("title"))
+
+    examples: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("provider") or "").strip() != normalized_source_id:
+            continue
+        if str(row.get("status") or "").strip() != "confirmed":
+            continue
+        url = str(row.get("url") or "").strip()
+        if not url or detect_site(url) != normalized_source_id:
+            continue
+        source_product_id = str(row.get("entity_id") or "").strip()
+        source_product = product_by_id.get(source_product_id) or {}
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        product_title = _compact_ai_text(source_product.get("title") or payload.get("product_title") or "", 140)
+        source_title = _compact_ai_text(row.get("title") or payload.get("title") or "", 140)
+        if not product_title:
+            continue
+        profile = _variant_profile(product_title)
+        score = 0
+        for key in ("model", "memory", "color", "ring_size", "band_type", "band_color", "band_size"):
+            if target_profile.get(key) and target_profile.get(key) == profile.get(key):
+                score += 2 if key == "model" else 1
+        examples.append(
+            {
+                "product_id": source_product_id,
+                "product_title": product_title,
+                "title": source_title,
+                "url": url,
+                "_score": score,
+            }
+        )
+    examples.sort(key=lambda item: (int(item.get("_score") or 0), str(item.get("product_title") or "")), reverse=True)
+    out: List[Dict[str, Any]] = []
+    for item in examples[: max(1, int(limit or _AI_COMPETITOR_DISCOVERY_EXAMPLE_LIMIT))]:
+        item = dict(item)
+        item.pop("_score", None)
+        out.append(item)
+    return out
+
+
+def _ai_candidate_items_from_response(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_items: Any = payload.get("candidates")
+    if not isinstance(raw_items, list):
+        raw_items = payload.get("items")
+    if not isinstance(raw_items, list):
+        return []
+    return [item for item in raw_items if isinstance(item, dict)]
+
+
+async def _discover_ai_competitor_candidates(product: Dict[str, Any], source: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if os.getenv("ENABLE_AI_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
+        return []
+    source_id = str(source.get("id") or "").strip()
+    if source_id not in ALLOWED_SITES:
+        return []
+    examples = _confirmed_competitor_candidate_examples(product, source_id)
+    if not examples:
+        return []
+    product_title = _compact_ai_text(product.get("title") or product.get("name") or product.get("sku_gt") or product.get("id"), 160)
+    source_payload = {
+        "id": source_id,
+        "domain": str(source.get("domain") or ""),
+        "base_url": str(source.get("base_url") or ""),
+    }
+    user_prompt = (
+        "Suggest competitor product candidate URLs for one PIM product. "
+        "Learn URL/title patterns only from confirmed examples. "
+        "Return only JSON. Do not invent other domains. Do not auto-approve.\n"
+        f"Source:{json.dumps(source_payload, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"Product:{json.dumps({'id': str(product.get('id') or ''), 'title': product_title}, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"ConfirmedExamples:{json.dumps(examples, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"JSON:{{\"candidates\":[{{\"url\":\"https://...\",\"title\":\"source product title\",\"reason\":\"short reason\"}}]}}"
+    )
+    try:
+        llm_response = await llm_chat_text(
+            messages=[
+                {"role": "system", "content": "You propose exact competitor product URLs from learned confirmed links. Return minified JSON only."},
+                {"role": "user", "content": user_prompt},
+            ],
+            profile="fast",
+            temperature=0.1,
+            timeout_seconds=_AI_COMPETITOR_DISCOVERY_TIMEOUT_SECONDS,
+        )
+        parsed = _json_object_from_text(llm_response.get("content") or "")
+    except LlmError:
+        return []
+    except Exception:
+        return []
+
+    out: List[Dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for item in _ai_candidate_items_from_response(parsed):
+        url = str(item.get("url") or "").strip()
+        if not url or url in seen_urls or detect_site(url) != source_id:
+            continue
+        seen_urls.add(url)
+        title = _compact_ai_text(item.get("title") or product_title, 180)
+        score, reasons = _confidence_for_candidate(product, title, str(item.get("sku") or ""), str(item.get("brand") or ""))
+        if score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+            near_score, near_reasons = _near_miss_confidence_for_candidate(product, title, str(item.get("sku") or ""), str(item.get("brand") or ""))
+            if near_score > score:
+                score, reasons = near_score, near_reasons
+        if score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+            continue
+        out.append(
+            {
+                "url": url,
+                "title": title,
+                "brand": str(item.get("brand") or "").strip(),
+                "sku": str(item.get("sku") or "").strip(),
+                "confidence_score": min(0.86, max(_VISIBLE_DISCOVERY_CONFIDENCE_SCORE, score)),
+                "confidence_reasons": [
+                    "AI предложил по подтвержденным привязкам",
+                    *[str(reason) for reason in reasons if str(reason or "").strip()][:3],
+                ],
+                "profile_text": f"{title} {url}",
+                "discovery_strategy": "ai_confirmed_link_memory",
+                "match_group_key": _model_memory_color_group_key(f"{product_title} {title}"),
+            }
+        )
+        if len(out) >= _AI_COMPETITOR_DISCOVERY_SUGGESTION_LIMIT:
+            break
+    return sorted(out, key=lambda row: float(row.get("confidence_score") or 0), reverse=True)
+
+
+async def _discover_product_candidates_for_source(product: Dict[str, Any], source: Dict[str, Any], *, use_ai: bool = False) -> List[Dict[str, Any]]:
     """
     Extension point for real site discovery.
 
@@ -759,10 +929,24 @@ async def _discover_product_candidates_for_source(product: Dict[str, Any], sourc
     """
     source_id = str(source.get("id") or "").strip()
     if source_id == "restore":
-        return await _discover_restore_candidates(product)
-    if source_id == "store77":
-        return await _discover_store77_candidates(product)
-    return []
+        candidates = await _discover_restore_candidates(product)
+    elif source_id == "store77":
+        candidates = await _discover_store77_candidates(product)
+    else:
+        candidates = []
+    visible_candidates = [
+        candidate for candidate in candidates
+        if float(candidate.get("confidence_score") or 0.0) >= _VISIBLE_DISCOVERY_CONFIDENCE_SCORE
+    ]
+    if use_ai and not visible_candidates:
+        ai_candidates = await _discover_ai_competitor_candidates(product, source)
+        seen_urls = {str(candidate.get("url") or "").strip() for candidate in candidates if str(candidate.get("url") or "").strip()}
+        for candidate in ai_candidates:
+            candidate_url = str(candidate.get("url") or "").strip()
+            if candidate_url and candidate_url not in seen_urls:
+                candidates.append(candidate)
+                seen_urls.add(candidate_url)
+    return candidates
 
 
 def _query_terms_for_product(product: Dict[str, Any]) -> List[str]:
@@ -4709,7 +4893,7 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
     }
 
 
-def _parse_discovery_run_request(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[List[str]], int]:
+def _parse_discovery_run_request(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[List[str]], int, bool]:
     requested_sources = payload.get("sources") or [item["id"] for item in DISCOVERY_SOURCES]
     if not isinstance(requested_sources, list):
         raise HTTPException(status_code=400, detail="sources must be a list")
@@ -4724,7 +4908,8 @@ def _parse_discovery_run_request(payload: Dict[str, Any]) -> Tuple[List[Dict[str
         limit = int(payload.get("limit", 50))
     except Exception:
         limit = 50
-    return sources, product_ids, limit
+    use_ai = bool(payload.get("use_ai", False))
+    return sources, product_ids, limit, use_ai
 
 
 def _resolve_discovery_product_ids(
@@ -4749,17 +4934,25 @@ async def _execute_discovery_run(
     sources: List[Dict[str, Any]],
     product_ids: Optional[List[str]],
     limit: int,
+    use_ai: bool = False,
     organization_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     tenant_token = set_current_tenant_organization_id(organization_id) if organization_id else None
     try:
-        return await _execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit)
+        return await _execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit, use_ai=use_ai)
     finally:
         if tenant_token is not None:
             reset_current_tenant_organization_id(tenant_token)
 
 
-async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[Dict[str, Any]], product_ids: Optional[List[str]], limit: int) -> Dict[str, Any]:
+async def _execute_discovery_run_for_current_tenant(
+    run_id: str,
+    sources: List[Dict[str, Any]],
+    product_ids: Optional[List[str]],
+    limit: int,
+    *,
+    use_ai: bool = False,
+) -> Dict[str, Any]:
     products = _discovery_products(product_ids=product_ids, limit=limit)
 
     db = load_competitor_mapping_db()
@@ -4778,6 +4971,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         sources=sources,
         product_ids=product_ids,
         limit=limit,
+        use_ai=use_ai,
         started_at=started_at,
     ))
 
@@ -4794,7 +4988,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         async with semaphore:
             try:
                 raw_candidates = await asyncio.wait_for(
-                    _discover_product_candidates_for_source(product, source),
+                    _discover_product_candidates_for_source(product, source, use_ai=use_ai),
                     timeout=_DISCOVERY_SOURCE_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError:
@@ -4930,6 +5124,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         sources=sources,
         product_ids=[str(item.get("id") or "") for item in products],
         limit=limit,
+        use_ai=use_ai,
         started_at=started_at,
         finished_at=now_iso(),
         created_count=created_count,
@@ -4948,11 +5143,12 @@ async def _execute_discovery_run_safe(
     sources: List[Dict[str, Any]],
     product_ids: Optional[List[str]],
     limit: int,
+    use_ai: bool = False,
     organization_id: Optional[str] = None,
 ) -> None:
     tenant_token = set_current_tenant_organization_id(organization_id) if organization_id else None
     try:
-        await _execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit)
+        await _execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit, use_ai=use_ai)
     except Exception as exc:
         _persist_discovery_run(_run_payload(
             run_id,
@@ -4960,6 +5156,7 @@ async def _execute_discovery_run_safe(
             sources=sources,
             product_ids=product_ids,
             limit=limit,
+            use_ai=use_ai,
             finished_at=now_iso(),
             errors=[{"error": str(exc) or "DISCOVERY_FAILED"}],
         ))
@@ -4970,7 +5167,7 @@ async def _execute_discovery_run_safe(
 
 @router.post("/discovery/run")
 async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
-    sources, product_ids, limit = _parse_discovery_run_request(payload)
+    sources, product_ids, limit, use_ai = _parse_discovery_run_request(payload)
     product_ids = _resolve_discovery_product_ids(product_ids, payload.get("category_id"), limit)
     run_id = _run_id()
     current_org_id = str(current_tenant_organization_id() or "").strip()
@@ -4984,12 +5181,13 @@ async def discovery_run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 sources=sources,
                 product_ids=product_ids,
                 limit=limit,
+                use_ai=use_ai,
             )
             _persist_discovery_run(run)
             _start_discovery_worker_process(run_id, organization_id)
             return {"ok": True, "run": run, "created_count": 0, "updated_count": 0, "errors_count": 0}
 
-        run = await _execute_discovery_run(run_id, sources, product_ids, limit, organization_id)
+        run = await _execute_discovery_run(run_id, sources, product_ids, limit, use_ai=use_ai, organization_id=organization_id)
     finally:
         if tenant_token is not None:
             reset_current_tenant_organization_id(tenant_token)

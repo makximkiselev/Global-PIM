@@ -105,21 +105,26 @@ Unified parameter flow:
 25. export preparation may run bounded marketplace product-card hydration for the selected stores/SKUs before readiness checks, because marketplace imports are first-party product data for the final catalog;
 26. candidate competitor links may be shown for manual review, but only confirmed links may be used for automatic media/parameter enrichment or export-side fallback.
 27. candidate moderation must distinguish proven conflicts from unknown data. If both product and competitor SIM profiles are known and different, approval is blocked. If competitor SIM is not recognized, keep it as manual review and allow an explicit source-labelled approval/reject decision.
-28. long browser-facing operations must not expose raw nginx `504` pages in the UI. Use persisted run/job state and polling when the backend operation can exceed the proxy timeout; show the saved result once the backend finishes.
-29. export media selection is separate from media enrichment. Removing media from the export set must not delete the enriched source media, and later enrichment must not automatically re-enable media that the user excluded from export.
-30. product media export uses `content.media_images[].selected !== false` and `export_order`/array order. Physical deletion is separate from excluding an image from export.
-31. export preparation should use the persisted job path for broad or long-running scopes:
+28. AI competitor candidate discovery must learn from confirmed product-card links, not from prompt edits:
+    - use only `pim_channel_links` rows with `scope = competitor_product`, `entity_type = product`, `status = confirmed`, and the same `provider`;
+    - validate every AI URL with `detect_site(url) == provider`;
+    - pass the AI title/URL through the same variant confidence checks as deterministic discovery;
+    - persist AI suggestions only as review candidates (`needs_review` / channel `candidate`), never as confirmed links.
+29. long browser-facing operations must not expose raw nginx `504` pages in the UI. Use persisted run/job state and polling when the backend operation can exceed the proxy timeout; show the saved result once the backend finishes.
+30. export media selection is separate from media enrichment. Removing media from the export set must not delete the enriched source media, and later enrichment must not automatically re-enable media that the user excluded from export.
+31. product media export uses `content.media_images[].selected !== false` and `export_order`/array order. Physical deletion is separate from excluding an image from export.
+32. export preparation should use the persisted job path for broad or long-running scopes:
     - `POST /api/catalog/exchange/export/jobs`;
     - `GET /api/catalog/exchange/export/jobs/{job_id}`;
     - worker service: `global-pim-export-worker.service`.
     The synchronous `/catalog/exchange/export/run` endpoint is compatibility/diagnostic path, not the preferred UI path for broad checks.
-32. info-model draft review must show why each candidate exists before approval:
+33. info-model draft review must show why each candidate exists before approval:
     - `source_summary.by_kind` separates product, marketplace, and competitor evidence;
     - `review_flags` must call out competitor-only, marketplace-only, low-confidence, single-source, select-without-values, and weak global-match cases;
     - a candidate that only comes from competitors is evidence, not an automatically approved canonical parameter.
-33. if a draft candidate suggests the wrong global parameter, the user must be able to clear `global_match` before approval and create a new canonical parameter instead of silently reusing the wrong one.
-34. the draft screen should expose aggregate quality counters before approval, so the user can see risky candidate groups without reading every row first.
-35. draft quick filters should let the user isolate competitor-only, marketplace-only, and weak global-match candidates from ordinary status filters.
+34. if a draft candidate suggests the wrong global parameter, the user must be able to clear `global_match` before approval and create a new canonical parameter instead of silently reusing the wrong one.
+35. the draft screen should expose aggregate quality counters before approval, so the user can see risky candidate groups without reading every row first.
+36. draft quick filters should let the user isolate competitor-only, marketplace-only, and weak global-match candidates from ordinary status filters.
 
 Media rule:
 
@@ -413,6 +418,7 @@ AI mapping must learn from user confirmations through data, not through ad-hoc p
 5. AI prompts must include recent confirmed examples before unmatched source fields;
 6. if a confirmed memory example matches the source field, it overrides later LLM/rule suggestions;
 7. protected fields such as product name/title and description must never be target fields for competitor parameter mapping.
+8. product-card candidate discovery uses a separate learning path: confirmed competitor product links (`scope = competitor_product`) are few-shot examples for future URL suggestions, but the result is still only a candidate until the user approves it.
 
 Verify LLM without printing secrets:
 

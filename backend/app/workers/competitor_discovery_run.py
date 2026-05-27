@@ -21,6 +21,7 @@ def _mark_failed(run_id: str, error: str) -> None:
     sources: List[Dict[str, Any]] = []
     product_ids: Optional[List[str]] = None
     limit = 1
+    use_ai = False
     if isinstance(existing, dict):
         sources = [
             competitor_mapping._source_by_id(str(source_id))
@@ -29,6 +30,7 @@ def _mark_failed(run_id: str, error: str) -> None:
         ]
         product_ids = existing.get("requested_product_ids") if isinstance(existing.get("requested_product_ids"), list) else None
         limit = int(existing.get("limit") or 1)
+        use_ai = bool(existing.get("use_ai", False))
     competitor_mapping._persist_discovery_run(
         competitor_mapping._run_payload(
             run_id,
@@ -36,6 +38,7 @@ def _mark_failed(run_id: str, error: str) -> None:
             sources=sources,
             product_ids=product_ids,
             limit=limit,
+            use_ai=use_ai,
             finished_at=competitor_mapping.now_iso(),
             errors=[{"error": error or "DISCOVERY_WORKER_FAILED"}],
         )
@@ -53,7 +56,8 @@ async def run_once(run_id: str, organization_id: Optional[str] = None) -> Dict[s
         ]
         product_ids = run.get("requested_product_ids") if isinstance(run.get("requested_product_ids"), list) else None
         limit = int(run.get("limit") or 1)
-        return await competitor_mapping._execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit)
+        use_ai = bool(run.get("use_ai", False))
+        return await competitor_mapping._execute_discovery_run_for_current_tenant(run_id, sources, product_ids, limit, use_ai=use_ai)
     except Exception as exc:
         _mark_failed(run_id, str(exc) or "DISCOVERY_WORKER_FAILED")
         raise

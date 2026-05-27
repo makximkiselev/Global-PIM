@@ -334,7 +334,7 @@ export default function ProductCompetitorPanel({
       const sources = (context?.sources || []).map((source) => source.id);
       const response = await api<RunResp>("/competitor-mapping/discovery/run", {
         method: "POST",
-        body: JSON.stringify({ background: true, product_ids: [productId], sources, limit: 1 }),
+        body: JSON.stringify({ background: true, product_ids: [productId], sources, limit: 1, use_ai: true }),
       });
       setLastRun(response.run);
       void pollRun(response.run.id);

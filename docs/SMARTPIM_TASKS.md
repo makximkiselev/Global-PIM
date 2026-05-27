@@ -203,6 +203,10 @@ Current state:
 18. Production check on 2026-05-24: GT 52432 (`256Gb Sim+eSim Silver`) confirmed Re:Store, imported 9 ready media images, and left Store77 candidates unconfirmed because the UI detected SIM mismatch (`nano SIM + eSIM` vs `eSIM only`).
 19. Store77 deterministic candidate generation now supports Samsung Galaxy Z Fold7 by model, memory and color; production check on `product_684` returned the Store77 candidate in ~0.002s.
 20. re-store deterministic candidate generation now supports Oura Ring 4 for Silver, Black, Brushed Silver and Stealth by ring size; production check on `product_928/product_945/product_958/product_970` returned candidates in ~0.0-0.002s. Gold/Rose Gold are intentionally not seeded until valid re-store codes are confirmed.
+21. Product-level `Найти карточки` now enables AI competitor candidate discovery as a fallback after deterministic/search discovery returns no candidates:
+   - AI learns in-context from existing `pim_channel_links` rows with `scope=competitor_product`, `entity_type=product`, `status=confirmed`, and the same provider;
+   - AI suggestions are accepted only when the URL belongs to the expected source domain and the existing variant scorer keeps the candidate visible;
+   - AI-created rows remain `needs_review`/`candidate` and are never auto-confirmed or used for enrichment/export before moderation.
 
 Known problems:
 
@@ -211,6 +215,7 @@ Known problems:
 3. Many donor specs remain unmatched because the current info-model does not yet contain every canonical field.
 4. UI still does not show enough source-specific scan evidence when a source returns no candidates.
 5. Product-level competitor matching still needs more visible evidence for exact Store77 misses and re-store blocked/partial responses.
+6. AI candidate discovery is intentionally product-level only for now; bulk/category discovery still avoids LLM calls unless we add a bounded review queue and cost controls.
 
 Next tasks:
 
