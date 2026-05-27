@@ -2882,7 +2882,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(item["ready"], False)
         self.assertIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
-    def test_ozon_export_preview_classifies_missing_media_without_competitor_link(self) -> None:
+    def test_ozon_export_preview_points_missing_media_to_marketplace_import_first(self) -> None:
         product = {
             "id": "product_1",
             "sku_gt": "GT-1",
@@ -2905,9 +2905,9 @@ class OperatingWorkflowTests(unittest.TestCase):
             response = catalog_exchange._ozon_export_preview(["product_1"], 10)
 
         detail = response["items"][0]["missing_details"][0]
-        self.assertEqual(detail["code"], "competitor_link_required")
-        self.assertEqual(detail["target"], "competitors")
-        self.assertIn("конкурента", detail["message"])
+        self.assertEqual(detail["code"], "marketplace_media_import_required")
+        self.assertEqual(detail["target"], "import")
+        self.assertIn("импортируйте фото", detail["message"])
 
     def test_ozon_export_preview_classifies_review_media_as_media_check(self) -> None:
         product = {

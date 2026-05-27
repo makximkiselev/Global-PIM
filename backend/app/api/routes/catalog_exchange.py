@@ -1418,9 +1418,9 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 missing.append(message)
                 missing_details.append(_missing_detail("media_import_required", message, "media"))
             else:
-                message = "Нет изображений: сначала подтвердите карточку конкурента или импортируйте фото с площадки"
+                message = "Нет изображений: импортируйте фото с площадки; если площадка не вернула медиа, подтвердите карточку конкурента"
                 missing.append(message)
-                missing_details.append(_missing_detail("competitor_link_required", message, "competitors"))
+                missing_details.append(_missing_detail("marketplace_media_import_required", message, "import"))
         elif _media_review_count(media) > 0:
             message = "Медиа найдено, но часть изображений требует проверки перед выгрузкой"
             missing.append(message)

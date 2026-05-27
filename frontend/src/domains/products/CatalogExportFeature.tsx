@@ -78,7 +78,7 @@ type ExportBlocker = {
 type ExportMissingDetail = {
   code?: string;
   message?: string;
-  target?: "competitors" | "media" | "description" | "sources" | "params" | "values" | "product" | string;
+  target?: "competitors" | "media" | "description" | "sources" | "params" | "values" | "product" | "import" | string;
   parameter?: string;
   count?: number;
 };
@@ -122,6 +122,12 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
   if (product && target === "competitors") return `/products/${encodeURIComponent(product)}?tab=competitors`;
   if (product && target === "media") return `/products/${encodeURIComponent(product)}?tab=media`;
   if (product && target === "description") return `/products/${encodeURIComponent(product)}?tab=description`;
+  if (target === "import") {
+    const params = new URLSearchParams({ tab: "import" });
+    if (product) params.set("product", product);
+    if (category) params.set("category", category);
+    return `/catalog/exchange?${params.toString()}`;
+  }
   if (category && target === "sources") return sourcesHref("sources");
   if (category && target === "params") return sourcesHref("params");
   if (category && target === "values") return sourcesHref("values");
@@ -154,6 +160,7 @@ function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   if (target === "competitors") return "Открыть конкурентов";
   if (target === "media") return detail?.code === "media_review_required" ? "Проверить медиа" : "Открыть медиа";
   if (target === "description") return "Открыть описание";
+  if (target === "import") return "Импортировать фото";
   if (target === "sources") return "Открыть категории";
   if (target === "params") return "Открыть параметры";
   if (target === "values") return "Открыть значения";
