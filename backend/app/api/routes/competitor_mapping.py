@@ -5654,6 +5654,57 @@ async def start_product_enrich_job(product_id: str, background_tasks: Background
     return _public_product_enrich_job(job)
 
 
+@router.post("/discovery/product-enrich/jobs/batch")
+async def start_product_enrich_batch_jobs(payload: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    raw_product_ids = payload.get("product_ids") if isinstance(payload.get("product_ids"), list) else []
+    product_ids: List[str] = []
+    seen: Set[str] = set()
+    for item in raw_product_ids:
+        product_id = str(item or "").strip()
+        if not product_id or product_id in seen:
+            continue
+        seen.add(product_id)
+        product_ids.append(product_id)
+    if not product_ids:
+        raise HTTPException(status_code=400, detail="product_ids required")
+    try:
+        limit_raw = int(payload.get("limit") or len(product_ids) or 1)
+    except Exception:
+        limit_raw = len(product_ids) or 1
+    limit = max(1, min(limit_raw, 50))
+    db = load_competitor_mapping_db()
+    discovery = _ensure_discovery_doc(db)
+    jobs: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, str]] = []
+    for product_id in product_ids[:limit]:
+        confirmed_links = _confirmed_links_for_product(discovery, product_id)
+        if not confirmed_links:
+            skipped.append({"product_id": product_id, "reason": "no_confirmed_links"})
+            continue
+        job_id = f"competitor_enrich_{hashlib.sha1((product_id + ':' + now_iso()).encode('utf-8')).hexdigest()[:20]}"
+        job = {
+            "id": job_id,
+            "run_id": job_id,
+            "job_id": job_id,
+            "product_id": product_id,
+            "status": "queued",
+            "phase": "queued",
+            "message": "Насыщение товара поставлено в очередь.",
+            "created_at": now_iso(),
+            "created_ts": monotonic(),
+            "updated_ts": monotonic(),
+        }
+        upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+        background_tasks.add_task(_run_product_enrich_job, job_id, product_id)
+        jobs.append(_public_product_enrich_job(job))
+    return {
+        "ok": True,
+        "jobs": jobs,
+        "queued_count": len(jobs),
+        "skipped": skipped,
+    }
+
+
 @router.get("/discovery/products/enrich/jobs/{job_id}")
 def product_enrich_job_status(job_id: str) -> Dict[str, Any]:
     normalized_job_id = str(job_id or "").strip()

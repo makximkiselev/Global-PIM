@@ -559,6 +559,7 @@ Current state:
 15. Competitor SKU rows now use action labels by state (`Разобрать`, `Проверить`, `Исправить`, `Выбрать`, `Текущий SKU`) instead of repeating `Открыть` for every row.
 16. Export blockers for missing SKU media now point first to product-scoped marketplace import (`/catalog/exchange?tab=import&product=...`) when no confirmed competitor link exists; confirmed competitor cases still route to media review/reload.
 17. Product group competitor workflow now has a safe bulk-confirm step: selected SKUs can confirm exact high-confidence re-store/store77 candidates in one action, while low-score and SIM-conflict candidates stay manual.
+18. Product group competitor workflow can queue competitor enrichment for selected SKUs with confirmed links, so media/description/spec loading no longer requires opening each SKU one by one.
 
 Known problems:
 

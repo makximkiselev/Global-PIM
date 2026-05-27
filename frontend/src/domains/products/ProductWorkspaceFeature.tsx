@@ -130,6 +130,12 @@ type CompetitorSafeConfirmResp = {
   skipped?: Array<{ reason?: string }>;
 };
 
+type CompetitorEnrichBatchResp = {
+  ok?: boolean;
+  queued_count?: number;
+  skipped?: Array<{ reason?: string }>;
+};
+
 type CompetitorSkuStatus = {
   label: string;
   detail: string;
@@ -1214,6 +1220,7 @@ function ProductWorkspaceFeature() {
   const [competitorSelectedIds, setCompetitorSelectedIds] = useState<string[]>([]);
   const [competitorBulkRunning, setCompetitorBulkRunning] = useState(false);
   const [competitorBulkConfirming, setCompetitorBulkConfirming] = useState(false);
+  const [competitorBulkEnriching, setCompetitorBulkEnriching] = useState(false);
   const [competitorBulkNotice, setCompetitorBulkNotice] = useState("");
   const [competitorBulkRun, setCompetitorBulkRun] = useState<CompetitorDiscoveryRunResp["run"] | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -1711,6 +1718,34 @@ function ProductWorkspaceFeature() {
     }
   }
 
+  async function handleEnrichConfirmedCompetitorsForSelected() {
+    const ids = selectedVisibleCompetitorIds;
+    if (!ids.length || competitorBulkEnriching) return;
+    setCompetitorBulkEnriching(true);
+    setCompetitorBulkNotice("");
+    try {
+      const response = await api<CompetitorEnrichBatchResp>("/competitor-mapping/discovery/product-enrich/jobs/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          product_ids: ids,
+          limit: ids.length,
+        }),
+      });
+      const queued = Number(response.queued_count || 0);
+      const skipped = response.skipped?.length || 0;
+      setCompetitorBulkNotice(
+        queued
+          ? `Запущена загрузка параметров и медиа для ${queued} SKU. Без подтвержденных ссылок: ${skipped}.`
+          : `Нет SKU с подтвержденными ссылками для загрузки. Пропущено: ${skipped}.`,
+      );
+      setReloadVersion((value) => value + 1);
+    } catch (err) {
+      setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось запустить загрузку медиа по выбранным SKU.");
+    } finally {
+      setCompetitorBulkEnriching(false);
+    }
+  }
+
   if (loading) {
     return <ProductWorkspaceSkeleton />;
   }
@@ -1911,7 +1946,7 @@ function ProductWorkspaceFeature() {
                         type="button"
                         className="pn-competitorSkuRun"
                         onClick={handleRunCompetitorDiscoveryForSelected}
-                        disabled={competitorBulkRunning || competitorBulkConfirming || !selectedVisibleCompetitorIds.length}
+                        disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
                       >
                         {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
                       </button>
@@ -1919,9 +1954,17 @@ function ProductWorkspaceFeature() {
                         type="button"
                         className="pn-competitorSkuRun"
                         onClick={handleConfirmSafeCompetitorsForSelected}
-                        disabled={competitorBulkRunning || competitorBulkConfirming || !selectedVisibleCompetitorIds.length}
+                        disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
                       >
                         {competitorBulkConfirming ? "Подтверждаю..." : "Подтвердить точные"}
+                      </button>
+                      <button
+                        type="button"
+                        className="pn-competitorSkuRun"
+                        onClick={handleEnrichConfirmedCompetitorsForSelected}
+                        disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                      >
+                        {competitorBulkEnriching ? "Ставлю в очередь..." : "Загрузить медиа"}
                       </button>
                     </div>
                     <div className="pn-competitorSkuBulkBar">

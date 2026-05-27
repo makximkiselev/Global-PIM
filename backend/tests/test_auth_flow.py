@@ -3205,6 +3205,48 @@ class AuthFlowTests(unittest.TestCase):
         self.assertTrue(any(row.get("link_id") == "product_113:store77" and row.get("status") == "confirmed" for row in channel_links))
         self.assertTrue(any(row.get("link_id") == "cand_pending" and row.get("status") == "rejected" for row in channel_links))
 
+    def test_batch_competitor_enrich_jobs_queue_only_products_with_confirmed_links(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        store = {"version": 2, "categories": {}, "templates": {}, "discovery": {"candidates": {}, "links": {}, "runs": {}}}
+        channel_links = [
+            {
+                "link_id": "product_113:store77",
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": "product_113",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_16_pro_2/safe/",
+                "status": "confirmed",
+                "source": "moderation",
+                "payload": {"candidate_id": "cand_safe"},
+            },
+        ]
+        saved_jobs: list[dict] = []
+
+        async def fake_run(_job_id: str, _product_id: str) -> None:
+            return None
+
+        with (
+            patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", side_effect=self._channel_link_reader(channel_links)),
+            patch.object(competitor_mapping_routes, "upsert_pim_workflow_run", side_effect=lambda row, workflow=None: saved_jobs.append(deepcopy(row)) or row),
+            patch.object(competitor_mapping_routes, "_run_product_enrich_job", side_effect=fake_run),
+            patch.object(competitor_mapping_routes, "now_iso", return_value="2026-05-27T10:00:00+00:00"),
+        ):
+            response = self.client.post(
+                "/api/competitor-mapping/discovery/product-enrich/jobs/batch",
+                json={"product_ids": ["product_113", "product_114"]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["queued_count"], 1)
+        self.assertEqual(payload["jobs"][0]["product_id"], "product_113")
+        self.assertEqual(payload["skipped"], [{"product_id": "product_114", "reason": "no_confirmed_links"}])
+        self.assertEqual(saved_jobs[0]["product_id"], "product_113")
+
     def test_competitor_discovery_unknown_background_run_keeps_polling(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
