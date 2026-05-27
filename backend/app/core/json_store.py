@@ -478,6 +478,7 @@ def write_doc(path: Path, data: Any) -> None:
                         VALUES (%s, %s, NOW())
                         ON CONFLICT (path)
                         DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                        WHERE json_documents.payload IS DISTINCT FROM EXCLUDED.payload
                         """,
                         (key, Json(data)),
                     )
@@ -488,6 +489,7 @@ def write_doc(path: Path, data: Any) -> None:
                         VALUES (%s, %s::jsonb, NOW())
                         ON CONFLICT (path)
                         DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                        WHERE json_documents.payload IS DISTINCT FROM EXCLUDED.payload
                         """,
                         (key, json.dumps(data, ensure_ascii=False)),
                     )

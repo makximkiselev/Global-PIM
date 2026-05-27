@@ -1446,6 +1446,19 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(result["run"]["id"], "export_new")
         self.assertEqual(result["run"]["count"], 2)
 
+    def test_catalog_exchange_run_history_is_bounded_before_save(self) -> None:
+        runs_doc = {
+            "runs": {
+                f"run_{idx}": {"id": f"run_{idx}", "created_at": f"2026-05-23T10:{idx:02d}:00+00:00"}
+                for idx in range(5)
+            }
+        }
+
+        with patch.dict(os.environ, {"CATALOG_EXCHANGE_RUN_HISTORY_LIMIT": "2"}):
+            pruned = catalog_exchange._prune_runs_doc(catalog_exchange.EXPORT_RUNS_PATH, runs_doc)
+
+        self.assertEqual(list(pruned["runs"].keys()), ["run_4", "run_3"])
+
     def test_competitor_specs_auto_map_without_saved_template_mapping(self) -> None:
         attrs = {
             "встроенная_память": {"code": "встроенная_память", "name": "Встроенная память"},
@@ -2629,6 +2642,32 @@ class OperatingWorkflowTests(unittest.TestCase):
             "https://market.example.test/quest-side.jpg",
         ])
         self.assertEqual(saved_products[0][0]["content"]["source_values"]["media_images"]["yandex_market"]["count"], 2)
+
+    def test_yandex_marketplace_cache_omits_full_raw_mapping_payload(self) -> None:
+        entry = {
+            "offer": {
+                "offerId": "GT-1",
+                "description": "VR headset",
+                "pictures": [{"url": "https://market.example.test/quest-main.jpg"}],
+                "vendor": "Meta",
+                "unused_raw_field": {"nested": ["x"] * 100},
+            }
+        }
+
+        compact = yandex_market._compact_offer_mapping_for_cache(entry)
+
+        self.assertEqual(compact["offerId"], "GT-1")
+        self.assertEqual(compact["description"], "VR headset")
+        self.assertEqual(compact["pictures"], ["https://market.example.test/quest-main.jpg"])
+        self.assertEqual(compact["vendor"], "Meta")
+        self.assertNotIn("unused_raw_field", json.dumps(compact, ensure_ascii=False))
+
+    def test_ozon_attribute_values_cache_stores_raw_summary_by_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("STORE_MARKETPLACE_RAW_PAGES", None)
+            raw = ozon_market._attribute_values_raw_payload({"raw_pages": [{"items": list(range(100))}, {"items": [1]}]})
+
+        self.assertEqual(raw, {"pages_count": 2})
 
     def test_ozon_products_sync_imports_marketplace_images_to_product_content(self) -> None:
         product = {

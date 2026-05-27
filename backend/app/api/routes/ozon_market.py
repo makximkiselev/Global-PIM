@@ -33,6 +33,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _attribute_values_raw_payload(fetched: Dict[str, Any]) -> Dict[str, Any]:
+    pages = fetched.get("raw_pages") if isinstance(fetched.get("raw_pages"), list) else []
+    if os.getenv("STORE_MARKETPLACE_RAW_PAGES", "0").strip().lower() in {"1", "true", "yes"}:
+        return {"pages": pages}
+    return {"pages_count": len(pages)}
+
+
 def _env_file_value(key: str) -> str:
     if not ENV_PATH.exists():
         return ""
@@ -970,7 +977,7 @@ async def import_category_attributes(req: ImportCategoryAttrsReq) -> Dict[str, A
                     "limit": int(req.values_limit),
                     "last_value_id": None,
                     "values": fetched.get("values") or [],
-                    "raw": {"pages": fetched.get("raw_pages") or []},
+                    "raw": _attribute_values_raw_payload(fetched),
                 }
                 imported_values += 1
             except Exception as e:
@@ -1055,7 +1062,7 @@ async def import_attribute_values(req: ImportAttributeValuesReq) -> Dict[str, An
         "limit": int(req.limit),
         "last_value_id": req.last_value_id,
         "values": fetched.get("values") or [],
-        "raw": {"pages": fetched.get("raw_pages") or []},
+        "raw": _attribute_values_raw_payload(fetched),
     }
     write_doc(CATEGORY_ATTR_VALUES_PATH, doc)
     return {"ok": True, "key": key, "values_count": len(fetched.get("values") or [])}

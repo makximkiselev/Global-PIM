@@ -724,6 +724,38 @@ def _save_offer_mappings_doc(doc: Dict[str, Any]) -> None:
     write_doc(OFFER_MAPPINGS_PATH, doc)
 
 
+def _cache_list(items: Any, limit: int = 30) -> List[Any]:
+    if not isinstance(items, list):
+        return []
+    return items[: max(0, int(limit))]
+
+
+def _compact_offer_card_for_cache(card: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(card, dict):
+        return {}
+    return {
+        "offerId": str(card.get("offerId") or "").strip(),
+        "cardStatus": card.get("cardStatus"),
+        "contentRating": card.get("contentRating"),
+        "warnings": _cache_list(card.get("warnings"), 20),
+        "errors": _cache_list(card.get("errors"), 20),
+        "recommendations": _cache_list(card.get("recommendations"), 20),
+    }
+
+
+def _compact_offer_mapping_for_cache(entry: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(entry, dict):
+        return {}
+    return {
+        "offerId": _entry_offer_id(entry),
+        "description": _entry_text(entry, "description"),
+        "pictures": _entry_urls(entry, "pictures")[:80],
+        "videos": _entry_urls(entry, "videos", "videoUrls")[:20],
+        "vendor": _entry_text(entry, "vendor", "vendorName", "brand"),
+        "barcodes": _entry_values(entry, "barcodes", "barcode")[:20],
+    }
+
+
 def _extract_offer_mapping_entries(body: Dict[str, Any]) -> List[Dict[str, Any]]:
     result = body.get("result") if isinstance(body, dict) else {}
     if isinstance(result, list):
@@ -1928,7 +1960,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 "store_title": store_title or store_key,
                 "business_id": business_id,
                 "fetched_at": _now_iso(),
-                "card": card,
+                "card": _compact_offer_card_for_cache(card),
                 "mapped_values": mapped_values,
             }
             cache_items[offer_id] = {
@@ -1945,7 +1977,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 "store_title": store_title or store_key,
                 "business_id": business_id,
                 "fetched_at": _now_iso(),
-                "entry": mapping_entry if isinstance(mapping_entry, dict) else {},
+                "entry": _compact_offer_mapping_for_cache(mapping_entry),
                 "description": imported_description,
                 "pictures": imported_pictures,
                 "videos": imported_videos,

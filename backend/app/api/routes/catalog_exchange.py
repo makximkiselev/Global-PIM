@@ -142,8 +142,35 @@ def _load_runs(path: Path) -> Dict[str, Any]:
     return {"runs": runs}
 
 
+def _run_sort_value(run: Dict[str, Any]) -> str:
+    for key in ("created_at", "started_at", "finished_at", "updated_at"):
+        value = str(run.get(key) or "").strip()
+        if value:
+            return value
+    return str(run.get("id") or "")
+
+
+def _prune_runs_doc(path: Path, doc: Dict[str, Any]) -> Dict[str, Any]:
+    runs = doc.get("runs") if isinstance(doc.get("runs"), dict) else {}
+    if not isinstance(runs, dict):
+        return {"runs": {}}
+    default_limit = 30 if path == EXPORT_RUNS_PATH else 50
+    try:
+        keep = max(1, int(os.getenv("CATALOG_EXCHANGE_RUN_HISTORY_LIMIT", str(default_limit)) or default_limit))
+    except Exception:
+        keep = default_limit
+    if len(runs) <= keep:
+        return {"runs": runs}
+    ordered = sorted(
+        [(run_id, run) for run_id, run in runs.items() if isinstance(run, dict)],
+        key=lambda item: _run_sort_value(item[1]),
+        reverse=True,
+    )
+    return {"runs": {run_id: run for run_id, run in ordered[:keep]}}
+
+
 def _save_runs(path: Path, doc: Dict[str, Any]) -> None:
-    write_doc(path, doc)
+    write_doc(path, _prune_runs_doc(path, doc))
 
 
 def _collect_subtree_ids(nodes: List[Dict[str, Any]], root_id: str) -> Set[str]:

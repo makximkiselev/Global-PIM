@@ -681,6 +681,11 @@ Next fix in the category flow:
 9. Info-model draft rows with a weak/wrong global reuse suggestion can be switched to a new canonical field before approval with `Создать как новое`.
 10. Info-model draft header now summarizes model-quality risks before approval: competitor-only, marketplace-only, weak PIM reuse, low confidence, empty select dictionaries, and duplicate codes.
 11. Ozon source mapping can be unblocked manually when the tree is incomplete: enter a `type:<description_category_id>:<type_id>` value, validate it through the Ozon attributes API for enabled stores, then save the category binding only after the API confirms at least one store.
+12. JSON storage growth guardrails are in place:
+   - unchanged `write_doc` payloads no longer rewrite `json_documents`;
+   - Ozon attribute-value cache stores raw page counts by default instead of full raw API pages;
+   - Yandex offer-card/mapping caches store compact summaries instead of full raw responses;
+   - catalog import/export run JSON history is bounded before saving.
 
 ## Verification Commands
 

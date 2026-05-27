@@ -408,6 +408,11 @@ Production disk rules:
 2. keep explicit operational backups such as `info-model-reset-*.json` unless the user asks to remove them;
 3. monitor `/var/log/journal` separately from app data because SSH/deploy/test loops can grow system logs even when product files are tiny;
 4. journald should have a bounded persistent disk limit on the production server.
+5. `json_documents` is for compact rebuildable documents, not full raw marketplace API archives:
+   - skip rewrites when the JSON payload is unchanged;
+   - store raw API page counts/summaries unless raw pages are explicitly needed for a debugging session;
+   - bound import/export run history before saving;
+   - after large JSON rewrites, use a planned `VACUUM FULL json_documents` or `pg_repack` window to return old TOAST space to disk.
 
 AI mapping must learn from user confirmations through data, not through ad-hoc prompt edits:
 
