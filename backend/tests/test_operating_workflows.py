@@ -2806,6 +2806,15 @@ class OperatingWorkflowTests(unittest.TestCase):
         item = response["items"][0]
         self.assertEqual(item["ready"], False)
         self.assertIn("Степень защиты: значение не сопоставлено с Я.Маркет", item["missing"])
+        self.assertIn(
+            {
+                "code": "value_mapping_required",
+                "message": "Степень защиты: значение не сопоставлено с Я.Маркет",
+                "target": "values",
+                "parameter": "Степень защиты",
+            },
+            item["missing_details"],
+        )
 
     def test_yandex_export_preview_uses_provider_specific_output_value(self) -> None:
         product = {

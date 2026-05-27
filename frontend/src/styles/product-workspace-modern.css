@@ -810,6 +810,20 @@
   white-space:nowrap;
 }
 
+.productWorkspaceMediaHintActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.productWorkspaceMediaReviewButton{
+  min-height:30px;
+  padding:6px 10px;
+  font-size:12px;
+}
+
 .productWorkspaceMediaCard{
   overflow:hidden;
   border:1px solid rgba(var(--line-rgb), .7);
@@ -846,6 +860,20 @@
   font-size:12px;
   line-height:1.45;
   font-weight:750;
+}
+
+.productWorkspaceMediaMeta em{
+  display:inline-flex;
+  align-self:flex-start;
+  padding:4px 8px;
+  border:1px solid rgba(var(--accent-rgb), .34);
+  border-radius:999px;
+  background:rgba(var(--accent-rgb), .08);
+  color:var(--accent-strong);
+  font-size:11px;
+  line-height:1.2;
+  font-style:normal;
+  font-weight:850;
 }
 
 .productWorkspaceMediaActions{

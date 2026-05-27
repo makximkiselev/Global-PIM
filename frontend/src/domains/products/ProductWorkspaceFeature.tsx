@@ -32,6 +32,9 @@ type ProductMedia = {
   url: string;
   caption?: string;
   source?: string;
+  source_type?: string;
+  status?: string;
+  needs_review?: boolean;
   selected?: boolean;
   order?: number;
   export_order?: number;
@@ -376,6 +379,12 @@ function flattenMedia(content?: ProductContent): ProductMedia[] {
   return out;
 }
 
+function isMediaWaitingForReview(item: ProductMedia): boolean {
+  return normalizeText(item.status).toLowerCase() === "needs_review"
+    || item.needs_review === true
+    || normalizeText(item.source_type).toLowerCase() === "external_hotlink";
+}
+
 function featureValue(feature: ProductFeatureValue): string {
   const value = normalizeText(feature.value);
   if (value) return value;
@@ -509,6 +518,15 @@ function mediaSourceLabel(url: string): string {
   if (normalized.includes("/competitors/store77/")) return "store77";
   if (normalized.includes("/uploads/")) return "S3";
   return "Медиа";
+}
+
+function mediaSourceTitle(item: ProductMedia): string {
+  const source = normalizeText(item.source);
+  if (source === "restore") return "re-store";
+  if (source === "store77") return "store77";
+  if (source === "ozon") return "Ozon";
+  if (source === "yandex_market") return "Я.Маркет";
+  return mediaSourceLabel(item.url);
 }
 
 function mediaShortName(url: string): string {
@@ -1374,6 +1392,11 @@ function ProductWorkspaceFeature() {
     });
   }, [hasInfoModel, rawFeatures, templateFeatureCodes]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
+  const selectedMediaCount = useMemo(() => media.filter((item) => item.selected !== false).length, [media]);
+  const selectedReviewMediaCount = useMemo(
+    () => media.filter((item) => item.selected !== false && isMediaWaitingForReview(item)).length,
+    [media],
+  );
   const categoryPath = useMemo(() => buildCategoryPath(nodes, product?.category_id), [nodes, product?.category_id]);
   const competitorGroupItems = useMemo(() => {
     if (!product || !normalizeText(product.group_id)) return [];
@@ -1487,6 +1510,13 @@ function ProductWorkspaceFeature() {
       export_order: orderIndex,
     }));
     void saveMediaImages(orderedMedia);
+  }
+
+  function excludeReviewMediaFromExport() {
+    const nextMedia = media.map((item) => (
+      isMediaWaitingForReview(item) ? { ...item, selected: false } : item
+    ));
+    void saveMediaImages(nextMedia);
   }
   const allVisibleCompetitorsSelected = filteredCompetitorIds.length > 0 && selectedVisibleCompetitorIds.length === filteredCompetitorIds.length;
   const competitorSkuStatusCounts = useMemo(() => {
@@ -2068,7 +2098,18 @@ function ProductWorkspaceFeature() {
                   <>
                     <div className="productWorkspaceMediaHint">
                       <span>В экспорт уйдут только отмеченные изображения, в порядке слева направо.</span>
-                      <strong>{media.filter((item) => item.selected !== false).length}/{media.length}</strong>
+                      <div className="productWorkspaceMediaHintActions">
+                        {selectedReviewMediaCount ? (
+                          <Button
+                            className="productWorkspaceMediaReviewButton"
+                            disabled={mediaSaving}
+                            onClick={excludeReviewMediaFromExport}
+                          >
+                            Не выгружать на проверке
+                          </Button>
+                        ) : null}
+                        <strong>{selectedMediaCount}/{media.length}</strong>
+                      </div>
                     </div>
                     {mediaNotice ? <Alert tone={mediaNotice.includes("Не удалось") ? "error" : "success"}>{mediaNotice}</Alert> : null}
                     <div className="productWorkspaceMediaGrid">
@@ -2077,7 +2118,10 @@ function ProductWorkspaceFeature() {
                           <img src={toRenderableMediaUrl(item.url)} alt={item.caption || product.title} loading="lazy" />
                           <div className="productWorkspaceMediaMeta">
                             <strong>{item.caption || `Фото ${index + 1}`}</strong>
-                            <span>{mediaSourceLabel(item.url)} · {mediaShortName(item.url)}</span>
+                            <span>{mediaSourceTitle(item)} · {mediaShortName(item.url)}</span>
+                            {isMediaWaitingForReview(item) ? (
+                              <em>Нужна проверка перед выгрузкой</em>
+                            ) : null}
                           </div>
                           <div className="productWorkspaceMediaActions">
                             <label className="productWorkspaceMediaToggle">

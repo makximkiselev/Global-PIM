@@ -2145,31 +2145,44 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
                 )
 
         missing: List[str] = []
+        missing_details: List[Dict[str, Any]] = []
         if status in {"archived", "archive"}:
             missing.append("Товар в архиве")
+            missing_details.append({"code": "archived_product", "message": "Товар в архиве", "target": "product"})
         if not offer_id:
             missing.append("SKU GT (offerId) не заполнен")
+            missing_details.append({"code": "missing_offer_id", "message": "SKU GT (offerId) не заполнен", "target": "description"})
         if not name:
             missing.append("Наименование товара не заполнено")
+            missing_details.append({"code": "missing_title", "message": "Наименование товара не заполнено", "target": "description"})
         if not yandex_category_id:
             missing.append("Нет сопоставления категории с Я.Маркет")
+            missing_details.append({"code": "category_mapping_required", "message": "Нет сопоставления категории с Я.Маркет", "target": "sources"})
         if media_enabled and not pictures:
             missing.append("Нет изображений (pictures)")
+            missing_details.append({"code": "marketplace_media_import_required", "message": "Нет изображений (pictures)", "target": "import"})
         if not vendor:
             missing.append("Бренд обязателен")
+            missing_details.append({"code": "required_parameter_missing", "message": "Бренд обязателен", "target": "params", "parameter": "Бренд"})
         if not bool(vendor_details.get("mapped", True)):
             missing.append("Бренд: значение не сопоставлено с Я.Маркет")
+            missing_details.append({"code": "value_mapping_required", "message": "Бренд: значение не сопоставлено с Я.Маркет", "target": "values", "parameter": "Бренд"})
         if description_enabled and not description:
             missing.append("Описание (аннотация) не заполнено")
+            missing_details.append({"code": "missing_description", "message": "Описание (аннотация) не заполнено", "target": "description"})
         for pname in sorted(set(value_mapping_missing)):
-            missing.append(f"{pname}: значение не сопоставлено с Я.Маркет")
+            message = f"{pname}: значение не сопоставлено с Я.Маркет"
+            missing.append(message)
+            missing_details.append({"code": "value_mapping_required", "message": message, "target": "values", "parameter": pname})
 
         if yandex_category_id and yandex_category_id not in required_param_ids_cache:
             required_param_ids_cache[yandex_category_id] = _yandex_required_param_ids(yandex_category_id)
         required_param_ids = required_param_ids_cache.get(yandex_category_id, set()) if yandex_category_id else set()
         for req_pid in sorted(required_param_ids):
             if req_pid not in present_param_ids:
-                missing.append(f"Обязательный параметр Я.Маркет #{req_pid} не сопоставлен/пуст")
+                message = f"Обязательный параметр Я.Маркет #{req_pid} не сопоставлен/пуст"
+                missing.append(message)
+                missing_details.append({"code": "required_parameter_missing", "message": message, "target": "params", "parameter_id": req_pid})
 
         ready = len(missing) == 0
         if ready:
@@ -2194,6 +2207,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
                 "category_id": category_id,
                 "ready": ready,
                 "missing": missing,
+                "missing_details": missing_details,
                 "payload_item": payload_item,
             }
         )
