@@ -1264,6 +1264,11 @@
   background: rgba(var(--card-rgb), 0.72);
 }
 
+.tplDraftReuse.is-weak {
+  border-color: rgba(249, 115, 22, 0.28);
+  background: rgba(249, 115, 22, 0.08);
+}
+
 .tplDraftSources small {
   max-width: 260px;
   overflow: hidden;

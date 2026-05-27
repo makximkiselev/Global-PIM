@@ -278,14 +278,16 @@ function globalMatchReasonLabel(reason?: string) {
 function draftRecommendation(candidate: InfoModelCandidate) {
   if (candidate.status === "accepted") return "В модели";
   if (candidate.status === "rejected") return "Не использовать";
-  if (candidate.global_match) return "Проверить дубль";
+  if (isSemanticDuplicateCandidate(candidate)) return "Проверить повтор";
+  if (isWeakGlobalCandidate(candidate)) return "Проверить связь PIM";
+  if (candidate.global_match) return "Можно переиспользовать";
   if (isMarketplaceOnlyCandidate(candidate)) return "Проверить необходимость";
   if (isCompetitorOnlyCandidate(candidate)) return "Проверить источник";
   return "Проверить";
 }
 
 function draftPrimaryActionLabel(candidate: InfoModelCandidate) {
-  if (candidate.global_match) return "Переиспользовать";
+  if (candidate.global_match) return "Переиспользовать PIM-поле";
   return "Добавить поле";
 }
 
@@ -299,12 +301,12 @@ function draftSortScore(candidate: InfoModelCandidate, sort: DraftSort) {
   const name = normTitle(candidate.name);
   const sourceText = candidateSources(candidate)[0] || "";
   if (sort === "required") return `${candidate.required ? "0" : "1"}:${candidate.status}:${name}`;
-  if (sort === "duplicates") return `${isSemanticDuplicateCandidate(candidate) ? "0" : candidate.global_match ? "1" : "2"}:${candidate.status}:${name}`;
+  if (sort === "duplicates") return `${isSemanticDuplicateCandidate(candidate) ? "0" : isWeakGlobalCandidate(candidate) ? "1" : "2"}:${candidate.status}:${name}`;
   if (sort === "source") return `${sourceText}:${name}`;
   if (sort === "name") return name;
   const statusRank = candidate.status === "needs_review" ? "0" : candidate.status === "accepted" ? "1" : "2";
   const requiredRank = candidate.required ? "0" : "1";
-  const duplicateRank = isSemanticDuplicateCandidate(candidate) ? "0" : candidate.global_match ? "1" : "2";
+  const duplicateRank = isSemanticDuplicateCandidate(candidate) ? "0" : isWeakGlobalCandidate(candidate) ? "1" : "2";
   return `${statusRank}:${requiredRank}:${duplicateRank}:${name}`;
 }
 
@@ -1310,7 +1312,7 @@ export default function TemplateEditor() {
                                 {candidate.required ? <span className="is-required">обязательное</span> : null}
                               </div>
                               {candidate.global_match ? (
-                                <div className="tplDraftReuse">
+                                <div className={`tplDraftReuse ${isWeakGlobalCandidate(candidate) ? "is-weak" : ""}`}>
                                   <b>Уже есть в PIM</b>
                                   <span>
                                     {candidate.global_match.title || candidate.global_match.code} · {globalMatchReasonLabel(candidate.global_match.reason)}
