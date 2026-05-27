@@ -2079,6 +2079,27 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
         self.assertIn("store77 URL собран из модели, памяти и цвета Samsung", candidates[0]["confidence_reasons"])
 
+    def test_restore_seed_candidate_supports_oura_ring4_size_and_color(self) -> None:
+        silver = {
+            "id": "product_928",
+            "title": "Умное кольцо Oura Ring 4 Серебристый (Silver) 4 US",
+            "sku_gt": "53292",
+        }
+        brushed = {
+            "id": "product_933",
+            "title": "Умное кольцо Oura Ring 4 Матовое серебро (Brushed Silver) 9 US",
+            "sku_gt": "53321",
+        }
+
+        silver_candidate = competitor_mapping._restore_oura_seed_candidate_for_product(silver)
+        brushed_candidate = competitor_mapping._restore_oura_seed_candidate_for_product(brushed)
+
+        self.assertIsNotNone(silver_candidate)
+        self.assertEqual(silver_candidate["url"], "https://re-store.ru/catalog/RING4SL4/")
+        self.assertGreaterEqual(silver_candidate["confidence_score"], 0.78)
+        self.assertIsNotNone(brushed_candidate)
+        self.assertEqual(brushed_candidate["url"], "https://re-store.ru/catalog/RING4BR9/")
+
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}
         req = CatalogExportRunReq.model_validate(

@@ -1047,9 +1047,13 @@ def _variant_profile(value: Any) -> Dict[str, str]:
         profile["model"] = "_".join(part for part in ("apple_watch", line, generation) if part)
     elif oura_match:
         profile["model"] = f"oura_ring_{oura_match.group(1)}"
-        size_match = re.search(r"\b(\d{1,2})\s*(?:us|size|размер)\b|\b(?:size|размер)\s*(\d{1,2})\b", normalized)
+        tail = normalized[oura_match.end() :]
+        size_match = re.search(r"\b(?:size|размер)\s*(\d{1,2})\b|\b(\d{1,2})\s*(?:us|size|размер)\b", tail)
         if size_match:
-            profile["ring_size"] = size_match.group(1) or size_match.group(2)
+            try:
+                profile["ring_size"] = str(int(size_match.group(1) or size_match.group(2)))
+            except Exception:
+                profile["ring_size"] = size_match.group(1) or size_match.group(2)
     elif galaxy_fold_match:
         generation = galaxy_fold_match.group(1) or galaxy_fold_match.group(2) or ""
         profile["model"] = f"samsung_galaxy_z_fold_{generation}"
@@ -1064,6 +1068,10 @@ def _variant_profile(value: Any) -> Dict[str, str]:
         profile["color"] = "blue"
 
     color_options = [
+        ("rose_gold", ("rose gold", "розовое золото")),
+        ("brushed_silver", ("brushed silver", "матовое серебро")),
+        ("stealth", ("stealth", "матовый черный", "матовый чёрный", "черный матовый", "чёрный матовый")),
+        ("gold", ("gold", "золотой", "золото")),
         ("natural_titanium", ("natural titanium", "натуральный титан", "natural", "натуральн")),
         ("desert_titanium", ("desert titanium", "пустынный титан", "desert", "пустынн")),
         ("black_titanium", ("black titanium", "черный титан", "чёрный титан", "black", "черный", "чёрный")),
@@ -3147,6 +3155,9 @@ def _restore_iphone_direct_url(product: Dict[str, Any]) -> str:
 
 
 async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
+    oura_candidate = _restore_oura_seed_candidate_for_product(product)
+    if oura_candidate:
+        return [oura_candidate]
     url = _restore_iphone_direct_url(product)
     if not url:
         return []
@@ -3184,6 +3195,42 @@ async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[
     ]
 
 
+def _restore_oura_seed_candidate_for_product(product: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    raw_title = str(product.get("title") or "").strip()
+    profile = _variant_profile(raw_title)
+    if str(profile.get("model") or "") != "oura_ring_4":
+        return None
+    ring_size = str(profile.get("ring_size") or "").strip()
+    color = str(profile.get("color") or "").strip()
+    color_codes = {
+        "silver": ("SL", "серебро"),
+        "black_titanium": ("BL", "черный"),
+        "brushed_silver": ("BR", "матовое серебро"),
+        "stealth": ("SH", "черный матовый"),
+    }
+    if not ring_size or color not in color_codes:
+        return None
+    code_suffix, color_label = color_codes[color]
+    code = f"RING4{code_suffix}{int(ring_size)}"
+    url = f"https://re-store.ru/catalog/{code}/"
+    title = f"Умное кольцо OURA Ring 4 размер {int(ring_size):02d}, {color_label}"
+    score, reasons = _confidence_for_candidate(product, title, code, "OURA")
+    if score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+        return None
+    return {
+        "url": url,
+        "title": title,
+        "brand": "OURA",
+        "sku": code,
+        "confidence_score": min(0.95, max(score, 0.86)),
+        "confidence_reasons": [*reasons, "re-store URL собран из модели, размера и цвета Oura Ring"],
+        "profile_text": title,
+        "profile_specs": {"Размер": ring_size, "Цвет": color_label},
+        "discovery_strategy": "restore_oura_slug_seed",
+        "match_group_key": _model_memory_color_group_key(raw_title),
+    }
+
+
 async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     if os.getenv("ENABLE_HTTP_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
         # Hard kill switch for production incidents. re-store serves the product
@@ -3196,6 +3243,8 @@ async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str
         candidate_url = str(candidate.get("url") or "")
         if candidate_url:
             seen.add(candidate_url)
+    if any(str(candidate.get("discovery_strategy") or "") == "restore_oura_slug_seed" for candidate in out):
+        return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
     for term in _query_terms_for_product(product):
         url = f"https://re-store.ru/search/?q={quote_plus(term)}"
         try:

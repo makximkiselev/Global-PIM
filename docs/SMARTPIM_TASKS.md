@@ -201,6 +201,8 @@ Current state:
 16. Product channel summary reads confirmed/candidate competitor links from `pim_channel_links`, so `Площадки` reflects Re:Store/Store77 links after restart and not only legacy product JSON.
 17. Product-level `Загрузить параметры и медиа` keeps competitor media when storage import fails as `needs_review`, and imports Re:Store images to S3 when available.
 18. Production check on 2026-05-24: GT 52432 (`256Gb Sim+eSim Silver`) confirmed Re:Store, imported 9 ready media images, and left Store77 candidates unconfirmed because the UI detected SIM mismatch (`nano SIM + eSIM` vs `eSIM only`).
+19. Store77 deterministic candidate generation now supports Samsung Galaxy Z Fold7 by model, memory and color; production check on `product_684` returned the Store77 candidate in ~0.002s.
+20. re-store deterministic candidate generation now supports Oura Ring 4 for Silver, Black, Brushed Silver and Stealth by ring size; production check on `product_928/product_945/product_958/product_970` returned candidates in ~0.0-0.002s. Gold/Rose Gold are intentionally not seeded until valid re-store codes are confirmed.
 
 Known problems:
 
