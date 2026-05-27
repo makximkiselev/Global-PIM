@@ -124,6 +124,12 @@ type CompetitorDiscoveryRunResp = {
   };
 };
 
+type CompetitorSafeConfirmResp = {
+  ok?: boolean;
+  confirmed_count?: number;
+  skipped?: Array<{ reason?: string }>;
+};
+
 type CompetitorSkuStatus = {
   label: string;
   detail: string;
@@ -1207,6 +1213,7 @@ function ProductWorkspaceFeature() {
   const [competitorSkuFilter, setCompetitorSkuFilter] = useState<"all" | CompetitorSkuStatus["tone"]>("all");
   const [competitorSelectedIds, setCompetitorSelectedIds] = useState<string[]>([]);
   const [competitorBulkRunning, setCompetitorBulkRunning] = useState(false);
+  const [competitorBulkConfirming, setCompetitorBulkConfirming] = useState(false);
   const [competitorBulkNotice, setCompetitorBulkNotice] = useState("");
   const [competitorBulkRun, setCompetitorBulkRun] = useState<CompetitorDiscoveryRunResp["run"] | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -1659,6 +1666,7 @@ function ProductWorkspaceFeature() {
           product_ids: ids,
           sources: ["restore", "store77"],
           limit: ids.length,
+          use_ai: true,
         }),
       });
       const status = normalizeText(response.run?.status) || "queued";
@@ -1671,6 +1679,35 @@ function ProductWorkspaceFeature() {
     } catch (err) {
       setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось запустить подбор по SKU.");
       setCompetitorBulkRunning(false);
+    }
+  }
+
+  async function handleConfirmSafeCompetitorsForSelected() {
+    const ids = selectedVisibleCompetitorIds;
+    if (!ids.length || competitorBulkConfirming) return;
+    setCompetitorBulkConfirming(true);
+    setCompetitorBulkNotice("");
+    try {
+      const response = await api<CompetitorSafeConfirmResp>("/competitor-mapping/discovery/product-candidates/confirm-safe", {
+        method: "POST",
+        body: JSON.stringify({
+          product_ids: ids,
+          sources: ["restore", "store77"],
+          min_score: 0.9,
+        }),
+      });
+      const confirmed = Number(response.confirmed_count || 0);
+      const skipped = response.skipped?.length || 0;
+      setCompetitorBulkNotice(
+        confirmed
+          ? `Подтверждено точных ссылок: ${confirmed}. Пропущено: ${skipped}. Теперь можно загрузить параметры и медиа.`
+          : `Точных кандидатов для автоподтверждения нет. Пропущено: ${skipped}. Откройте SKU и проверьте кандидатов вручную.`,
+      );
+      setReloadVersion((value) => value + 1);
+    } catch (err) {
+      setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось подтвердить точные кандидаты.");
+    } finally {
+      setCompetitorBulkConfirming(false);
     }
   }
 
@@ -1874,9 +1911,17 @@ function ProductWorkspaceFeature() {
                         type="button"
                         className="pn-competitorSkuRun"
                         onClick={handleRunCompetitorDiscoveryForSelected}
-                        disabled={competitorBulkRunning || !selectedVisibleCompetitorIds.length}
+                        disabled={competitorBulkRunning || competitorBulkConfirming || !selectedVisibleCompetitorIds.length}
                       >
                         {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
+                      </button>
+                      <button
+                        type="button"
+                        className="pn-competitorSkuRun"
+                        onClick={handleConfirmSafeCompetitorsForSelected}
+                        disabled={competitorBulkRunning || competitorBulkConfirming || !selectedVisibleCompetitorIds.length}
+                      >
+                        {competitorBulkConfirming ? "Подтверждаю..." : "Подтвердить точные"}
                       </button>
                     </div>
                     <div className="pn-competitorSkuBulkBar">

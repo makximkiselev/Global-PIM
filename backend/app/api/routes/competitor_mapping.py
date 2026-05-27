@@ -1874,6 +1874,68 @@ def _link_from_channel_link(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _candidate_has_blocking_sim_conflict(candidate: Dict[str, Any]) -> bool:
+    product_sim = str(candidate.get("product_sim_profile") or "").strip()
+    candidate_sim = str(candidate.get("candidate_sim_profile") or "").strip()
+    known_profiles = {"nano_sim_esim", "esim_only", "dual_sim", "physical_sim"}
+    return product_sim in known_profiles and candidate_sim in known_profiles and product_sim != candidate_sim
+
+
+def _approve_competitor_candidate(
+    candidates: Dict[str, Any],
+    links: Dict[str, Any],
+    candidate_id: str,
+    *,
+    reviewed_at: str,
+    reject_same_source_pending: bool = False,
+) -> Optional[Dict[str, Any]]:
+    candidate = candidates.get(candidate_id)
+    if not isinstance(candidate, dict):
+        return None
+    candidate["status"] = "approved"
+    candidate["reviewed_at"] = reviewed_at
+    link_key = f"{candidate.get('product_id')}:{candidate.get('source_id')}"
+    confirmed_link = {
+        "id": link_key,
+        "product_id": candidate.get("product_id"),
+        "source_id": candidate.get("source_id"),
+        "candidate_id": candidate_id,
+        "url": candidate.get("url"),
+        "status": "confirmed",
+        "confirmed_at": reviewed_at,
+        "last_checked_at": candidate.get("last_seen_at") or reviewed_at,
+    }
+    links[link_key] = confirmed_link
+    _persist_competitor_channel_link(confirmed_link, candidate)
+    match_group_key = str(candidate.get("match_group_key") or "").strip()
+    product_id = str(candidate.get("product_id") or "").strip()
+    source_id = str(candidate.get("source_id") or "").strip()
+    if product_id and source_id:
+        for sibling_id, sibling in list(candidates.items()):
+            if sibling_id == candidate_id or not isinstance(sibling, dict):
+                continue
+            if sibling.get("status") != "needs_review":
+                continue
+            if str(sibling.get("product_id") or "").strip() != product_id:
+                continue
+            if str(sibling.get("source_id") or "").strip() != source_id:
+                continue
+            sibling_group = str(sibling.get("match_group_key") or "").strip()
+            should_reject = bool(match_group_key and sibling_group == match_group_key) or bool(reject_same_source_pending)
+            if not should_reject:
+                continue
+            sibling["status"] = "rejected"
+            sibling["reviewed_at"] = reviewed_at
+            sibling["rejection_reason"] = "auto_safe_link_selected" if reject_same_source_pending else "sibling_not_selected"
+            reason = "отклонено автоматически: выбран точный вариант источника" if reject_same_source_pending else "отклонено автоматически: выбран другой вариант группы"
+            sibling["confidence_reasons"] = list(sibling.get("confidence_reasons") or []) + [reason]
+            candidates[sibling_id] = sibling
+            _persist_competitor_channel_candidate(sibling)
+    candidates[candidate_id] = candidate
+    _persist_competitor_channel_candidate(candidate)
+    return confirmed_link
+
+
 def _candidate_confidence_score(candidate: Dict[str, Any]) -> float:
     try:
         return max(0.0, min(1.0, float(candidate.get("confidence_score") or 0.0)))
@@ -4893,6 +4955,84 @@ def discovery_product_context(product_id: str) -> Dict[str, Any]:
     }
 
 
+@router.post("/discovery/product-candidates/confirm-safe")
+def confirm_safe_product_candidates(payload: Dict[str, Any]) -> Dict[str, Any]:
+    raw_product_ids = payload.get("product_ids") if isinstance(payload.get("product_ids"), list) else []
+    product_ids = {str(item or "").strip() for item in raw_product_ids if str(item or "").strip()}
+    if not product_ids:
+        raise HTTPException(status_code=400, detail="product_ids required")
+    raw_sources = payload.get("sources") if isinstance(payload.get("sources"), list) else []
+    sources = {str(item or "").strip() for item in raw_sources if str(item or "").strip()}
+    sources = {source for source in sources if source in ALLOWED_SITES} or set(ALLOWED_SITES)
+    try:
+        min_score = float(payload.get("min_score") if payload.get("min_score") is not None else 0.9)
+    except Exception:
+        min_score = 0.9
+    min_score = max(_ACTIONABLE_DISCOVERY_CONFIDENCE_SCORE, min(1.0, min_score))
+
+    db = load_competitor_mapping_db()
+    discovery = _ensure_discovery_doc(db)
+    candidates = discovery["candidates"]
+    links = discovery["links"]
+    _merge_relational_discovery_items(candidates, links, product_ids=product_ids)
+
+    existing_confirmed = {
+        (str(link.get("product_id") or "").strip(), str(link.get("source_id") or "").strip())
+        for link in links.values()
+        if isinstance(link, dict)
+        and str(link.get("status") or "").strip() == "confirmed"
+        and str(link.get("product_id") or "").strip() in product_ids
+    }
+    best_by_key: Dict[tuple[str, str], Dict[str, Any]] = {}
+    skipped: List[Dict[str, Any]] = []
+    for candidate in candidates.values():
+        if not isinstance(candidate, dict):
+            continue
+        product_id = str(candidate.get("product_id") or "").strip()
+        source_id = str(candidate.get("source_id") or "").strip()
+        candidate_id = str(candidate.get("id") or "").strip()
+        if not product_id or product_id not in product_ids or source_id not in sources or not candidate_id:
+            continue
+        if str(candidate.get("status") or "").strip() != "needs_review":
+            continue
+        if (product_id, source_id) in existing_confirmed:
+            skipped.append({"candidate_id": candidate_id, "product_id": product_id, "source_id": source_id, "reason": "already_confirmed"})
+            continue
+        score = _candidate_confidence_score(candidate)
+        if score < min_score:
+            skipped.append({"candidate_id": candidate_id, "product_id": product_id, "source_id": source_id, "reason": "low_score", "score": score})
+            continue
+        if _candidate_has_blocking_sim_conflict(candidate):
+            skipped.append({"candidate_id": candidate_id, "product_id": product_id, "source_id": source_id, "reason": "sim_conflict", "score": score})
+            continue
+        key = (product_id, source_id)
+        current = best_by_key.get(key)
+        if not current or score > _candidate_confidence_score(current):
+            best_by_key[key] = candidate
+
+    reviewed_at = now_iso()
+    confirmed_links: List[Dict[str, Any]] = []
+    for candidate in sorted(best_by_key.values(), key=lambda row: (str(row.get("product_id") or ""), str(row.get("source_id") or ""))):
+        link = _approve_competitor_candidate(
+            candidates,
+            links,
+            str(candidate.get("id") or "").strip(),
+            reviewed_at=reviewed_at,
+            reject_same_source_pending=True,
+        )
+        if link:
+            confirmed_links.append(link)
+
+    _save_competitor_mapping_runs_only(db)
+    return {
+        "ok": True,
+        "confirmed_count": len(confirmed_links),
+        "confirmed_links": confirmed_links,
+        "skipped": skipped[:50],
+        "min_score": min_score,
+    }
+
+
 def _parse_discovery_run_request(payload: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[List[str]], int, bool]:
     requested_sources = payload.get("sources") or [item["id"] for item in DISCOVERY_SOURCES]
     if not isinstance(requested_sources, list):
@@ -5251,49 +5391,16 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
 
     reviewed_at = now_iso()
     if action == "approve":
-        candidate["status"] = "approved"
-        candidate["reviewed_at"] = reviewed_at
-        link_key = f"{candidate.get('product_id')}:{candidate.get('source_id')}"
-        confirmed_link = {
-            "id": link_key,
-            "product_id": candidate.get("product_id"),
-            "source_id": candidate.get("source_id"),
-            "candidate_id": candidate_id,
-            "url": candidate.get("url"),
-            "status": "confirmed",
-            "confirmed_at": reviewed_at,
-            "last_checked_at": candidate.get("last_seen_at") or reviewed_at,
-        }
-        links[link_key] = confirmed_link
-        _persist_competitor_channel_link(confirmed_link, candidate)
-        match_group_key = str(candidate.get("match_group_key") or "").strip()
-        product_id = str(candidate.get("product_id") or "").strip()
-        source_id = str(candidate.get("source_id") or "").strip()
-        if match_group_key and product_id and source_id:
-            for sibling_id, sibling in candidates.items():
-                if sibling_id == candidate_id or not isinstance(sibling, dict):
-                    continue
-                if sibling.get("status") != "needs_review":
-                    continue
-                if str(sibling.get("product_id") or "").strip() != product_id:
-                    continue
-                if str(sibling.get("source_id") or "").strip() != source_id:
-                    continue
-                if str(sibling.get("match_group_key") or "").strip() != match_group_key:
-                    continue
-                sibling["status"] = "rejected"
-                sibling["reviewed_at"] = reviewed_at
-                sibling["rejection_reason"] = "sibling_not_selected"
-                sibling["confidence_reasons"] = list(sibling.get("confidence_reasons") or []) + ["отклонено автоматически: выбран другой вариант группы"]
-                candidates[sibling_id] = sibling
-                _persist_competitor_channel_candidate(sibling)
+        _approve_competitor_candidate(candidates, links, candidate_id, reviewed_at=reviewed_at)
+        candidate = candidates.get(candidate_id, candidate)
     else:
         candidate["status"] = "rejected"
         candidate["reviewed_at"] = reviewed_at
         candidate["rejection_reason"] = str(payload.get("reason") or "").strip()
 
     candidates[candidate_id] = candidate
-    _persist_competitor_channel_candidate(candidate)
+    if action != "approve":
+        _persist_competitor_channel_candidate(candidate)
     _save_competitor_mapping_runs_only(db)
     return {"ok": True, "candidate": candidate, "links": links}
 

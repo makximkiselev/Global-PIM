@@ -3072,6 +3072,94 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(channel_by_id["cand_sibling"]["payload"]["rejection_reason"], "sibling_not_selected")
         self.assertNotEqual(channel_by_id.get("cand_other", {}).get("status"), "rejected")
 
+    def test_confirm_safe_candidates_approves_high_confidence_without_sim_conflict(self) -> None:
+        auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
+        self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
+
+        store = {"version": 2, "categories": {}, "templates": {}, "discovery": {"candidates": {}, "links": {}, "runs": {}}}
+        channel_links = [
+            {
+                "link_id": "cand_safe",
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": "product_113",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_16_pro_2/safe/",
+                "title": "Apple iPhone 16 Pro 128GB Natural Titanium nano SIM+eSIM",
+                "status": "candidate",
+                "score": 0.94,
+                "source": "discovery",
+                "payload": {
+                    "candidate_id": "cand_safe",
+                    "raw_status": "needs_review",
+                    "match_group_key": "iphone_16_pro|128gb|natural_titanium",
+                    "product_sim_profile": "nano_sim_esim",
+                    "candidate_sim_profile": "nano_sim_esim",
+                },
+            },
+            {
+                "link_id": "cand_lower",
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": "product_113",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_16_pro_2/lower/",
+                "title": "Apple iPhone 16 Pro 128GB Natural Titanium",
+                "status": "candidate",
+                "score": 0.91,
+                "source": "discovery",
+                "payload": {
+                    "candidate_id": "cand_lower",
+                    "raw_status": "needs_review",
+                    "match_group_key": "iphone_16_pro|128gb|natural_titanium",
+                    "product_sim_profile": "nano_sim_esim",
+                    "candidate_sim_profile": "nano_sim_esim",
+                },
+            },
+            {
+                "link_id": "cand_conflict",
+                "scope": "competitor_product",
+                "entity_type": "product",
+                "entity_id": "product_114",
+                "provider": "store77",
+                "url": "https://store77.net/apple_iphone_16_pro_2/conflict/",
+                "title": "Apple iPhone 16 Pro 128GB eSIM",
+                "status": "candidate",
+                "score": 0.96,
+                "source": "discovery",
+                "payload": {
+                    "candidate_id": "cand_conflict",
+                    "raw_status": "needs_review",
+                    "product_sim_profile": "nano_sim_esim",
+                    "candidate_sim_profile": "esim_only",
+                },
+            },
+        ]
+
+        with (
+            patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
+            patch.object(competitor_mapping_routes, "save_competitor_mapping_db", side_effect=lambda _doc: None),
+            patch.object(competitor_mapping_routes, "list_pim_channel_links", side_effect=self._channel_link_reader(channel_links)),
+            patch.object(competitor_mapping_routes, "upsert_pim_channel_link", side_effect=lambda row: channel_links.append(deepcopy(row)) or row),
+            patch.object(competitor_mapping_routes, "now_iso", return_value="2026-05-27T10:00:00+00:00"),
+        ):
+            response = self.client.post(
+                "/api/competitor-mapping/discovery/product-candidates/confirm-safe",
+                json={"product_ids": ["product_113", "product_114"], "sources": ["store77"], "min_score": 0.9},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["confirmed_count"], 1)
+        channel_by_id = {row.get("link_id"): row for row in channel_links}
+        self.assertEqual(channel_by_id["product_113:store77"]["status"], "confirmed")
+        self.assertEqual(channel_by_id["product_113:store77"]["url"], "https://store77.net/apple_iphone_16_pro_2/safe/")
+        self.assertEqual(channel_by_id["cand_safe"]["status"], "confirmed")
+        self.assertEqual(channel_by_id["cand_lower"]["status"], "rejected")
+        self.assertEqual(channel_by_id["cand_lower"]["payload"]["rejection_reason"], "auto_safe_link_selected")
+        self.assertNotEqual(channel_by_id.get("cand_conflict", {}).get("status"), "confirmed")
+        self.assertTrue(any(item["reason"] == "sim_conflict" for item in payload["skipped"]))
+
     def test_manual_competitor_link_confirms_link_and_rejects_pending_source_candidates(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})
