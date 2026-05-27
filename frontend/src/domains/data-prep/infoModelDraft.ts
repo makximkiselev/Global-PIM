@@ -5,6 +5,7 @@ export type InfoModelCandidateSource = {
   provider: string;
   source_name: string;
   field_name: string;
+  field_title?: string;
   examples?: string[];
   count?: number;
 };

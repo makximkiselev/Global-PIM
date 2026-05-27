@@ -3345,6 +3345,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         ring_size = next(candidate for candidate in response["candidates"] if candidate["name"] == "Размер кольца")
         self.assertEqual(ring_size["status"], "accepted")
         self.assertEqual({source["provider"] for source in ring_size["sources"]}, {"yandex_market", "ozon"})
+        self.assertEqual({source["field_title"] for source in ring_size["sources"]}, {"Размер кольца"})
         self.assertEqual(ring_size["source_summary"]["by_kind"], {"marketplace": 2})
         self.assertTrue(any(flag["code"] == "marketplace_required" for flag in ring_size["review_flags"]))
         self.assertEqual(saved["templates"]["tpl-draft-rings"]["meta"]["info_model"]["draft_sources"], ["marketplaces"])
@@ -3536,6 +3537,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(candidate["name"], "Наименование товара")
         self.assertEqual(candidate["code"], "naimenovanie_tovara")
         self.assertEqual({source["provider"] for source in candidate["sources"]}, {"yandex_market", "ozon"})
+        ozon_source = next(source for source in candidate["sources"] if source["provider"] == "ozon")
+        self.assertEqual(ozon_source["field_name"], "4180")
+        self.assertEqual(ozon_source["field_title"], "Название")
 
     def test_info_model_candidate_update_can_clear_wrong_global_match(self) -> None:
         from app.core.info_models import draft_service

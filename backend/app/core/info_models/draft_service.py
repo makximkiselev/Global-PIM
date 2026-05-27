@@ -684,6 +684,7 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
                     "provider": provider,
                     "source_name": _text(param.get("source_name")) or provider,
                     "field_name": field_id or code,
+                    "field_title": name,
                     "examples": examples,
                     "count": 1,
                 }

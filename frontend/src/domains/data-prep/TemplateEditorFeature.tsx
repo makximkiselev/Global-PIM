@@ -235,7 +235,10 @@ function candidateSources(candidate: InfoModelCandidate) {
   return (candidate.sources || [])
     .map((source) => {
       const provider = sourceLabel(source.provider || source.kind || "");
-      const field = source.field_name ? ` · ${source.field_name}` : "";
+      const rawFieldName = String(source.field_name || "").trim();
+      const fieldTitle = String(source.field_title || "").trim() || (/^\d+$/.test(rawFieldName) && source.kind === "marketplace" ? candidate.name : "");
+      const fieldParts = [fieldTitle, rawFieldName && rawFieldName !== fieldTitle ? rawFieldName : ""].filter(Boolean);
+      const field = fieldParts.length ? ` · ${fieldParts.join(" · ")}` : "";
       const count = source.count ? ` · ${source.count} совп.` : "";
       return `${provider}${field}${count}`;
     })
