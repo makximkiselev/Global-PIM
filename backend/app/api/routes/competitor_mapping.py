@@ -845,6 +845,12 @@ _KNOWN_BRAND_TOKENS = {
     "iphone",
     "ipad",
     "macbook",
+    "watch",
+    "oura",
+    "ring",
+    "galaxy",
+    "fold",
+    "zfold",
     "xiaomi",
     "samsung",
     "honor",
@@ -862,6 +868,13 @@ _MATCH_REQUIRED_TOKENS = {
     "iphone",
     "ipad",
     "macbook",
+    "watch",
+    "oura",
+    "ring",
+    "galaxy",
+    "fold",
+    "zfold",
+    "fold7",
     "xiaomi",
     "samsung",
     "honor",
@@ -883,6 +896,17 @@ _MATCH_REQUIRED_TOKENS = {
     "mini",
     "air",
     "magsafe",
+    "airwrap",
+    "hs08",
+    "hs09",
+    "hd16",
+    "ht01",
+    "ocean",
+    "trail",
+    "alpine",
+    "milanese",
+    "loop",
+    "band",
     "esim",
     "sim",
     "2sim",
@@ -965,7 +989,11 @@ def _sim_profile(value: Any) -> str:
 
 def _model_memory_color_group_key(value: Any) -> str:
     profile = _variant_profile(value)
-    return "|".join(str(profile.get(key) or "") for key in ("model", "memory", "color", "sim") if profile.get(key))
+    return "|".join(
+        str(profile.get(key) or "")
+        for key in ("model", "memory", "color", "band_type", "band_color", "band_size", "ring_size", "sim")
+        if profile.get(key)
+    )
 
 
 def _variant_profile(value: Any) -> Dict[str, str]:
@@ -976,6 +1004,10 @@ def _variant_profile(value: Any) -> Dict[str, str]:
     model_match = re.search(r"\biphone\s+(\d{1,2})(e\b|(?:\s+(pro\s+max|pro|plus|mini)))?", normalized)
     macbook_match = re.search(r"\bmacbook\s+(air|pro)?\s*(13|14|15|16)?\b.*?\bm\s*(\d)\b", normalized)
     ipad_match = re.search(r"\bipad\s+(air|pro|mini)?\s*(11|13)?\b.*?\bm\s*(\d)\b", normalized)
+    watch_match = re.search(r"\b(?:apple\s+)?watch\s+(ultra|se|series)?\s*(\d{1,2})?\b", normalized)
+    oura_match = re.search(r"\boura\s+ring\s+(\d{1,2})\b", normalized)
+    galaxy_fold_match = re.search(r"\b(?:samsung\s+)?galaxy\s+z\s*fold\s*(\d{1,2})\b|\b(?:samsung\s+)?galaxy\s+zfold\s*(\d{1,2})\b", normalized)
+    dyson_match = re.search(r"\bdyson\b.*?(?:\b(airwrap)\b.*?\bhs\s*[- ]?(\d{1,2})\b|\b(hd|ht|v)\s*[- ]?(\d{1,2})\b)", normalized)
     memory_match = re.search(r"\b(\d+)\s*(gb|гб|tb|тб)\b", normalized)
     if model_match:
         generation = model_match.group(1)
@@ -991,6 +1023,22 @@ def _variant_profile(value: Any) -> Dict[str, str]:
         size = ipad_match.group(2) or ""
         chip = f"m{ipad_match.group(3)}"
         profile["model"] = "_".join(part for part in ("ipad", line, size, chip) if part)
+    elif watch_match:
+        line = watch_match.group(1) or ""
+        generation = watch_match.group(2) or ""
+        profile["model"] = "_".join(part for part in ("apple_watch", line, generation) if part)
+    elif oura_match:
+        profile["model"] = f"oura_ring_{oura_match.group(1)}"
+        size_match = re.search(r"\b(\d{1,2})\s*(?:us|size|размер)\b|\b(?:size|размер)\s*(\d{1,2})\b", normalized)
+        if size_match:
+            profile["ring_size"] = size_match.group(1) or size_match.group(2)
+    elif galaxy_fold_match:
+        generation = galaxy_fold_match.group(1) or galaxy_fold_match.group(2) or ""
+        profile["model"] = f"samsung_galaxy_z_fold_{generation}"
+    elif dyson_match:
+        line = dyson_match.group(1) or dyson_match.group(3) or ""
+        number = dyson_match.group(2) or dyson_match.group(4) or ""
+        profile["model"] = f"dyson_{line}_{number}".lower()
     if memory_match:
         profile["memory"] = f"{memory_match.group(1)}{'tb' if memory_match.group(2) in {'tb', 'тб'} else 'gb'}"
 
@@ -1002,14 +1050,18 @@ def _variant_profile(value: Any) -> Dict[str, str]:
         ("desert_titanium", ("desert titanium", "пустынный титан", "desert", "пустынн")),
         ("black_titanium", ("black titanium", "черный титан", "чёрный титан", "black", "черный", "чёрный")),
         ("white_titanium", ("white titanium", "белый титан", "white", "белый")),
+        ("jet_black", ("jetblack", "jet black", "черный янтарь")),
         ("silver", ("silver", "серебрист", "серебро")),
+        ("silver_shadow", ("silver shadow", "серебристая тень")),
         ("space_gray", ("space gray", "space grey", "серый космос", "космический серый", "spacegray", "spacegrey")),
         ("starlight", ("starlight", "сияющая звезда", "звездный", "звёздный")),
         ("purple", ("purple", "фиолетовый", "фиолетов")),
         ("midnight", ("midnight", "midhight", "темная ночь", "темно синий", "темно-синий", "полуночный")),
         ("sky_blue", ("sky blue", "небесно голубой", "skyblue")),
+        ("blue_shadow", ("blue shadow", "синяя тень")),
         ("blue", ("blue", "синий", "голубой")),
         ("green", ("green", "зеленый", "зелёный")),
+        ("mint", ("mint", "мятный")),
         ("orange", ("orange", "оранжевый", "оранжев")),
         ("pink", ("pink", "розовый")),
         ("yellow", ("yellow", "желтый", "жёлтый")),
@@ -1019,6 +1071,32 @@ def _variant_profile(value: Any) -> Dict[str, str]:
             if any(alias in raw_lower or alias in normalized for alias in aliases):
                 profile["color"] = slug
                 break
+
+    if profile.get("model", "").startswith("apple_watch"):
+        band_type_options = [
+            ("ocean_band", ("ocean band", "океан")),
+            ("trail_loop", ("trail loop", "trail", "трейл")),
+            ("alpine_loop", ("alpine loop", "alpine", "альпий")),
+            ("milanese_loop", ("milanese", "милан")),
+        ]
+        for slug, aliases in band_type_options:
+            if any(alias in raw_lower or alias in normalized for alias in aliases):
+                profile["band_type"] = slug
+                break
+        band_color_options = [
+            ("black", ("black ocean", "black trail", "black alpine", "black milanese", "black band", "black loop", "bl charcoal", "charcoal", "черный", "чёрный")),
+            ("blue", ("blue ocean", "anchor blue", "bright blue", "blue trail", "blue alpine", "синий", "голубой")),
+            ("green", ("green ocean", "green trail", "green alpine", "зеленый", "зелёный")),
+            ("terra_cotta", ("terra cotta", "terracotta", "терракот")),
+            ("natural", ("natural milanese", "natural loop", "natural titanium", "натуральный")),
+        ]
+        for slug, aliases in band_color_options:
+            if any(alias in raw_lower or alias in normalized for alias in aliases):
+                profile["band_color"] = slug
+                break
+        size_match = re.search(r"\b(xs|s/m|m/l|s|m|l|xl)\b", raw_lower)
+        if size_match:
+            profile["band_size"] = size_match.group(1)
 
     sim = _sim_profile(value)
     if sim != "unknown":
@@ -1033,6 +1111,38 @@ def _variant_profile(value: Any) -> Dict[str, str]:
     elif re.search(r"\b(usa|us|сша|америка)\b", normalized):
         profile["region"] = "usa"
     return profile
+
+
+def _profile_conflicts(product_profile: Dict[str, str], candidate_profile: Dict[str, str], keys: Tuple[Tuple[str, str], ...]) -> List[str]:
+    conflicts: List[str] = []
+    for key, label in keys:
+        product_value = product_profile.get(key)
+        candidate_value = candidate_profile.get(key)
+        if product_value and candidate_value and product_value != candidate_value:
+            conflicts.append(f"конфликт {label}: PIM={product_value}, candidate={candidate_value}")
+    return conflicts
+
+
+def _filter_missing_required_tokens(
+    missing_required: List[str],
+    product_profile: Dict[str, str],
+    candidate_profile: Dict[str, str],
+) -> List[str]:
+    missing = list(missing_required)
+    if product_profile.get("model") and product_profile.get("model") == candidate_profile.get("model"):
+        model_tokens = {
+            "watch", "ultra", "oura", "ring", "galaxy", "fold", "zfold", "fold7",
+            "airwrap", "hs08", "hs09", "hd16", "ht01",
+        }
+        missing = [token for token in missing if token not in model_tokens]
+    if product_profile.get("color") and product_profile.get("color") == candidate_profile.get("color"):
+        color_tokens = {
+            "black", "white", "blue", "green", "orange", "pink", "silver", "mint",
+        }
+        missing = [token for token in missing if token not in color_tokens and token != product_profile.get("color")]
+    if product_profile.get("band_type") and product_profile.get("band_type") == candidate_profile.get("band_type"):
+        missing = [token for token in missing if token not in {"ocean", "trail", "alpine", "milanese", "loop", "band"}]
+    return missing
 
 
 def _required_match_tokens(product: Dict[str, Any]) -> set[str]:
@@ -1078,16 +1188,18 @@ def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, bra
     candidate_sim = candidate_profile.get("sim") or "unknown"
     if product_sim != "unknown" and candidate_sim != "unknown" and product_sim != candidate_sim:
         return 0.0, [f"конфликт SIM: PIM={product_sim}, candidate={candidate_sim}"]
-    for key, label in (
+    conflicts = _profile_conflicts(product_profile, candidate_profile, (
         ("model", "модели"),
         ("memory", "памяти"),
         ("color", "цвета"),
         ("region", "региона"),
-    ):
-        product_value = product_profile.get(key)
-        candidate_value = candidate_profile.get(key)
-        if product_value and candidate_value and product_value != candidate_value:
-            return 0.0, [f"конфликт {label}: PIM={product_value}, candidate={candidate_value}"]
+        ("ring_size", "размера кольца"),
+        ("band_type", "типа ремешка"),
+        ("band_color", "цвета ремешка"),
+        ("band_size", "размера ремешка"),
+    ))
+    if conflicts:
+        return 0.0, [conflicts[0]]
     product_sku = str(product.get("sku_gt") or product.get("sku_pim") or "").strip()
     if product_sku and sku and product_sku.lower() == sku.lower():
         score += 0.25
@@ -1106,13 +1218,20 @@ def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, bra
     required_tokens = _required_match_tokens(product)
     candidate_tokens = candidate_tokens_for_line
     missing_required = sorted(required_tokens - candidate_tokens)
-    if product_profile.get("color") and product_profile.get("color") == candidate_profile.get("color"):
-        missing_required = [token for token in missing_required if token != product_profile.get("color")]
+    missing_required = _filter_missing_required_tokens(missing_required, product_profile, candidate_profile)
     if missing_required:
         return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
     if required_tokens:
         score += 0.58
         reasons.append("обязательные токены совпали")
+    exact_axes = [
+        key
+        for key in ("model", "ring_size", "band_type", "band_color", "band_size")
+        if product_profile.get(key) and product_profile.get(key) == candidate_profile.get(key)
+    ]
+    if exact_axes:
+        score += min(0.18, 0.08 + max(0, len(exact_axes) - 1) * 0.035)
+        reasons.append("вариантные признаки совпали")
     if product_title and candidate_title:
         product_tokens = {token for token in _match_tokens(product_title) if len(token) > 1}
         if product_tokens:
@@ -1126,16 +1245,18 @@ def _confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, bra
 def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku: str, brand: str = "") -> Tuple[float, List[str]]:
     product_profile = _variant_profile(product.get("title"))
     candidate_profile = _variant_profile(f"{brand} {title}")
-    for key, label in (
+    conflicts = _profile_conflicts(product_profile, candidate_profile, (
         ("model", "модели"),
         ("memory", "памяти"),
         ("color", "цвета"),
         ("region", "региона"),
-    ):
-        product_value = product_profile.get(key)
-        candidate_value = candidate_profile.get(key)
-        if product_value and candidate_value and product_value != candidate_value:
-            return 0.0, [f"конфликт {label}: PIM={product_value}, candidate={candidate_value}"]
+        ("ring_size", "размера кольца"),
+        ("band_type", "типа ремешка"),
+        ("band_color", "цвета ремешка"),
+        ("band_size", "размера ремешка"),
+    ))
+    if conflicts:
+        return 0.0, [conflicts[0]]
 
     product_title = _norm_match_text(product.get("title"))
     product_tokens = _match_tokens(product_title)
@@ -1150,8 +1271,7 @@ def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku
 
     required_tokens = _required_match_tokens(product)
     missing_required = sorted(required_tokens - candidate_tokens)
-    if product_profile.get("color") and product_profile.get("color") == candidate_profile.get("color"):
-        missing_required = [token for token in missing_required if token != product_profile.get("color")]
+    missing_required = _filter_missing_required_tokens(missing_required, product_profile, candidate_profile)
     sim_missing = [token for token in missing_required if token in {"esim", "sim"}]
     if missing_required and missing_required != sim_missing:
         return 0.0, [f"нет обязательных токенов: {', '.join(missing_required)}"]
@@ -1161,6 +1281,14 @@ def _near_miss_confidence_for_candidate(product: Dict[str, Any], title: str, sku
         return 0.0, [f"конфликт SIM: PIM={product_sim}, candidate={candidate_sim}"]
     if not sim_missing:
         return 0.0, ["нет причины для ручной проверки"]
+    exact_without_sim = all(
+        not product_profile.get(key)
+        or not candidate_profile.get(key)
+        or product_profile.get(key) == candidate_profile.get(key)
+        for key in ("model", "memory", "color", "ring_size", "band_type", "band_color", "band_size")
+    )
+    if exact_without_sim and product_profile.get("model"):
+        return 0.79, [f"проверь SIM: у карточки не указан {'/'.join(sim_missing)}", "модель и вариантные признаки совпали"]
 
     comparable_product_tokens = {token for token in product_tokens if token not in {"esim", "sim"} and len(token) > 1}
     overlap = len(comparable_product_tokens & candidate_tokens) / max(1, len(comparable_product_tokens))
@@ -1187,17 +1315,16 @@ def _manual_review_confidence_for_candidate(product: Dict[str, Any], title: str,
     if product_brand_tokens and candidate_brand_tokens and product_brand_tokens.isdisjoint(candidate_brand_tokens):
         return 0.0, ["конфликт бренда"]
 
-    conflicts: List[str] = []
-    for key, label in (
+    conflicts = _profile_conflicts(product_profile, candidate_profile, (
         ("memory", "памяти"),
         ("color", "цвета"),
         ("sim", "SIM"),
         ("region", "региона"),
-    ):
-        product_value = product_profile.get(key)
-        candidate_value = candidate_profile.get(key)
-        if product_value and candidate_value and product_value != candidate_value:
-            conflicts.append(f"конфликт {label}: PIM={product_value}, candidate={candidate_value}")
+        ("ring_size", "размера кольца"),
+        ("band_type", "типа ремешка"),
+        ("band_color", "цвета ремешка"),
+        ("band_size", "размера ремешка"),
+    ))
     if conflicts:
         return 0.0, conflicts
     return 0.0, ["нет отличий для ручной проверки"]
@@ -1206,11 +1333,17 @@ def _manual_review_confidence_for_candidate(product: Dict[str, Any], title: str,
 def _store77_review_confidence_for_candidate(product: Dict[str, Any], title: str, sku: str = "", brand: str = "") -> Tuple[float, List[str]]:
     product_profile = _variant_profile(product.get("title"))
     candidate_profile = _variant_profile(f"{brand} {title}")
-    for key, label in (("model", "модели"), ("memory", "памяти"), ("color", "цвета")):
-        product_value = product_profile.get(key)
-        candidate_value = candidate_profile.get(key)
-        if product_value and candidate_value and product_value != candidate_value:
-            return 0.0, [f"конфликт {label}: PIM={product_value}, candidate={candidate_value}"]
+    conflicts = _profile_conflicts(product_profile, candidate_profile, (
+        ("model", "модели"),
+        ("memory", "памяти"),
+        ("color", "цвета"),
+        ("ring_size", "размера кольца"),
+        ("band_type", "типа ремешка"),
+        ("band_color", "цвета ремешка"),
+        ("band_size", "размера ремешка"),
+    ))
+    if conflicts:
+        return 0.0, [conflicts[0]]
 
     product_model = product_profile.get("model")
     candidate_model = candidate_profile.get("model")

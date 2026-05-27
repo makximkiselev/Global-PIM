@@ -2020,6 +2020,48 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(profile["color"], "blue")
         self.assertEqual(profile["sim"], "nano_sim_esim")
 
+    def test_competitor_variant_profile_handles_watch_band_axes(self) -> None:
+        product = {"title": "Часы Apple Watch Ultra 3 Black Titanium Black Trail Loop S/M"}
+        candidate = "Умные часы Apple Watch Ultra 3, 49 мм, Black Titanium Bl/Charcoal Trail Loop M/L"
+
+        score, reasons = competitor_mapping._confidence_for_candidate(product, candidate, "")
+
+        self.assertEqual(score, 0.0)
+        self.assertIn("конфликт размера ремешка", reasons[0])
+
+    def test_competitor_variant_profile_handles_oura_size_and_dyson_model(self) -> None:
+        oura_product = {"title": "Умное кольцо Oura Ring 4 Серебристый (Silver) 4 US"}
+        oura_score, oura_reasons = competitor_mapping._confidence_for_candidate(
+            oura_product,
+            "Oura Ring 4 Silver Size 4",
+            "",
+        )
+        self.assertGreaterEqual(oura_score, 0.78)
+        self.assertIn("вариантные признаки совпали", oura_reasons)
+
+        dyson_product = {
+            "title": "Стайлер Dyson Airwrap i.d. Long HS08 Straight+Wavy, розовый/розовое золото (Ceramic pink/Rose gold)"
+        }
+        dyson_score, dyson_reasons = competitor_mapping._confidence_for_candidate(
+            dyson_product,
+            "Dyson Airwrap HS08 Ceramic Pink Rose Gold",
+            "",
+        )
+        self.assertGreaterEqual(dyson_score, 0.78)
+        self.assertIn("вариантные признаки совпали", dyson_reasons)
+
+    def test_competitor_variant_profile_keeps_samsung_fold_without_sim_as_review(self) -> None:
+        product = {"title": "Смартфон Samsung Galaxy Z Fold7 256Gb Dual nano SIM+eSIM Blue Shadow"}
+
+        score, reasons = competitor_mapping._near_miss_confidence_for_candidate(
+            product,
+            "Samsung Galaxy Z Fold 7 256GB Blue Shadow",
+            "",
+        )
+
+        self.assertGreaterEqual(score, 0.78)
+        self.assertIn("проверь SIM", reasons[0])
+
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}
         req = CatalogExportRunReq.model_validate(
