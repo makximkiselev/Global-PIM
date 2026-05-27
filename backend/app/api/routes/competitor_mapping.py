@@ -5581,27 +5581,6 @@ async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
     })
     upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
     try:
-        products = query_products_full(ids=[product_id])
-        product = products[0] if products and isinstance(products[0], dict) else {}
-        content = product.get("content") if isinstance(product.get("content"), dict) else {}
-        current_media = content.get("media_images") if isinstance(content.get("media_images"), list) else []
-        if current_media:
-            source_values = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
-            media_sources = source_values.get("media_images") if isinstance(source_values.get("media_images"), dict) else {}
-            job.update({
-                "status": "completed",
-                "phase": "completed",
-                "message": "Медиа уже загружены. Повторная загрузка не требуется.",
-                "finished_at": now_iso(),
-                "updated_ts": monotonic(),
-                "enriched_sources": [str(key) for key in media_sources.keys() if str(key).strip()],
-                "matched_count": 0,
-                "unmatched_count": 0,
-                "media_images_count": len(current_media),
-                "errors": [],
-            })
-            upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
-            return
         async with asyncio.timeout(110):
             result = await enrich_product_from_confirmed_competitors(product_id)
         product = result.get("product") if isinstance(result.get("product"), dict) else {}

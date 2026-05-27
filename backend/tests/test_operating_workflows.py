@@ -1136,6 +1136,35 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(media[0]["selected"], True)
         self.assertEqual(result["product"]["content"]["source_values"]["media_images"]["restore"]["count"], 1)
 
+    def test_product_enrich_job_runs_even_when_media_already_exists(self) -> None:
+        saved_jobs: list[dict] = []
+        called: list[str] = []
+
+        async def fake_enrich(product_id: str):
+            called.append(product_id)
+            return {
+                "ok": True,
+                "product_id": product_id,
+                "product": {"id": product_id, "content": {"media_images": [{"url": "https://cdn.example.test/old.jpg"}]}},
+                "enriched_sources": ["store77"],
+                "matched_count": 3,
+                "unmatched_count": 1,
+                "errors": [],
+            }
+
+        with (
+            patch.object(competitor_mapping, "get_pim_workflow_run", return_value={"id": "job_1", "job_id": "job_1", "product_id": "product_1"}),
+            patch.object(competitor_mapping, "upsert_pim_workflow_run", side_effect=lambda row, workflow=None: saved_jobs.append(deepcopy(row)) or row),
+            patch.object(competitor_mapping, "enrich_product_from_confirmed_competitors", side_effect=fake_enrich),
+            patch.object(competitor_mapping, "now_iso", return_value="2026-05-27T10:00:00+00:00"),
+        ):
+            asyncio.run(competitor_mapping._run_product_enrich_job("job_1", "product_1"))
+
+        self.assertEqual(called, ["product_1"])
+        self.assertEqual(saved_jobs[-1]["status"], "completed")
+        self.assertEqual(saved_jobs[-1]["matched_count"], 3)
+        self.assertEqual(saved_jobs[-1]["media_images_count"], 1)
+
     def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
         req = CatalogImportRunReq.model_validate(
             {
