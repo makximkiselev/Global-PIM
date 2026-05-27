@@ -271,6 +271,26 @@ function globalMatchReasonLabel(reason?: string) {
   return "похожий параметр";
 }
 
+function draftRecommendation(candidate: InfoModelCandidate) {
+  if (candidate.status === "accepted") return "В модели";
+  if (candidate.status === "rejected") return "Не использовать";
+  if (candidate.global_match) return "Проверить дубль";
+  if (isMarketplaceOnlyCandidate(candidate)) return "Проверить необходимость";
+  if (isCompetitorOnlyCandidate(candidate)) return "Проверить источник";
+  return "Проверить";
+}
+
+function draftPrimaryActionLabel(candidate: InfoModelCandidate) {
+  if (candidate.global_match) return "Переиспользовать";
+  return "Добавить поле";
+}
+
+function draftSourceSummaryText(candidate: InfoModelCandidate) {
+  const stats = sourceKindStats(candidate);
+  if (!stats.length) return "Источников нет";
+  return stats.map((item) => `${item.label}: ${item.count}`).join(" · ");
+}
+
 function candidateSourceKinds(candidate: InfoModelCandidate) {
   return candidate.source_summary?.by_kind || {};
 }
@@ -1206,39 +1226,19 @@ export default function TemplateEditor() {
                       <div>
                         <div className="tplSectionEyebrow">Предложения полей</div>
                         <h3>Поля из площадок и товаров</h3>
-                        <p>
-                          Система нашла похожие параметры в источниках. Добавьте полезные поля в модель, а дубли и мусор не используйте.
-                        </p>
+                        <p>Проверьте, какие поля действительно нужны в PIM-модели. Сервисные поля, дубли и слабые совпадения можно не добавлять.</p>
                         <div className="tplDraftCountersLine">
                           <span>{acceptedCandidates} добавлено в модель</span>
                           <span>{reviewCandidates} на проверке</span>
                           <span>{rejectedCandidates} не используется</span>
                         </div>
                         <div className="tplDraftAuditGrid" aria-label="Проверка качества draft-модели">
-                          <span>
-                            <b>{draftAudit.competitorOnly}</b>
-                            только конкуренты
-                          </span>
-                          <span>
-                            <b>{draftAudit.marketplaceOnly}</b>
-                            только площадки
-                          </span>
-                          <span>
-                            <b>{draftAudit.weakGlobalMatch}</b>
-                            слабая связь PIM
-                          </span>
-                          <span>
-                            <b>{draftAudit.lowConfidence}</b>
-                            низкая уверенность
-                          </span>
-                          <span>
-                            <b>{draftAudit.selectWithoutValues}</b>
-                            списки без значений
-                          </span>
-                          <span>
-                            <b>{draftAudit.duplicates}</b>
-                            дубли кодов
-                          </span>
+                          <span><b>{draftAudit.marketplaceOnly}</b>только площадки</span>
+                          <span><b>{draftAudit.selectWithoutValues}</b>списки без значений</span>
+                          <span><b>{draftAudit.competitorOnly}</b>только конкуренты</span>
+                          <span><b>{draftAudit.weakGlobalMatch}</b>слабая связь PIM</span>
+                          <span><b>{draftAudit.lowConfidence}</b>низкая уверенность</span>
+                          <span><b>{draftAudit.duplicates}</b>дубли кодов</span>
                         </div>
                       </div>
                       <details className="tplDraftHelp">
@@ -1258,10 +1258,15 @@ export default function TemplateEditor() {
                         visibleDraftCandidates.map((candidate) => (
                           <div className={`tplDraftRow is-${candidate.status}`} key={candidate.id}>
                             <div className="tplDraftMain">
-                              <strong>{candidate.name}</strong>
-                              <span>
-                                {candidate.group} · {typeLabel(candidate.type)} · {matchQualityLabel(candidate.confidence)}
-                              </span>
+                              <div className="tplDraftTitleLine">
+                                <strong>{candidate.name}</strong>
+                                <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
+                              </div>
+                              <div className="tplDraftMetaLine">
+                                <span>{typeLabel(candidate.type)}</span>
+                                <span>{matchQualityLabel(candidate.confidence)}</span>
+                                {candidate.required ? <span className="is-required">обязательное</span> : null}
+                              </div>
                               {candidate.global_match ? (
                                 <div className="tplDraftReuse">
                                   <b>Уже есть в PIM</b>
@@ -1283,7 +1288,6 @@ export default function TemplateEditor() {
                                     {item.label}
                                   </span>
                                 ))}
-                                {candidate.required ? <span className="is-required">Обязательное</span> : null}
                               </div>
                               <div className="tplDraftSources">
                                 {candidateSources(candidate).slice(0, 3).map((source) => (
@@ -1300,16 +1304,21 @@ export default function TemplateEditor() {
                                 </div>
                               ) : null}
                             </div>
-                            <div className="tplDraftExamples">{candidate.examples?.slice(0, 3).join(", ") || "Без примеров"}</div>
+                            <div className="tplDraftDecision">
+                              <span>Рекомендация</span>
+                              <strong>{draftRecommendation(candidate)}</strong>
+                              <small>{draftSourceSummaryText(candidate)}</small>
+                              {candidate.examples?.length ? <em>{candidate.examples.slice(0, 3).join(", ")}</em> : null}
+                            </div>
                             <div className="tplDraftActions">
-                              <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
                               {candidate.status !== "accepted" ? (
-                                <Button onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
-                                  {candidate.global_match ? "Переиспользовать PIM-поле" : "Добавить новое PIM-поле"}
+                                <Button className="sm" onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
+                                  {draftPrimaryActionLabel(candidate)}
                                 </Button>
                               ) : null}
                               {candidate.status !== "accepted" && candidate.global_match ? (
                                 <Button
+                                  className="sm"
                                   onClick={() =>
                                     updateDraftCandidate(candidate.id, {
                                       global_match: null,
@@ -1318,12 +1327,12 @@ export default function TemplateEditor() {
                                   }
                                   disabled={draftBusy}
                                 >
-                                  Не переиспользовать, создать новое
+                                  Создать новое
                                 </Button>
                               ) : null}
                               {candidate.status !== "rejected" ? (
-                                <Button onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
-                                  Не добавлять в модель
+                                <Button className="sm" onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
+                                  Не добавлять
                                 </Button>
                               ) : null}
                             </div>

@@ -101,6 +101,14 @@ def _canonical_attribute_identity(name: str, code: str | None = None) -> Tuple[s
     return _text(name), raw_code or _slugify(name)
 
 
+def _provider_attribute_identity(provider: str, field_id: str, name: str) -> Tuple[str, str]:
+    provider_code = _text(provider)
+    provider_field_id = _text(field_id)
+    if provider_code == "ozon" and provider_field_id == "4180":
+        return "Наименование товара", "naimenovanie_tovara"
+    return _canonical_attribute_identity(name)
+
+
 def _norm_match_text(value: Any) -> str:
     return " ".join(_text(value).lower().replace("_", " ").split())
 
@@ -656,10 +664,10 @@ def _marketplace_candidates(category_id: str) -> List[Dict[str, Any]]:
         field_id = _text(param.get("id"))
         if _is_provider_payload_field(name, field_id):
             continue
-        canonical_name, code = _canonical_attribute_identity(name)
+        provider = _text(param.get("provider"))
+        canonical_name, code = _provider_attribute_identity(provider, field_id, name)
         values = param.get("values") if isinstance(param.get("values"), list) else []
         examples = _provider_candidate_examples(values)
-        provider = _text(param.get("provider"))
         candidate = {
             "id": new_id(),
             "name": canonical_name,

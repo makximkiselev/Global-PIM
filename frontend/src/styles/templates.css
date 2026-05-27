@@ -1062,10 +1062,10 @@
 
 .tplDraftAuditGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(118px, 1fr));
   gap: 8px;
   margin-top: 12px;
-  max-width: 780px;
+  max-width: 1120px;
 }
 
 .tplDraftAuditGrid span {
@@ -1098,10 +1098,10 @@
 
 .tplDraftRow {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, .8fr) minmax(210px, auto);
-  gap: 14px;
+  grid-template-columns: minmax(360px, 1fr) minmax(220px, 320px) minmax(172px, auto);
+  gap: 12px;
   align-items: start;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface-soft);
@@ -1130,7 +1130,44 @@
 .tplDraftMain {
   min-width: 0;
   display: grid;
-  gap: 5px;
+  gap: 8px;
+}
+
+.tplDraftTitleLine {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.tplDraftTitleLine strong {
+  min-width: 0;
+  font-size: 18px;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.tplDraftMetaLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tplDraftMetaLine span {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(var(--line-rgb), 0.68);
+  border-radius: 999px;
+  background: rgba(var(--card-rgb), 0.72);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.tplDraftMetaLine .is-required {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
 }
 
 .tplDraftSources {
@@ -1163,12 +1200,6 @@
 .tplDraftEvidence b {
   color: var(--text);
   font-weight: 950;
-}
-
-.tplDraftEvidence .is-required {
-  border-color: rgba(245, 158, 11, 0.28);
-  background: rgba(245, 158, 11, 0.1);
-  color: #92400e;
 }
 
 .tplDraftReuse {
@@ -1242,11 +1273,54 @@
   color: #92400e;
 }
 
+.tplDraftDecision {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--line-rgb), 0.68);
+  border-radius: 14px;
+  background: rgba(var(--card-rgb), 0.68);
+}
+
+.tplDraftDecision span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 920;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tplDraftDecision strong {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.tplDraftDecision small,
+.tplDraftDecision em {
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.32;
+  font-style: normal;
+  font-weight: 780;
+  overflow-wrap: anywhere;
+}
+
 .tplDraftActions {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.tplDraftActions .btn.sm {
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  box-shadow: none;
 }
 
 .templates-page .workspaceFrameSidebar,
