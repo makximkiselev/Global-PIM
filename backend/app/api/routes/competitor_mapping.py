@@ -596,6 +596,7 @@ def _run_payload(
     updated_count: int = 0,
     errors: Optional[List[Dict[str, Any]]] = None,
     scanned_products_count: int = 0,
+    scanned_pairs_count: int = 0,
 ) -> Dict[str, Any]:
     errors = errors or []
     return {
@@ -607,6 +608,7 @@ def _run_payload(
         "requested_product_ids": [str(item or "").strip() for item in (product_ids or []) if str(item or "").strip()],
         "limit": max(1, int(limit or 1)),
         "scanned_products_count": scanned_products_count,
+        "scanned_pairs_count": scanned_pairs_count,
         "created_count": created_count,
         "updated_count": updated_count,
         "errors_count": len(errors),
@@ -4517,108 +4519,148 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         started_at=started_at,
     ))
 
-    for product in products:
-        for source in sources:
-            product_id = str(product.get("id") or "").strip()
-            source_id = str(source.get("id") or "").strip()
-            seen_candidate_ids: set[str] = set()
-            scan_evidence = _product_source_scan_evidence(product, source_id)
+    try:
+        concurrency = max(1, min(12, int(os.getenv("COMPETITOR_DISCOVERY_CONCURRENCY", "6") or "6")))
+    except Exception:
+        concurrency = 6
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _scan_pair(product: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
+        product_id = str(product.get("id") or "").strip()
+        source_id = str(source.get("id") or "").strip()
+        scan_evidence = _product_source_scan_evidence(product, source_id)
+        async with semaphore:
             try:
                 raw_candidates = await asyncio.wait_for(
                     _discover_product_candidates_for_source(product, source),
                     timeout=_DISCOVERY_SOURCE_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError:
-                _persist_product_source_scan_state(
-                    product_id,
-                    source_id,
-                    status="scan_error",
-                    run_id=run_id,
-                    message="Источник долго отвечает, можно повторить поиск.",
-                    error="DISCOVERY_SOURCE_TIMEOUT",
-                    evidence=scan_evidence,
-                )
-                errors.append(
-                    {
-                        "product_id": product.get("id"),
-                        "source_id": source.get("id"),
-                        "error": "DISCOVERY_SOURCE_TIMEOUT",
-                    }
-                )
-                continue
+                return {
+                    "ok": False,
+                    "product": product,
+                    "source": source,
+                    "product_id": product_id,
+                    "source_id": source_id,
+                    "scan_evidence": scan_evidence,
+                    "error": "DISCOVERY_SOURCE_TIMEOUT",
+                    "message": "Источник долго отвечает, можно повторить поиск.",
+                }
             except Exception as exc:
                 error_text = str(exc) or "DISCOVERY_FAILED"
-                _persist_product_source_scan_state(
-                    product_id,
-                    source_id,
-                    status="scan_error",
-                    run_id=run_id,
-                    message="Источник вернул ошибку, можно повторить поиск.",
-                    error=error_text,
-                    evidence=scan_evidence,
-                )
-                errors.append(
-                    {
-                        "product_id": product.get("id"),
-                        "source_id": source.get("id"),
-                        "error": error_text,
-                    }
-                )
-                continue
+                return {
+                    "ok": False,
+                    "product": product,
+                    "source": source,
+                    "product_id": product_id,
+                    "source_id": source_id,
+                    "scan_evidence": scan_evidence,
+                    "error": error_text,
+                    "message": "Источник вернул ошибку, можно повторить поиск.",
+                }
             if not isinstance(raw_candidates, list):
-                _persist_product_source_scan_state(
-                    product_id,
-                    source_id,
-                    status="scan_error",
-                    run_id=run_id,
-                    message="Источник вернул некорректный ответ, можно повторить поиск.",
-                    error="INVALID_DISCOVERY_RESPONSE",
-                    evidence=scan_evidence,
-                )
-                continue
-            for raw in raw_candidates:
-                candidate = _normalize_candidate(product, source, raw)
-                if not candidate:
-                    continue
-                seen_candidate_ids.add(candidate["id"])
-                existed = candidates.get(candidate["id"])
-                if isinstance(existed, dict):
-                    candidate["first_seen_at"] = existed.get("first_seen_at") or candidate["first_seen_at"]
-                    if existed.get("status") in {"approved", "rejected"}:
-                        candidate["status"] = existed.get("status")
-                    candidates[candidate["id"]] = {**existed, **candidate, "last_seen_at": now_iso()}
-                    _persist_competitor_channel_candidate(candidates[candidate["id"]])
-                    updated_count += 1
-                else:
-                    candidates[candidate["id"]] = candidate
-                    _persist_competitor_channel_candidate(candidate)
-                    created_count += 1
-            for existing_id, existing in list(candidates.items()):
-                if not isinstance(existing, dict):
-                    continue
-                if existing_id in seen_candidate_ids:
-                    continue
-                if str(existing.get("product_id") or "").strip() != product_id:
-                    continue
-                if str(existing.get("source_id") or "").strip() != source_id:
-                    continue
-                if existing.get("status") != "needs_review":
-                    continue
-                existing["status"] = "stale"
-                existing["last_seen_at"] = now_iso()
-                existing["confidence_reasons"] = list(existing.get("confidence_reasons") or []) + ["не найдено при повторном discovery"]
-                candidates[existing_id] = existing
-                _persist_competitor_channel_candidate(existing)
-                updated_count += 1
+                return {
+                    "ok": False,
+                    "product": product,
+                    "source": source,
+                    "product_id": product_id,
+                    "source_id": source_id,
+                    "scan_evidence": scan_evidence,
+                    "error": "INVALID_DISCOVERY_RESPONSE",
+                    "message": "Источник вернул некорректный ответ, можно повторить поиск.",
+                }
+            return {
+                "ok": True,
+                "product": product,
+                "source": source,
+                "product_id": product_id,
+                "source_id": source_id,
+                "scan_evidence": scan_evidence,
+                "raw_candidates": raw_candidates,
+            }
+
+    scan_results = await asyncio.gather(
+        *[_scan_pair(product, source) for product in products for source in sources],
+        return_exceptions=True,
+    )
+
+    scanned_pairs = 0
+    for result in scan_results:
+        if isinstance(result, Exception):
+            errors.append({"error": str(result) or "DISCOVERY_FAILED"})
+            continue
+        if not isinstance(result, dict):
+            continue
+        product = result.get("product") if isinstance(result.get("product"), dict) else {}
+        source = result.get("source") if isinstance(result.get("source"), dict) else {}
+        product_id = str(result.get("product_id") or product.get("id") or "").strip()
+        source_id = str(result.get("source_id") or source.get("id") or "").strip()
+        scan_evidence = result.get("scan_evidence") if isinstance(result.get("scan_evidence"), dict) else {}
+        scanned_pairs += 1
+        if not result.get("ok"):
+            error_text = str(result.get("error") or "DISCOVERY_FAILED")
             _persist_product_source_scan_state(
                 product_id,
                 source_id,
-                status="scanned_empty" if not seen_candidate_ids else "scanned",
+                status="scan_error",
                 run_id=run_id,
-                message="Источник проверен, точной карточки не найдено." if not seen_candidate_ids else "Источник проверен, кандидаты обновлены.",
-                candidates_count=len(seen_candidate_ids),
+                message=str(result.get("message") or "Источник вернул ошибку, можно повторить поиск."),
+                error=error_text,
                 evidence=scan_evidence,
             )
+            errors.append(
+                {
+                    "product_id": product_id,
+                    "source_id": source_id,
+                    "error": error_text,
+                }
+            )
+            continue
+        raw_candidates = result.get("raw_candidates") if isinstance(result.get("raw_candidates"), list) else []
+        seen_candidate_ids: set[str] = set()
+        for raw in raw_candidates:
+            candidate = _normalize_candidate(product, source, raw)
+            if not candidate:
+                continue
+            seen_candidate_ids.add(candidate["id"])
+            existed = candidates.get(candidate["id"])
+            if isinstance(existed, dict):
+                candidate["first_seen_at"] = existed.get("first_seen_at") or candidate["first_seen_at"]
+                if existed.get("status") in {"approved", "rejected"}:
+                    candidate["status"] = existed.get("status")
+                candidates[candidate["id"]] = {**existed, **candidate, "last_seen_at": now_iso()}
+                _persist_competitor_channel_candidate(candidates[candidate["id"]])
+                updated_count += 1
+            else:
+                candidates[candidate["id"]] = candidate
+                _persist_competitor_channel_candidate(candidate)
+                created_count += 1
+        for existing_id, existing in list(candidates.items()):
+            if not isinstance(existing, dict):
+                continue
+            if existing_id in seen_candidate_ids:
+                continue
+            if str(existing.get("product_id") or "").strip() != product_id:
+                continue
+            if str(existing.get("source_id") or "").strip() != source_id:
+                continue
+            if existing.get("status") != "needs_review":
+                continue
+            existing["status"] = "stale"
+            existing["last_seen_at"] = now_iso()
+            existing["confidence_reasons"] = list(existing.get("confidence_reasons") or []) + ["не найдено при повторном discovery"]
+            candidates[existing_id] = existing
+            _persist_competitor_channel_candidate(existing)
+            updated_count += 1
+        _persist_product_source_scan_state(
+            product_id,
+            source_id,
+            status="scanned_empty" if not seen_candidate_ids else "scanned",
+            run_id=run_id,
+            message="Источник проверен, точной карточки не найдено." if not seen_candidate_ids else "Источник проверен, кандидаты обновлены.",
+            candidates_count=len(seen_candidate_ids),
+            evidence=scan_evidence,
+        )
 
     run = _run_payload(
         run_id,
@@ -4632,6 +4674,7 @@ async def _execute_discovery_run_for_current_tenant(run_id: str, sources: List[D
         updated_count=updated_count,
         errors=errors,
         scanned_products_count=len(products),
+        scanned_pairs_count=scanned_pairs,
     )
     _save_competitor_mapping_runs_only(db)
     _persist_discovery_run(run)

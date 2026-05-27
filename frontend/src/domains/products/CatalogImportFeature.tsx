@@ -80,6 +80,20 @@ type ImportOverviewResp = {
   }>;
 };
 
+type DiscoveryRun = {
+  id: string;
+  status: string;
+  created_count?: number;
+  updated_count?: number;
+  scanned_products_count?: number;
+  errors_count?: number;
+};
+
+type DiscoveryRunResp = {
+  ok: boolean;
+  run: DiscoveryRun;
+};
+
 type MetricItem = {
   label: string;
   value: number | string;
@@ -196,6 +210,9 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [bootstrappedFromUrl, setBootstrappedFromUrl] = useState(false);
+  const [discoveryRun, setDiscoveryRun] = useState<DiscoveryRun | null>(null);
+  const [discoveryRunning, setDiscoveryRunning] = useState(false);
+  const [discoveryNotice, setDiscoveryNotice] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -275,6 +292,10 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   const runOverview = run?.import_overview || {};
   const baselineProducts = overview?.products || [];
   const baselineOverview = overview?.import_overview || {};
+  const missingMediaRows = useMemo(
+    () => (runProducts.length ? runProducts : baselineProducts).filter((row) => Number(row.source_summary?.media?.images_count || 0) <= 0),
+    [baselineProducts, runProducts],
+  );
   const sourceMode = useMemo(() => {
     if (useYandex && useCompetitors) return "Маркет -> конкуренты";
     if (useYandex) return "Только Яндекс.Маркет";
@@ -309,6 +330,74 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
       setErr((e as Error).message || "Ошибка импорта");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function pollDiscovery(runId: string) {
+    for (let attempt = 0; attempt < 36; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      try {
+        const status = await api<DiscoveryRunResp>(`/competitor-mapping/discovery/runs/${encodeURIComponent(runId)}`);
+        setDiscoveryRun(status.run);
+        if (!["queued", "running"].includes(status.run.status)) {
+          setDiscoveryNotice(
+            `Поиск источников завершен: проверено ${status.run.scanned_products_count || 0}, кандидатов ${Number(status.run.created_count || 0) + Number(status.run.updated_count || 0)}.`,
+          );
+          if (selectedNodeIds.length || selectedProductIds.length) {
+            const params = new URLSearchParams();
+            if (selectedNodeIds.length) params.set("node_ids", selectedNodeIds.join(","));
+            if (selectedProductIds.length) params.set("product_ids", selectedProductIds.join(","));
+            params.set("include_descendants", includeDescendants ? "1" : "0");
+            params.set("limit", "50");
+            const fresh = await api<ImportOverviewResp>(`/catalog/exchange/import/overview?${params.toString()}`);
+            setOverview(fresh);
+          }
+          return;
+        }
+      } catch (e) {
+        setErr((e as Error).message || "Не удалось получить статус поиска источников");
+        return;
+      }
+    }
+    setDiscoveryNotice("Поиск источников еще выполняется. Обновите обзор через несколько секунд.");
+  }
+
+  async function startMediaSourceDiscovery() {
+    setErr("");
+    setDiscoveryNotice("");
+    setDiscoveryRunning(true);
+    try {
+      const body: Record<string, unknown> = {
+        background: true,
+        sources: selectedProductIds.length === 1 ? ["restore", "store77"] : ["restore"],
+        limit: 50,
+      };
+      if (selectedProductIds.length) {
+        body.product_ids = selectedProductIds;
+      } else if (selectedNodeIds.length === 1) {
+        body.category_id = selectedNodeIds[0];
+      } else {
+        body.product_ids = missingMediaRows.map((row) => row.product_id).filter(Boolean).slice(0, 50);
+      }
+      const productIds = Array.isArray(body.product_ids) ? body.product_ids as string[] : [];
+      if (!body.category_id && !productIds.length) {
+        throw new Error("Нет товаров без фото в текущем срезе. Выберите категорию или SKU.");
+      }
+      const started = await api<DiscoveryRunResp>("/competitor-mapping/discovery/run", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setDiscoveryRun(started.run);
+      setDiscoveryNotice(
+        selectedProductIds.length === 1
+          ? "Поиск источников запущен. Проверяем re-store и store77 для выбранного SKU."
+          : "Быстрый поиск источников запущен по re-store. Store77 лучше добирать точечно в карточке SKU.",
+      );
+      void pollDiscovery(started.run.id);
+    } catch (e) {
+      setErr((e as Error).message || "Не удалось запустить поиск источников медиа");
+    } finally {
+      setDiscoveryRunning(false);
     }
   }
 
@@ -394,6 +483,27 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
           <div className="cx-inspectorRow"><span>Нерешенных конфликтов</span><strong>{unresolved.length}</strong></div>
         </div>
       </InspectorPanel>
+
+      <InspectorPanel title="Источники медиа" subtitle="Для SKU без фото">
+        <div className="cx-inspectorStack">
+          <div className="cx-sourceInspectorCard">
+            <div>
+              <strong>Без фото</strong>
+              <p>Массово ищет быстрые candidate-ссылки re-store. Store77 добирается точечно в карточке SKU.</p>
+            </div>
+            <Badge tone={missingMediaRows.length ? "pending" : "active"}>{missingMediaRows.length}</Badge>
+          </div>
+          <Button onClick={() => void startMediaSourceDiscovery()} disabled={discoveryRunning || loading || !missingMediaRows.length}>
+            {discoveryRunning ? "Ищу…" : "Найти источники медиа"}
+          </Button>
+          {discoveryRun ? (
+            <div className="cx-inspectorRow">
+              <span>Последний поиск</span>
+              <strong>{discoveryRun.status}</strong>
+            </div>
+          ) : null}
+        </div>
+      </InspectorPanel>
     </div>
   );
 
@@ -415,6 +525,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
       ) : null}
 
       {err ? <div className="card cx-error">{err}</div> : null}
+      {discoveryNotice ? <div className="card cx-pane">{discoveryNotice}</div> : null}
 
       <WorkspaceFrame
         className="cx-workspaceFrame"
@@ -442,6 +553,9 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
                   <Badge tone={useYandex || useCompetitors ? "active" : "neutral"}>{sourceMode}</Badge>
                   <Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
                     {loading ? "Заполняю…" : "Запустить"}
+                  </Button>
+                  <Button onClick={() => void startMediaSourceDiscovery()} disabled={discoveryRunning || loading || !missingMediaRows.length}>
+                    {discoveryRunning ? "Ищу источники…" : "Найти источники медиа"}
                   </Button>
                 </div>
               )}
