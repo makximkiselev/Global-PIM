@@ -118,13 +118,14 @@ Unified parameter flow:
     - `GET /api/catalog/exchange/export/jobs/{job_id}`;
     - worker service: `global-pim-export-worker.service`.
     The synchronous `/catalog/exchange/export/run` endpoint is compatibility/diagnostic path, not the preferred UI path for broad checks.
-33. info-model draft review must show why each candidate exists before approval:
+33. export must not derive price from PIM, marketplace imports, competitor pages, or product parameters. If a marketplace API requires a price for technical card creation, use the explicit placeholder `1000000` and mark the source as `technical_placeholder`.
+34. info-model draft review must show why each candidate exists before approval:
     - `source_summary.by_kind` separates product, marketplace, and competitor evidence;
     - `review_flags` must call out competitor-only, marketplace-only, low-confidence, single-source, select-without-values, and weak global-match cases;
     - a candidate that only comes from competitors is evidence, not an automatically approved canonical parameter.
-34. if a draft candidate suggests the wrong global parameter, the user must be able to clear `global_match` before approval and create a new canonical parameter instead of silently reusing the wrong one.
-35. the draft screen should expose aggregate quality counters before approval, so the user can see risky candidate groups without reading every row first.
-36. draft quick filters should let the user isolate competitor-only, marketplace-only, and weak global-match candidates from ordinary status filters.
+35. if a draft candidate suggests the wrong global parameter, the user must be able to clear `global_match` before approval and create a new canonical parameter instead of silently reusing the wrong one.
+36. the draft screen should expose aggregate quality counters before approval, so the user can see risky candidate groups without reading every row first.
+37. draft quick filters should let the user isolate competitor-only, marketplace-only, and weak global-match candidates from ordinary status filters.
 
 Media rule:
 

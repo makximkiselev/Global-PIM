@@ -72,6 +72,7 @@ OZON_CATEGORIES_TREE_PATH = DATA_DIR / "marketplaces" / "ozon" / "categories_tre
 
 _EXPORT_WORKFLOW = "catalog_export_prepare"
 _EXPORT_JOB_TTL_SECONDS = 900.0
+OZON_TECHNICAL_EXPORT_PRICE = "1000000"
 
 AUTHORIZED_SITES = {
     "restore": {"restore", "re-store.ru"},
@@ -1527,6 +1528,8 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                     "offer_id": offer_id,
                     "name": name,
                     "description_category_id": ozon_category_id,
+                    "price": OZON_TECHNICAL_EXPORT_PRICE,
+                    "price_source": "technical_placeholder",
                     "images": pictures,
                     "attributes": attributes,
                 },

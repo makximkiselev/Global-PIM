@@ -2536,6 +2536,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["ready_count"], 1)
         item = response["items"][0]
         self.assertEqual(item["missing"], [])
+        self.assertEqual(item["payload_item"]["price"], "1000000")
+        self.assertEqual(item["payload_item"]["price_source"], "technical_placeholder")
         attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
         attr_values = {str(attr["id"]): attr["values"][0] for attr in item["payload_item"]["attributes"]}
         self.assertEqual(attrs["8229"], "Смартфон")
