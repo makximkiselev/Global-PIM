@@ -30,7 +30,9 @@ LOCAL_TMP_DIR="$(mktemp -d /tmp/global-pim-deploy.XXXXXX)"
 LOCAL_ARCHIVE="/tmp/global-pim-${RELEASE_ID}.tgz"
 REMOTE_SCRIPT_LOCAL="/tmp/global-pim-${RELEASE_ID}.remote.sh"
 APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
+APP_LOCAL_DB_GRANTS_HEALTH_URL="http://127.0.0.1:18010/api/health/db-grants"
 APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
+APP_PUBLIC_DB_GRANTS_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health/db-grants"
 SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
@@ -322,6 +324,7 @@ for attempt in {1..30}; do
   sleep 1
 done
 curl -fsS "${APP_LOCAL_HEALTH_URL}" >/dev/null
+curl -fsS "${APP_LOCAL_DB_GRANTS_HEALTH_URL}" >/dev/null
 
 rm -rf "\${REMOTE_TMP_EXTRACT}" "\${REMOTE_TMP_ARCHIVE}" "/tmp/global-pim-\${RELEASE_ID}.remote.sh"
 EOF
@@ -334,11 +337,13 @@ echo "==> Deploying on server"
 ssh_run "bash /tmp/global-pim-${RELEASE_ID}.remote.sh"
 
 echo "==> Post-deploy smoke"
-ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WORKER_SERVICE_NAME} && systemctl is-active ${APP_VALUE_WORKER_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL}"
+ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WORKER_SERVICE_NAME} && systemctl is-active ${APP_VALUE_WORKER_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL} && curl -fsS ${APP_LOCAL_DB_GRANTS_HEALTH_URL}"
 curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
+curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1
 curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
 
 echo "==> Deploy complete"
 echo "Server: ${SSH_TARGET}"
 echo "App path: ${APP_SERVER_PATH}"
 echo "Health: ${APP_PUBLIC_HEALTH_URL}"
+echo "DB grants health: ${APP_PUBLIC_DB_GRANTS_HEALTH_URL}"
