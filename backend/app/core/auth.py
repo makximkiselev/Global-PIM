@@ -119,6 +119,7 @@ DEFAULT_AUTH_BASE_DB: Dict[str, Any] = {
 
 PUBLIC_API_PATHS = {
     "/api/health",
+    "/api/health/db-grants",
     "/api/health/storage",
     "/api/auth/login",
     "/api/auth/session",
