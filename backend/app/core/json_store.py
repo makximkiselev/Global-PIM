@@ -181,14 +181,16 @@ def _pg_connect():
         try:
             if kind == "psycopg":
                 if not getattr(conn, "closed", True):
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1")
                     return conn, kind, adapter
             elif kind == "psycopg2":
                 if getattr(conn, "closed", 1) == 0:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1")
                     return conn, kind, adapter
         except Exception:
-            _PG_STATE.conn = None
-            _PG_STATE.kind = ""
-            _PG_STATE.json_adapter = None
+            _reset_pg_connection()
     driver, kind = _load_psycopg()
     if kind == "psycopg":
         conn = _ManagedPgConnection(driver.connect(dsn, autocommit=True))
