@@ -133,10 +133,13 @@ export default function SourcesMappingFeature() {
   const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
   const storedContext = useMemo(() => readStoredProductContext(), []);
-  const initialCategoryId = searchParams.get("category") || storedContext.categoryId || "";
+  const categoryParam = String(searchParams.get("category") || "").trim();
+  const explicitProductParam = String(searchParams.get("product") || "").trim();
+  const storedMatchesExplicitProduct = !!explicitProductParam && storedContext.productId === explicitProductParam;
+  const initialCategoryId = categoryParam || (!explicitProductParam || storedMatchesExplicitProduct ? storedContext.categoryId : "") || "";
   const providerParam = String(searchParams.get("provider") || "").trim();
   const providerCategoryParam = String(searchParams.get("provider_category") || "").trim();
-  const productParam = String(searchParams.get("product") || storedContext.productId || "").trim();
+  const productParam = explicitProductParam || (!categoryParam ? storedContext.productId : "");
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState(storedContext.categoryName);
@@ -156,7 +159,10 @@ export default function SourcesMappingFeature() {
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
-    const nextCategoryId = searchParams.get("category") || storedContext.categoryId || "";
+    const nextCategoryParam = String(searchParams.get("category") || "").trim();
+    const nextProductParam = String(searchParams.get("product") || "").trim();
+    const nextStoredMatchesProduct = !!nextProductParam && storedContext.productId === nextProductParam;
+    const nextCategoryId = nextCategoryParam || (!nextProductParam || nextStoredMatchesProduct ? storedContext.categoryId : "") || "";
     const nextProviderCategoryId = String(searchParams.get("provider_category") || "").trim();
     setTabState((prev) => (prev === nextTab ? prev : nextTab));
     setSelectedCategoryId(nextCategoryId);

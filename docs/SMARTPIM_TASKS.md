@@ -700,6 +700,9 @@ Next fix in the category flow:
    - the modal has separate fields for `ID категории Ozon` and `Type ID`;
    - the UI shows the generated value only as an API-check preview;
    - saving still validates the pair through the Ozon attributes API before binding the category.
+15. `/sources` context fallback no longer mixes an explicit category URL with the last cached SKU:
+   - if the URL has `category` and no `product`, the page works in pure category context;
+   - cached SKU context is reused only when there is no explicit category, or when the explicit SKU matches the cached SKU.
 
 ## Verification Commands
 
