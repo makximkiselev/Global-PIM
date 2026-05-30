@@ -300,6 +300,22 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     () => activeTargets.reduce((sum, item) => sum + item.store_ids.length, 0),
     [activeTargets],
   );
+  const exportBadgeText = initialLoading
+    ? "Загружаю каналы"
+    : providers.length === 0
+      ? "Нет магазинов"
+      : activeTargets.length
+        ? `${activeTargets.length} канала`
+        : "Не выбрано";
+  const exportBadgeTone = initialLoading ? "pending" : activeTargets.length ? "active" : "neutral";
+  const selectedCategoryForLinks = selectedNodeIds[0] || initialCategoryId;
+  const sourcesCategoryHref = selectedCategoryForLinks
+    ? `/sources?tab=sources&category=${encodeURIComponent(selectedCategoryForLinks)}`
+    : "/sources?tab=sources";
+  const exportEmptyTitle = providers.length === 0 ? "Нет магазинов для экспорта" : "Выберите магазины выше";
+  const exportEmptyDescription = providers.length === 0
+    ? "Сначала включите хотя бы один магазин для выгрузки в коннекторах или проверьте привязку категории к площадкам."
+    : "Отметьте Я.Маркет или Ozon и конкретные магазины, затем запустите подготовку по выбранной области каталога.";
   const selectedTargetLabels = useMemo(() => {
     const out: string[] = [];
     for (const target of activeTargets) {
@@ -565,9 +581,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               className="cx-workspaceToolbar"
               actions={(
                 <div className="cx-toolbarActions">
-                  <Badge tone={initialLoading ? "pending" : activeTargets.length ? "active" : "neutral"}>
-                    {initialLoading ? "Загружаю каналы" : activeTargets.length ? `${activeTargets.length} канала` : "Нет каналов"}
-                  </Badge>
+                  <Badge tone={exportBadgeTone}>{exportBadgeText}</Badge>
                   <Button variant="primary" onClick={requestExport} disabled={initialLoading || loading || activeTargets.length === 0}>
                     {loading ? "Готовлю…" : "Подготовить"}
                   </Button>
@@ -577,6 +591,15 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <div className="cx-targetsBoard">
                 {initialLoading ? (
                   <div className="cx-empty">Загружаю магазины и каналы экспорта…</div>
+                ) : providers.length === 0 ? (
+                  <div className="cx-empty cx-exportEmptyHint">
+                    <strong>Нет магазинов для экспорта</strong>
+                    <span>Включите магазины для выгрузки в настройках коннекторов или проверьте привязку категории к площадкам.</span>
+                    <div className="cx-emptyActions">
+                      <Link className="btn btn-primary" to="/connectors/status?tab=marketplaces">Открыть коннекторы</Link>
+                      <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>
+                    </div>
+                  </div>
                 ) : providers.map((provider) => {
                   const checked = !!selectedProviders[provider.code];
                   const stores = provider.import_stores || [];
@@ -818,9 +841,18 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               </>
             ) : (
               <EmptyState
-                title="Выбери каналы и магазины"
-                description="Сначала задай цели экспорта, затем запусти batch-подготовку по текущей области каталога."
-                action={<Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>{loading ? "Готовлю…" : "Подготовить экспорт"}</Button>}
+                title={exportEmptyTitle}
+                description={exportEmptyDescription}
+                action={providers.length === 0 ? (
+                  <div className="cx-emptyActions">
+                    <Link className="btn btn-primary" to="/connectors/status?tab=marketplaces">Открыть коннекторы</Link>
+                    <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>
+                  </div>
+                ) : (
+                  <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
+                    {loading ? "Готовлю…" : "Подготовить экспорт"}
+                  </Button>
+                )}
               />
             )}
           </div>

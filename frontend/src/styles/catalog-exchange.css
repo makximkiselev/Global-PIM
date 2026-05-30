@@ -856,6 +856,38 @@
   font-weight:700;
 }
 
+.cx-exportEmptyHint{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:136px;
+  grid-column:1 / -1;
+  border:1px dashed rgba(185,199,227,.8);
+  border-radius:18px;
+  background:#fbfcff;
+}
+
+.cx-exportEmptyHint strong{
+  color:var(--text);
+}
+
+.cx-exportEmptyHint span{
+  max-width:620px;
+  font-weight:600;
+  line-height:1.45;
+}
+
+.cx-emptyActions{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
+
 .cx-targets{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(260px,1fr));

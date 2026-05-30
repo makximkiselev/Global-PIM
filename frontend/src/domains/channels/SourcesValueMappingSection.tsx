@@ -436,11 +436,14 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const unitCheckCount = allMappingItems.filter((item) => Boolean(item.needs_unit_check)).length;
   const branchSourcesCount = Array.isArray(data?.branch_sources) ? data!.branch_sources.length : 0;
   const emptyValuesMessage = useMemo(() => {
-    if (!mappingItemsCount) return "Для этой категории пока нет полей, где нужно сопоставлять значения площадок.";
+    if (!mappingItemsCount && !rawItemsCount) {
+      return "В этой категории еще нет PIM-параметров. Сначала соберите и подтвердите черновик модели, затем здесь появятся значения для Я.Маркета и Ozon.";
+    }
+    if (!mappingItemsCount) return "В модели нет полей со справочниками или контролируемыми значениями площадок. Можно перейти к проверке экспорта.";
     if (workFilter === "blockers") return "Блокеров по значениям нет. Открой «Все», чтобы проверить поля со справочниками.";
     if (workFilter === "ready") return "Готовых сопоставлений значений пока нет.";
     return "Поля есть, но текущий поиск или фильтр их скрыл.";
-  }, [mappingItemsCount, workFilter]);
+  }, [mappingItemsCount, rawItemsCount, workFilter]);
 
   useEffect(() => {
     if (!data?.category?.id || !data.category.name) return;
@@ -720,7 +723,20 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                 ) : loadingValues ? (
                   <div className="sm-valuesEmpty">Загружаю поля со значениями…</div>
                 ) : filteredItems.length === 0 ? (
-                  <div className="sm-valuesEmpty">{emptyValuesMessage}</div>
+                  <div className="sm-valuesEmpty">
+                    <p>{emptyValuesMessage}</p>
+                    {!mappingItemsCount && !rawItemsCount ? (
+                      <div className="sm-valuesEmptyActions">
+                        <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+                        <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
+                      </div>
+                    ) : !mappingItemsCount ? (
+                      <div className="sm-valuesEmptyActions">
+                        <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить параметры</Link>
+                        <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить экспорт</Link>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
                   filteredItems.map((item) => {
                     const providers = usefulProviders(item);
@@ -864,7 +880,11 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                   <DictionaryEditorFeature embedded dictIdOverride={activeItem.dict_id} />
                 </>
               ) : (
-                <div className="sm-valuesEmpty">Выбери поле слева, чтобы открыть сопоставление значений.</div>
+                <div className="sm-valuesEmpty">
+                  {!mappingItemsCount && !rawItemsCount
+                    ? "Здесь появятся значения после сборки и подтверждения PIM-параметров."
+                    : "Выбери поле слева, чтобы открыть сопоставление значений."}
+                </div>
               )}
             </div>
           </div>

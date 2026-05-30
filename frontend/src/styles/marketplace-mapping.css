@@ -2674,6 +2674,17 @@
   font-weight:600;
 }
 
+.sm-valuesEmpty p{
+  margin:0;
+}
+
+.sm-valuesEmptyActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+}
+
 .dict-editorEmbedded{
   display:flex;
   flex-direction:column;
