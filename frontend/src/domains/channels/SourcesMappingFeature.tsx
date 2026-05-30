@@ -23,7 +23,7 @@ let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
 const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
   { key: "sources", label: "Категории", hint: "Площадки и конкурентные источники" },
-  { key: "params", label: "Черновик параметров", hint: "Evidence -> PIM поля" },
+  { key: "params", label: "Черновик параметров", hint: "Источники -> поля PIM" },
   { key: "values", label: "Значения", hint: "Написания для выгрузки" },
 ];
 

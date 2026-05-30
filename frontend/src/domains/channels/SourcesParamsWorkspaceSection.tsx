@@ -1155,7 +1155,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                 <div className="paramsAlert">
                   {infoModelIsEmpty
                     ? "Инфо-модель пустая. Сначала соберите draft модели категории из источников."
-                    : "Черновик параметров пуст. Подтвердите конкурентные карточки для SKU, затем соберите черновик из evidence."}
+                    : "Черновик параметров пуст. Подтвердите конкурентные карточки для SKU, затем соберите черновик из источников."}
                 </div>
               )}
             </div>

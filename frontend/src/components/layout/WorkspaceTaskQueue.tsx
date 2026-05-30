@@ -38,7 +38,7 @@ export default function WorkspaceTaskQueue({
     <section className={`workspaceTaskQueue${className ? ` ${className}` : ""}`} aria-label={title}>
       <div className="workspaceTaskQueueHead">
         <div>
-          <div className="workspaceTaskQueueEyebrow">Workflow</div>
+          <div className="workspaceTaskQueueEyebrow">Маршрут</div>
           <h2>{title}</h2>
         </div>
         {aside ? <div className="workspaceTaskQueueAside">{aside}</div> : null}
