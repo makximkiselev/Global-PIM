@@ -981,7 +981,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               <h3>Соберите инфо-модель категории</h3>
               <p>
                 Категории площадок уже связаны{mappingInherited ? " через родительскую ветку" : ""}, но PIM-полей для сопоставления еще нет.
-                Сначала соберите draft модели из товаров, площадок и конкурентов, затем возвращайтесь сюда для маппинга полей.
+                Сначала соберите черновик модели из товаров, площадок и конкурентов, затем возвращайтесь сюда для сопоставления полей.
               </p>
             </div>
             <div className="paramsInfoModelSetupActions">
@@ -1154,7 +1154,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               }) : (
                 <div className="paramsAlert">
                   {infoModelIsEmpty
-                    ? "Инфо-модель пустая. Сначала соберите draft модели категории из источников."
+                    ? "Инфо-модель пустая. Сначала соберите черновик модели категории из источников."
                     : "Черновик параметров пуст. Подтвердите конкурентные карточки для SKU, затем соберите черновик из источников."}
                 </div>
               )}
@@ -1356,7 +1356,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
                 <div className="paramsInspectorSection">
                   <h4>Следующее действие</h4>
-                  <p>Если конкуренты еще не подтверждены, сначала соберите evidence. Затем подтвердите параметры, отключите лишнее и переходите к значениям.</p>
+                  <p>Если конкуренты еще не подтверждены, сначала соберите источники. Затем подтвердите параметры, отключите лишнее и переходите к значениям.</p>
                   <div className="paramsInspectorActions">
                     <button
                       className="btn"

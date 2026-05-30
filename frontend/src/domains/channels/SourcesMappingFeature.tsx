@@ -343,7 +343,7 @@ export default function SourcesMappingFeature() {
           {
             key: "params",
             label: "Черновик PIM-параметров",
-            description: "Создается после marketplace + competitor + product evidence. Площадки одни не являются финальной моделью.",
+            description: "Создается из данных площадок, конкурентов и товаров. Одни только площадки не являются финальной моделью.",
             href: selectedCategoryId ? sourcesHref("params", selectedCategoryId, productParam) : undefined,
             actionLabel: "Черновик",
             status: tab === "params" ? "active" : tab === "values" ? "done" : "todo",
