@@ -19,6 +19,7 @@ APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME:-global-pim-value
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME:-global-pim-export-worker.service}"
 APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
+APP_DB_ROLE="${APP_DB_ROLE:-gen_user}"
 DB_CA_CERT_PATH="${DB_CA_CERT_PATH:-$HOME/Downloads/ca.crt}"
 APP_PUBLIC_BASE_URL="${APP_PUBLIC_BASE_URL:-https://pim.id-smart.ru}"
 APP_DEPLOY_BACKUP_KEEP="${APP_DEPLOY_BACKUP_KEEP:-20}"
@@ -239,10 +240,24 @@ APP_SERVICE_NAME="${APP_SERVICE_NAME}"
 APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME}"
 APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME}"
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME}"
+APP_DB_ROLE="${APP_DB_ROLE}"
 REMOTE_TMP_ARCHIVE="${REMOTE_TMP_ARCHIVE}"
 REMOTE_TMP_EXTRACT="${REMOTE_TMP_EXTRACT}"
 RELEASE_ID="${RELEASE_ID}"
 APP_DEPLOY_BACKUP_KEEP="${APP_DEPLOY_BACKUP_KEEP}"
+
+repair_app_db_grants() {
+  local database_url
+  database_url="\$(grep ^DATABASE_URL= "\${APP_SERVER_PATH}/backend/.env" | cut -d= -f2-)"
+  test -n "\${database_url}"
+  psql "\${database_url}" -v ON_ERROR_STOP=1 -v app_role="\${APP_DB_ROLE}" <<'SQL'
+GRANT USAGE ON SCHEMA public TO :"app_role";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_role";
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"app_role";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_role";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO :"app_role";
+SQL
+}
 
 mkdir -p "\${APP_SERVER_PATH}" "\${APP_SERVER_PATH}/backups"
 rm -rf "\${REMOTE_TMP_EXTRACT}"
@@ -306,6 +321,8 @@ if [[ ! -f "\${REQ_HASH_FILE}" || "\$(cat "\${REQ_HASH_FILE}")" != "\${REQ_HASH}
 else
   echo "Requirements unchanged; skipping pip install"
 fi
+
+repair_app_db_grants
 
 systemctl restart "\${APP_SERVICE_NAME}"
 if systemctl list-unit-files "\${APP_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then

@@ -692,6 +692,10 @@ Next fix in the category flow:
    - Ozon attribute-value cache stores raw page counts by default instead of full raw API pages;
    - Yandex offer-card/mapping caches store compact summaries instead of full raw responses;
    - catalog import/export run JSON history is bounded before saving.
+13. Production DB grants guardrail is in place:
+   - deploy runs the same Postgres grants repair before restarting services and before smoke checks;
+   - `db-grants-health` remains the public canary for `json_documents` read/write/delete access;
+   - if a future DB restore or managed-service permission reset drops table grants, the next deploy restores them instead of leaving login broken.
 
 ## Verification Commands
 
