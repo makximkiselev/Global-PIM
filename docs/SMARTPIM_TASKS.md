@@ -696,6 +696,10 @@ Next fix in the category flow:
    - deploy runs the same Postgres grants repair before restarting services and before smoke checks;
    - `db-grants-health` remains the public canary for `json_documents` read/write/delete access;
    - if a future DB restore or managed-service permission reset drops table grants, the next deploy restores them instead of leaving login broken.
+14. Ozon manual category/type UI no longer asks the user to type a raw technical `type:...` string:
+   - the modal has separate fields for `ID категории Ozon` and `Type ID`;
+   - the UI shows the generated value only as an API-check preview;
+   - saving still validates the pair through the Ozon attributes API before binding the category.
 
 ## Verification Commands
 

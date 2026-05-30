@@ -1050,7 +1050,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [modalCatalogCategoryId, setModalCatalogCategoryId] = useState("");
   const [modalSelectedProviderCategoryId, setModalSelectedProviderCategoryId] = useState("");
   const [modalQuery, setModalQuery] = useState("");
-  const [modalManualProviderCategoryId, setModalManualProviderCategoryId] = useState("");
+  const [modalManualOzonCategoryId, setModalManualOzonCategoryId] = useState("");
+  const [modalManualOzonTypeId, setModalManualOzonTypeId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState("");
@@ -1638,6 +1639,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (!picked) return modalItems;
     return [picked, ...modalItems.filter((x) => x.id !== selected)];
   }, [modalItems, modalSelectedProviderCategoryId]);
+  const manualOzonProviderCategoryId = useMemo(() => {
+    const categoryId = String(modalManualOzonCategoryId || "").trim();
+    const typeId = String(modalManualOzonTypeId || "").trim();
+    return categoryId && typeId ? `type:${categoryId}:${typeId}` : "";
+  }, [modalManualOzonCategoryId, modalManualOzonTypeId]);
   const modalCatalogPath = useMemo(() => {
     if (!modalCatalogCategoryId) return "";
     const fromCatalogItems = catalogItems.find((x) => x.id === modalCatalogCategoryId)?.path || "";
@@ -1863,7 +1869,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setModalProvider(providerCode);
     setModalSelectedProviderCategoryId(initialProviderCategoryId || "");
     setModalQuery("");
-    setModalManualProviderCategoryId("");
+    const ozonManualParts = providerCode === "ozon" ? String(initialProviderCategoryId || "").trim().split(":") : [];
+    setModalManualOzonCategoryId(ozonManualParts[0] === "type" ? ozonManualParts[1] || "" : "");
+    setModalManualOzonTypeId(ozonManualParts[0] === "type" ? ozonManualParts[2] || "" : "");
     setModalOpen(true);
     void ensureProviderCategories(providerCode);
   }
@@ -2251,7 +2259,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     await saveLinkFor(modalCatalogCategoryId, modalProvider, providerCategoryId, true);
   }
   async function saveModalSelection() {
-    const manual = String(modalManualProviderCategoryId || "").trim();
+    const manual = modalProvider === "ozon" ? manualOzonProviderCategoryId : "";
     const selected = manual || String(modalSelectedProviderCategoryId || "").trim();
     if (manual && modalProvider === "ozon") {
       setSaving(true);
@@ -4201,20 +4209,46 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               {modalProvider === "ozon" ? (
                 <div className="mm-manualProviderCategory">
                   <div>
-                    <div className="mm-categoryPickerLabel">Ozon category/type вручную</div>
+                    <div className="mm-categoryPickerLabel">Ручная привязка Ozon</div>
                     <div className="muted">
-                      Используйте, если category tree Ozon не показывает ветку, но API характеристик принимает category/type.
+                      Используйте, если дерево Ozon не показывает ветку, но API характеристик принимает пару категории и типа.
                     </div>
                   </div>
-                  <input
-                    className="pn-input"
-                    placeholder="Например: type:17028924:115947064"
-                    value={modalManualProviderCategoryId}
-                    onChange={(e) => {
-                      setModalManualProviderCategoryId(e.target.value);
-                      if (e.target.value.trim()) setModalSelectedProviderCategoryId(e.target.value.trim());
-                    }}
-                  />
+                  <div className="mm-manualProviderInputs">
+                    <label>
+                      <span>ID категории Ozon</span>
+                      <input
+                        className="pn-input"
+                        inputMode="numeric"
+                        placeholder="17028924"
+                        value={modalManualOzonCategoryId}
+                        onChange={(e) => {
+                          const nextCategoryId = e.target.value.trim();
+                          setModalManualOzonCategoryId(nextCategoryId);
+                          const typeId = String(modalManualOzonTypeId || "").trim();
+                          if (nextCategoryId && typeId) setModalSelectedProviderCategoryId(`type:${nextCategoryId}:${typeId}`);
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>Type ID</span>
+                      <input
+                        className="pn-input"
+                        inputMode="numeric"
+                        placeholder="115947064"
+                        value={modalManualOzonTypeId}
+                        onChange={(e) => {
+                          const nextTypeId = e.target.value.trim();
+                          setModalManualOzonTypeId(nextTypeId);
+                          const categoryId = String(modalManualOzonCategoryId || "").trim();
+                          if (categoryId && nextTypeId) setModalSelectedProviderCategoryId(`type:${categoryId}:${nextTypeId}`);
+                        }}
+                      />
+                    </label>
+                    {manualOzonProviderCategoryId ? (
+                      <div className="mm-manualProviderPreview">Будет проверено через API: {manualOzonProviderCategoryId}</div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

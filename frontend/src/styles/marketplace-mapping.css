@@ -611,6 +611,40 @@
   background:rgba(37, 99, 235, 0.05);
 }
 
+.mm-manualProviderInputs{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.mm-manualProviderInputs label{
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:5px;
+  color:#64748b;
+  font-size:11px;
+  font-weight:850;
+  text-transform:uppercase;
+}
+
+.mm-manualProviderPreview{
+  grid-column:1 / -1;
+  color:#475569;
+  font-size:12px;
+  font-weight:750;
+}
+
+@media (max-width: 860px){
+  .mm-manualProviderCategory{
+    grid-template-columns:1fr;
+  }
+
+  .mm-manualProviderInputs{
+    grid-template-columns:1fr;
+  }
+}
+
 .mm-miniBtn{
   padding:4px 7px;
   min-height:26px;
