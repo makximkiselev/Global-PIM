@@ -1260,6 +1260,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50"}),
             patch.object(catalog_exchange, "_load_nodes", return_value=[]),
             patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "_template_attr_defs", return_value={}),
             patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
                 {
                     "scope": "competitor_product",
@@ -1289,6 +1290,54 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved_products[0]["content"]["media_images"][0]["source"], "store77")
         self.assertEqual(saved_products[0]["content"]["source_values"]["media_images"]["store77"]["count"], 1)
 
+    def test_export_preparation_limits_competitor_media_from_one_source_card(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "iPhone 17 Pro Max 256Gb Orange",
+            "category_id": "cat-phone",
+            "content": {"features": [], "description": ""},
+        }
+        saved_products: list[dict[str, object]] = []
+
+        async def fake_extract(url, **_kwargs):
+            return {
+                "description": "",
+                "images": [f"https://store77.net/images/iphone-orange-{idx}.jpg" for idx in range(15)],
+                "specs": {},
+            }
+
+        with (
+            patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50", "COMPETITOR_MEDIA_PER_SOURCE_LIMIT": "4"}),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[]),
+            patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "_template_attr_defs", return_value={}),
+            patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
+                {
+                    "scope": "competitor_product",
+                    "entity_type": "product",
+                    "entity_id": "product_1",
+                    "provider": "store77",
+                    "status": "confirmed",
+                    "url": "https://store77.net/iphone-orange",
+                    "score": 0.94,
+                }
+            ]),
+            patch.object(catalog_exchange, "_extract_competitor_content_with_retry", side_effect=fake_extract),
+            patch.object(catalog_exchange, "_import_competitor_image_to_storage", side_effect=lambda image_url, **_kwargs: {
+                "url": image_url,
+                "external_url": image_url,
+                "content_type": "image/jpeg",
+                "size": 123,
+                "storage": "s3",
+            }),
+            patch.object(catalog_exchange, "_save_products", side_effect=lambda items: saved_products.extend(deepcopy(items))),
+            patch.object(catalog_exchange, "_now_iso", return_value="2026-05-23T12:00:00+00:00"),
+        ):
+            changed = asyncio.run(catalog_exchange._enrich_export_products_from_candidate_media([product]))
+
+        self.assertEqual(changed, {"product_1"})
+        self.assertEqual(len(saved_products[0]["content"]["media_images"]), 4)
+
     def test_export_preparation_does_not_enrich_media_from_unconfirmed_candidate_link(self) -> None:
         product = {
             "id": "product_1",
@@ -1301,6 +1350,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50"}),
             patch.object(catalog_exchange, "_load_nodes", return_value=[]),
             patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "_template_attr_defs", return_value={}),
             patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
                 {
                     "scope": "competitor_product",
@@ -1341,6 +1391,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.dict(os.environ, {"EXPORT_CANDIDATE_MEDIA_ENRICH_LIMIT": "50"}),
             patch.object(catalog_exchange, "_load_nodes", return_value=[]),
             patch.object(catalog_exchange, "_resolve_template_id", return_value="tpl-phone"),
+            patch.object(catalog_exchange, "_template_attr_defs", return_value={}),
             patch.object(catalog_exchange, "list_pim_channel_links", return_value=[
                 {
                     "scope": "competitor_product",
@@ -2907,6 +2958,52 @@ class OperatingWorkflowTests(unittest.TestCase):
         ])
         self.assertEqual(media[0]["source"], "ozon")
         self.assertEqual(saved_products[0][0]["content"]["source_values"]["media_images"]["ozon"]["count"], 2)
+
+    def test_ozon_media_merge_dedupes_same_image_across_cdn_hosts(self) -> None:
+        existing = [
+            {
+                "url": "https://cdn1.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+                "external_url": "https://cdn1.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+                "source": "ozon",
+            }
+        ]
+
+        merged = ozon_market._merge_marketplace_media_items(
+            existing,
+            [
+                "https://ir.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+                "https://ir.ozone.ru/s3/multimedia-1-y/9142586890.jpg",
+            ],
+            source="ozon",
+            overwrite_existing=False,
+        )
+
+        self.assertEqual([item["url"] for item in merged], [
+            "https://cdn1.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+            "https://ir.ozone.ru/s3/multimedia-1-y/9142586890.jpg",
+        ])
+
+    def test_yandex_media_merge_dedupes_same_ozon_cdn_alias_when_reused(self) -> None:
+        existing = [
+            {
+                "url": "https://cdn1.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+                "external_url": "https://cdn1.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+            }
+        ]
+
+        merged = yandex_market._merge_media_items(
+            existing,
+            [
+                "https://ir.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+                "https://ir.ozone.ru/s3/multimedia-1-y/9142586890.jpg",
+            ],
+            overwrite_existing=False,
+        )
+
+        self.assertEqual([item["url"] for item in merged], [
+            "https://cdn1.ozone.ru/s3/multimedia-1-7/9127394143.jpg",
+            "https://ir.ozone.ru/s3/multimedia-1-y/9142586890.jpg",
+        ])
 
     def test_yandex_export_preview_blocks_unmapped_controlled_value(self) -> None:
         product = {

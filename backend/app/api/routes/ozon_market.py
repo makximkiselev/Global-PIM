@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import JsonStoreError, read_doc, write_doc
+from app.core.media import media_identity_keys
 from app.storage.relational_pim_store import bulk_upsert_product_items, load_catalog_nodes, query_products_full
 
 router = APIRouter(prefix="/marketplaces/ozon", tags=["marketplaces-ozon"])
@@ -207,12 +208,7 @@ def _merge_marketplace_media_items(existing: Any, urls: List[str], *, source: st
     seen: Set[str] = set()
 
     def keys_for(item: Dict[str, Any]) -> Set[str]:
-        keys: Set[str] = set()
-        for field in ("external_url", "source_image_url", "url"):
-            value = str(item.get(field) or "").strip()
-            if value:
-                keys.add(value.lower())
-        return keys
+        return {key.lower() for key in media_identity_keys(item)}
 
     for item in [*current, *fresh]:
         if not isinstance(item, dict):

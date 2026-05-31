@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
+from app.core.media import media_identity_keys
 from app.core.value_mapping import provider_export_value_details, provider_import_value
 from app.storage.relational_pim_store import (
     bulk_upsert_product_items,
@@ -915,17 +916,7 @@ def _merge_media_items(existing: Any, urls: List[str], overwrite_existing: bool)
     seen: Set[str] = set()
 
     def identity_keys(item: Dict[str, Any]) -> Set[str]:
-        keys: Set[str] = set()
-        for field in ("external_url", "source_image_url", "url"):
-            value = str(item.get(field) or "").strip()
-            if value:
-                keys.add(value)
-        source_url = str(item.get("source_url") or "").strip()
-        source_host = str(item.get("source_host") or "").strip()
-        source_type = str(item.get("source_type") or "").strip()
-        if source_url and (source_type == "external_import" or source_host or Path(urlparse(source_url).path).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}):
-            keys.add(source_url)
-        return keys
+        return media_identity_keys(item)
 
     for item in current:
         if not isinstance(item, dict):

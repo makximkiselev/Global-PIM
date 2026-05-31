@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc
+from app.core.media import dedupe_media_items, media_identity_keys
 from app.core.products.parameter_flow import dict_id_for_product_feature
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import provider_export_value_details
@@ -73,6 +74,7 @@ OZON_CATEGORIES_TREE_PATH = DATA_DIR / "marketplaces" / "ozon" / "categories_tre
 _EXPORT_WORKFLOW = "catalog_export_prepare"
 _EXPORT_JOB_TTL_SECONDS = 900.0
 OZON_TECHNICAL_EXPORT_PRICE = "1000000"
+COMPETITOR_MEDIA_PER_SOURCE_LIMIT = 12
 
 AUTHORIZED_SITES = {
     "restore": {"restore", "re-store.ru"},
@@ -679,31 +681,21 @@ def _feature_index(features: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 
 
 def _media_identity_keys(item: Dict[str, Any]) -> Set[str]:
-    keys: Set[str] = set()
-    for field in ("external_url", "source_image_url", "url"):
-        value = str(item.get(field) or "").strip()
-        if value:
-            keys.add(value)
-    source_url = str(item.get("source_url") or "").strip()
-    source_host = str(item.get("source_host") or "").strip()
-    source_type = str(item.get("source_type") or "").strip()
-    if source_url and (source_type == "external_import" or source_host or Path(urlparse(source_url).path).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}):
-        keys.add(source_url)
-    return keys
+    return media_identity_keys(item)
 
 
 def _dedupe_media_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        keys = _media_identity_keys(item)
-        if keys and seen.intersection(keys):
-            continue
-        out.append(item)
-        seen.update(keys)
-    return out
+    return dedupe_media_items(items)
+
+
+def _competitor_media_per_source_limit() -> int:
+    raw = str(os.getenv("COMPETITOR_MEDIA_PER_SOURCE_LIMIT") or "").strip()
+    if not raw:
+        return COMPETITOR_MEDIA_PER_SOURCE_LIMIT
+    try:
+        return max(1, min(50, int(raw)))
+    except ValueError:
+        return COMPETITOR_MEDIA_PER_SOURCE_LIMIT
 
 
 def _content_source_summary(product: Dict[str, Any]) -> Dict[str, Any]:
@@ -921,6 +913,14 @@ async def _apply_competitor_result_to_product(
     if images:
         current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
         current_images = _dedupe_media_items([item for item in current_images if isinstance(item, dict)])
+        source_limit = _competitor_media_per_source_limit()
+        source_count = sum(
+            1
+            for item in current_images
+            if isinstance(item, dict)
+            and str(item.get("source") or "").strip() == site
+            and str(item.get("source_url") or "").strip() == url
+        )
         existing_urls = {str(x.get("url") or "").strip() for x in current_images if isinstance(x, dict)}
         existing_external_urls = {
             key
@@ -932,6 +932,8 @@ async def _apply_competitor_result_to_product(
         store77_browser_fetch_attempted = False
         appended = False
         for img in images:
+            if source_count >= source_limit:
+                break
             url_s = str(img or "").strip()
             if not url_s or url_s in existing_urls or url_s in existing_external_urls:
                 continue
@@ -975,6 +977,7 @@ async def _apply_competitor_result_to_product(
             existing_urls.add(str(next_image.get("url") or "").strip())
             existing_external_urls.update(_media_identity_keys(next_image))
             existing_external_urls.add(url_s)
+            source_count += 1
             appended = True
         if appended:
             content["media_images"] = _dedupe_media_items(current_images)
