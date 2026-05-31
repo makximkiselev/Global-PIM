@@ -157,9 +157,8 @@ global-pim.service
 
 Server:
 
-```bash
-root@5.129.199.228
-```
+Production SSH host and user are stored outside the repository in the local env file.
+Do not commit or paste the host, user, password, SSH key, or database DSN.
 
 App path on server:
 
@@ -209,6 +208,10 @@ The deploy script reads:
 8. `APP_PUBLIC_BASE_URL`.
 
 Never print the env file contents.
+
+Production helper scripts intentionally do not contain default `APP_SERVER_HOST` or
+`APP_SERVER_USER` values. Set them in the local env file before running deploy,
+backup, or server diagnostics.
 
 Do not `source backend/.env` in shell scripts. Some application env values are not shell-escaped. If a script needs backend env values, parse key/value lines deliberately and never print secrets.
 

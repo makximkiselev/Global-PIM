@@ -10,8 +10,8 @@ if [[ -f "${APP_ENV_FILE}" ]]; then
   set +a
 fi
 
-APP_SERVER_HOST="${APP_SERVER_HOST:-5.129.199.228}"
-APP_SERVER_USER="${APP_SERVER_USER:-root}"
+APP_SERVER_HOST="${APP_SERVER_HOST:-}"
+APP_SERVER_USER="${APP_SERVER_USER:-}"
 APP_SERVER_PATH="${APP_SERVER_PATH:-/opt/projects/global-pim}"
 APP_SERVICE_NAME="${APP_SERVICE_NAME:-global-pim.service}"
 APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME:-global-pim-ai-match-worker.service}"
@@ -82,12 +82,22 @@ require_cmd() {
   }
 }
 
+require_env() {
+  local name="$1"
+  if [[ -z "${!name:-}" ]]; then
+    echo "Missing required environment variable: ${name}. Set it in ${APP_ENV_FILE} or export it before running." >&2
+    exit 1
+  fi
+}
+
 shell_quote() {
   printf "'"
   printf "%s" "$1" | sed "s/'/'\\\\''/g"
   printf "'"
 }
 
+require_env APP_SERVER_HOST
+require_env APP_SERVER_USER
 require_cmd tar
 require_cmd scp
 require_cmd ssh
