@@ -287,26 +287,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
 
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  const providerByCode = useMemo(() => new Map(providers.map((provider) => [provider.code, provider])), [providers]);
-  const exportableStoresCount = useMemo(
-    () => providers.reduce((sum, provider) => sum + (provider.import_stores || []).filter((store) => store.export_enabled !== false).length, 0),
-    [providers],
-  );
-
   const activeTargets = useMemo(() => {
     return Object.entries(selectedProviders)
       .filter(([, on]) => !!on)
-      .map(([provider]) => {
-        const exportableIds = new Set((providerByCode.get(provider)?.import_stores || [])
-          .filter((store) => store.export_enabled !== false)
-          .map((store) => store.id));
-        return {
-          provider,
-          store_ids: (selectedStores[provider] || []).filter((storeId) => exportableIds.has(storeId)),
-        };
-      })
+      .map(([provider]) => ({ provider, store_ids: selectedStores[provider] || [] }))
       .filter((target) => target.store_ids.length > 0);
-  }, [providerByCode, selectedProviders, selectedStores]);
+  }, [selectedProviders, selectedStores]);
 
   const selectedScope = useMemo(() => {
     if (!selectedNodeIds.length && !selectedProductIds.length) return "Весь каталог";
@@ -324,8 +310,6 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     ? "Загружаю каналы"
     : providers.length === 0
       ? "Нет магазинов"
-      : exportableStoresCount === 0
-        ? "Экспорт выключен"
       : activeTargets.length
         ? `${activeTargets.length} канала`
         : "Не выбрано";
@@ -336,13 +320,9 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     : "/sources?tab=sources";
   const exportEmptyTitle = providers.length === 0
     ? "Нет магазинов для экспорта"
-    : exportableStoresCount === 0
-      ? "Экспорт выключен во всех магазинах"
-      : "Выберите магазины выше";
+    : "Выберите магазины выше";
   const exportEmptyDescription = providers.length === 0
     ? "Сначала добавьте хотя бы один магазин в коннекторах или проверьте привязку категории к площадкам."
-    : exportableStoresCount === 0
-      ? "Магазины подключены, но у всех выключен флаг выгрузки. Откройте коннекторы и включите экспорт для нужных магазинов."
     : "Отметьте Я.Маркет или Ozon и конкретные магазины, затем запустите подготовку по выбранной области каталога.";
   const selectedTargetLabels = useMemo(() => {
     const out: string[] = [];
@@ -538,13 +518,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         <div className="cx-inspectorStack">
           {providers.map((provider) => {
             const stores = provider.import_stores || [];
-            const exportableStores = stores.filter((store) => store.export_enabled !== false);
-            const current = (selectedStores[provider.code] || []).filter((storeId) => exportableStores.some((store) => store.id === storeId));
+            const current = selectedStores[provider.code] || [];
             return (
               <div key={provider.code} className="cx-sourceInspectorCard">
                 <div>
                   <strong>{provider.title}</strong>
-                  <p>{current.length ? `${current.length} магазинов выбрано` : `${exportableStores.length} из ${stores.length} магазинов включены для экспорта`}</p>
+                  <p>{current.length ? `${current.length} магазинов выбрано` : `${stores.length} магазинов доступно`}</p>
                 </div>
                 <Badge tone={selectedProviders[provider.code] ? "active" : "neutral"}>
                   {selectedProviders[provider.code] ? "Включен" : "Выключен"}
@@ -632,16 +611,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 ) : providers.map((provider) => {
                   const checked = !!selectedProviders[provider.code];
                   const stores = provider.import_stores || [];
-                  const exportableStores = stores.filter((store) => store.export_enabled !== false);
-                  const hasExportableStores = exportableStores.length > 0;
                   const current = new Set(selectedStores[provider.code] || []);
                   return (
                     <div key={provider.code} className="cx-targetCard">
-                      <label className={`cx-inlineCheck ${hasExportableStores ? "" : "isDisabled"}`}>
+                      <label className={`cx-inlineCheck ${stores.length ? "" : "isDisabled"}`}>
                         <input
                           type="checkbox"
-                          checked={hasExportableStores && checked}
-                          disabled={!hasExportableStores}
+                          checked={stores.length > 0 && checked}
+                          disabled={!stores.length}
                           onChange={(e) => {
                             setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
                           }}
@@ -650,13 +627,13 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       </label>
                       <div className="cx-storeChips">
                         {stores.map((store) => {
-                          const exportDisabled = store.export_enabled === false;
+                          const storeDisabled = store.enabled === false;
                           return (
-                            <label key={store.id} className={`cx-storeChip ${current.has(store.id) && !exportDisabled ? "isActive" : ""} ${exportDisabled ? "isDisabled" : ""}`}>
+                            <label key={store.id} className={`cx-storeChip ${current.has(store.id) && !storeDisabled ? "isActive" : ""} ${storeDisabled ? "isDisabled" : ""}`}>
                               <input
                                 type="checkbox"
-                                checked={!exportDisabled && current.has(store.id)}
-                                disabled={exportDisabled}
+                                checked={!storeDisabled && current.has(store.id)}
+                                disabled={storeDisabled}
                                 onChange={(e) => {
                                   const next = new Set(selectedStores[provider.code] || []);
                                   if (e.target.checked) next.add(store.id);
@@ -879,7 +856,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <EmptyState
                 title={exportEmptyTitle}
                 description={exportEmptyDescription}
-                action={providers.length === 0 || exportableStoresCount === 0 ? (
+                action={providers.length === 0 ? (
                   <div className="cx-emptyActions">
                     <Link className="btn btn-primary" to="/connectors/status?tab=marketplaces">Открыть коннекторы</Link>
                     <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>

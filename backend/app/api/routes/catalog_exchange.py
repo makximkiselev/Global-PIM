@@ -1034,12 +1034,13 @@ class CatalogExportRunReq(BaseModel):
 
 
 def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selected_store_ids: Set[str]) -> List[Dict[str, Any]]:
-    exportable_stores = [s for s in stores if s.get("export_enabled", s.get("enabled", True)) is not False]
+    enabled_stores = [s for s in stores if bool(s.get("enabled", True))]
     if selected_store_ids:
-        selected = [s for s in exportable_stores if str(s.get("id") or "").strip() in selected_store_ids]
+        selected = [s for s in enabled_stores if str(s.get("id") or "").strip() in selected_store_ids]
         if not selected:
             raise HTTPException(status_code=400, detail=f"No matching stores selected for {provider}")
         return selected
+    exportable_stores = [s for s in enabled_stores if s.get("export_enabled", s.get("enabled", True)) is not False]
     enabled = [s for s in exportable_stores if bool(s.get("enabled", True))]
     return enabled or [{"id": "default", "title": "Все магазины"}]
 
