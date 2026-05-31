@@ -252,8 +252,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
           }))
           .filter((provider) => (provider.import_stores || []).length > 0);
         setProviders(exportProviders);
-        setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [provider.code, false])));
-        setSelectedStores({});
+        setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [
+          provider.code,
+          (provider.import_stores || []).some((store) => store.export_enabled !== false),
+        ])));
+        setSelectedStores(Object.fromEntries(exportProviders.map((provider) => [
+          provider.code,
+          (provider.import_stores || []).filter((store) => store.export_enabled !== false).map((store) => store.id),
+        ])));
       } catch (e) {
         setErr((e as Error).message || "Не удалось загрузить данные экспорта");
       } finally {
@@ -659,7 +665,6 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                                 }}
                               />
                               <span>{store.title}</span>
-                              {exportDisabled ? <small>экспорт выключен</small> : null}
                             </label>
                           );
                         })}
