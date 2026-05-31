@@ -19,7 +19,7 @@ APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME:-global-pim-value
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME:-global-pim-export-worker.service}"
 APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
-APP_DB_ROLE="${APP_DB_ROLE:-gen_user}"
+APP_DB_ROLE="${APP_DB_ROLE:-}"
 DB_CA_CERT_PATH="${DB_CA_CERT_PATH:-$HOME/Downloads/ca.crt}"
 APP_PUBLIC_BASE_URL="${APP_PUBLIC_BASE_URL:-https://pim.id-smart.ru}"
 APP_DEPLOY_BACKUP_KEEP="${APP_DEPLOY_BACKUP_KEEP:-20}"
@@ -98,6 +98,7 @@ shell_quote() {
 
 require_env APP_SERVER_HOST
 require_env APP_SERVER_USER
+require_env APP_DB_ROLE
 require_cmd tar
 require_cmd scp
 require_cmd ssh

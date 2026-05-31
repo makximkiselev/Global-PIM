@@ -19,7 +19,7 @@ APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME:-global-pim-value
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME:-global-pim-export-worker.service}"
 APP_PUBLIC_BASE_URL="${APP_PUBLIC_BASE_URL:-https://pim.id-smart.ru}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
-APP_DB_ROLE="${APP_DB_ROLE:-gen_user}"
+APP_DB_ROLE="${APP_DB_ROLE:-}"
 SSH_TARGET="${APP_SERVER_USER}@${APP_SERVER_HOST}"
 APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
 APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
@@ -113,6 +113,7 @@ case "${command_name}" in
     curl -fsS "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}"
     ;;
   repair-db-grants)
+    require_env APP_DB_ROLE
     ssh_run "cd ${APP_SERVER_PATH}/backend && DATABASE_URL=\$(grep ^DATABASE_URL= .env | cut -d= -f2-) && test -n \"\$DATABASE_URL\" && psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -v app_role='${APP_DB_ROLE}' <<'SQL'
 GRANT USAGE ON SCHEMA public TO :\"app_role\";
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :\"app_role\";
