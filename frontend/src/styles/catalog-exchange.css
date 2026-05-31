@@ -594,6 +594,10 @@
   color:#25314a;
 }
 
+.cx-inlineCheck.isDisabled{
+  color:#8a94aa;
+}
+
 .cx-inlineCheckMuted{
   color:#6d7a95;
   font-weight:600;
@@ -940,6 +944,19 @@
   border-color:#b8d9c5;
   background:#effaf3;
   color:#146b3a;
+}
+
+.cx-storeChip.isDisabled{
+  border-style:dashed;
+  background:#f7f8fb;
+  color:#8a94aa;
+}
+
+.cx-storeChip small{
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  color:#9a4b32;
 }
 
 @media (max-width: 1240px){
