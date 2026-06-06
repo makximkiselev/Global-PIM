@@ -2068,6 +2068,50 @@ def _product_source_scan_evidence(product: Dict[str, Any], source_id: str) -> Di
     return evidence
 
 
+def _source_scan_evidence_with_candidates(
+    evidence: Dict[str, Any],
+    source_id: str,
+    candidates: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    out = dict(evidence or {})
+    normalized_source_id = str(source_id or "").strip()
+    normalized_candidates = [item for item in candidates if isinstance(item, dict)]
+    out["candidate_count"] = len(normalized_candidates)
+    visible_urls = [
+        str(item.get("url") or "").strip()
+        for item in sorted(normalized_candidates, key=lambda row: float(row.get("confidence_score") or 0), reverse=True)
+        if str(item.get("url") or "").strip()
+    ]
+    if visible_urls:
+        out["visible_candidate_urls"] = visible_urls[:5]
+    if normalized_source_id == "restore":
+        direct_url = str(out.get("direct_url") or "").strip()
+        direct_candidate = next(
+            (
+                item for item in normalized_candidates
+                if direct_url and str(item.get("url") or "").strip().rstrip("/") == direct_url.rstrip("/")
+            ),
+            None,
+        )
+        if direct_candidate:
+            out["direct_match_status"] = "candidate_visible"
+            out["direct_candidate_score"] = round(float(direct_candidate.get("confidence_score") or 0), 3)
+            reasons = direct_candidate.get("confidence_reasons") if isinstance(direct_candidate.get("confidence_reasons"), list) else []
+            if reasons:
+                out["direct_candidate_reason"] = str(reasons[0])
+            profile_specs = direct_candidate.get("profile_specs") if isinstance(direct_candidate.get("profile_specs"), dict) else {}
+            picked_specs = {
+                key: str(profile_specs.get(key) or "").strip()
+                for key in ("Память", "Цвет", "SIM-карта")
+                if str(profile_specs.get(key) or "").strip()
+            }
+            if picked_specs:
+                out["direct_card_specs"] = picked_specs
+        elif direct_url:
+            out["direct_match_status"] = "not_visible"
+    return out
+
+
 def _product_discovery_source_summaries(
     product_id: str,
     candidates: List[Dict[str, Any]],
@@ -5273,6 +5317,7 @@ async def _execute_discovery_run_for_current_tenant(
             )
             continue
         raw_candidates = result.get("raw_candidates") if isinstance(result.get("raw_candidates"), list) else []
+        scan_evidence = _source_scan_evidence_with_candidates(scan_evidence, source_id, raw_candidates)
         seen_candidate_ids: set[str] = set()
         for raw in raw_candidates:
             candidate = _normalize_candidate(product, source, raw)

@@ -2196,6 +2196,35 @@ class AuthFlowTests(unittest.TestCase):
         self.assertNotIn("expected_urls", evidence)
         self.assertIn("нельзя безопасно собрать", evidence["exact_miss_reason"])
 
+    def test_restore_scan_evidence_records_visible_direct_candidate_specs(self) -> None:
+        evidence = {
+            "direct_url": "https://re-store.ru/catalog/10116MAX256DSTN/",
+            "scan_steps": ["direct_url", "search_terms"],
+        }
+        candidates = [
+            {
+                "url": "https://re-store.ru/catalog/10116MAX256DSTN/",
+                "confidence_score": 0.98,
+                "confidence_reasons": ["обязательные токены совпали"],
+                "profile_specs": {
+                    "Память": "256 ГБ",
+                    "Цвет": "песчаный титановый",
+                    "SIM-карта": "SIM + eSIM",
+                    "Процессор": "Apple A18 Pro",
+                },
+            }
+        ]
+
+        enriched = competitor_mapping_routes._source_scan_evidence_with_candidates(evidence, "restore", candidates)
+
+        self.assertEqual(enriched["candidate_count"], 1)
+        self.assertEqual(enriched["visible_candidate_urls"], ["https://re-store.ru/catalog/10116MAX256DSTN/"])
+        self.assertEqual(enriched["direct_match_status"], "candidate_visible")
+        self.assertEqual(enriched["direct_candidate_score"], 0.98)
+        self.assertEqual(enriched["direct_candidate_reason"], "обязательные токены совпали")
+        self.assertEqual(enriched["direct_card_specs"]["SIM-карта"], "SIM + eSIM")
+        self.assertNotIn("Процессор", enriched["direct_card_specs"])
+
     def test_competitor_candidate_moderation_reads_relational_candidate_without_json(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})

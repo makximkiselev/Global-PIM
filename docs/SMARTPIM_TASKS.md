@@ -963,6 +963,10 @@ Next fix in the category flow:
    - generated re-store candidate titles intentionally exclude SIM because the re-store URL does not encode it;
    - SIM can only confirm from parsed card specs, otherwise the candidate stays as a manual SIM check;
    - unsupported products fall back to search-only evidence instead of pretending a safe direct URL exists.
+30. Product competitor source diagnostics now include scan results, not only scan plans:
+   - discovery scan evidence stores candidate count and visible candidate URLs;
+   - re-store direct URL evidence stores parsed memory/color/SIM specs when the direct card is visible;
+   - product UI shows a separate “Результат проверки” block so users can see whether re-store returned a usable direct card or only search misses.
 
 Next block:
 

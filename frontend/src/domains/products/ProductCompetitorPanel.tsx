@@ -67,6 +67,12 @@ type CompetitorSourceSummary = {
     category_urls?: string[];
     scan_steps?: string[];
     exact_miss_reason?: string;
+    candidate_count?: number;
+    visible_candidate_urls?: string[];
+    direct_match_status?: string;
+    direct_candidate_score?: number;
+    direct_candidate_reason?: string;
+    direct_card_specs?: Record<string, string>;
   };
 };
 
@@ -241,6 +247,31 @@ function scanStepLabel(value: string): string {
 
 function evidenceList(values?: string[], limit = 3): string {
   return (values || []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, limit).join(" · ");
+}
+
+function scanResultLabel(summary: CompetitorSourceSummary): string {
+  const evidence = summary.scan_evidence;
+  if (!evidence) return "";
+  const chunks: string[] = [];
+  if (typeof evidence.candidate_count === "number") {
+    chunks.push(`${evidence.candidate_count} кандидатов`);
+  }
+  if (summary.source_id === "restore" && evidence.direct_match_status) {
+    if (evidence.direct_match_status === "candidate_visible") {
+      chunks.push(`расчетный URL прошел скоринг${typeof evidence.direct_candidate_score === "number" ? ` ${Math.round(evidence.direct_candidate_score * 100)}%` : ""}`);
+    } else if (evidence.direct_match_status === "not_visible") {
+      chunks.push("расчетный URL не стал видимым кандидатом");
+    }
+  }
+  return chunks.join(" · ");
+}
+
+function directSpecsLabel(specs?: Record<string, string>): string {
+  if (!specs) return "";
+  return ["Память", "Цвет", "SIM-карта"].map((key) => {
+    const value = specs[key];
+    return value ? `${key}: ${value}` : "";
+  }).filter(Boolean).join(" · ");
 }
 
 function aiActionLabel(action: AiSuggestionAction): string {
@@ -548,6 +579,19 @@ export default function ProductCompetitorPanel({
                     <span>Поисковые запросы</span>
                     <strong>{summary.scan_evidence.query_terms[0]}</strong>
                     <em>{evidenceList(summary.scan_evidence.query_terms, 4)}</em>
+                  </div>
+                ) : null}
+                {scanResultLabel(summary) || summary.scan_evidence?.direct_card_specs || summary.scan_evidence?.visible_candidate_urls?.length ? (
+                  <div className="productCompetitorSourceBest isEvidence">
+                    <span>Результат проверки</span>
+                    <strong>{scanResultLabel(summary) || "Источник проверен"}</strong>
+                    <em>
+                      {[
+                        directSpecsLabel(summary.scan_evidence?.direct_card_specs),
+                        summary.scan_evidence?.direct_candidate_reason || "",
+                        evidenceList(summary.scan_evidence?.visible_candidate_urls, 3),
+                      ].filter(Boolean).join(" · ")}
+                    </em>
                   </div>
                 ) : null}
                 {summary.status === "confirmed" ? (
