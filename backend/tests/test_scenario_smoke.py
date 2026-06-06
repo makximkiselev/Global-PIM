@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import asyncio
 import sys
 from pathlib import Path
 
@@ -39,3 +40,18 @@ def test_result_status_fails_when_any_check_failed():
     assert scenario_smoke.result_status(
         [scenario_smoke.CheckResult("ok", True), scenario_smoke.CheckResult("bad", False)]
     ) == 1
+
+
+def test_browser_smoke_require_auth_fails_without_credentials(monkeypatch):
+    monkeypatch.delenv("SMARTPIM_SMOKE_EMAIL", raising=False)
+    monkeypatch.delenv("SMARTPIM_SMOKE_PASSWORD", raising=False)
+
+    results = asyncio.run(scenario_smoke.browser_smoke("https://pim.example.test", 1, False, True, insecure_ssl=True))
+
+    assert results == [
+        scenario_smoke.CheckResult(
+            "browser credentials",
+            False,
+            "set SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD",
+        )
+    ]

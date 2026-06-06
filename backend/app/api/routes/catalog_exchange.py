@@ -1628,6 +1628,50 @@ def _clean_export_payload_item(provider: str, payload_item: Dict[str, Any]) -> D
     return payload
 
 
+def _export_payload_audit(provider: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    provider_code = str(provider or "").strip()
+    media_count = 0
+    attributes_total = 0
+    attributes_with_source = 0
+    missing_source: List[str] = []
+    if provider_code == "ozon":
+        images = payload.get("images") if isinstance(payload.get("images"), list) else []
+        media_count = len(images)
+        attrs = payload.get("attributes") if isinstance(payload.get("attributes"), list) else []
+        attributes_total = len(attrs)
+        for attr in attrs:
+            if not isinstance(attr, dict):
+                continue
+            source_name = str(attr.get("sourceCatalogName") or "").strip()
+            attr_name = str(attr.get("name") or attr.get("id") or "Параметр").strip()
+            if source_name:
+                attributes_with_source += 1
+            else:
+                missing_source.append(attr_name)
+    elif provider_code == "yandex_market":
+        pictures = payload.get("pictures") if isinstance(payload.get("pictures"), list) else []
+        media_count = len(pictures)
+        params = payload.get("parameterValues") if isinstance(payload.get("parameterValues"), list) else []
+        attributes_total = len(params)
+        for param in params:
+            if not isinstance(param, dict):
+                continue
+            source_name = str(param.get("sourceCatalogName") or "").strip()
+            param_name = str(param.get("parameterName") or param.get("name") or param.get("parameterId") or "Параметр").strip()
+            if source_name:
+                attributes_with_source += 1
+            else:
+                missing_source.append(param_name)
+    return {
+        "price_source": str(payload.get("price_source") or "").strip() or "unknown",
+        "media_count": media_count,
+        "attributes_total": attributes_total,
+        "attributes_with_source": attributes_with_source,
+        "attributes_without_source": max(0, attributes_total - attributes_with_source),
+        "missing_source": missing_source[:12],
+    }
+
+
 def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
     batches = run.get("batches") if isinstance(run.get("batches"), list) else []
     package_batches: List[Dict[str, Any]] = []
@@ -1652,6 +1696,7 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
                         "product_id": str(item.get("product_id") or "").strip(),
                         "offer_id": str(payload.get("offerId") or payload.get("offer_id") or "").strip(),
                         "payload": payload,
+                        "audit": _export_payload_audit(str(batch.get("provider") or "").strip(), payload),
                     }
                 )
             else:

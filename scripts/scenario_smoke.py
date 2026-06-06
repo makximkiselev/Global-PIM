@@ -145,7 +145,7 @@ def public_smoke(base_url: str, timeout: int, *, insecure_ssl: bool = False) -> 
     return results
 
 
-async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, *, insecure_ssl: bool = False) -> list[CheckResult]:
+async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, require_auth: bool, *, insecure_ssl: bool = False) -> list[CheckResult]:
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -156,6 +156,8 @@ async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, *, i
     password = os.environ.get("SMARTPIM_SMOKE_PASSWORD", "")
     results: list[CheckResult] = []
     console_errors: list[str] = []
+    if require_auth and (not email or not password):
+        return [CheckResult("browser credentials", False, "set SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD")]
 
     async def goto_app_page(page: Any, url: str) -> None:
         await page.goto(url, wait_until="domcontentloaded")
@@ -181,6 +183,8 @@ async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, *, i
                 pass
             body = await page.locator("body").inner_text()
             results.append(CheckResult("browser login", "Вход пользователя" not in body and "Ошибка входа" not in body, "env credentials"))
+        elif require_auth:
+            results.append(CheckResult("browser login", False, "credentials required"))
 
         for route, markers in DEFAULT_ROUTES:
             try:
@@ -189,6 +193,9 @@ async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, *, i
                 if "Вход пользователя" in body and not email:
                     ok = allow_auth_wall
                     detail = "auth wall; set SMARTPIM_SMOKE_EMAIL/SMARTPIM_SMOKE_PASSWORD for full route markers"
+                elif "Вход пользователя" in body and require_auth:
+                    ok = False
+                    detail = "still on auth wall after login"
                 else:
                     missing = [marker for marker in markers if marker not in body]
                     ok = not missing
@@ -209,6 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("SMARTPIM_SMOKE_TIMEOUT", "20")))
     parser.add_argument("--browser", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_BROWSER") == "1")
     parser.add_argument("--allow-auth-wall", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_ALLOW_AUTH_WALL") == "1")
+    parser.add_argument("--require-auth", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_REQUIRE_AUTH") == "1")
     parser.add_argument("--insecure-ssl", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_INSECURE_SSL") == "1")
     parser.add_argument("--public-only", action="store_true", help="Skip browser checks even if SMARTPIM_SMOKE_BROWSER=1.")
     return parser
@@ -219,7 +227,7 @@ async def async_main(argv: list[str]) -> int:
     start = time.monotonic()
     results = public_smoke(args.base_url, args.timeout, insecure_ssl=args.insecure_ssl)
     if args.browser and not args.public_only:
-        results.extend(await browser_smoke(args.base_url, args.timeout, args.allow_auth_wall, insecure_ssl=args.insecure_ssl))
+        results.extend(await browser_smoke(args.base_url, args.timeout, args.allow_auth_wall, args.require_auth, insecure_ssl=args.insecure_ssl))
     print_results(results)
     print(f"Smoke duration: {time.monotonic() - start:.1f}s")
     return result_status(results)

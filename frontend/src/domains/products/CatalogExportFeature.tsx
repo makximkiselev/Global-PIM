@@ -89,7 +89,19 @@ type ExportPackageResp = {
       status: string;
       ready_count: number;
       blocked_count: number;
-      items: Array<{ product_id: string; offer_id?: string; payload: Record<string, unknown> }>;
+      items: Array<{
+        product_id: string;
+        offer_id?: string;
+        payload: Record<string, unknown>;
+        audit?: {
+          price_source?: string;
+          media_count?: number;
+          attributes_total?: number;
+          attributes_with_source?: number;
+          attributes_without_source?: number;
+          missing_source?: string[];
+        };
+      }>;
     }>;
   };
 };
@@ -761,6 +773,38 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                               </td>
                             </tr>
                           ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="cx-resultsTableWrap">
+                      <table className="cx-resultsTable">
+                        <thead>
+                          <tr>
+                            <th>Payload row</th>
+                            <th>Offer ID</th>
+                            <th>Цена</th>
+                            <th>Медиа</th>
+                            <th>Параметры</th>
+                            <th>Без источника</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(exportPackage.batches || []).flatMap((batch) =>
+                            (batch.items || []).slice(0, 6).map((item) => ({ batch, item })),
+                          ).map(({ batch, item }) => {
+                            const audit = item.audit || {};
+                            const missing = audit.missing_source || [];
+                            return (
+                              <tr key={`${batch.provider}:${batch.store_id}:${item.product_id}:${item.offer_id || ""}`}>
+                                <td>{providerTitle(batch.provider)} · {item.product_id}</td>
+                                <td>{item.offer_id || "—"}</td>
+                                <td>{audit.price_source || "unknown"}</td>
+                                <td>{audit.media_count ?? 0}</td>
+                                <td>{audit.attributes_with_source ?? 0}/{audit.attributes_total ?? 0}</td>
+                                <td>{missing.length ? missing.slice(0, 3).join(", ") : "—"}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

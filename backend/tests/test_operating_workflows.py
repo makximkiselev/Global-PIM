@@ -3317,6 +3317,44 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(batch["not_ready_count"], 0)
         self.assertEqual(batch["blockers"], [])
 
+    def test_export_package_includes_payload_lineage_audit(self) -> None:
+        run = {
+            "id": "run-1",
+            "batches": [
+                {
+                    "provider": "ozon",
+                    "store_id": "ozon-store",
+                    "store_title": "Ozon test",
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {
+                                "offer_id": "GT-1",
+                                "price": 1000000,
+                                "price_source": "technical_placeholder",
+                                "images": ["https://cdn.example.test/1.jpg"],
+                                "attributes": [
+                                    {"id": "85", "name": "Бренд", "values": [{"value": "Apple"}], "sourceCatalogName": "Бренд"},
+                                    {"id": "8229", "name": "Тип", "values": [{"value": "Смартфон"}]},
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+        package = catalog_exchange._build_export_package(run)
+
+        audit = package["batches"][0]["items"][0]["audit"]
+        self.assertEqual(audit["price_source"], "technical_placeholder")
+        self.assertEqual(audit["media_count"], 1)
+        self.assertEqual(audit["attributes_total"], 2)
+        self.assertEqual(audit["attributes_with_source"], 1)
+        self.assertEqual(audit["attributes_without_source"], 1)
+        self.assertEqual(audit["missing_source"], ["Тип"])
+
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
 

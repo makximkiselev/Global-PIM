@@ -159,12 +159,14 @@ Done:
    - info-model version/history visibility;
    - release-safety checklist.
 7. Added `scripts/git_release_safety.sh` to fail releases when the local branch is behind its upstream or the tracked worktree is dirty.
+8. Export package rows now include a payload `audit` block with price source, media count, attribute source coverage, and missing source names so the UI can show why a ready payload is trustworthy.
+9. `scripts/scenario_smoke.py` supports authenticated browser smoke with `--require-auth` / `SMARTPIM_SMOKE_REQUIRE_AUTH=1`; QA credentials stay outside git in `SMARTPIM_SMOKE_EMAIL` and `SMARTPIM_SMOKE_PASSWORD`.
 
 Next:
 
-1. Add authenticated browser smoke with seeded QA credentials outside git.
-2. Promote product lineage from sampled operations diagnostics into the product/card UI for every export value, media asset and description block.
-3. Add real info-model version snapshots with author, diff, rollback and export-impact preview.
+1. Promote product lineage from sampled operations diagnostics into every export value and media row in the product card where it is still hidden behind raw `source_values`.
+2. Add real info-model version snapshots with author, diff, rollback and export-impact preview.
+3. Store QA smoke credentials in production secret storage and enable authenticated smoke in the deploy pipeline.
 
 Priority order:
 
