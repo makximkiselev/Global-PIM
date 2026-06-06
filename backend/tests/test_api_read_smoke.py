@@ -186,7 +186,15 @@ class ApiReadSmokeTests(unittest.TestCase):
             patch.object(ops_routes, "_db_grants_section", return_value={"status": "ok", "title": "Права БД", "detail": "ok"}),
             patch.object(ops_routes, "_storage_section", return_value={"status": "ok", "title": "S3 / медиа", "detail": "ok"}),
             patch.object(ops_routes, "_marketplace_section", return_value={"status": "ok", "title": "Маркетплейсы", "detail": "ok"}),
+            patch.object(ops_routes, "_export_targets_section", return_value={"status": "ok", "title": "Цели экспорта", "detail": "ok"}),
             patch.object(ops_routes, "_workflow_section", return_value={"status": "warn", "title": "Workflow runs", "detail": "queued"}),
+            patch.object(ops_routes, "_lineage_section", return_value={"status": "ok", "title": "Lineage данных", "detail": "ok"}),
+            patch.object(ops_routes, "_review_queue_section", return_value={"status": "ok", "title": "Очередь проверки", "detail": "ok"}),
+            patch.object(ops_routes, "_ai_governance_section", return_value={"status": "ok", "title": "AI governance", "detail": "ok"}),
+            patch.object(ops_routes, "_growth_controls_section", return_value={"status": "ok", "title": "Рост данных", "detail": "ok"}),
+            patch.object(ops_routes, "_access_section", return_value={"status": "ok", "title": "Доступ и роли", "detail": "ok"}),
+            patch.object(ops_routes, "_info_model_versions_section", return_value={"status": "ok", "title": "Версии инфо-моделей", "detail": "ok"}),
+            patch.object(ops_routes, "_release_safety_section", return_value={"status": "ok", "title": "Release safety", "detail": "ok"}),
             patch.object(ops_routes, "_table_size_section", return_value={"status": "ok", "title": "Размеры таблиц", "detail": "ok"}),
         ):
             response = self.client.get("/api/ops/status")
@@ -196,7 +204,10 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(body["status"], "warn")
         self.assertIn("db_grants", body["sections"])
         self.assertIn("marketplaces", body["sections"])
+        self.assertIn("export_targets", body["sections"])
         self.assertIn("workflows", body["sections"])
+        self.assertIn("review_queue", body["sections"])
+        self.assertIn("lineage", body["sections"])
 
     def test_ozon_type_ids_resolve_from_flat_category_tree(self) -> None:
         doc = {

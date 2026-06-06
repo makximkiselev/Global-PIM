@@ -22,6 +22,7 @@ type OpsSection = {
   recent?: Array<Record<string, unknown>>;
   rows?: Array<Record<string, unknown>>;
   totals?: Record<string, unknown>;
+  items?: Array<Record<string, unknown>>;
   providers?: Array<Record<string, unknown>>;
   errors?: Array<Record<string, unknown>>;
 };
@@ -67,6 +68,17 @@ function formatDate(value: unknown) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("ru-RU");
 }
 
+function formatMetric(value: unknown) {
+  if (typeof value === "boolean") return value ? "Да" : "Нет";
+  if (typeof value === "number") return value.toLocaleString("ru-RU");
+  if (typeof value === "string" && value.length) return value;
+  return "0";
+}
+
+function metricEntries(section?: OpsSection) {
+  return Object.entries(section?.totals || {}).filter(([_, value]) => typeof value !== "object").slice(0, 6);
+}
+
 function SectionCard({ section }: { section?: OpsSection }) {
   if (!section) return null;
   return (
@@ -79,6 +91,54 @@ function SectionCard({ section }: { section?: OpsSection }) {
         <Badge tone={statusTone(section.status)}>{statusLabel(section.status)}</Badge>
       </div>
     </Card>
+  );
+}
+
+function MetricStrip({ section }: { section?: OpsSection }) {
+  const entries = metricEntries(section);
+  if (!entries.length) return null;
+  return (
+    <div className="opsStatusMetrics">
+      {entries.map(([key, value]) => (
+        <div className="opsStatusMetric" key={key}>
+          <span>{key.replaceAll("_", " ")}</span>
+          <strong>{formatMetric(value)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IssueList({ items, empty }: { items?: Array<Record<string, unknown>>; empty: string }) {
+  const rows = items || [];
+  if (!rows.length) return <p className="opsStatusEmpty">{empty}</p>;
+  return (
+    <div className="opsStatusList">
+      {rows.slice(0, 18).map((row, idx) => {
+        const href = String(row.href || "");
+        const title = String(row.title || row.field || row.command || "Пункт");
+        const issue = String(row.issue || row.command || row.error || "");
+        const body = (
+          <>
+            <div>
+              <strong>{title}</strong>
+              {row.field ? <span>{String(row.field)}</span> : null}
+              {issue ? <span>{issue}</span> : null}
+            </div>
+            <Badge tone={row.type === "workflow" || row.type === "media" ? "pending" : "neutral"}>{String(row.type || row.status || "check")}</Badge>
+          </>
+        );
+        return href ? (
+          <Link className="opsStatusListItem opsStatusListLink" to={href} key={`${title}-${idx}`}>
+            {body}
+          </Link>
+        ) : (
+          <div className="opsStatusListItem" key={`${title}-${idx}`}>
+            {body}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -96,6 +156,7 @@ export default function SystemStatusFeature() {
   const driftRows = [...(sections.db_grants?.drift || []), ...(sections.db_grants?.function_drift || [])];
   const marketplaceProviders = sections.marketplaces?.providers || [];
   const marketplaceErrors = sections.marketplaces?.errors || [];
+  const exportTargets = sections.export_targets?.rows || [];
 
   return (
     <div className="opsStatusPage">
@@ -122,7 +183,15 @@ export default function SystemStatusFeature() {
         <SectionCard section={sections.db_grants} />
         <SectionCard section={sections.storage} />
         <SectionCard section={sections.marketplaces} />
+        <SectionCard section={sections.export_targets} />
         <SectionCard section={sections.workflows} />
+        <SectionCard section={sections.review_queue} />
+        <SectionCard section={sections.lineage} />
+        <SectionCard section={sections.ai_governance} />
+        <SectionCard section={sections.access} />
+        <SectionCard section={sections.info_model_versions} />
+        <SectionCard section={sections.growth_controls} />
+        <SectionCard section={sections.release_safety} />
         <SectionCard section={sections.table_sizes} />
       </section>
 
@@ -131,6 +200,18 @@ export default function SystemStatusFeature() {
         <Link to="/sources?tab=categories">Сопоставления категорий</Link>
         <Link to="/catalog/exchange?tab=export">Экспорт товаров</Link>
         <Link to="/admin/access">Права и роли</Link>
+      </section>
+
+      <section className="opsStatusSplit">
+        <Card title="Следующие проверки" className="opsStatusPanel">
+          <MetricStrip section={sections.review_queue} />
+          <IssueList items={sections.review_queue?.items} empty="Очередь проверки пуста." />
+        </Card>
+
+        <Card title="Lineage товаров" className="opsStatusPanel">
+          <MetricStrip section={sections.lineage} />
+          <IssueList items={sections.lineage?.items} empty="Явных разрывов lineage на выборке не найдено." />
+        </Card>
       </section>
 
       <section className="opsStatusSplit">
@@ -167,6 +248,27 @@ export default function SystemStatusFeature() {
           )}
         </Card>
 
+        <Card title="Цели экспорта" className="opsStatusPanel">
+          <MetricStrip section={sections.export_targets} />
+          {exportTargets.length ? (
+            <div className="opsStatusList">
+              {exportTargets.map((row, idx) => (
+                <Link className="opsStatusListItem opsStatusListLink" to={String(row.href || "/connectors/status?tab=marketplaces")} key={`${row.provider}-${row.store_id}-${idx}`}>
+                  <div>
+                    <strong>{String(row.provider_title || row.provider || "Площадка")} · {String(row.title || row.store_id || "Магазин")}</strong>
+                    <span>{String(row.last_check_status || "idle")}</span>
+                  </div>
+                  <Badge tone={row.safe_test_enabled ? "pending" : "active"}>{row.safe_test_enabled ? "Safe-test" : "Экспорт"}</Badge>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="opsStatusEmpty">Магазины для экспорта не выбраны.</p>
+          )}
+        </Card>
+      </section>
+
+      <section className="opsStatusSplit">
         <Card title="Ошибки marketplace API" className="opsStatusPanel">
           {marketplaceErrors.length ? (
             <div className="opsStatusList">
@@ -182,6 +284,30 @@ export default function SystemStatusFeature() {
             </div>
           ) : (
             <p className="opsStatusEmpty">Ошибок доступа и методов площадок не найдено.</p>
+          )}
+        </Card>
+
+        <Card title="AI governance" className="opsStatusPanel">
+          <MetricStrip section={sections.ai_governance} />
+          {sections.ai_governance?.summary?.length ? (
+            <div className="opsStatusTable">
+              <div className="opsStatusTableHead">
+                <span>Workflow</span>
+                <span>Статус</span>
+                <span>Кол-во</span>
+                <span>Обновлено</span>
+              </div>
+              {sections.ai_governance.summary.map((row, idx) => (
+                <div className="opsStatusTableRow" key={`${row.workflow}-${row.status}-${idx}`}>
+                  <strong>{sections.ai_governance?.labels?.[String(row.workflow)] || String(row.workflow || "—")}</strong>
+                  <Badge tone={statusTone(row.status === "failed" ? "critical" : row.status === "running" || row.status === "queued" ? "warn" : "ok")}>{String(row.status || "—")}</Badge>
+                  <span>{String(row.count || 0)}</span>
+                  <span>{formatDate(row.latest_at)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="opsStatusEmpty">AI workflow пока не запускались.</p>
           )}
         </Card>
       </section>
@@ -253,6 +379,21 @@ export default function SystemStatusFeature() {
           )}
         </Card>
 
+        <Card title="Рост данных" className="opsStatusPanel">
+          <MetricStrip section={sections.growth_controls} />
+          <IssueList
+            items={sections.growth_controls?.items?.map((row) => ({
+              ...row,
+              title: row.path,
+              issue: `${formatBytes(row.payload_bytes)} · ${formatDate(row.updated_at)}`,
+              type: "json",
+            }))}
+            empty="Крупных json-документов не найдено."
+          />
+        </Card>
+      </section>
+
+      <section className="opsStatusSplit">
         <Card title="Дрифт прав БД" className="opsStatusPanel">
           {driftRows.length ? (
             <div className="opsStatusList">
@@ -269,6 +410,23 @@ export default function SystemStatusFeature() {
           ) : (
             <p className="opsStatusEmpty">Дрифта владельцев не найдено. Текущий пользователь: {sections.db_grants?.current_user || "—"}.</p>
           )}
+        </Card>
+
+        <Card title="Доступ и роли" className="opsStatusPanel">
+          <MetricStrip section={sections.access} />
+          <IssueList items={sections.access?.items} empty="Пользователей с невалидными ролями не найдено." />
+        </Card>
+      </section>
+
+      <section className="opsStatusSplit">
+        <Card title="Версии инфо-моделей" className="opsStatusPanel">
+          <MetricStrip section={sections.info_model_versions} />
+          <IssueList items={sections.info_model_versions?.items} empty="Инфо-модели пока не найдены." />
+        </Card>
+
+        <Card title="Release safety" className="opsStatusPanel">
+          <MetricStrip section={sections.release_safety} />
+          <IssueList items={sections.release_safety?.items} empty="Чеклист релиза пуст." />
         </Card>
       </section>
     </div>

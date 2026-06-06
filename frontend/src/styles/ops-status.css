@@ -69,9 +69,38 @@
 }
 
 .opsStatusTable,
-.opsStatusList {
+.opsStatusList,
+.opsStatusMetrics {
   display: grid;
   gap: 8px;
+}
+
+.opsStatusMetrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.opsStatusMetric {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.opsStatusMetric span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.opsStatusMetric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .opsStatusTableHead,
@@ -102,6 +131,15 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
+}
+
+.opsStatusListLink {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.opsStatusListLink:hover {
+  border-color: var(--brand);
 }
 
 .opsStatusListItem div {
@@ -179,7 +217,8 @@
   }
 
   .opsStatusGrid,
-  .opsStatusSplit {
+  .opsStatusSplit,
+  .opsStatusMetrics {
     grid-template-columns: 1fr;
   }
 

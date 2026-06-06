@@ -149,11 +149,22 @@ Done:
 3. Added optional deploy hook: `APP_RUN_SCENARIO_SMOKE=1 scripts/deploy_production.sh`.
 4. Added `/api/ops/status` and `/admin/status` as the first operations screen for DB grants, S3/media, workflow runs, table sizes, and links to the exact repair areas.
 5. Added explicit `safe_test_enabled` store flag and surfaced marketplace import/export/safe-test state plus latest marketplace/store errors on `/admin/status`.
+6. Extended `/api/ops/status` and `/admin/status` into the single operational diagnostics center:
+   - product lineage sample for attributes, media and source evidence;
+   - review queue items with direct links to product/source/admin repair screens;
+   - explicit export target summary for stores selected for export and safe-test;
+   - AI workflow governance counters and confirmed-learning memory count;
+   - data growth controls for largest tables, workflow states and largest JSON documents;
+   - auth/role drift summary;
+   - info-model version/history visibility;
+   - release-safety checklist.
+7. Added `scripts/git_release_safety.sh` to fail releases when the local branch is behind its upstream or the tracked worktree is dirty.
 
 Next:
 
 1. Add authenticated browser smoke with seeded QA credentials outside git.
-2. Add product data lineage for values, media, descriptions, and export payload fields.
+2. Promote product lineage from sampled operations diagnostics into the product/card UI for every export value, media asset and description block.
+3. Add real info-model version snapshots with author, diff, rollback and export-impact preview.
 
 Priority order:
 
