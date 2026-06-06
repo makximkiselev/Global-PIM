@@ -931,6 +931,9 @@ Next fix in the category flow:
    - parameter mapping errors show a retry button next to the diagnostic and inside the queue;
    - value mapping errors show a retry button in both the top diagnostic and empty-error state;
    - login links stay visible only for auth-required failures.
+23. Frontend API errors now format JSON `{detail: ...}` responses before rendering:
+   - common machine codes such as `CATALOG_CATEGORY_NOT_FOUND` and `CATEGORY_NOT_DIRECTLY_MAPPED` become readable user guidance;
+   - raw JSON no longer appears in params/values error panels.
 
 Next block:
 
