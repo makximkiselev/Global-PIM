@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import Badge from "../../components/ui/Badge";
@@ -143,12 +143,27 @@ function IssueList({ items, empty }: { items?: Array<Record<string, unknown>>; e
 }
 
 export default function SystemStatusFeature() {
-  const statusQuery = useQuery<OpsStatusResp>({
-    queryKey: ["ops", "status"],
-    queryFn: () => api<OpsStatusResp>("/ops/status"),
-    refetchInterval: 30_000,
-  });
-  const data = statusQuery.data;
+  const [data, setData] = useState<OpsStatusResp | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
+  const [error, setError] = useState("");
+  const loadStatus = useCallback(async () => {
+    setFetching(true);
+    setError("");
+    try {
+      setData(await api<OpsStatusResp>("/ops/status"));
+    } catch (e) {
+      setError((e as Error).message || "Не удалось загрузить статус.");
+    } finally {
+      setLoading(false);
+      setFetching(false);
+    }
+  }, []);
+  useEffect(() => {
+    void loadStatus();
+    const timer = window.setInterval(() => void loadStatus(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadStatus]);
   const sections = data?.sections || {};
   const workflowRows = sections.workflows?.summary || [];
   const workflowRecent = sections.workflows?.recent || [];
@@ -163,18 +178,18 @@ export default function SystemStatusFeature() {
       <PageHeader
         title="Состояние системы"
         subtitle="Операционный экран для релиза, прав БД, workflow-задач, медиа и роста данных."
-        actions={<Button onClick={() => void statusQuery.refetch()} disabled={statusQuery.isFetching}>Обновить</Button>}
+        actions={<Button onClick={() => void loadStatus()} disabled={fetching}>Обновить</Button>}
       />
 
-      {statusQuery.error ? (
-        <div className="opsStatusError">{(statusQuery.error as Error).message || "Не удалось загрузить статус."}</div>
+      {error ? (
+        <div className="opsStatusError">{error}</div>
       ) : null}
 
       <section className="opsStatusHero">
         <div>
           <span>Общий статус</span>
-          <h2>{statusLabel(data?.status || (statusQuery.isLoading ? "warn" : "critical"))}</h2>
-          <p>{statusQuery.isLoading ? "Загружаем диагностику." : "Проверка обновляется автоматически каждые 30 секунд."}</p>
+          <h2>{statusLabel(data?.status || (loading ? "warn" : "critical"))}</h2>
+          <p>{loading ? "Загружаем диагностику." : "Проверка обновляется автоматически каждые 30 секунд."}</p>
         </div>
         <Badge tone={statusTone(data?.status)}>{data?.ok ? "Можно работать" : "Нужно вмешательство"}</Badge>
       </section>
