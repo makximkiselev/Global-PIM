@@ -2676,6 +2676,30 @@ class AuthFlowTests(unittest.TestCase):
 
         self.assertEqual(candidates, [direct_candidate])
 
+    def test_ai_competitor_fallback_skips_unavailable_url(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+        source = {"id": "restore", "name": "re-store", "domain": "re-store.ru"}
+        ai_candidate = {
+            "url": "https://re-store.ru/catalog/AG_10116MAX256DESIERTITANIUM/",
+            "title": product["title"],
+            "confidence_score": 0.86,
+            "confidence_reasons": ["AI предложил по подтвержденным привязкам"],
+            "discovery_strategy": "ai_confirmed_link_memory",
+        }
+
+        with (
+            patch.object(competitor_mapping_routes, "_discover_restore_candidates", new=AsyncMock(return_value=[])),
+            patch.object(competitor_mapping_routes, "_discover_ai_competitor_candidates", new=AsyncMock(return_value=[ai_candidate])),
+            patch.object(competitor_mapping_routes, "_competitor_candidate_url_available", new=AsyncMock(return_value=False)),
+        ):
+            candidates = asyncio.run(competitor_mapping_routes._discover_product_candidates_for_source(product, source, use_ai=True))
+
+        self.assertEqual(candidates, [])
+
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''
           <script>

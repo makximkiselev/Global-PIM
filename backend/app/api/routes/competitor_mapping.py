@@ -921,6 +921,31 @@ async def _discover_ai_competitor_candidates(product: Dict[str, Any], source: Di
     return sorted(out, key=lambda row: float(row.get("confidence_score") or 0), reverse=True)
 
 
+async def _competitor_candidate_url_available(url: str) -> bool:
+    candidate_url = str(url or "").strip()
+    if not candidate_url or detect_site(candidate_url) not in ALLOWED_SITES:
+        return False
+    try:
+        async with httpx.AsyncClient(
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+            },
+            timeout=5.0,
+            follow_redirects=True,
+            verify=False,
+        ) as client:
+            response = await client.head(candidate_url)
+            if 200 <= response.status_code < 400:
+                return True
+            if response.status_code in {403, 405, 429}:
+                response = await client.get(candidate_url)
+                return 200 <= response.status_code < 400
+            return False
+    except Exception:
+        return False
+
+
 async def _discover_product_candidates_for_source(product: Dict[str, Any], source: Dict[str, Any], *, use_ai: bool = False) -> List[Dict[str, Any]]:
     """
     Extension point for real site discovery.
@@ -943,7 +968,7 @@ async def _discover_product_candidates_for_source(product: Dict[str, Any], sourc
         seen_urls = {str(candidate.get("url") or "").strip() for candidate in candidates if str(candidate.get("url") or "").strip()}
         for candidate in ai_candidates:
             candidate_url = str(candidate.get("url") or "").strip()
-            if candidate_url and candidate_url not in seen_urls:
+            if candidate_url and candidate_url not in seen_urls and await _competitor_candidate_url_available(candidate_url):
                 candidates.append(candidate)
                 seen_urls.add(candidate_url)
     return candidates

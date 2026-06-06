@@ -971,6 +971,10 @@ Next fix in the category flow:
    - when the calculated re-store URL returns a high-confidence direct SKU candidate, discovery returns it immediately;
    - search still runs for near-miss candidates where SIM or another critical variant signal is missing;
    - this prevents a slow re-store search page from hiding a valid direct card behind a source timeout.
+32. AI competitor fallback now validates suggested URLs before showing them:
+   - generated/memory-based competitor URLs are checked over HTTP before being appended to discovery results;
+   - 404 or otherwise unavailable re-store/store77 URLs are dropped instead of appearing as moderation candidates;
+   - this prevents stale learned URL patterns from looking like real competitor matches.
 
 Next block:
 
