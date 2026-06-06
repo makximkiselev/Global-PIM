@@ -934,6 +934,10 @@ Next fix in the category flow:
 23. Frontend API errors now format JSON `{detail: ...}` responses before rendering:
    - common machine codes such as `CATALOG_CATEGORY_NOT_FOUND` and `CATEGORY_NOT_DIRECTLY_MAPPED` become readable user guidance;
    - raw JSON no longer appears in params/values error panels.
+24. Deploy public smoke requests are now bounded:
+   - `curl_retry` uses `APP_PUBLIC_SMOKE_TIMEOUT` for each public health/db-grants request;
+   - the SPA `HEAD` smoke also uses the same timeout;
+   - a transient public network hang can no longer leave deployment stuck after services already restarted.
 
 Next block:
 

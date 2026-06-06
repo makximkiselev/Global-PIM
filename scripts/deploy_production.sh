@@ -41,6 +41,7 @@ APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
 APP_LOCAL_DB_GRANTS_HEALTH_URL="http://127.0.0.1:18010/api/health/db-grants"
 APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
 APP_PUBLIC_DB_GRANTS_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health/db-grants"
+APP_PUBLIC_SMOKE_TIMEOUT="${APP_PUBLIC_SMOKE_TIMEOUT:-15}"
 APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-}"
 APP_SCENARIO_SMOKE_INSECURE_SSL="${APP_SCENARIO_SMOKE_INSECURE_SSL:-0}"
 SMARTPIM_AUTH_SMOKE="${SMARTPIM_AUTH_SMOKE:-0}"
@@ -79,6 +80,7 @@ Options:
 
 Optional post-deploy scenario smoke:
   APP_RUN_SCENARIO_SMOKE=1 scripts/deploy_production.sh
+  APP_PUBLIC_SMOKE_TIMEOUT=15 limits each public curl smoke request.
   APP_SCENARIO_SMOKE_INSECURE_SSL=1 can be used on local machines with a stale Python CA bundle.
   APP_SCENARIO_SMOKE_BROWSER=1 runs Playwright route checks after public checks.
   APP_SCENARIO_SMOKE_REQUIRE_AUTH=1 requires SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD.
@@ -217,13 +219,13 @@ curl_retry() {
   local delay="${3:-1}"
 
   for ((attempt = 1; attempt <= attempts; attempt += 1)); do
-    if curl -fsS "${url}" >/dev/null; then
+    if curl -fsS --max-time "${APP_PUBLIC_SMOKE_TIMEOUT}" "${url}" >/dev/null; then
       return 0
     fi
     sleep "${delay}"
   done
 
-  curl -fsS "${url}" >/dev/null
+  curl -fsS --max-time "${APP_PUBLIC_SMOKE_TIMEOUT}" "${url}" >/dev/null
 }
 
 tar_supports_flag() {
@@ -404,7 +406,7 @@ echo "==> Post-deploy smoke"
 ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WORKER_SERVICE_NAME} && systemctl is-active ${APP_VALUE_WORKER_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL} && curl -fsS ${APP_LOCAL_DB_GRANTS_HEALTH_URL}"
 curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
 curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1
-curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
+curl -I -fsS --max-time "${APP_PUBLIC_SMOKE_TIMEOUT}" "${APP_PUBLIC_BASE_URL}" >/dev/null
 if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" ]]; then
   echo "==> Scenario smoke"
   smoke_args=(--base-url "${APP_PUBLIC_BASE_URL}")
