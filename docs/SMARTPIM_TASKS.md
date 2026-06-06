@@ -168,12 +168,18 @@ Done:
     - `APP_SCENARIO_SMOKE_BROWSER=1` enables browser route checks;
     - `APP_SCENARIO_SMOKE_REQUIRE_AUTH=1` requires `SMARTPIM_SMOKE_EMAIL` and `SMARTPIM_SMOKE_PASSWORD`;
     - credentials stay in production env/secret storage, not in git.
+14. Product parameter workspace now shows per-parameter export diff: PIM value, source count, provider-normalized output values, and whether a value is missing before export.
+15. Template version impact API/UI is in place:
+    - `GET /api/templates/{template_id}/versions/impact`;
+    - current/previous version summary;
+    - attribute delta and fingerprint change;
+    - export-impact counters and sample fields to re-check.
 
 Next:
 
-1. Add author, diff, rollback and export-impact preview on top of the new info-model version snapshots.
+1. Add safe rollback for info-model versions after the backend can restore a historical attribute snapshot, not just metadata.
 2. Store QA smoke credentials in production secret storage and enable authenticated smoke flags for the real deploy environment.
-3. Expand the product-card lineage from compact summary/media labels into per-parameter export-value diffs where the row still needs manual validation.
+3. Replace frontend-only marketplace value normalization in the product parameter panel with the same provider/export mapping engine used by the export package.
 
 Priority order:
 

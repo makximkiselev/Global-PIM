@@ -1216,6 +1216,62 @@ def get_template(template_id: str) -> Dict[str, Any]:
     }
 
 
+@router.get("/{template_id}/versions/impact")
+def template_versions_impact(template_id: str) -> Dict[str, Any]:
+    db = load_templates_db()
+    tpl = (db.get("templates") or {}).get(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="template not found")
+    attrs = (db.get("attributes") or {}).get(template_id, []) or []
+    meta = tpl.get("meta") if isinstance(tpl.get("meta"), dict) else {}
+    info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
+    history = info_model.get("history") if isinstance(info_model.get("history"), list) else []
+    safe_history = [
+        {
+            "version": row.get("version"),
+            "created_at": row.get("created_at"),
+            "status": row.get("status"),
+            "attributes_count": row.get("attributes_count"),
+            "fingerprint": row.get("fingerprint"),
+            "author": row.get("author"),
+        }
+        for row in history
+        if isinstance(row, dict)
+    ]
+    latest = safe_history[-1] if safe_history else None
+    previous = safe_history[-2] if len(safe_history) >= 2 else None
+    latest_count = int((latest or {}).get("attributes_count") or len(attrs))
+    previous_count = int((previous or {}).get("attributes_count") or latest_count)
+    marketplace_fields = [
+        {
+            "name": str(attr.get("name") or attr.get("code") or "").strip(),
+            "code": str(attr.get("code") or "").strip(),
+            "required": bool(attr.get("required")),
+            "type": str(attr.get("type") or "text"),
+        }
+        for attr in attrs
+        if isinstance(attr, dict) and str(attr.get("options", {}).get("field_layer") if isinstance(attr.get("options"), dict) else attr.get("field_layer") or "features") not in {"system"}
+    ]
+    return {
+        "ok": True,
+        "template_id": template_id,
+        "history": safe_history[-12:],
+        "latest": latest,
+        "previous": previous,
+        "diff_summary": {
+            "versions": len(safe_history),
+            "attributes_current": len(attrs),
+            "attributes_delta": latest_count - previous_count,
+            "fingerprint_changed": bool(latest and previous and latest.get("fingerprint") != previous.get("fingerprint")),
+        },
+        "export_impact": {
+            "fields_total": len(marketplace_fields),
+            "required_fields": sum(1 for item in marketplace_fields if item.get("required")),
+            "sample_fields": marketplace_fields[:12],
+        },
+    }
+
+
 @router.put("/{template_id}")
 def update_template(template_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     _editor_reference_cache["ts"] = 0.0

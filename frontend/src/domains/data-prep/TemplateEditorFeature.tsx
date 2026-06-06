@@ -64,6 +64,22 @@ type TemplateSourceInfo = {
   mapped_rows?: number;
 };
 
+type TemplateVersionImpact = {
+  latest?: { version?: number; created_at?: string; attributes_count?: number; fingerprint?: string } | null;
+  previous?: { version?: number; created_at?: string; attributes_count?: number; fingerprint?: string } | null;
+  diff_summary?: {
+    versions?: number;
+    attributes_current?: number;
+    attributes_delta?: number;
+    fingerprint_changed?: boolean;
+  };
+  export_impact?: {
+    fields_total?: number;
+    required_fields?: number;
+    sample_fields?: Array<{ name?: string; code?: string; required?: boolean; type?: string }>;
+  };
+};
+
 type CategoryCrumb = { id: string; name: string };
 type CategoryInfo = { id: string; name: string; path: CategoryCrumb[] };
 
@@ -400,6 +416,7 @@ export default function TemplateEditor() {
   const [attrs, setAttrs] = useState<AttrT[]>([]);
   const [master, setMaster] = useState<TemplateMaster | null>(null);
   const [infoModel, setInfoModel] = useState<InfoModelSummary>({ status: "none" });
+  const [versionImpact, setVersionImpact] = useState<TemplateVersionImpact | null>(null);
   const [attrTab, setAttrTabState] = useState<"all" | "base" | "category">(normalizeAttrTab(searchParams.get("tab")));
   const [draftFilter, setDraftFilter] = useState<DraftFilter>("needs_review");
   const [draftSort, setDraftSort] = useState<DraftSort>("decision");
@@ -531,6 +548,16 @@ export default function TemplateEditor() {
       setAttrs(nextAttrs);
       setMaster(data.master || null);
       setInfoModel(data.info_model || { status: data.owner_template?.id ? "approved" : "none" });
+      if (data.owner_template?.id) {
+        try {
+          const impact = await api<TemplateVersionImpact>(`/templates/${encodeURIComponent(data.owner_template.id)}/versions/impact`);
+          setVersionImpact(impact);
+        } catch {
+          setVersionImpact(null);
+        }
+      } else {
+        setVersionImpact(null);
+      }
       setSelectedAttrIdx(nextAttrs.length ? 0 : null);
       setImportTplName("");
     } catch (error) {
@@ -543,6 +570,7 @@ export default function TemplateEditor() {
       setAttrs([]);
       setMaster(null);
       setInfoModel({ status: "none" });
+      setVersionImpact(null);
       setSelectedAttrIdx(null);
     } finally {
       setBootstrapLoading(false);
@@ -667,6 +695,8 @@ export default function TemplateEditor() {
       .sort((a, b) => Number(b.version || 0) - Number(a.version || 0));
   }, [infoModel.history]);
   const latestModelVersion = modelHistory[0] || null;
+  const impactSummary = versionImpact?.diff_summary || null;
+  const exportImpact = versionImpact?.export_impact || null;
   const modelSourcesText = useMemo(() => {
     if (sourceCoverage.length) {
       return sourceCoverage.map((source) => `${sourceLabel(source.provider)} ${source.fields}`).join(" · ");
@@ -1315,6 +1345,34 @@ export default function TemplateEditor() {
                           <em>После сохранения появится fingerprint версии</em>
                         </div>
                       ) : null}
+                    </div>
+                  </div>
+
+                  <div className="tplModelImpactPanel">
+                    <div className="tplModelImpactItem">
+                      <span>Diff к прошлой версии</span>
+                      <strong>
+                        {impactSummary
+                          ? `${Number(impactSummary.attributes_delta || 0) >= 0 ? "+" : ""}${impactSummary.attributes_delta || 0} полей`
+                          : "нет данных"}
+                      </strong>
+                      <em>{impactSummary?.fingerprint_changed ? "структура изменилась" : "структурных изменений не видно"}</em>
+                    </div>
+                    <div className="tplModelImpactItem">
+                      <span>Export impact</span>
+                      <strong>{exportImpact ? `${exportImpact.fields_total || 0} полей` : "нет данных"}</strong>
+                      <em>{exportImpact ? `обязательных: ${exportImpact.required_fields || 0}` : "появится после сохранения"}</em>
+                    </div>
+                    <div className="tplModelImpactItem is-wide">
+                      <span>Поля для проверки</span>
+                      <strong>
+                        {(exportImpact?.sample_fields || [])
+                          .slice(0, 4)
+                          .map((item) => item.name || item.code)
+                          .filter(Boolean)
+                          .join(" · ") || "нет выборки"}
+                      </strong>
+                      <em>Rollback не включен, пока нет полного diff API и подтверждения влияния на товары.</em>
                     </div>
                   </div>
 

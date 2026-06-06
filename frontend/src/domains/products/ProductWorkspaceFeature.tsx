@@ -512,6 +512,7 @@ function marketplaceProjections(value: string, channels: ChannelsSummary | null)
     provider,
     value: normalizeForMarketplace(provider.toLowerCase(), value),
     status: value ? "готово" : "нет значения",
+    changed: Boolean(value) && normalizeForMarketplace(provider.toLowerCase(), value) !== value,
   }));
 }
 
@@ -793,6 +794,9 @@ function ProductAttributeWorkbench({
   const sourceEntries = selectedFeature ? sourceEntriesForFeature(selectedFeature) : [];
   const projections = marketplaceProjections(selectedValue, channels);
   const filledCount = features.filter((feature) => featureValue(feature)).length;
+  const withSourceCount = features.filter((feature) => sourceEntriesForFeature(feature).length).length;
+  const noValueCount = features.filter((feature) => !featureValue(feature)).length;
+  const exportReadyCount = features.filter((feature) => featureValue(feature) && sourceEntriesForFeature(feature).length).length;
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
@@ -825,6 +829,11 @@ function ProductAttributeWorkbench({
             <strong>{filledCount}/{features.length}</strong>
           </div>
           <Badge tone={conflictCount ? "danger" : "active"}>{conflictCount ? `${conflictCount} конфликтов` : "без конфликтов"}</Badge>
+        </div>
+        <div className="productParamExportSummary">
+          <span><b>{exportReadyCount}</b>готовы с источником</span>
+          <span><b>{withSourceCount}</b>с источником</span>
+          <span><b>{noValueCount}</b>без значения</span>
         </div>
         <div className="productParamSearchHint">Выберите параметр, чтобы увидеть как он собрался и как уйдет на площадки.</div>
         <div className="productParamList">
@@ -903,14 +912,20 @@ function ProductAttributeWorkbench({
                   <span>Вывод на маркетплейсы</span>
                   <Badge tone={selectedValue ? "active" : "pending"}>{selectedValue ? "готово" : "нужно значение"}</Badge>
                 </div>
+                <div className="productParamExportDiffLead">
+                  <span>PIM</span>
+                  <strong title={selectedValue || undefined}>{selectedValue ? compactText(selectedValue, 120) : "Не заполнено"}</strong>
+                  <em>{sourceEntries.length ? `источников: ${sourceEntries.length}` : "источник не зафиксирован"}</em>
+                </div>
                 <div className="productMarketplaceProjectionList">
                   {projections.map((projection) => (
                     <article key={projection.provider} className="productMarketplaceProjection">
                       <div>
                         <strong>{projection.provider}</strong>
-                        <span>{projection.status}</span>
+                        <span>{projection.changed ? "нормализовано" : projection.status}</span>
                       </div>
                       <code>{projection.value}</code>
+                      <em>{selectedValue ? `PIM -> ${projection.provider}` : "нет PIM-значения для экспорта"}</em>
                     </article>
                   ))}
                 </div>

@@ -648,6 +648,55 @@
   grid-column: 1 / -1;
 }
 
+.tplModelImpactPanel {
+  display: grid;
+  grid-template-columns: 170px 170px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.tplModelImpactItem {
+  min-width: 0;
+  min-height: 70px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(var(--card-rgb), 0.78);
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.tplModelImpactItem span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tplModelImpactItem strong,
+.tplModelImpactItem em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tplModelImpactItem strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.16;
+  font-weight: 950;
+}
+
+.tplModelImpactItem em {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.25;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .tplModelNextActions {
   display: flex;
   flex-wrap: wrap;

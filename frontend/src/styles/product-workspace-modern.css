@@ -1929,6 +1929,34 @@
   line-height:1.35;
 }
 
+.productParamExportSummary{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:6px;
+}
+
+.productParamExportSummary span{
+  min-width:0;
+  padding:7px 8px;
+  border:1px solid rgba(var(--line-rgb), .62);
+  border-radius:12px;
+  background:rgba(var(--surface-rgb), .58);
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.15;
+  font-weight:850;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.productParamExportSummary b{
+  margin-right:4px;
+  color:var(--text);
+  font-size:12px;
+  font-weight:950;
+}
+
 .productParamList{
   display:flex;
   flex-direction:column;
@@ -2125,6 +2153,46 @@
   gap:10px;
 }
 
+.productParamExportDiffLead{
+  display:grid;
+  gap:5px;
+  padding:11px 12px;
+  border:1px solid rgba(var(--brand-rgb), .24);
+  border-radius:14px;
+  background:rgba(var(--brand-rgb), .08);
+  margin-bottom:10px;
+}
+
+.productParamExportDiffLead span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.productParamExportDiffLead strong,
+.productParamExportDiffLead em{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.productParamExportDiffLead strong{
+  color:var(--text);
+  font-size:14px;
+  line-height:1.16;
+  font-weight:950;
+}
+
+.productParamExportDiffLead em{
+  color:var(--text-soft);
+  font-size:12px;
+  font-style:normal;
+  font-weight:800;
+}
+
 .productSourceEvidence,
 .productMarketplaceProjection{
   padding:13px;
@@ -2189,6 +2257,15 @@
   color:var(--text);
   font-size:18px;
   font-weight:950;
+}
+
+.productMarketplaceProjection em{
+  display:block;
+  margin-top:8px;
+  color:var(--muted);
+  font-size:11px;
+  font-style:normal;
+  font-weight:850;
 }
 
 .productParamEmpty,
