@@ -975,6 +975,9 @@ Next fix in the category flow:
    - generated/memory-based competitor URLs are checked over HTTP before being appended to discovery results;
    - 404 or otherwise unavailable re-store/store77 URLs are dropped instead of appearing as moderation candidates;
    - this prevents stale learned URL patterns from looking like real competitor matches.
+33. Product source summaries no longer use stale/rejected candidates as current evidence:
+   - stale or rejected competitor candidates remain in counters/history but do not drive source status;
+   - after a clean scan with no valid re-store candidates, the source shows the fresh “no exact match” result instead of an old hidden AI suggestion.
 
 Next block:
 

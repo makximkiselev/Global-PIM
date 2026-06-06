@@ -2225,6 +2225,37 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(enriched["direct_card_specs"]["SIM-карта"], "SIM + eSIM")
         self.assertNotIn("Процессор", enriched["direct_card_specs"])
 
+    def test_product_source_summary_ignores_stale_candidates_for_current_status(self) -> None:
+        stale_candidate = {
+            "id": "stale_restore",
+            "product_id": "product_70",
+            "source_id": "restore",
+            "status": "stale",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "url": "https://re-store.ru/catalog/AG_10116MAX256DESIERTITANIUM/",
+            "confidence_score": 0.86,
+            "confidence_reasons": ["AI предложил по подтвержденным привязкам"],
+        }
+
+        with patch.object(
+            competitor_mapping_routes,
+            "_product_source_scan_states",
+            return_value={
+                "restore": {
+                    "status": "scanned_empty",
+                    "last_scanned_at": "2026-06-07T00:00:00+00:00",
+                    "evidence": {"candidate_count": 0, "direct_match_status": "not_visible"},
+                }
+            },
+        ):
+            summaries = competitor_mapping_routes._product_discovery_source_summaries("product_70", [stale_candidate], [])
+
+        restore_summary = next(item for item in summaries if item["source_id"] == "restore")
+        self.assertEqual(restore_summary["status"], "no_exact_match")
+        self.assertEqual(restore_summary["message"], "Источник проверен: точной карточки для этого SKU не найдено.")
+        self.assertEqual(restore_summary["hidden_count"], 0)
+        self.assertEqual(restore_summary["best_title"], "")
+
     def test_competitor_candidate_moderation_reads_relational_candidate_without_json(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})

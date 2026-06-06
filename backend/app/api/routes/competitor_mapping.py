@@ -2158,11 +2158,15 @@ def _product_discovery_source_summaries(
             for link in confirmed_links
             if str(link.get("source_id") or "").strip() == source_id
         ]
-        actionable = [item for item in source_candidates if _is_actionable_product_candidate(item)]
-        visible = [item for item in source_candidates if _is_visible_product_candidate(item)]
-        best = max(source_candidates, key=_candidate_confidence_score, default=None)
+        active_candidates = [
+            item for item in source_candidates
+            if str(item.get("status") or "").strip() not in {"stale", "rejected"}
+        ]
+        actionable = [item for item in active_candidates if _is_actionable_product_candidate(item)]
+        visible = [item for item in active_candidates if _is_visible_product_candidate(item)]
+        best = max(active_candidates, key=_candidate_confidence_score, default=None)
         best_score = _candidate_confidence_score(best) if best else None
-        hidden_count = max(0, len(source_candidates) - len(visible))
+        hidden_count = max(0, len(active_candidates) - len(visible))
         scan_state = scan_states.get(source_id, {})
         retry_after_seconds = 0
         if scan_state.get("status") in {"scan_error", "scanned_empty"}:
