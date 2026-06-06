@@ -283,6 +283,8 @@ class OperatingWorkflowTests(unittest.TestCase):
 
         self.assertEqual(payload["summary"]["features_total"], 1)
         self.assertEqual(payload["summary"]["source_values"], 2)
+        self.assertEqual(payload["summary"]["blockers"], 0)
+        self.assertEqual(payload["blockers"], [])
         self.assertEqual(payload["service_rows"][0]["name"], "SKU GT")
         self.assertEqual(payload["service_rows"][0]["marketplaces"][0]["output_value"], "52462")
         row = payload["items"][0]
@@ -358,6 +360,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         outputs = [item for item in row["marketplaces"] if item["provider"] == "yandex_market"]
         self.assertEqual([item["target_id"] for item in outputs], ["vendor", "brand"])
         self.assertEqual([item["binding_index"] for item in outputs], [0, 1])
+        self.assertEqual(payload["summary"]["blockers"], 1)
+        self.assertEqual(payload["blockers"][0]["code"], "parameter_mapping_required")
+        self.assertEqual(payload["blockers"][0]["provider"], "ozon")
         self.assertEqual([item["primary"] for item in outputs], [True, False])
 
     def test_product_parameter_flow_uses_provider_specific_export_map_fixture(self) -> None:

@@ -82,6 +82,25 @@ type TemplateVersionImpact = {
   };
 };
 
+type TemplateRollbackPreview = {
+  ok?: boolean;
+  version: number;
+  created_at?: string;
+  rollback_available?: boolean;
+  diff?: {
+    added?: Array<{ key?: string; name?: string; code?: string }>;
+    removed?: Array<{ key?: string; name?: string; code?: string }>;
+    changed?: Array<{ key?: string; name?: string; code?: string; changes?: Array<{ field?: string; from?: unknown; to?: unknown }> }>;
+    summary?: {
+      added?: number;
+      removed?: number;
+      changed?: number;
+      current_total?: number;
+      target_total?: number;
+    };
+  };
+};
+
 type CategoryCrumb = { id: string; name: string };
 type CategoryInfo = { id: string; name: string; path: CategoryCrumb[] };
 
@@ -263,6 +282,19 @@ function formatModelDate(value?: string | null) {
   });
 }
 
+function formatRollbackValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "да" : "нет";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "сложное значение";
+    }
+  }
+  return String(value);
+}
+
 function typeLabel(value: string) {
   return TYPE_LABEL[value as AttrType] || value || "Текст";
 }
@@ -420,6 +452,9 @@ export default function TemplateEditor() {
   const [infoModel, setInfoModel] = useState<InfoModelSummary>({ status: "none" });
   const [versionImpact, setVersionImpact] = useState<TemplateVersionImpact | null>(null);
   const [rollbackBusy, setRollbackBusy] = useState(false);
+  const [rollbackPreview, setRollbackPreview] = useState<TemplateRollbackPreview | null>(null);
+  const [rollbackPreviewLoading, setRollbackPreviewLoading] = useState(false);
+  const [rollbackError, setRollbackError] = useState("");
   const [attrTab, setAttrTabState] = useState<"all" | "base" | "category">(normalizeAttrTab(searchParams.get("tab")));
   const [draftFilter, setDraftFilter] = useState<DraftFilter>("needs_review");
   const [draftSort, setDraftSort] = useState<DraftSort>("decision");
@@ -975,17 +1010,36 @@ export default function TemplateEditor() {
     }
   }
 
+  async function openRollbackPreview(version?: number) {
+    const templateId = ownerTpl?.id || tpl?.id;
+    if (!templateId || !version || rollbackPreviewLoading) return;
+    setRollbackError("");
+    setRollbackPreviewLoading(true);
+    try {
+      const preview = await api<TemplateRollbackPreview>(
+        `/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(String(version))}/preview`,
+      );
+      setRollbackPreview(preview);
+    } catch (error: any) {
+      const message = error?.message || "Не удалось подготовить preview отката";
+      setRollbackError(String(message));
+      showToast(String(message));
+    } finally {
+      setRollbackPreviewLoading(false);
+    }
+  }
+
   async function rollbackModelVersion(version?: number) {
     const templateId = ownerTpl?.id || tpl?.id;
     if (!templateId || !version || rollbackBusy) return;
-    const ok = window.confirm(`Откатить инфо-модель к версии v${version}? Будет создана новая текущая версия из snapshot, история не удалится.`);
-    if (!ok) return;
     setRollbackBusy(true);
     try {
       await api(`/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(String(version))}/rollback`, {
         method: "POST",
       });
       showToast(`Откат к v${version} выполнен`);
+      setRollbackPreview(null);
+      setRollbackError("");
       await load();
     } finally {
       setRollbackBusy(false);
@@ -1361,7 +1415,7 @@ export default function TemplateEditor() {
                           <strong>{item.attributes_count ?? "—"} полей</strong>
                           <em>{formatModelDate(item.created_at)}</em>
                           {item.rollback_available ? (
-                            <button type="button" disabled={rollbackBusy} onClick={() => rollbackModelVersion(item.version)}>
+                            <button type="button" disabled={rollbackBusy || rollbackPreviewLoading} onClick={() => openRollbackPreview(item.version)}>
                               Откатить
                             </button>
                           ) : null}
@@ -1826,6 +1880,86 @@ export default function TemplateEditor() {
           </div>
         }
       />
+
+      <Modal
+        open={!!rollbackPreview}
+        onClose={() => !rollbackBusy && setRollbackPreview(null)}
+        title={rollbackPreview ? `Откат к версии v${rollbackPreview.version}` : "Откат версии"}
+        subtitle="Перед применением проверьте, как изменится состав полей инфо-модели."
+      >
+        {rollbackError ? <Alert tone="danger">{rollbackError}</Alert> : null}
+        {rollbackPreview ? (
+          <div className="tplRollbackPreview">
+            <div className="tplRollbackSummary">
+              <span>
+                <strong>{rollbackPreview.diff?.summary?.target_total ?? 0}</strong>
+                станет полей
+              </span>
+              <span>
+                <strong>{rollbackPreview.diff?.summary?.added ?? 0}</strong>
+                добавится
+              </span>
+              <span>
+                <strong>{rollbackPreview.diff?.summary?.removed ?? 0}</strong>
+                удалится
+              </span>
+              <span>
+                <strong>{rollbackPreview.diff?.summary?.changed ?? 0}</strong>
+                изменится
+              </span>
+            </div>
+
+            <div className="tplRollbackGroups">
+              <div className="tplRollbackGroup">
+                <span>Добавятся</span>
+                {rollbackPreview.diff?.added?.length ? (
+                  rollbackPreview.diff.added.slice(0, 8).map((item) => (
+                    <em key={item.key || item.name}>{item.name || item.code || item.key}</em>
+                  ))
+                ) : (
+                  <em>Нет</em>
+                )}
+              </div>
+              <div className="tplRollbackGroup">
+                <span>Удалятся из текущей модели</span>
+                {rollbackPreview.diff?.removed?.length ? (
+                  rollbackPreview.diff.removed.slice(0, 8).map((item) => (
+                    <em key={item.key || item.name}>{item.name || item.code || item.key}</em>
+                  ))
+                ) : (
+                  <em>Нет</em>
+                )}
+              </div>
+              <div className="tplRollbackGroup is-wide">
+                <span>Изменятся</span>
+                {rollbackPreview.diff?.changed?.length ? (
+                  rollbackPreview.diff.changed.slice(0, 8).map((item) => (
+                    <div key={item.key || item.name} className="tplRollbackChange">
+                      <strong>{item.name || item.code || item.key}</strong>
+                      {(item.changes || []).slice(0, 4).map((change) => (
+                        <small key={`${item.key}-${change.field}`}>
+                          {change.field}: {formatRollbackValue(change.from)} → {formatRollbackValue(change.to)}
+                        </small>
+                      ))}
+                    </div>
+                  ))
+                ) : (
+                  <em>Нет</em>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <Button onClick={() => setRollbackPreview(null)} disabled={rollbackBusy}>
+                Отмена
+              </Button>
+              <Button variant="primary" onClick={() => rollbackModelVersion(rollbackPreview.version)} disabled={rollbackBusy}>
+                {rollbackBusy ? "Откатываю…" : "Применить откат"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={importOpen}

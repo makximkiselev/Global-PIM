@@ -312,6 +312,17 @@ def _service_rows(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _flow_blocker(code: str, parameter: str, target: str, message: str, provider: str = "", target_id: str = "") -> Dict[str, Any]:
+    return {
+        "code": code,
+        "parameter": parameter,
+        "target": target,
+        "provider": provider,
+        "target_id": target_id,
+        "message": message,
+    }
+
+
 def build_product_parameter_flow(product: Dict[str, Any]) -> Dict[str, Any]:
     category_id = str(product.get("category_id") or "").strip()
     nodes = load_catalog_nodes()
@@ -330,6 +341,7 @@ def build_product_parameter_flow(product: Dict[str, Any]) -> Dict[str, Any]:
     attention = 0
     empty = 0
     source_count = 0
+    blockers: List[Dict[str, Any]] = []
     for feature in _features(product):
         name = str(feature.get("name") or feature.get("code") or "").strip()
         if not name:
@@ -350,12 +362,44 @@ def build_product_parameter_flow(product: Dict[str, Any]) -> Dict[str, Any]:
         if not value:
             row_status = "empty"
             empty += 1
+            blockers.append(
+                _flow_blocker(
+                    "empty_value",
+                    name,
+                    "attributes",
+                    "PIM-значение пустое: заполните параметр в карточке товара.",
+                )
+            )
         elif "not_mapped" in statuses or "value_missing" in statuses:
             row_status = "attention"
             attention += 1
         else:
             row_status = "ready"
             ready += 1
+        for output in marketplaces:
+            status = str(output.get("status") or "")
+            if status == "not_mapped":
+                blockers.append(
+                    _flow_blocker(
+                        "parameter_mapping_required",
+                        name,
+                        "params",
+                        "Поле PIM не сопоставлено с полем площадки.",
+                        provider=str(output.get("provider") or ""),
+                        target_id=str(output.get("target_id") or ""),
+                    )
+                )
+            elif status == "value_missing":
+                blockers.append(
+                    _flow_blocker(
+                        "value_mapping_required",
+                        name,
+                        "values",
+                        "Значение PIM не сопоставлено со словарем площадки.",
+                        provider=str(output.get("provider") or ""),
+                        target_id=str(output.get("target_id") or ""),
+                    )
+                )
         source_count += len(sources)
         items.append(
             {
@@ -383,7 +427,9 @@ def build_product_parameter_flow(product: Dict[str, Any]) -> Dict[str, Any]:
             "features_empty": empty,
             "source_values": source_count,
             "service_rows": len(service_rows),
+            "blockers": len(blockers),
         },
         "service_rows": service_rows,
+        "blockers": blockers[:50],
         "items": items,
     }

@@ -1274,6 +1274,82 @@ def template_versions_impact(template_id: str) -> Dict[str, Any]:
     }
 
 
+def _attr_diff_key(attr: Dict[str, Any]) -> str:
+    return str(attr.get("id") or attr.get("code") or attr.get("name") or "").strip().lower()
+
+
+def _attr_diff_label(attr: Dict[str, Any]) -> str:
+    return str(attr.get("name") or attr.get("code") or attr.get("id") or "Поле").strip()
+
+
+def _template_attr_diff(current_attrs: List[Dict[str, Any]], target_attrs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    current_by_key = {_attr_diff_key(attr): attr for attr in current_attrs if isinstance(attr, dict) and _attr_diff_key(attr)}
+    target_by_key = {_attr_diff_key(attr): attr for attr in target_attrs if isinstance(attr, dict) and _attr_diff_key(attr)}
+    added: List[Dict[str, Any]] = []
+    removed: List[Dict[str, Any]] = []
+    changed: List[Dict[str, Any]] = []
+
+    for key, target in target_by_key.items():
+        if key not in current_by_key:
+            added.append({"key": key, "name": _attr_diff_label(target), "code": str(target.get("code") or "").strip()})
+            continue
+        current = current_by_key[key]
+        field_changes: List[Dict[str, Any]] = []
+        for field in ("name", "code", "type", "required", "scope", "locked"):
+            if current.get(field) != target.get(field):
+                field_changes.append({"field": field, "from": current.get(field), "to": target.get(field)})
+        cur_options = current.get("options") if isinstance(current.get("options"), dict) else {}
+        tgt_options = target.get("options") if isinstance(target.get("options"), dict) else {}
+        if cur_options != tgt_options:
+            field_changes.append({"field": "options", "from": cur_options, "to": tgt_options})
+        if field_changes:
+            changed.append({"key": key, "name": _attr_diff_label(target), "code": str(target.get("code") or "").strip(), "changes": field_changes})
+
+    for key, current in current_by_key.items():
+        if key not in target_by_key:
+            removed.append({"key": key, "name": _attr_diff_label(current), "code": str(current.get("code") or "").strip()})
+
+    return {
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "summary": {
+            "added": len(added),
+            "removed": len(removed),
+            "changed": len(changed),
+            "current_total": len(current_attrs),
+            "target_total": len(target_attrs),
+        },
+    }
+
+
+@router.get("/{template_id}/versions/{version}/preview")
+def preview_template_version_rollback(template_id: str, version: int) -> Dict[str, Any]:
+    db = load_templates_db()
+    tpl = (db.get("templates") or {}).get(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="template not found")
+    attrs = (db.get("attributes") or {}).get(template_id, []) or []
+    meta = tpl.get("meta") if isinstance(tpl.get("meta"), dict) else {}
+    info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
+    history = info_model.get("history") if isinstance(info_model.get("history"), list) else []
+    target = next((row for row in history if isinstance(row, dict) and int(row.get("version") or -1) == int(version)), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="version not found")
+    snapshot = target.get("attributes_snapshot") if isinstance(target.get("attributes_snapshot"), list) else None
+    if snapshot is None:
+        raise HTTPException(status_code=409, detail="version has no attributes snapshot")
+    diff = _template_attr_diff([dict(x) for x in attrs if isinstance(x, dict)], [dict(x) for x in snapshot if isinstance(x, dict)])
+    return {
+        "ok": True,
+        "template_id": template_id,
+        "version": int(version),
+        "created_at": target.get("created_at"),
+        "diff": diff,
+        "rollback_available": True,
+    }
+
+
 @router.post("/{template_id}/versions/{version}/rollback")
 def rollback_template_version(template_id: str, version: int) -> Dict[str, Any]:
     _editor_reference_cache["ts"] = 0.0

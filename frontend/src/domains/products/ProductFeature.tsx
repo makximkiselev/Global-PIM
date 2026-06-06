@@ -69,7 +69,9 @@ type ParameterFlowResp = {
     features_empty: number;
     source_values: number;
     service_rows: number;
+    blockers?: number;
   };
+  blockers?: Array<{ code?: string; parameter?: string; target?: string; provider?: string; target_id?: string; message?: string }>;
   service_rows: ParameterFlowRow[];
   items: ParameterFlowRow[];
 };
@@ -2250,6 +2252,7 @@ export default function ProductFeature() {
               <span><strong>{parameterFlow?.summary.features_ready ?? 0}</strong> готово</span>
               <span><strong>{parameterFlow?.summary.features_attention ?? 0}</strong> проверить</span>
               <span><strong>{parameterFlow?.summary.features_empty ?? 0}</strong> пусто</span>
+              <span><strong>{parameterFlow?.summary.blockers ?? parameterFlow?.blockers?.length ?? 0}</strong> блокеров</span>
               <span><strong>{parameterFlow?.summary.source_values ?? 0}</strong> значений из источников</span>
             </div>
             <div className="pn-serviceFlowGrid">

@@ -211,7 +211,9 @@ type ProductParameterFlow = {
     features_attention?: number;
     features_empty?: number;
     source_values?: number;
+    blockers?: number;
   };
+  blockers?: Array<{ code?: string; parameter?: string; target?: string; provider?: string; target_id?: string; message?: string }>;
   items?: ProductParameterFlowRow[];
 };
 
@@ -813,6 +815,7 @@ function ProductAttributeWorkbench({
   const noValueCount = features.filter((feature) => !featureValue(feature)).length;
   const exportReadyCount = Number(parameterFlow?.summary?.features_ready || 0) || features.filter((feature) => featureValue(feature) && sourceEntriesForFeature(feature).length).length;
   const attentionCount = Number(parameterFlow?.summary?.features_attention || 0);
+  const blockerCount = Number(parameterFlow?.summary?.blockers || parameterFlow?.blockers?.length || 0);
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
@@ -849,7 +852,7 @@ function ProductAttributeWorkbench({
         <div className="productParamExportSummary">
           <span><b>{exportReadyCount}</b>готовы с источником</span>
           <span><b>{withSourceCount}</b>с источником</span>
-          <span><b>{attentionCount || noValueCount}</b>{attentionCount ? "проверить" : "без значения"}</span>
+          <span><b>{blockerCount || attentionCount || noValueCount}</b>{blockerCount || attentionCount ? "блокеры" : "без значения"}</span>
         </div>
         <div className="productParamSearchHint">Выберите параметр, чтобы увидеть как он собрался и как уйдет на площадки.</div>
         <div className="productParamList">

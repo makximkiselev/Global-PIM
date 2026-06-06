@@ -666,6 +666,90 @@
   grid-column: 1 / -1;
 }
 
+.tplRollbackPreview {
+  display: grid;
+  gap: 18px;
+}
+
+.tplRollbackSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tplRollbackSummary span {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tplRollbackSummary strong {
+  display: block;
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.tplRollbackGroups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tplRollbackGroup {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 120px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(var(--surface-rgb), 0.42);
+}
+
+.tplRollbackGroup.is-wide {
+  grid-column: 1 / -1;
+}
+
+.tplRollbackGroup > span {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tplRollbackGroup em {
+  color: var(--text-soft);
+  font-style: normal;
+  font-weight: 850;
+}
+
+.tplRollbackChange {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.tplRollbackChange:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.tplRollbackChange strong {
+  color: var(--text);
+}
+
+.tplRollbackChange small {
+  color: var(--text-soft);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
 .tplModelImpactPanel {
   display: grid;
   grid-template-columns: 170px 170px minmax(0, 1fr);

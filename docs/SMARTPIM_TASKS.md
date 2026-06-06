@@ -901,6 +901,20 @@ Next fix in the category flow:
 15. `/sources` context fallback no longer mixes an explicit category URL with the last cached SKU:
    - if the URL has `category` and no `product`, the page works in pure category context;
    - cached SKU context is reused only when there is no explicit category, or when the explicit SKU matches the cached SKU.
+16. Info-model version rollback is now preview-first:
+   - backend exposes `GET /api/templates/{template_id}/versions/{version}/preview`;
+   - preview compares the current model with the saved snapshot and reports added, removed, and changed fields;
+   - the editor opens a rollback modal instead of using `window.confirm`, so the user sees consequences before applying a snapshot.
+17. Product parameter flow now exposes machine-readable blockers:
+   - `GET /api/products/{product_id}/parameter-flow` returns `summary.blockers` and a bounded `blockers[]` list;
+   - blockers use stable codes for empty PIM values, missing parameter mappings, and missing value mappings;
+   - product screens can show blocker counts without parsing marketplace labels or guessing from text.
+
+Next block:
+
+1. Turn `parameter-flow.blockers[]` into direct UI actions: open product attribute, sources params, or values tab with the affected parameter preselected.
+2. Configure real QA credentials outside git and enable authenticated smoke in deploy (`SMARTPIM_AUTH_SMOKE=1` with `SMARTPIM_SMOKE_EMAIL/PASSWORD`).
+3. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
 
 ## Verification Commands
 
