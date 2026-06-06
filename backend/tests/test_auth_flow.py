@@ -2651,6 +2651,31 @@ class AuthFlowTests(unittest.TestCase):
         self.assertLess(candidates[0]["confidence_score"], 0.8)
         self.assertTrue(any("проверь SIM" in reason for reason in candidates[0]["confidence_reasons"]))
 
+    def test_restore_discovery_returns_exact_direct_seed_before_search(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+        direct_candidate = {
+            "url": "https://re-store.ru/catalog/10116MAX256DSTN/",
+            "title": "Apple iPhone 16 Pro Max 256GB Desert Titanium",
+            "brand": "Apple",
+            "sku": "10116MAX256DSTN",
+            "confidence_score": 0.98,
+            "confidence_reasons": ["обязательные токены совпали"],
+            "profile_specs": {"Память": "256 ГБ", "Цвет": "песчаный титановый", "SIM-карта": "SIM + eSIM"},
+            "discovery_strategy": "restore_direct_sku_seed",
+        }
+
+        with (
+            patch.object(competitor_mapping_routes, "_restore_seed_candidates_for_product", new=AsyncMock(return_value=[direct_candidate])),
+            patch.object(competitor_mapping_routes, "_fetch_search_html", new=AsyncMock(side_effect=AssertionError("search must not run after exact direct seed"))),
+        ):
+            candidates = asyncio.run(competitor_mapping_routes._discover_restore_candidates(product))
+
+        self.assertEqual(candidates, [direct_candidate])
+
     def test_restore_search_html_candidates_reject_airpods_pro_for_base_airpods(self) -> None:
         html = r'''
           <script>

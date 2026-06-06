@@ -967,6 +967,10 @@ Next fix in the category flow:
    - discovery scan evidence stores candidate count and visible candidate URLs;
    - re-store direct URL evidence stores parsed memory/color/SIM specs when the direct card is visible;
    - product UI shows a separate “Результат проверки” block so users can see whether re-store returned a usable direct card or only search misses.
+31. re-store discovery no longer times out after an exact direct match:
+   - when the calculated re-store URL returns a high-confidence direct SKU candidate, discovery returns it immediately;
+   - search still runs for near-miss candidates where SIM or another critical variant signal is missing;
+   - this prevents a slow re-store search page from hiding a valid direct card behind a source timeout.
 
 Next block:
 

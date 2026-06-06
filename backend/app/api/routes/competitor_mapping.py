@@ -3595,6 +3595,12 @@ async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str
             seen.add(candidate_url)
     if any(str(candidate.get("discovery_strategy") or "") == "restore_oura_slug_seed" for candidate in out):
         return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    if any(
+        str(candidate.get("discovery_strategy") or "") == "restore_direct_sku_seed"
+        and float(candidate.get("confidence_score") or 0) >= 0.9
+        for candidate in out
+    ):
+        return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
     for term in _query_terms_for_product(product):
         url = f"https://re-store.ru/search/?q={quote_plus(term)}"
         try:
