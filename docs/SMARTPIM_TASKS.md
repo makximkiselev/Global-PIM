@@ -948,6 +948,11 @@ Next fix in the category flow:
    - shows whether `SMARTPIM_SMOKE_PRODUCT_FLOW` / `APP_SCENARIO_SMOKE_PRODUCT_FLOW` is enabled;
    - shows whether flow category/product/SKU markers are configured;
    - does not serialize credentials or exact fixture identifiers.
+27. Product competitor source evidence is more explicit for exact misses:
+   - backend scan evidence now includes `scan_steps`, `expected_urls`, category URLs, query terms and `exact_miss_reason`;
+   - Store77 summaries explain that category pages, deterministic URL and search terms were checked;
+   - re-store summaries distinguish direct URL + search from search-only partial scans;
+   - product UI renders this evidence as separate readable rows instead of one compressed string.
 
 Next block:
 

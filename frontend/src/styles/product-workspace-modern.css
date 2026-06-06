@@ -1365,6 +1365,16 @@
   font-weight:780;
 }
 
+.productCompetitorSourceBest.isEvidence strong,
+.productCompetitorSourceBest.isEvidence em{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+.productCompetitorSourceBest.isEvidence strong{
+  line-height:1.3;
+}
+
 .productCompetitorNotice,
 .productCompetitorError{
   padding:12px 14px;

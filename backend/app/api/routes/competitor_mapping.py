@@ -2035,17 +2035,36 @@ def _product_source_scan_states(product_id: str) -> Dict[str, Dict[str, Any]]:
 
 def _product_source_scan_evidence(product: Dict[str, Any], source_id: str) -> Dict[str, Any]:
     normalized_source_id = str(source_id or "").strip()
+    query_terms = _query_terms_for_product(product)
     evidence: Dict[str, Any] = {
-        "query_terms": _query_terms_for_product(product),
+        "query_terms": query_terms,
+        "scan_steps": [],
     }
     if normalized_source_id == "restore":
         direct_url = _restore_iphone_direct_url(product)
         if direct_url:
             evidence["direct_url"] = direct_url
+            evidence["expected_urls"] = [direct_url]
+            evidence["scan_steps"] = ["direct_url", "search_terms"]
+            evidence["exact_miss_reason"] = "Проверили расчетный re-store URL и поисковые запросы. Точная карточка появится здесь, если URL откроется и модель/память/цвет/SIM пройдут скоринг."
+        else:
+            evidence["scan_steps"] = ["search_terms"]
+            evidence["exact_miss_reason"] = "Для этого SKU нельзя безопасно собрать расчетный re-store URL; проверяем только поисковые запросы."
     elif normalized_source_id == "store77":
         category_urls = _store77_category_urls_for_product(product)
         if category_urls:
             evidence["category_urls"] = category_urls[:4]
+            evidence["scan_steps"] = ["category_pages", "deterministic_url", "search_terms"]
+        else:
+            evidence["scan_steps"] = ["deterministic_url", "search_terms"]
+        seed_urls = [
+            str(candidate.get("url") or "").strip()
+            for candidate in _store77_seed_candidates_for_product(product)
+            if str(candidate.get("url") or "").strip()
+        ]
+        if seed_urls:
+            evidence["expected_urls"] = seed_urls[:4]
+        evidence["exact_miss_reason"] = "Проверили категорию Store77, расчетный URL и поисковые запросы. Если точной карточки нет, причина обычно в недоступной странице, отличии SIM/цвета/памяти или низком скоринге."
     return evidence
 
 

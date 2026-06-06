@@ -62,8 +62,11 @@ type CompetitorSourceSummary = {
   scan_error?: string;
   scan_evidence?: {
     direct_url?: string;
+    expected_urls?: string[];
     query_terms?: string[];
     category_urls?: string[];
+    scan_steps?: string[];
+    exact_miss_reason?: string;
   };
 };
 
@@ -226,6 +229,18 @@ function enrichErrorLabel(error?: string): string {
 function sourceScanTime(summary: CompetitorSourceSummary): string {
   const value = summary.last_scanned_at;
   return value ? new Date(value).toLocaleString("ru-RU") : "";
+}
+
+function scanStepLabel(value: string): string {
+  if (value === "direct_url") return "расчетный URL re-store";
+  if (value === "category_pages") return "категории Store77";
+  if (value === "deterministic_url") return "расчетный URL Store77";
+  if (value === "search_terms") return "поиск по названию";
+  return value;
+}
+
+function evidenceList(values?: string[], limit = 3): string {
+  return (values || []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, limit).join(" · ");
 }
 
 function aiActionLabel(action: AiSuggestionAction): string {
@@ -514,11 +529,25 @@ export default function ProductCompetitorPanel({
                     <em>Сначала проверьте, что модель, память, цвет и SIM указаны в SKU без ошибок.</em>
                   </div>
                 ) : null}
-                {summary.scan_evidence?.direct_url || summary.scan_evidence?.query_terms?.length || summary.scan_evidence?.category_urls?.length ? (
-                  <div className="productCompetitorSourceBest">
-                    <span>Что проверяли</span>
-                    <strong>{summary.scan_evidence.direct_url || summary.scan_evidence.category_urls?.[0] || summary.scan_evidence.query_terms?.[0]}</strong>
-                    <em>{summary.scan_evidence.query_terms?.slice(0, 2).join(" · ")}</em>
+                {summary.scan_evidence?.scan_steps?.length ? (
+                  <div className="productCompetitorSourceBest isEvidence">
+                    <span>План проверки</span>
+                    <strong>{summary.scan_evidence.scan_steps.map(scanStepLabel).join(" -> ")}</strong>
+                    <em>{summary.scan_evidence.exact_miss_reason || "Показываем источники, по которым искали точную карточку SKU."}</em>
+                  </div>
+                ) : null}
+                {summary.scan_evidence?.direct_url || summary.scan_evidence?.expected_urls?.length || summary.scan_evidence?.category_urls?.length ? (
+                  <div className="productCompetitorSourceBest isEvidence">
+                    <span>Проверенные URL</span>
+                    <strong>{summary.scan_evidence.direct_url || summary.scan_evidence.expected_urls?.[0] || summary.scan_evidence.category_urls?.[0]}</strong>
+                    <em>{evidenceList(summary.scan_evidence.expected_urls) || evidenceList(summary.scan_evidence.category_urls)}</em>
+                  </div>
+                ) : null}
+                {summary.scan_evidence?.query_terms?.length ? (
+                  <div className="productCompetitorSourceBest isEvidence">
+                    <span>Поисковые запросы</span>
+                    <strong>{summary.scan_evidence.query_terms[0]}</strong>
+                    <em>{evidenceList(summary.scan_evidence.query_terms, 4)}</em>
                   </div>
                 ) : null}
                 {summary.status === "confirmed" ? (

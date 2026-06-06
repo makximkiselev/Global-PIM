@@ -2155,6 +2155,33 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(restore_summary["label"], "Нет точного товара")
         self.assertEqual(restore_summary["last_scanned_at"], "2026-05-19T08:00:00+00:00")
         self.assertEqual(restore_summary["scan_evidence"]["direct_url"], "https://re-store.ru/catalog/10117E256PNKN/")
+        self.assertEqual(restore_summary["scan_evidence"]["query_terms"], ["Apple iPhone 17e 256Gb Pink"])
+
+    def test_product_source_scan_evidence_explains_store77_exact_miss(self) -> None:
+        product = {
+            "id": "product_17e",
+            "title": "Смартфон Apple iPhone 17e 256Gb Pink SIM+eSIM",
+        }
+
+        evidence = competitor_mapping_routes._product_source_scan_evidence(product, "store77")
+
+        self.assertIn("category_pages", evidence["scan_steps"])
+        self.assertIn("deterministic_url", evidence["scan_steps"])
+        self.assertTrue(evidence["category_urls"])
+        self.assertTrue(evidence["expected_urls"])
+        self.assertIn("Проверили категорию Store77", evidence["exact_miss_reason"])
+
+    def test_product_source_scan_evidence_explains_restore_partial_scan(self) -> None:
+        product = {
+            "id": "product_17e",
+            "title": "Смартфон Apple iPhone 17e 256Gb Pink SIM+eSIM",
+        }
+
+        evidence = competitor_mapping_routes._product_source_scan_evidence(product, "restore")
+
+        self.assertEqual(evidence["scan_steps"], ["direct_url", "search_terms"])
+        self.assertEqual(evidence["expected_urls"], [evidence["direct_url"]])
+        self.assertIn("re-store URL", evidence["exact_miss_reason"])
 
     def test_competitor_candidate_moderation_reads_relational_candidate_without_json(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
