@@ -979,6 +979,99 @@
   line-height:1.4;
 }
 
+.productWorkspaceLineageCard{
+  display:grid;
+  gap:12px;
+}
+
+.productWorkspaceLineageHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.productWorkspaceLineageHead strong,
+.productWorkspaceLineageHead span{
+  display:block;
+}
+
+.productWorkspaceLineageHead strong{
+  color:var(--text);
+  font-size:15px;
+  line-height:1.12;
+  font-weight:950;
+}
+
+.productWorkspaceLineageHead span{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:780;
+}
+
+.productWorkspaceLineageGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+.productWorkspaceLineageGrid button,
+.productWorkspaceLineageGrid a{
+  min-width:0;
+  min-height:92px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(var(--card-rgb), .9);
+  color:var(--text);
+  text-align:left;
+  text-decoration:none;
+  cursor:pointer;
+  display:grid;
+  align-content:start;
+  gap:5px;
+  transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.productWorkspaceLineageGrid button:hover,
+.productWorkspaceLineageGrid button:focus-visible,
+.productWorkspaceLineageGrid a:hover,
+.productWorkspaceLineageGrid a:focus-visible{
+  transform:translateY(-1px);
+  border-color:rgba(var(--brand-rgb), .32);
+  box-shadow:0 14px 34px rgba(15,23,42,.08);
+  outline:none;
+}
+
+.productWorkspaceLineageGrid span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.productWorkspaceLineageGrid strong{
+  color:var(--text);
+  font-size:24px;
+  line-height:1;
+  font-weight:950;
+}
+
+.productWorkspaceLineageGrid em{
+  min-width:0;
+  color:var(--text-soft);
+  font-size:12px;
+  line-height:1.25;
+  font-style:normal;
+  font-weight:820;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
 .productWorkspaceEmptyActions .btn{
   min-height:40px;
   padding:10px 14px;
@@ -2493,6 +2586,7 @@
 
   .productWorkspaceOverviewGrid,
   .productWorkspaceValidationGrid,
+  .productWorkspaceLineageGrid,
   .productCompetitorMetrics,
   .productCompetitorSourceGrid,
   .productCompetitorAiList,

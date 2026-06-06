@@ -538,6 +538,58 @@ function mediaShortName(url: string): string {
   return compactText(parts[parts.length - 1] || normalized, 34);
 }
 
+function productSourceLabel(value: unknown): string {
+  const raw = normalizeText(value);
+  if (!raw) return "PIM";
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("yandex") || normalized.includes("market")) return "Я.Маркет";
+  if (normalized.includes("ozon")) return "Ozon";
+  if (normalized.includes("restore")) return "re-store";
+  if (normalized.includes("store77")) return "store77";
+  if (normalized.includes("competitor")) return "Конкуренты";
+  if (normalized.includes("upload") || normalized.includes("s3")) return "S3";
+  return raw.length > 18 ? `${raw.slice(0, 18)}…` : raw;
+}
+
+function buildProductLineageSummary({
+  features,
+  media,
+  channels,
+}: {
+  features: ProductFeatureValue[];
+  media: ProductMedia[];
+  channels: ChannelsSummary | null;
+}) {
+  const sourceLabels = new Set<string>();
+  let sourceRows = 0;
+  for (const feature of features) {
+    const entries = sourceEntriesForFeature(feature);
+    if (entries.length) sourceRows += 1;
+    entries.forEach((entry) => {
+      sourceLabels.add(productSourceLabel(entry.provider));
+      if (entry.store && entry.store !== "value") sourceLabels.add(productSourceLabel(entry.store));
+    });
+  }
+  const mediaSources = new Map<string, number>();
+  media.forEach((item) => {
+    const label = mediaSourceTitle(item);
+    mediaSources.set(label, (mediaSources.get(label) || 0) + 1);
+  });
+  const activeMarketplaces = (channels?.marketplaces || []).filter((channel) => toneForStatus(channel.status) === "active").length;
+  const exportMedia = media.filter((item) => item.selected !== false).length;
+  return {
+    filledFeatures: features.filter((feature) => featureValue(feature)).length,
+    totalFeatures: features.length,
+    sourceRows,
+    sourceLabels: Array.from(sourceLabels).slice(0, 4),
+    mediaTotal: media.length,
+    exportMedia,
+    mediaSources: Array.from(mediaSources.entries()).slice(0, 4),
+    activeMarketplaces,
+    marketplacesTotal: channels?.marketplaces?.length || 0,
+  };
+}
+
 function inferBrand(title: string, features: ProductFeatureValue[] = []): string {
   const explicit = features.find((feature) => {
     const code = normalizeText(feature.code).toLowerCase();
@@ -1496,6 +1548,7 @@ function ProductWorkspaceFeature() {
     : null,
     [channels, features, infoModel, media, product],
   );
+  const lineageSummary = useMemo(() => buildProductLineageSummary({ features, media, channels }), [channels, features, media]);
 
   useEffect(() => {
     if (!product?.id) return;
@@ -1909,6 +1962,42 @@ function ProductWorkspaceFeature() {
         </Card>
       ) : null}
 
+      <Card className="productWorkspaceLineageCard">
+        <div className="productWorkspaceLineageHead">
+          <div>
+            <strong>Почему карточка заполнена</strong>
+            <span>Видно, какие данные уже есть в PIM, откуда пришли значения и что выбрано для экспорта.</span>
+          </div>
+          <Link className="btn" to={productExportHref(product.id)}>
+            Проверить payload
+          </Link>
+        </div>
+        <div className="productWorkspaceLineageGrid">
+          <button type="button" onClick={() => handleSectionSelect("attributes")}>
+            <span>Параметры PIM</span>
+            <strong>{lineageSummary.filledFeatures}/{lineageSummary.totalFeatures || 0}</strong>
+            <em>{lineageSummary.sourceRows ? `с источниками: ${lineageSummary.sourceRows}` : "источники не подтверждены"}</em>
+          </button>
+          <button type="button" onClick={() => handleSectionSelect("competitors")}>
+            <span>Источники</span>
+            <strong>{lineageSummary.sourceLabels.length || lineageSummary.mediaSources.length}</strong>
+            <em>
+              {[...lineageSummary.sourceLabels, ...lineageSummary.mediaSources.map(([label]) => label)].slice(0, 3).join(" · ") || "нет данных"}
+            </em>
+          </button>
+          <button type="button" onClick={() => handleSectionSelect("media")}>
+            <span>Медиа</span>
+            <strong>{lineageSummary.exportMedia}/{lineageSummary.mediaTotal}</strong>
+            <em>выбрано для выгрузки</em>
+          </button>
+          <Link to={productExportHref(product.id)}>
+            <span>Площадки</span>
+            <strong>{lineageSummary.activeMarketplaces}/{lineageSummary.marketplacesTotal || 0}</strong>
+            <em>активные карточки/каналы</em>
+          </Link>
+        </div>
+      </Card>
+
       <WorkspaceFrame
         className="productWorkspaceLayout"
         sidebar={
@@ -2186,6 +2275,7 @@ function ProductWorkspaceFeature() {
                           <div className="productWorkspaceMediaMeta">
                             <strong>{item.caption || `Фото ${index + 1}`}</strong>
                             <span>{mediaSourceTitle(item)} · {mediaShortName(item.url)}</span>
+                            <span>{item.selected === false ? "Не выгружать" : `Экспорт #${item.export_order ?? index + 1}`}</span>
                             {isMediaWaitingForReview(item) ? (
                               <em>Нужна проверка перед выгрузкой</em>
                             ) : null}
