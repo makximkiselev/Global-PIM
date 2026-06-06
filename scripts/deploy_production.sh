@@ -36,6 +36,9 @@ APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
 APP_PUBLIC_DB_GRANTS_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health/db-grants"
 APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
 APP_SCENARIO_SMOKE_INSECURE_SSL="${APP_SCENARIO_SMOKE_INSECURE_SSL:-0}"
+APP_SCENARIO_SMOKE_BROWSER="${APP_SCENARIO_SMOKE_BROWSER:-0}"
+APP_SCENARIO_SMOKE_REQUIRE_AUTH="${APP_SCENARIO_SMOKE_REQUIRE_AUTH:-0}"
+APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL="${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL:-0}"
 SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
@@ -57,6 +60,8 @@ Options:
 Optional post-deploy scenario smoke:
   APP_RUN_SCENARIO_SMOKE=1 scripts/deploy_production.sh
   APP_SCENARIO_SMOKE_INSECURE_SSL=1 can be used on local machines with a stale Python CA bundle.
+  APP_SCENARIO_SMOKE_BROWSER=1 runs Playwright route checks after public checks.
+  APP_SCENARIO_SMOKE_REQUIRE_AUTH=1 requires SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD.
 USAGE
       exit 0
       ;;
@@ -377,7 +382,18 @@ curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1
 curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
 if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" ]]; then
   echo "==> Scenario smoke"
-  smoke_args=(--base-url "${APP_PUBLIC_BASE_URL}" --public-only)
+  smoke_args=(--base-url "${APP_PUBLIC_BASE_URL}")
+  if [[ "${APP_SCENARIO_SMOKE_BROWSER}" != "1" ]]; then
+    smoke_args+=(--public-only)
+  else
+    smoke_args+=(--browser)
+  fi
+  if [[ "${APP_SCENARIO_SMOKE_REQUIRE_AUTH}" == "1" ]]; then
+    smoke_args+=(--require-auth)
+  fi
+  if [[ "${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL}" == "1" ]]; then
+    smoke_args+=(--allow-auth-wall)
+  fi
   if [[ "${APP_SCENARIO_SMOKE_INSECURE_SSL}" == "1" ]]; then
     smoke_args+=(--insecure-ssl)
   fi

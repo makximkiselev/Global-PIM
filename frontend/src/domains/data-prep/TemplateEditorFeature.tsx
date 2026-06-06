@@ -232,6 +232,19 @@ function sourceLabel(value: string) {
   return SOURCE_LABEL[value] || value.replace(/_/g, " ");
 }
 
+function formatModelDate(value?: string | null) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function typeLabel(value: string) {
   return TYPE_LABEL[value as AttrType] || value || "Текст";
 }
@@ -648,6 +661,12 @@ export default function TemplateEditor() {
     return row && typeof row === "object" ? (row as TemplateSourceInfo) : null;
   }, [master]);
   const modelFieldsInWork = infoModel.status === "approved" ? attrs.length : acceptedCandidates;
+  const modelHistory = useMemo(() => {
+    return (infoModel.history || [])
+      .slice()
+      .sort((a, b) => Number(b.version || 0) - Number(a.version || 0));
+  }, [infoModel.history]);
+  const latestModelVersion = modelHistory[0] || null;
   const modelSourcesText = useMemo(() => {
     if (sourceCoverage.length) {
       return sourceCoverage.map((source) => `${sourceLabel(source.provider)} ${source.fields}`).join(" · ");
@@ -1261,9 +1280,41 @@ export default function TemplateEditor() {
                       <span>В модели</span>
                       <strong>{modelFieldsInWork}</strong>
                     </div>
+                    <div className="tplModelStatusItem">
+                      <span>Версия</span>
+                      <strong>{infoModel.version || latestModelVersion?.version || "—"}</strong>
+                    </div>
                     <div className="tplModelStatusItem is-wide">
                       <span>Источники</span>
                       <strong>{modelSourcesText}</strong>
+                    </div>
+                  </div>
+
+                  <div className="tplModelVersionPanel">
+                    <div className="tplModelVersionLead">
+                      <span>История модели</span>
+                      <strong>
+                        {latestModelVersion
+                          ? `v${latestModelVersion.version || "?"} · ${latestModelVersion.attributes_count ?? attrs.length} полей`
+                          : "История появится после сохранения"}
+                      </strong>
+                      <em>{formatModelDate(infoModel.updated_at || latestModelVersion?.created_at)}</em>
+                    </div>
+                    <div className="tplModelVersionList">
+                      {modelHistory.slice(0, 4).map((item) => (
+                        <div className="tplModelVersionItem" key={`${item.version}-${item.fingerprint || item.created_at}`}>
+                          <span>v{item.version || "?"}</span>
+                          <strong>{item.attributes_count ?? "—"} полей</strong>
+                          <em>{formatModelDate(item.created_at)}</em>
+                        </div>
+                      ))}
+                      {!modelHistory.length ? (
+                        <div className="tplModelVersionItem is-empty">
+                          <span>—</span>
+                          <strong>Сохраните модель</strong>
+                          <em>После сохранения появится fingerprint версии</em>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 

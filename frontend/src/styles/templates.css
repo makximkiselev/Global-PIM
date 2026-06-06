@@ -547,7 +547,7 @@
 
 .tplModelStatusBar {
   display: grid;
-  grid-template-columns: 120px 120px minmax(240px, 1fr);
+  grid-template-columns: 120px 120px 120px minmax(240px, 1fr);
   gap: 8px;
 }
 
@@ -579,6 +579,73 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tplModelVersionPanel {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(var(--surface-rgb), 0.52);
+}
+
+.tplModelVersionLead,
+.tplModelVersionItem {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.tplModelVersionLead span,
+.tplModelVersionItem span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tplModelVersionLead strong,
+.tplModelVersionItem strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.16;
+  font-weight: 950;
+}
+
+.tplModelVersionLead em,
+.tplModelVersionItem em {
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.25;
+  font-style: normal;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tplModelVersionList {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tplModelVersionItem {
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(var(--card-rgb), 0.72);
+}
+
+.tplModelVersionItem.is-empty {
+  grid-column: 1 / -1;
 }
 
 .tplModelNextActions {

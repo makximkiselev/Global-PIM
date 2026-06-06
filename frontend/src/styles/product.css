@@ -437,8 +437,65 @@
   font-weight:1000;
 }
 
+.pn-lineageCard{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.pn-lineageGrid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+.pn-lineageTile{
+  min-width:0;
+  min-height:96px;
+  padding:12px;
+  border:1px solid rgba(11,18,32,.08);
+  border-radius:16px;
+  background:#fff;
+  text-align:left;
+  cursor:pointer;
+  display:grid;
+  align-content:start;
+  gap:5px;
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.pn-lineageTile:hover,
+.pn-lineageTile:focus-visible{
+  transform:translateY(-1px);
+  border-color:rgba(255,107,61,.28);
+  box-shadow:0 14px 32px rgba(15,23,42,.07);
+  outline:none;
+}
+.pn-lineageTile span{
+  color:#667085;
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.045em;
+  text-transform:uppercase;
+}
+.pn-lineageTile strong{
+  color:#101828;
+  font-size:24px;
+  line-height:1;
+  font-weight:1000;
+}
+.pn-lineageTile em{
+  min-width:0;
+  color:#667085;
+  font-size:12px;
+  font-style:normal;
+  font-weight:850;
+  line-height:1.25;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
 @media (max-width: 1240px){
-  .pn-workflowNextGrid{
+  .pn-workflowNextGrid,
+  .pn-lineageGrid{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
@@ -467,4 +524,10 @@
   min-height: 32px;
   padding: 6px 8px;
   font-size: 12px;
+}
+
+@media (max-width: 680px){
+  .pn-lineageGrid{
+    grid-template-columns:1fr;
+  }
 }

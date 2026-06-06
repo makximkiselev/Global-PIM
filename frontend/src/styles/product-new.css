@@ -1335,6 +1335,35 @@
   display:block;
 }
 
+.pn-imageLineage{
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:7px 8px;
+  border:1px solid rgba(148,163,184,.18);
+  border-radius:12px;
+  background:rgba(248,250,252,.9);
+}
+
+.pn-imageLineage span,
+.pn-imageLineage em{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.pn-imageLineage span{ color:var(--text); }
+.pn-imageLineage em{
+  color:var(--muted);
+  font-style:normal;
+}
+
 .pn-imageCardCaption{
   min-height:36px;
 }

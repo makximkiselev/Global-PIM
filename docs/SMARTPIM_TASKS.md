@@ -162,12 +162,18 @@ Done:
 8. Export package rows now include a payload `audit` block with price source, media count, attribute source coverage, and missing source names so the UI can show why a ready payload is trustworthy.
 9. `scripts/scenario_smoke.py` supports authenticated browser smoke with `--require-auth` / `SMARTPIM_SMOKE_REQUIRE_AUTH=1`; QA credentials stay outside git in `SMARTPIM_SMOKE_EMAIL` and `SMARTPIM_SMOKE_PASSWORD`.
 10. Template saves now stamp bounded info-model history in `meta.info_model.history` with version, status, timestamp, attribute count and stable fingerprint. Re-saving unchanged templates does not create duplicate versions.
+11. Product cards now show a compact lineage block for PIM parameters, source evidence, marketplace mapping, media selected for export, and source labels. Media cards also show source/order labels next to the export checkbox.
+12. Template editor now surfaces the stored info-model version history: current version, updated timestamp, attribute count and recent saved versions.
+13. Deploy scenario smoke can run browser/auth checks without committing secrets:
+    - `APP_SCENARIO_SMOKE_BROWSER=1` enables browser route checks;
+    - `APP_SCENARIO_SMOKE_REQUIRE_AUTH=1` requires `SMARTPIM_SMOKE_EMAIL` and `SMARTPIM_SMOKE_PASSWORD`;
+    - credentials stay in production env/secret storage, not in git.
 
 Next:
 
-1. Promote product lineage from sampled operations diagnostics into every export value and media row in the product card where it is still hidden behind raw `source_values`.
-2. Add author, diff, rollback and export-impact preview on top of the new info-model version snapshots.
-3. Store QA smoke credentials in production secret storage and enable authenticated smoke in the deploy pipeline.
+1. Add author, diff, rollback and export-impact preview on top of the new info-model version snapshots.
+2. Store QA smoke credentials in production secret storage and enable authenticated smoke flags for the real deploy environment.
+3. Expand the product-card lineage from compact summary/media labels into per-parameter export-value diffs where the row still needs manual validation.
 
 Priority order:
 

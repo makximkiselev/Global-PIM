@@ -55,6 +55,16 @@ export type InfoModelSummary = {
   draft_sources?: string[];
   draft_generated_at?: string | null;
   approved_at?: string | null;
+  version?: number;
+  updated_at?: string | null;
+  history?: Array<{
+    version?: number;
+    created_at?: string;
+    status?: string;
+    fingerprint?: string;
+    attributes_count?: number;
+    author?: string;
+  }>;
 };
 
 export function modelStatusLabel(status: InfoModelStatus): string {

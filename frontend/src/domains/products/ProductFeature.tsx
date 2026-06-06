@@ -270,6 +270,19 @@ function sourceValueText(source: ParameterFlowSource): string {
   }
   return canonical || raw || "—";
 }
+
+function compactSourceLabel(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "PIM";
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("yandex") || normalized.includes("market")) return "Я.Маркет";
+  if (normalized.includes("ozon")) return "Ozon";
+  if (normalized.includes("restore")) return "Re:Store";
+  if (normalized.includes("store77")) return "Store77";
+  if (normalized.includes("competitor")) return "Конкуренты";
+  if (normalized.includes("upload")) return "Файл";
+  return raw.length > 18 ? `${raw.slice(0, 18)}…` : raw;
+}
 type GroupProductItem = {
   id: string;
   title?: string;
@@ -662,6 +675,43 @@ export default function ProductFeature() {
   const descriptionPreviewHtml = useMemo(() => renderDescriptionHtml(content.description), [content.description]);
   const currentHeroImage = (content.media_images || [])[heroImageIndex] || null;
   const currentModalImage = imageModalIndex != null ? (content.media_images || [])[imageModalIndex] || null : null;
+  const lineageSummary = useMemo(() => {
+    const flowItems = parameterFlow?.items || [];
+    const sourceLabels = new Set<string>();
+    let sourceRows = 0;
+    let marketplaceRows = 0;
+    let missingMarketplaceValues = 0;
+    for (const row of flowItems) {
+      if (row.sources?.length) {
+        sourceRows += 1;
+        row.sources.forEach((source) => sourceLabels.add(compactSourceLabel(source.source_label || source.source_id)));
+      }
+      if (row.marketplaces?.length) {
+        marketplaceRows += 1;
+        row.marketplaces.forEach((item) => {
+          if (item.status === "value_missing" || item.status === "empty") missingMarketplaceValues += 1;
+        });
+      }
+    }
+    const images = content.media_images || [];
+    const exportImages = images.filter((item) => item.selected !== false).length;
+    const mediaSources = new Map<string, number>();
+    images.forEach((item) => {
+      const label = compactSourceLabel(item.source || item.source_product_id || item.external_url || item.url);
+      mediaSources.set(label, (mediaSources.get(label) || 0) + 1);
+    });
+    return {
+      filledFeatures: sortedFeatures.filter((item) => String(item.value || "").trim()).length,
+      totalFeatures: sortedFeatures.length,
+      sourceRows,
+      sourceLabels: Array.from(sourceLabels).slice(0, 4),
+      marketplaceRows,
+      missingMarketplaceValues,
+      mediaTotal: images.length,
+      exportImages,
+      mediaSources: Array.from(mediaSources.entries()).slice(0, 4),
+    };
+  }, [parameterFlow, content.media_images, sortedFeatures]);
 
   const marketplaces = channelsSummary.marketplaces || [];
   const selectedMarketplace = openMarketplace
@@ -1694,6 +1744,42 @@ export default function ProductFeature() {
         </div>
       </div>
 
+      <div className="pn-card pn-lineageCard">
+        <div className="pn-sectionHeader">
+          <div>
+            <div className="pn-cardTitle">Почему карточка заполнена</div>
+            <div className="pn-muted">Короткая трассировка по текущему SKU: параметры, медиа и готовность к выгрузке.</div>
+          </div>
+          <Link className="pn-editBtn" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`}>
+            Проверить payload
+          </Link>
+        </div>
+        <div className="pn-lineageGrid">
+          <button className="pn-lineageTile" type="button" onClick={() => setTab("features")}>
+            <span>Параметры PIM</span>
+            <strong>{lineageSummary.filledFeatures}/{lineageSummary.totalFeatures || 0}</strong>
+            <em>{lineageSummary.sourceRows ? `У ${lineageSummary.sourceRows} есть источники` : "Источники не подтверждены"}</em>
+          </button>
+          <button className="pn-lineageTile" type="button" onClick={() => setTab("features")}>
+            <span>Площадки</span>
+            <strong>{lineageSummary.marketplaceRows}</strong>
+            <em>{lineageSummary.missingMarketplaceValues ? `Без значения: ${lineageSummary.missingMarketplaceValues}` : "Нет явных пропусков"}</em>
+          </button>
+          <button className="pn-lineageTile" type="button" onClick={() => setTab("media")}>
+            <span>Медиа</span>
+            <strong>{lineageSummary.exportImages}/{lineageSummary.mediaTotal}</strong>
+            <em>Выбрано для экспорта</em>
+          </button>
+          <button className="pn-lineageTile" type="button" onClick={() => setTab("sources")}>
+            <span>Источники</span>
+            <strong>{lineageSummary.sourceLabels.length || lineageSummary.mediaSources.length}</strong>
+            <em>
+              {[...lineageSummary.sourceLabels, ...lineageSummary.mediaSources.map(([label]) => label)].slice(0, 3).join(" · ") || "Нет данных"}
+            </em>
+          </button>
+        </div>
+      </div>
+
       <div className="pn-card">
         <div className="pn-tabs pn-tabsUnder pn-productFlowNav" aria-label="Маршрут карточки товара">
           <button className={`pn-tab ${tab === "description" ? "isActive" : ""}`} onClick={() => setTab("description")} type="button">
@@ -1945,6 +2031,10 @@ export default function ProductFeature() {
                       <button className="pn-imageCardPreview" type="button" onClick={() => setImageModalIndex(idx)}>
                         {m.url ? <img src={toRenderableMediaUrl(m.url)} alt={m.caption || `Изображение ${idx + 1}`} /> : <span>Нет</span>}
                       </button>
+                      <div className="pn-imageLineage">
+                        <span>{compactSourceLabel(m.source || m.source_product_id || m.external_url || m.url)}</span>
+                        <em>{m.selected === false ? "Не выгружать" : `Экспорт #${m.export_order || idx + 1}`}</em>
+                      </div>
                       <div className="pn-imageExportControls">
                         <label className="pn-imageExportToggle">
                           <input
