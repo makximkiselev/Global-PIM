@@ -944,6 +944,10 @@ Next fix in the category flow:
    - default fixture is category `12547e4d-7713-414e-8aaf-a2fe919e1d3d`, product `product_70`, marker `50001`;
    - deploy can enable it with `APP_SCENARIO_SMOKE_PRODUCT_FLOW=1`;
    - category/product/SKU markers are configurable through `SMARTPIM_SMOKE_FLOW_CATEGORY_ID`, `SMARTPIM_SMOKE_FLOW_PRODUCT_ID`, and `SMARTPIM_SMOKE_FLOW_SKU_MARKER`.
+26. `/admin/status` now surfaces product-flow smoke readiness as booleans:
+   - shows whether `SMARTPIM_SMOKE_PRODUCT_FLOW` / `APP_SCENARIO_SMOKE_PRODUCT_FLOW` is enabled;
+   - shows whether flow category/product/SKU markers are configured;
+   - does not serialize credentials or exact fixture identifiers.
 
 Next block:
 

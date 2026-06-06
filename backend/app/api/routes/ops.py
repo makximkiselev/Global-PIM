@@ -715,6 +715,10 @@ def _auth_smoke_section() -> Dict[str, Any]:
     enabled = _text(os.getenv("SMARTPIM_AUTH_SMOKE")).lower() in {"1", "true", "yes", "on"}
     email_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_EMAIL")))
     password_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_PASSWORD")))
+    product_flow_enabled = _text(os.getenv("SMARTPIM_SMOKE_PRODUCT_FLOW") or os.getenv("APP_SCENARIO_SMOKE_PRODUCT_FLOW")).lower() in {"1", "true", "yes", "on"}
+    flow_category_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_FLOW_CATEGORY_ID")))
+    flow_product_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_FLOW_PRODUCT_ID")))
+    flow_sku_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_FLOW_SKU_MARKER")))
     ready = enabled and email_configured and password_configured
     partial = enabled and not ready
     status = "ok" if ready else "critical" if partial else "warn"
@@ -733,6 +737,10 @@ def _auth_smoke_section() -> Dict[str, Any]:
             "email_configured": email_configured,
             "password_configured": password_configured,
             "ready": ready,
+            "product_flow_enabled": product_flow_enabled,
+            "flow_category_configured": flow_category_configured,
+            "flow_product_configured": flow_product_configured,
+            "flow_sku_configured": flow_sku_configured,
         },
         items=[
             {
@@ -744,6 +752,16 @@ def _auth_smoke_section() -> Dict[str, Any]:
                 "title": "SMARTPIM_SMOKE_EMAIL / SMARTPIM_SMOKE_PASSWORD",
                 "issue": "Секреты заданы вне git." if email_configured and password_configured else "Нужно задать оба секрета на сервере/в окружении deploy.",
                 "status": "configured" if email_configured and password_configured else "missing",
+            },
+            {
+                "title": "SMARTPIM_SMOKE_PRODUCT_FLOW / APP_SCENARIO_SMOKE_PRODUCT_FLOW",
+                "issue": "Полный browser-flow SKU включен." if product_flow_enabled else "Выключен; browser smoke проверяет только базовые маршруты.",
+                "status": "configured" if product_flow_enabled else "disabled",
+            },
+            {
+                "title": "SMARTPIM_SMOKE_FLOW_*",
+                "issue": "Fixture category/product/SKU задан." if flow_category_configured and flow_product_configured and flow_sku_configured else "Можно оставить дефолтный product_70/50001 или явно задать category/product/SKU markers.",
+                "status": "configured" if flow_category_configured and flow_product_configured and flow_sku_configured else "default",
             },
         ],
     )

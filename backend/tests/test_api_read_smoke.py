@@ -219,6 +219,10 @@ class ApiReadSmokeTests(unittest.TestCase):
                 "SMARTPIM_AUTH_SMOKE": "1",
                 "SMARTPIM_SMOKE_EMAIL": "qa@example.test",
                 "SMARTPIM_SMOKE_PASSWORD": "super-secret",
+                "SMARTPIM_SMOKE_PRODUCT_FLOW": "1",
+                "SMARTPIM_SMOKE_FLOW_CATEGORY_ID": "category-secret-ish",
+                "SMARTPIM_SMOKE_FLOW_PRODUCT_ID": "product_70",
+                "SMARTPIM_SMOKE_FLOW_SKU_MARKER": "50001",
             },
             clear=False,
         ):
@@ -228,8 +232,13 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(section["totals"]["enabled"], True)
         self.assertEqual(section["totals"]["email_configured"], True)
         self.assertEqual(section["totals"]["password_configured"], True)
+        self.assertEqual(section["totals"]["product_flow_enabled"], True)
+        self.assertEqual(section["totals"]["flow_category_configured"], True)
+        self.assertEqual(section["totals"]["flow_product_configured"], True)
+        self.assertEqual(section["totals"]["flow_sku_configured"], True)
         self.assertNotIn("qa@example.test", str(section))
         self.assertNotIn("super-secret", str(section))
+        self.assertNotIn("category-secret-ish", str(section))
 
     def test_template_save_stamps_bounded_info_model_history(self) -> None:
         saved: list[dict] = []
