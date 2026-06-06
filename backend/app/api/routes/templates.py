@@ -1234,6 +1234,7 @@ def template_versions_impact(template_id: str) -> Dict[str, Any]:
             "attributes_count": row.get("attributes_count"),
             "fingerprint": row.get("fingerprint"),
             "author": row.get("author"),
+            "rollback_available": isinstance(row.get("attributes_snapshot"), list),
         }
         for row in history
         if isinstance(row, dict)
@@ -1263,6 +1264,7 @@ def template_versions_impact(template_id: str) -> Dict[str, Any]:
             "attributes_current": len(attrs),
             "attributes_delta": latest_count - previous_count,
             "fingerprint_changed": bool(latest and previous and latest.get("fingerprint") != previous.get("fingerprint")),
+            "rollback_available": any(bool(row.get("rollback_available")) for row in safe_history),
         },
         "export_impact": {
             "fields_total": len(marketplace_fields),
@@ -1270,6 +1272,45 @@ def template_versions_impact(template_id: str) -> Dict[str, Any]:
             "sample_fields": marketplace_fields[:12],
         },
     }
+
+
+@router.post("/{template_id}/versions/{version}/rollback")
+def rollback_template_version(template_id: str, version: int) -> Dict[str, Any]:
+    _editor_reference_cache["ts"] = 0.0
+    _editor_reference_cache["payload"] = None
+    db = load_templates_db()
+    tpl = (db.get("templates") or {}).get(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="template not found")
+    meta = tpl.get("meta") if isinstance(tpl.get("meta"), dict) else {}
+    info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
+    history = info_model.get("history") if isinstance(info_model.get("history"), list) else []
+    target = next(
+        (
+            row
+            for row in history
+            if isinstance(row, dict) and int(row.get("version") or -1) == int(version)
+        ),
+        None,
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="version not found")
+    snapshot = target.get("attributes_snapshot") if isinstance(target.get("attributes_snapshot"), list) else None
+    if snapshot is None:
+        raise HTTPException(status_code=409, detail="version has no attributes snapshot")
+
+    db.setdefault("attributes", {})[template_id] = snapshot
+    info_model["status"] = str(info_model.get("status") or "draft")
+    info_model["rollback_from_version"] = int(version)
+    info_model["rollback_at"] = now_iso()
+    meta["info_model"] = info_model
+    tpl["meta"] = meta
+    tpl["updated_at"] = now_iso()
+    db.setdefault("templates", {})[template_id] = tpl
+    save_templates_db(db)
+    next_tpl = (db.get("templates") or {}).get(template_id) or tpl
+    next_attrs = (db.get("attributes") or {}).get(template_id, []) or []
+    return {"ok": True, "template": next_tpl, "attributes": next_attrs}
 
 
 @router.put("/{template_id}")

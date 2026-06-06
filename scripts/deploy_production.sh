@@ -128,6 +128,10 @@ require_file "${ROOT_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}"
 require_file "${ROOT_DIR}/deploy/systemd/${APP_VALUE_WORKER_SERVICE_NAME}"
 require_file "${ROOT_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}"
 require_file "${DB_CA_CERT_PATH}"
+if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" && "${APP_SCENARIO_SMOKE_BROWSER}" == "1" && "${APP_SCENARIO_SMOKE_REQUIRE_AUTH}" == "1" ]]; then
+  require_env SMARTPIM_SMOKE_EMAIL
+  require_env SMARTPIM_SMOKE_PASSWORD
+fi
 
 if [[ "${SKIP_BUILD}" == "1" ]]; then
   require_file "${ROOT_DIR}/frontend/dist/index.html"

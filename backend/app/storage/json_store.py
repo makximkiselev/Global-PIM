@@ -194,7 +194,15 @@ def _stamp_template_versions(db: Dict[str, Any]) -> None:
         info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
         history = info_model.get("history") if isinstance(info_model.get("history"), list) else []
         fingerprint = _template_fingerprint(template, attrs)
+        attrs_snapshot = json.loads(json.dumps(attrs, ensure_ascii=False, default=str))
         if history and str(history[-1].get("fingerprint") or "") == fingerprint:
+            latest = history[-1]
+            if isinstance(latest, dict) and "attributes_snapshot" not in latest:
+                latest["attributes_snapshot"] = attrs_snapshot
+                latest["attributes_count"] = len(attrs)
+                info_model["history"] = history
+                meta["info_model"] = info_model
+                template["meta"] = meta
             continue
         next_version = int(history[-1].get("version") or 0) + 1 if history else 1
         history = [*history[-24:], {
@@ -203,6 +211,7 @@ def _stamp_template_versions(db: Dict[str, Any]) -> None:
             "status": str(info_model.get("status") or "draft"),
             "fingerprint": fingerprint,
             "attributes_count": len(attrs),
+            "attributes_snapshot": attrs_snapshot,
         }]
         info_model["history"] = history
         info_model["version"] = next_version

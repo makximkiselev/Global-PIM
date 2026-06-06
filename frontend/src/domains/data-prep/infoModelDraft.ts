@@ -64,6 +64,7 @@ export type InfoModelSummary = {
     fingerprint?: string;
     attributes_count?: number;
     author?: string;
+    rollback_available?: boolean;
   }>;
 };
 

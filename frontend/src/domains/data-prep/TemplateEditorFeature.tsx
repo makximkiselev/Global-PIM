@@ -65,13 +65,15 @@ type TemplateSourceInfo = {
 };
 
 type TemplateVersionImpact = {
-  latest?: { version?: number; created_at?: string; attributes_count?: number; fingerprint?: string } | null;
-  previous?: { version?: number; created_at?: string; attributes_count?: number; fingerprint?: string } | null;
+  latest?: { version?: number; created_at?: string; attributes_count?: number; fingerprint?: string; rollback_available?: boolean } | null;
+  previous?: { version?: number; created_at?: string; attributes_count?: number; fingerprint?: string; rollback_available?: boolean } | null;
+  history?: Array<{ version?: number; created_at?: string; attributes_count?: number; fingerprint?: string; rollback_available?: boolean }>;
   diff_summary?: {
     versions?: number;
     attributes_current?: number;
     attributes_delta?: number;
     fingerprint_changed?: boolean;
+    rollback_available?: boolean;
   };
   export_impact?: {
     fields_total?: number;
@@ -417,6 +419,7 @@ export default function TemplateEditor() {
   const [master, setMaster] = useState<TemplateMaster | null>(null);
   const [infoModel, setInfoModel] = useState<InfoModelSummary>({ status: "none" });
   const [versionImpact, setVersionImpact] = useState<TemplateVersionImpact | null>(null);
+  const [rollbackBusy, setRollbackBusy] = useState(false);
   const [attrTab, setAttrTabState] = useState<"all" | "base" | "category">(normalizeAttrTab(searchParams.get("tab")));
   const [draftFilter, setDraftFilter] = useState<DraftFilter>("needs_review");
   const [draftSort, setDraftSort] = useState<DraftSort>("decision");
@@ -972,6 +975,23 @@ export default function TemplateEditor() {
     }
   }
 
+  async function rollbackModelVersion(version?: number) {
+    const templateId = ownerTpl?.id || tpl?.id;
+    if (!templateId || !version || rollbackBusy) return;
+    const ok = window.confirm(`Откатить инфо-модель к версии v${version}? Будет создана новая текущая версия из snapshot, история не удалится.`);
+    if (!ok) return;
+    setRollbackBusy(true);
+    try {
+      await api(`/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(String(version))}/rollback`, {
+        method: "POST",
+      });
+      showToast(`Откат к v${version} выполнен`);
+      await load();
+    } finally {
+      setRollbackBusy(false);
+    }
+  }
+
   async function saveAll() {
     if (!ownerTpl?.id) return;
 
@@ -1331,11 +1351,20 @@ export default function TemplateEditor() {
                       <em>{formatModelDate(infoModel.updated_at || latestModelVersion?.created_at)}</em>
                     </div>
                     <div className="tplModelVersionList">
-                      {modelHistory.slice(0, 4).map((item) => (
+                      {(versionImpact?.history || modelHistory)
+                        .slice()
+                        .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))
+                        .slice(0, 4)
+                        .map((item) => (
                         <div className="tplModelVersionItem" key={`${item.version}-${item.fingerprint || item.created_at}`}>
                           <span>v{item.version || "?"}</span>
                           <strong>{item.attributes_count ?? "—"} полей</strong>
                           <em>{formatModelDate(item.created_at)}</em>
+                          {item.rollback_available ? (
+                            <button type="button" disabled={rollbackBusy} onClick={() => rollbackModelVersion(item.version)}>
+                              Откатить
+                            </button>
+                          ) : null}
                         </div>
                       ))}
                       {!modelHistory.length ? (
@@ -1372,7 +1401,11 @@ export default function TemplateEditor() {
                           .filter(Boolean)
                           .join(" · ") || "нет выборки"}
                       </strong>
-                      <em>Rollback не включен, пока нет полного diff API и подтверждения влияния на товары.</em>
+                      <em>
+                        {impactSummary?.rollback_available
+                          ? "Rollback доступен только для версий со snapshot и создает новую текущую версию."
+                          : "Rollback появится после сохранения версии со snapshot атрибутов."}
+                      </em>
                     </div>
                   </div>
 

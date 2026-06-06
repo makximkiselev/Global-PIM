@@ -185,6 +185,36 @@ type ChannelsSummary = {
   competitors: CompetitorChannel[];
 };
 
+type ProductParameterFlowMarketplace = {
+  provider: string;
+  provider_label: string;
+  target_id?: string;
+  target_name?: string;
+  output_value?: string;
+  status?: string;
+  label?: string;
+  mapping_reason?: string;
+};
+
+type ProductParameterFlowRow = {
+  key: string;
+  code?: string;
+  name: string;
+  value?: string;
+  status?: string;
+  marketplaces?: ProductParameterFlowMarketplace[];
+};
+
+type ProductParameterFlow = {
+  summary?: {
+    features_ready?: number;
+    features_attention?: number;
+    features_empty?: number;
+    source_values?: number;
+  };
+  items?: ProductParameterFlowRow[];
+};
+
 type SectionId =
   | "overview"
   | "attributes"
@@ -487,33 +517,15 @@ function sourceEntriesForFeature(feature: ProductFeatureValue) {
   return entries;
 }
 
-function normalizeForMarketplace(provider: string, value: string): string {
-  const normalized = normalizeText(value);
-  if (!normalized) return "Не заполнено";
-  const lower = normalized.toLowerCase();
-  const memoryMatch = lower.match(/(\d+)\s*(гб|gb|тб|tb)/i);
-  if (memoryMatch) {
-    const amount = memoryMatch[1];
-    const unit = memoryMatch[2].toLowerCase();
-    const isTb = unit === "тб" || unit === "tb";
-    if (provider.includes("ozon")) return `${amount}${isTb ? "TB" : "GB"}`;
-    if (provider.includes("wildberries")) return amount;
-    return `${amount} ${isTb ? "ТБ" : "ГБ"}`;
-  }
-  if (provider.includes("ozon")) return normalized.replace(/\s+/g, " ");
-  return normalized;
-}
-
-function marketplaceProjections(value: string, channels: ChannelsSummary | null) {
-  const providers = channels?.marketplaces.length
-    ? channels.marketplaces.map((item) => item.title)
-    : ["Яндекс Маркет", "Ozon", "Wildberries"];
-  return providers.map((provider) => ({
-    provider,
-    value: normalizeForMarketplace(provider.toLowerCase(), value),
-    status: value ? "готово" : "нет значения",
-    changed: Boolean(value) && normalizeForMarketplace(provider.toLowerCase(), value) !== value,
-  }));
+function flowRowForFeature(parameterFlow: ProductParameterFlow | null, feature: ProductFeatureValue | null) {
+  if (!feature) return null;
+  const code = featureIdentity(feature.code);
+  const name = featureIdentity(feature.name);
+  return (parameterFlow?.items || []).find((row) => {
+    const rowCode = featureIdentity(row.code);
+    const rowName = featureIdentity(row.name);
+    return (code && rowCode === code) || (name && rowName === name) || (code && rowName === code) || (name && rowCode === name);
+  }) || null;
 }
 
 function mediaSourceLabel(url: string): string {
@@ -777,6 +789,7 @@ function ProductAttributeWorkbench({
   hasInfoModel,
   rawFeatureCount,
   channels,
+  parameterFlow,
   selectedKey,
   onSelect,
 }: {
@@ -784,6 +797,7 @@ function ProductAttributeWorkbench({
   hasInfoModel: boolean;
   rawFeatureCount: number;
   channels: ChannelsSummary | null;
+  parameterFlow: ProductParameterFlow | null;
   selectedKey: string;
   onSelect: (key: string) => void;
 }) {
@@ -792,11 +806,13 @@ function ProductAttributeWorkbench({
   }, [features, selectedKey]);
   const selectedValue = selectedFeature ? featureValue(selectedFeature) : "";
   const sourceEntries = selectedFeature ? sourceEntriesForFeature(selectedFeature) : [];
-  const projections = marketplaceProjections(selectedValue, channels);
+  const selectedFlowRow = flowRowForFeature(parameterFlow, selectedFeature);
+  const projections = selectedFlowRow?.marketplaces || [];
   const filledCount = features.filter((feature) => featureValue(feature)).length;
   const withSourceCount = features.filter((feature) => sourceEntriesForFeature(feature).length).length;
   const noValueCount = features.filter((feature) => !featureValue(feature)).length;
-  const exportReadyCount = features.filter((feature) => featureValue(feature) && sourceEntriesForFeature(feature).length).length;
+  const exportReadyCount = Number(parameterFlow?.summary?.features_ready || 0) || features.filter((feature) => featureValue(feature) && sourceEntriesForFeature(feature).length).length;
+  const attentionCount = Number(parameterFlow?.summary?.features_attention || 0);
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
@@ -833,7 +849,7 @@ function ProductAttributeWorkbench({
         <div className="productParamExportSummary">
           <span><b>{exportReadyCount}</b>готовы с источником</span>
           <span><b>{withSourceCount}</b>с источником</span>
-          <span><b>{noValueCount}</b>без значения</span>
+          <span><b>{attentionCount || noValueCount}</b>{attentionCount ? "проверить" : "без значения"}</span>
         </div>
         <div className="productParamSearchHint">Выберите параметр, чтобы увидеть как он собрался и как уйдет на площадки.</div>
         <div className="productParamList">
@@ -918,16 +934,25 @@ function ProductAttributeWorkbench({
                   <em>{sourceEntries.length ? `источников: ${sourceEntries.length}` : "источник не зафиксирован"}</em>
                 </div>
                 <div className="productMarketplaceProjectionList">
-                  {projections.map((projection) => (
-                    <article key={projection.provider} className="productMarketplaceProjection">
+                  {projections.length ? projections.map((projection) => (
+                    <article key={`${projection.provider}-${projection.target_id || projection.target_name || projection.label}`} className="productMarketplaceProjection">
                       <div>
-                        <strong>{projection.provider}</strong>
-                        <span>{projection.changed ? "нормализовано" : projection.status}</span>
+                        <strong>{projection.provider_label || projection.provider}</strong>
+                        <span>{projection.label || projection.status || "нет статуса"}</span>
                       </div>
-                      <code>{projection.value}</code>
-                      <em>{selectedValue ? `PIM -> ${projection.provider}` : "нет PIM-значения для экспорта"}</em>
+                      <code>{projection.output_value || "Не заполнено"}</code>
+                      <em>
+                        {selectedValue
+                          ? `PIM -> ${projection.target_name || projection.target_id || projection.provider_label || projection.provider}`
+                          : "нет PIM-значения для экспорта"}
+                        {projection.mapping_reason ? ` · ${projection.mapping_reason}` : ""}
+                      </em>
                     </article>
-                  ))}
+                  )) : (
+                    <div className="productParamEmpty">
+                      Реальных export projections пока нет: проверьте сопоставление параметра с Я.Маркет/Ozon.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1334,6 +1359,7 @@ function ProductWorkspaceFeature() {
   const [variants, setVariants] = useState<VariantData[]>([]);
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [channels, setChannels] = useState<ChannelsSummary | null>(null);
+  const [parameterFlow, setParameterFlow] = useState<ProductParameterFlow | null>(null);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>(() => sectionFromTab(searchParams.get("tab")));
   const [selectedFeatureKey, setSelectedFeatureKey] = useState("");
@@ -1362,6 +1388,7 @@ function ProductWorkspaceFeature() {
       setVariants([]);
       setNodes([]);
       setChannels(null);
+      setParameterFlow(null);
       setChannelsLoading(false);
       setCompetitorProductId("");
       setCompetitorSkuStatuses({});
@@ -1460,6 +1487,12 @@ function ProductWorkspaceFeature() {
           if (!cancelled) setChannels(null);
         } finally {
           if (!cancelled) setChannelsLoading(false);
+        }
+        try {
+          const flowResponse = await api<ProductParameterFlow>(`/products/${productId}/parameter-flow`);
+          if (!cancelled) setParameterFlow(flowResponse);
+        } catch {
+          if (!cancelled) setParameterFlow(null);
         }
       } catch (err) {
         if (cancelled) return;
@@ -2055,6 +2088,7 @@ function ProductWorkspaceFeature() {
                   hasInfoModel={hasInfoModel}
                   rawFeatureCount={rawFeatures.length}
                   channels={channels}
+                  parameterFlow={parameterFlow}
                   selectedKey={selectedFeatureKey}
                   onSelect={setSelectedFeatureKey}
                 />

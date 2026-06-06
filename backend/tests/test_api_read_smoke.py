@@ -234,6 +234,68 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(len(second_history), 1)
         self.assertEqual(len(third_history), 2)
         self.assertEqual(saved[2]["templates"]["tpl1"]["meta"]["info_model"]["version"], 2)
+        self.assertEqual(first_history[0]["attributes_snapshot"][0]["code"], "brand")
+
+    def test_template_version_rollback_restores_snapshot(self) -> None:
+        db = {
+            "version": 2,
+            "templates": {
+                "tpl1": {
+                    "id": "tpl1",
+                    "name": "Phones",
+                    "category_id": "cat1",
+                    "meta": {
+                        "info_model": {
+                            "status": "approved",
+                            "history": [
+                                {
+                                    "version": 1,
+                                    "created_at": "2026-01-01T00:00:00+00:00",
+                                    "fingerprint": "old",
+                                    "attributes_count": 1,
+                                    "attributes_snapshot": [{"id": "a1", "name": "Бренд", "code": "brand", "type": "text"}],
+                                },
+                                {
+                                    "version": 2,
+                                    "created_at": "2026-01-02T00:00:00+00:00",
+                                    "fingerprint": "new",
+                                    "attributes_count": 2,
+                                    "attributes_snapshot": [
+                                        {"id": "a1", "name": "Бренд", "code": "brand", "type": "text"},
+                                        {"id": "a2", "name": "Память", "code": "memory", "type": "text"},
+                                    ],
+                                },
+                            ],
+                        }
+                    },
+                }
+            },
+            "attributes": {
+                "tpl1": [
+                    {"id": "a1", "name": "Бренд", "code": "brand", "type": "text"},
+                    {"id": "a2", "name": "Память", "code": "memory", "type": "text"},
+                ]
+            },
+        }
+        saved: list[dict] = []
+
+        def fake_save(payload):
+            storage_json_store.save_templates_db(payload)
+            saved.append(deepcopy(payload))
+
+        with (
+            patch.object(templates_routes, "load_templates_db", return_value=deepcopy(db)),
+            patch.object(templates_routes, "save_templates_db", side_effect=fake_save),
+            patch.object(storage_json_store, "save_templates_db_rel", return_value=None),
+        ):
+            response = self.client.post("/api/templates/tpl1/versions/1/rollback")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["ok"], True)
+        self.assertEqual(len(body["attributes"]), 1)
+        self.assertEqual(body["attributes"][0]["code"], "brand")
+        self.assertEqual(saved[0]["templates"]["tpl1"]["meta"]["info_model"]["rollback_from_version"], 1)
 
     def test_ozon_type_ids_resolve_from_flat_category_tree(self) -> None:
         doc = {

@@ -174,12 +174,18 @@ Done:
     - current/previous version summary;
     - attribute delta and fingerprint change;
     - export-impact counters and sample fields to re-check.
+16. Info-model version rollback is backend-safe for versions that have an attribute snapshot:
+    - new saves stamp `attributes_snapshot` inside bounded `meta.info_model.history`;
+    - `GET /api/templates/{template_id}/versions/impact` marks `rollback_available`;
+    - `POST /api/templates/{template_id}/versions/{version}/rollback` restores the snapshot as a new current model version and preserves history.
+17. Product parameter export diff now uses the same backend `/products/{product_id}/parameter-flow` marketplace outputs that feed export readiness/value mapping, instead of frontend-only normalization.
+18. Deploy fails fast when authenticated browser smoke is enabled without `SMARTPIM_SMOKE_EMAIL` / `SMARTPIM_SMOKE_PASSWORD`, before uploading/restarting production.
 
 Next:
 
-1. Add safe rollback for info-model versions after the backend can restore a historical attribute snapshot, not just metadata.
-2. Store QA smoke credentials in production secret storage and enable authenticated smoke flags for the real deploy environment.
-3. Replace frontend-only marketplace value normalization in the product parameter panel with the same provider/export mapping engine used by the export package.
+1. Store QA smoke credentials in production secret storage and enable authenticated smoke flags for the real deploy environment.
+2. Add a dedicated rollback preview modal with exact field add/remove/change lists before executing rollback.
+3. Reuse `/parameter-flow` in older legacy product UI or remove that legacy surface once the workspace route is confirmed everywhere.
 
 Priority order:
 
