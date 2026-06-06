@@ -24,6 +24,7 @@ import Register from "../pages/Register";
 import InviteAccept from "../pages/InviteAccept";
 import AdminAccessRoute from "../routes/AdminAccessRoute";
 import OrganizationsRoute from "../routes/OrganizationsRoute";
+import SystemStatusRoute from "../routes/SystemStatusRoute";
 import DictionariesRoute from "../routes/DictionariesRoute";
 import DictionaryEditorRoute from "../routes/DictionaryEditorRoute";
 import SourcesMappingRoute from "../routes/SourcesMappingRoute";
@@ -110,6 +111,7 @@ function ProtectedApp() {
         <Route path="/admin/members" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="members" /></RequirePage>} />
         <Route path="/admin/invites" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="invites" /></RequirePage>} />
         <Route path="/admin/platform" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="platform" /></RequirePage>} />
+        <Route path="/admin/status" element={<RequirePage page="admin_access"><SystemStatusRoute /></RequirePage>} />
       </Routes>
     </Shell>
   );

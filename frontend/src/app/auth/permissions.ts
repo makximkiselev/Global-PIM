@@ -13,6 +13,7 @@ export const PAGE_DEFAULT_PATHS: Record<string, string> = {
   stats_card_quality: "/stats/card-quality",
   stats_marketplace_quality: "/stats/marketplace-quality",
   admin_access: "/admin/access",
+  admin_status: "/admin/status",
 };
 
 export function firstAllowedPath(pageCodes: string[]): string {

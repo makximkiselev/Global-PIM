@@ -34,6 +34,8 @@ APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
 APP_LOCAL_DB_GRANTS_HEALTH_URL="http://127.0.0.1:18010/api/health/db-grants"
 APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
 APP_PUBLIC_DB_GRANTS_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health/db-grants"
+APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
+APP_SCENARIO_SMOKE_INSECURE_SSL="${APP_SCENARIO_SMOKE_INSECURE_SSL:-0}"
 SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
@@ -51,6 +53,10 @@ Environment is loaded automatically from:
 
 Options:
   --skip-build  deploy existing frontend/dist without running npm build
+
+Optional post-deploy scenario smoke:
+  APP_RUN_SCENARIO_SMOKE=1 scripts/deploy_production.sh
+  APP_SCENARIO_SMOKE_INSECURE_SSL=1 can be used on local machines with a stale Python CA bundle.
 USAGE
       exit 0
       ;;
@@ -369,6 +375,14 @@ ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WO
 curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
 curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1
 curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null
+if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" ]]; then
+  echo "==> Scenario smoke"
+  smoke_args=(--base-url "${APP_PUBLIC_BASE_URL}" --public-only)
+  if [[ "${APP_SCENARIO_SMOKE_INSECURE_SSL}" == "1" ]]; then
+    smoke_args+=(--insecure-ssl)
+  fi
+  python3 "${ROOT_DIR}/scripts/scenario_smoke.py" "${smoke_args[@]}"
+fi
 
 echo "==> Deploy complete"
 echo "Server: ${SSH_TARGET}"

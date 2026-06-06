@@ -17,6 +17,7 @@ from app.api.routes import (
     health,
     info_models,
     marketplace_mapping,
+    ops,
     ozon_market,
     platform,
     product_groups,
@@ -38,6 +39,7 @@ class ApiRouterEntry:
 
 API_ROUTER_ENTRIES: tuple[ApiRouterEntry, ...] = (
     ApiRouterEntry("system", health, "health checks"),
+    ApiRouterEntry("system", ops, "operations status"),
     ApiRouterEntry("system", uploads, "file upload delivery"),
     ApiRouterEntry("admin", auth, "authentication and access bootstrap"),
     ApiRouterEntry("admin", platform, "organizations and tenant context"),

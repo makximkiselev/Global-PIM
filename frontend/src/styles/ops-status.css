@@ -1,0 +1,142 @@
+.opsStatusPage {
+  display: grid;
+  gap: 18px;
+}
+
+.opsStatusHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.opsStatusHero span,
+.opsStatusCardHead p,
+.opsStatusEmpty,
+.opsStatusListItem span {
+  color: var(--text-muted);
+}
+
+.opsStatusHero h2 {
+  margin: 4px 0;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.opsStatusGrid,
+.opsStatusSplit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.opsStatusCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.opsStatusCardHead h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.opsStatusCardHead p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.opsStatusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.opsStatusActions a {
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.opsStatusTable,
+.opsStatusList {
+  display: grid;
+  gap: 8px;
+}
+
+.opsStatusTableHead,
+.opsStatusTableRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) 110px 90px 150px;
+  gap: 12px;
+  align-items: center;
+}
+
+.opsStatusTableHead {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.opsStatusTableRow,
+.opsStatusListItem {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.opsStatusListItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.opsStatusListItem div {
+  display: grid;
+  gap: 4px;
+}
+
+.opsStatusError {
+  padding: 12px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .opsStatusHero,
+  .opsStatusCardHead,
+  .opsStatusListItem {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .opsStatusGrid,
+  .opsStatusSplit {
+    grid-template-columns: 1fr;
+  }
+
+  .opsStatusTable {
+    overflow-x: auto;
+  }
+
+  .opsStatusTableHead,
+  .opsStatusTableRow {
+    min-width: 620px;
+  }
+}

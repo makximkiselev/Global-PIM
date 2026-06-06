@@ -53,6 +53,171 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 
 Complete the `Смартфоны` pipeline until a content manager can prepare product data for real export without developer explanation.
 
+## Current Rewrite Block: Library-Backed PIM Core
+
+Goal: replace fragile hand-written infrastructure with proven libraries where it reduces product risk, while preserving the canonical user flow from catalog import to marketplace export.
+
+Rewrite principles:
+
+1. Rewrite by vertical flow, not by isolated files.
+2. Keep FastAPI, React, Postgres, S3, and the current marketplace APIs.
+3. Do not rewrite working domain decisions into opaque generic frameworks.
+4. Prefer library-backed primitives for state, tables, forms, matching, migrations, and worker boundaries.
+5. Keep all AI decisions bounded by typed schemas, real source evidence, allowlists, and persisted review state.
+6. Every migrated subsystem must keep or improve the current browser-facing behavior.
+
+Target architecture:
+
+1. Backend route modules become thin API adapters.
+2. Domain services own business actions:
+   - catalog;
+   - products;
+   - product groups;
+   - marketplaces;
+   - competitors;
+   - info-model drafts;
+   - parameter/value mapping;
+   - enrichment;
+   - export readiness;
+   - admin/auth.
+3. Persistence is split into repositories by domain. Runtime DDL moves out of request handling and into migration scripts.
+4. Matching uses a shared engine:
+   - RapidFuzz for base text similarity;
+   - domain extractors for model, memory, color, SIM/eSIM, region, kit, and device type;
+   - LLM only as a resolver for bounded review suggestions.
+5. Frontend server state uses TanStack Query for fetching, caching, invalidation, and job polling.
+6. Large operational tables use TanStack Table and virtualization where row count can grow.
+7. Forms use React Hook Form and Zod for typed validation and clear submit/error states.
+8. Long jobs use persisted `pim_workflow_runs` and worker processes; web-process background tasks are compatibility paths only.
+
+Library adoption sequence:
+
+1. Backend matching foundation:
+   - add RapidFuzz;
+   - create shared matching utilities;
+   - replace scattered token/string similarity helpers where behavior can be verified by tests.
+   Status: started 2026-06-06. `app.core.matching` now wraps RapidFuzz, competitor source-field matching, marketplace pair scoring, and draft global-attribute reuse use it behind existing domain blockers. Regression tests cover SIM-name similarity, draft fuzzy reuse, JSON parser resilience, and RAM/storage blockers.
+2. Frontend data foundation:
+   - add TanStack Query;
+   - wrap the app with one query client;
+   - migrate export job polling and selected product/category reads first.
+   Status: started 2026-06-06. The app is wrapped in a shared QueryClientProvider. Catalog export bootstrap/latest-run/job polling, the product registry list, connector status loading, admin access bootstrap, and sources-mapping category/issue/attribute bootstrap reads now use TanStack Query for caching, refetch, invalidation, polling, and prefetch. Sources mapping also invalidates the query cache after category links, descendant clears, attribute saves, and AI matches.
+3. Frontend table foundation:
+   - add TanStack Table/Virtual;
+   - migrate product queue/export target tables before dense parameter tables.
+   Status: started 2026-06-06. The shared `DataTable` keeps its public props but now renders through TanStack Table and has optional TanStack Virtual row rendering for large result sets. Catalog import product-result rows now use the shared table instead of a local hand-written table and enable virtualization for broad import previews.
+4. Frontend form foundation:
+   - add React Hook Form and Zod;
+   - migrate connector store forms, export target selection, and admin user/role forms.
+   Status: started 2026-06-06. Login, register, invite-accept, connector store forms, and organization invite creation use React Hook Form, Zod, and `zodResolver` while preserving the existing APIs.
+5. Backend migration foundation:
+   - introduce Alembic migration files for schema changes;
+   - stop adding new `CREATE TABLE`/`ALTER TABLE` blocks to route/runtime code;
+   - migrate existing runtime DDL gradually.
+   Status: started 2026-06-06. Alembic skeleton exists under `backend/app/migrations`, reads DB URLs only from environment variables, and production deploy now runs `alembic upgrade head` before grant repair/restart. Workflow/channel-link tables have a safe `IF NOT EXISTS` migration as the first runtime-DDL extraction.
+6. Worker foundation:
+   - standardize workflow claim/save/status helpers;
+   - move remaining long-running web background tasks to worker modules.
+   Status: started 2026-06-06. `app.core.workflows` standardizes save/claim/prune/public payload helpers. Catalog export jobs, attribute AI jobs, value AI jobs, and export-semantic AI jobs can run from persisted `pim_workflow_runs`; export-semantic AI now also supports `--run-pending` and `--loop`.
+7. AI foundation:
+   - move LLM prompts/output validation into a typed AI service;
+   - reuse it for competitor candidate suggestions, parameter matching, value matching, and export semantic audit.
+   Status: started 2026-06-06. `app.core.llm` now has shared JSON-object and Pydantic-model parsing helpers, `app.core.ai_schemas` holds reusable LLM output contracts, and `app.core.ai_service.llm_chat_model` centralizes chat + typed parse while preserving route-level test injection. Value AI suggestions, competitor AI candidate/spec suggestions, and export semantic AI suggestions parse through typed Pydantic payloads before domain validation checks canonical values, allowed outputs, target fields, transforms, statuses, and confidence.
+
+Initial success criteria:
+
+1. No user-facing regression in product card, sources mapping, value mapping, export preparation, and admin login.
+2. Matching tests prove that exact variant axes remain blocking: memory, color, SIM/eSIM, region, kit, and device type.
+3. Export job polling no longer depends on page-local hand-written timers where TanStack Query can own it.
+4. New schema changes are documented as migrations instead of hidden runtime DDL.
+5. Dense UI screens become easier to change because data fetching, table state, form validation, and domain rendering are separated.
+
+Known rewrite QA notes:
+
+1. `backend/tests/test_operating_workflows.py::OperatingWorkflowTests::test_ozon_export_preview_blocks_empty_parameter_mapping_even_with_system_attrs` currently expects `ready=true` while also expecting the `parameter_mapping_required` blocker. This contradicts the active export-readiness rule that missing parameter mapping must stop real readiness, so the test should be updated after confirming current product behavior.
+
+## Next Work Block: Operational Product Maturity
+
+Goal: after the library-backed core is stable, make SmartPim easier to operate, trust, debug, and safely release. This block is not about adding more UI pages for their own sake; it is about making the existing catalog -> source mapping -> info-model -> enrichment -> export path observable and hard to break.
+
+Status: in progress.
+
+Done:
+
+1. Added `scripts/scenario_smoke.py` as a public release smoke for `/api/health`, SPA shell/assets, and core routes: import/export, sources mappings, admin invites.
+2. Added unit coverage for smoke helpers in `backend/tests/test_scenario_smoke.py`.
+3. Added optional deploy hook: `APP_RUN_SCENARIO_SMOKE=1 scripts/deploy_production.sh`.
+4. Added `/api/ops/status` and `/admin/status` as the first operations screen for DB grants, S3/media, workflow runs, table sizes, and links to the exact repair areas.
+
+Next:
+
+1. Add authenticated browser smoke with seeded QA credentials outside git.
+2. Expand the operations page with marketplace API error history and explicit safe-test store flags.
+
+Priority order:
+
+1. End-to-end scenario smoke test:
+   - cover catalog -> category -> sources -> info-model -> parameters -> values -> product -> export preview;
+   - run against a safe fixture/category/SKU and safe marketplace stores only;
+   - fail on broken navigation, missing blockers, missing export targets, runtime console errors, and unexpected empty payloads;
+   - keep this as the release gate before deploy.
+2. System status / operations page:
+   - DB grants status;
+   - app and worker status where available;
+   - queued/running/failed workflow runs by workflow;
+   - latest marketplace API errors;
+   - table/cache size indicators that explain disk/memory growth;
+   - connector/store export/import flags and selected safe test stores.
+3. Product data lineage:
+   - show source for every product value, media asset, description block, and export value;
+   - distinguish marketplace import, competitor evidence, AI suggestion, accepted review, manual value, and system field;
+   - preserve source URL/store/SKU evidence where available.
+4. Review queue for parameters and values:
+   - one queue for new parameters, duplicates, weak global matches, missing dictionary values, AI suggestions, and export blockers;
+   - each queue item links to the exact category/product/field that needs action;
+   - no dead-end empty states.
+5. Explicit export target model:
+   - store connected;
+   - store enabled for import;
+   - store enabled for export;
+   - store selected in current batch;
+   - store allowed for safe tests;
+   - no backend fallback to hidden default stores when UI selection is empty.
+6. AI governance:
+   - confidence, reason, source evidence, rejected reason, and model name for every AI suggestion;
+   - learn only from confirmed/reviewed decisions;
+   - keep risky actions in manual review;
+   - never auto-confirm competitor/product/value mappings from AI alone.
+7. Data growth controls:
+   - media deduplication and selected-for-export separation;
+   - workflow/job cleanup policies;
+   - JSONB/TOAST and table size monitoring;
+   - bounded caches with documented TTL and max size;
+   - avoid rewriting unchanged JSON payloads.
+8. Organization/user/role UX hardening:
+   - user deletion/deactivation;
+   - role change for active users;
+   - repeat invites for existing emails without role drift;
+   - clear organization role vs platform role distinction.
+9. Info-model versioning:
+   - draft, approved, published states;
+   - change history and author;
+   - rollback;
+   - impact preview for affected categories/products/export mappings.
+10. Release safety:
+   - migration check;
+   - worker compatibility check;
+   - health and browser smoke;
+   - rollback path;
+   - git remote divergence check before push/deploy.
+
+First implementation slice:
+
+1. Build the end-to-end scenario smoke test.
+2. Add the system status / operations page.
+3. Wire status page links from blockers and admin/deploy troubleshooting docs.
+4. Only then continue broader lineage/review queue/export-target work.
+
 ## Current Unified Work Block: Parameter-First Marketplace Export
 
 Goal: rebuild the info-model and mapping flow around a single practical outcome: one product SKU can be exported to marketplaces with clear readiness, while product families reduce repeated manual filling.

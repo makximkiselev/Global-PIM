@@ -14,6 +14,7 @@ from app.api.routes import comfyui as comfyui_routes
 from app.api.routes import connectors_status as connectors_status_routes
 from app.api.routes import info_models as info_models_routes
 from app.api.routes import marketplace_mapping as marketplace_mapping_routes
+from app.api.routes import ops as ops_routes
 from app.api.routes import ozon_market as ozon_market_routes
 from app.api.routes import templates as templates_routes
 
@@ -179,6 +180,21 @@ class ApiReadSmokeTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["ok"], True)
         self.assertIn("providers", body)
+
+    def test_ops_status_endpoint_returns_section_contract(self) -> None:
+        with (
+            patch.object(ops_routes, "_db_grants_section", return_value={"status": "ok", "title": "Права БД", "detail": "ok"}),
+            patch.object(ops_routes, "_storage_section", return_value={"status": "ok", "title": "S3 / медиа", "detail": "ok"}),
+            patch.object(ops_routes, "_workflow_section", return_value={"status": "warn", "title": "Workflow runs", "detail": "queued"}),
+            patch.object(ops_routes, "_table_size_section", return_value={"status": "ok", "title": "Размеры таблиц", "detail": "ok"}),
+        ):
+            response = self.client.get("/api/ops/status")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "warn")
+        self.assertIn("db_grants", body["sections"])
+        self.assertIn("workflows", body["sections"])
 
     def test_ozon_type_ids_resolve_from_flat_category_tree(self) -> None:
         doc = {

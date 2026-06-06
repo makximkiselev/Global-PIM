@@ -86,6 +86,7 @@ const groups: ShellNavGroup[] = [
         title: "Права",
         items: [
           { href: "/admin/access", label: "Права и роли", page: "admin_access" },
+          { href: "/admin/status", label: "Состояние системы", page: "admin_access" },
         ],
       },
     ],
