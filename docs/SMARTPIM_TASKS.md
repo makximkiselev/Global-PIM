@@ -958,6 +958,11 @@ Next fix in the category flow:
    - checks eSIM-only and nano SIM+eSIM slug separation;
    - checks Desert Titanium and Cosmic Orange color slugs;
    - keeps generated candidates above the visible review threshold without auto-confirming them.
+29. re-store exact seed matching no longer self-confirms SIM from the PIM title:
+   - direct iPhone URL generation is covered for model, memory and color variants;
+   - generated re-store candidate titles intentionally exclude SIM because the re-store URL does not encode it;
+   - SIM can only confirm from parsed card specs, otherwise the candidate stays as a manual SIM check;
+   - unsupported products fall back to search-only evidence instead of pretending a safe direct URL exists.
 
 Next block:
 

@@ -3419,6 +3419,46 @@ def _restore_iphone_direct_url(product: Dict[str, Any]) -> str:
     return f"https://re-store.ru/catalog/{code}/"
 
 
+def _restore_iphone_direct_candidate_title(product: Dict[str, Any]) -> str:
+    profile = _variant_profile(product.get("title"))
+    model = str(profile.get("model") or "")
+    memory = str(profile.get("memory") or "")
+    color = str(profile.get("color") or "")
+    model_match = re.fullmatch(r"iphone_(\d{1,2})(?:_(e|pro_max|pro|plus|mini))?", model)
+    memory_match = re.fullmatch(r"(\d+)(gb|tb)", memory)
+    model_labels = {
+        "pro_max": "Pro Max",
+        "pro": "Pro",
+        "plus": "Plus",
+        "mini": "mini",
+        "e": "e",
+        "": "",
+    }
+    color_labels = {
+        "desert_titanium": "Desert Titanium",
+        "natural_titanium": "Natural Titanium",
+        "white_titanium": "White Titanium",
+        "black_titanium": "Black Titanium",
+        "blue": "Blue",
+        "silver": "Silver",
+        "orange": "Orange",
+        "pink": "Pink",
+    }
+    if not model_match or not memory_match:
+        return str(product.get("title") or "").strip()
+    generation = model_match.group(1)
+    suffix = model_match.group(2) or ""
+    memory_label = f"{memory_match.group(1)}GB" if memory_match.group(2) == "gb" else f"{memory_match.group(1)}TB"
+    parts = ["Apple", "iPhone", generation]
+    model_label = model_labels.get(suffix, "")
+    if model_label:
+        parts.append(model_label)
+    parts.append(memory_label)
+    if color in color_labels:
+        parts.append(color_labels[color])
+    return " ".join(parts)
+
+
 async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     oura_candidate = _restore_oura_seed_candidate_for_product(product)
     if oura_candidate:
@@ -3433,20 +3473,21 @@ async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[
         return []
     if not isinstance(specs, dict) or not specs:
         return []
-    title = str(product.get("title") or "").strip()
+    title = _restore_iphone_direct_candidate_title(product)
     profile_text = _restore_candidate_profile_text({"brand": "Apple", "title": title}, specs)
     score, reasons = _confidence_for_candidate(product, profile_text, "", "Apple")
     if score < 0.78:
         score, reasons = _near_miss_confidence_for_candidate(product, profile_text, "", "Apple")
     if score < 0.78:
         return []
+    display_score = score if score < 0.8 else min(0.98, max(score, 0.89))
     return [
         {
             "url": url,
             "title": title,
             "brand": "Apple",
             "sku": url.rstrip("/").split("/")[-1],
-            "confidence_score": min(0.98, max(score, 0.89)),
+            "confidence_score": display_score,
             "confidence_reasons": [*reasons, "re-store URL собран из модели, памяти и цвета"],
             "profile_text": profile_text,
             "profile_specs": {
