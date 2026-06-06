@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.api.routes import connectors_status
 from app.core.auth import auth_from_request, has_action
 from app.core.json_store import _pg_connect
 from app.core.object_storage import ObjectStorageError, s3_enabled
@@ -169,6 +170,103 @@ def _storage_section() -> Dict[str, Any]:
         return _section("critical", "S3 / медиа", str(exc), s3_enabled=False)
 
 
+def _marketplace_section() -> Dict[str, Any]:
+    org_id = current_tenant_organization_id()
+    state = connectors_status._load_state(org_id)  # noqa: SLF001 - operations endpoint summarizes connector state
+    providers = state.get("providers") if isinstance(state.get("providers"), dict) else {}
+    rows: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    totals = {
+        "stores": 0,
+        "import_enabled": 0,
+        "export_enabled": 0,
+        "safe_test_enabled": 0,
+        "access_ok": 0,
+        "access_error": 0,
+        "method_errors": 0,
+    }
+    for provider_code, provider_def in connectors_status.PROVIDERS_DEF.items():
+        provider = providers.get(provider_code) if isinstance(providers, dict) else {}
+        if not isinstance(provider, dict):
+            provider = {}
+        stores = provider.get("import_stores") if isinstance(provider.get("import_stores"), list) else []
+        methods = provider.get("methods") if isinstance(provider.get("methods"), dict) else {}
+        provider_row = {
+            "provider": provider_code,
+            "title": provider_def.get("title") or provider_code,
+            "stores": [],
+            "methods": [],
+        }
+        for raw_store in stores:
+            if not isinstance(raw_store, dict):
+                continue
+            row = {
+                "provider": provider_code,
+                "store_id": str(raw_store.get("id") or ""),
+                "title": str(raw_store.get("title") or raw_store.get("id") or ""),
+                "enabled": bool(raw_store.get("enabled")),
+                "export_enabled": bool(raw_store.get("export_enabled")),
+                "safe_test_enabled": bool(raw_store.get("safe_test_enabled")),
+                "last_check_at": raw_store.get("last_check_at"),
+                "last_check_status": str(raw_store.get("last_check_status") or "idle"),
+                "last_check_error": str(raw_store.get("last_check_error") or ""),
+            }
+            provider_row["stores"].append(row)
+            totals["stores"] += 1
+            if row["enabled"]:
+                totals["import_enabled"] += 1
+            if row["export_enabled"]:
+                totals["export_enabled"] += 1
+            if row["safe_test_enabled"]:
+                totals["safe_test_enabled"] += 1
+            if row["last_check_status"] == "ok":
+                totals["access_ok"] += 1
+            if row["last_check_status"] == "error":
+                totals["access_error"] += 1
+                errors.append({
+                    "scope": "store",
+                    "provider": provider_code,
+                    "store_id": row["store_id"],
+                    "title": row["title"],
+                    "error": row["last_check_error"],
+                    "at": row["last_check_at"],
+                })
+        for method_code, method_title in provider_def.get("methods", {}).items():
+            method = methods.get(method_code) if isinstance(methods, dict) else {}
+            if not isinstance(method, dict):
+                method = {}
+            method_status = str(method.get("status") or "ok")
+            method_row = {
+                "provider": provider_code,
+                "code": method_code,
+                "title": method_title,
+                "status": method_status,
+                "last_run_at": method.get("last_run_at"),
+                "last_error_at": method.get("last_error_at"),
+                "last_error": str(method.get("last_error") or ""),
+            }
+            provider_row["methods"].append(method_row)
+            if method_status != "ok":
+                totals["method_errors"] += 1
+                errors.append({
+                    "scope": "method",
+                    "provider": provider_code,
+                    "method": method_code,
+                    "title": method_title,
+                    "error": method_row["last_error"],
+                    "at": method_row["last_error_at"] or method_row["last_run_at"],
+                })
+        rows.append(provider_row)
+    status = "critical" if totals["access_error"] or totals["method_errors"] else "warn" if totals["stores"] and not totals["export_enabled"] else "ok"
+    if status == "critical":
+        detail = "Есть ошибки доступа или импорта данных площадок."
+    elif status == "warn":
+        detail = "Магазины есть, но ни один не включен для экспорта."
+    else:
+        detail = "Магазины и процессы площадок без явных ошибок."
+    return _section(status, "Маркетплейсы", detail, totals=totals, providers=rows, errors=errors[:20])
+
+
 def _safe_section(fn: Any) -> Dict[str, Any]:
     try:
         return fn()
@@ -182,6 +280,7 @@ def ops_status(request: Request) -> Dict[str, Any]:
     sections = {
         "db_grants": _safe_section(_db_grants_section),
         "storage": _safe_section(_storage_section),
+        "marketplaces": _safe_section(_marketplace_section),
         "workflows": _safe_section(_workflow_section),
         "table_sizes": _safe_section(_table_size_section),
     }

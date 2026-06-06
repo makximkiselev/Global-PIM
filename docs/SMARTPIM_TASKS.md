@@ -148,11 +148,12 @@ Done:
 2. Added unit coverage for smoke helpers in `backend/tests/test_scenario_smoke.py`.
 3. Added optional deploy hook: `APP_RUN_SCENARIO_SMOKE=1 scripts/deploy_production.sh`.
 4. Added `/api/ops/status` and `/admin/status` as the first operations screen for DB grants, S3/media, workflow runs, table sizes, and links to the exact repair areas.
+5. Added explicit `safe_test_enabled` store flag and surfaced marketplace import/export/safe-test state plus latest marketplace/store errors on `/admin/status`.
 
 Next:
 
 1. Add authenticated browser smoke with seeded QA credentials outside git.
-2. Expand the operations page with marketplace API error history and explicit safe-test store flags.
+2. Add product data lineage for values, media, descriptions, and export payload fields.
 
 Priority order:
 

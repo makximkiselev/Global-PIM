@@ -15,6 +15,7 @@ class ConnectorImportStore(TypedDict, total=False):
     auth_mode: str
     enabled: bool
     export_enabled: bool
+    safe_test_enabled: bool
     notes: str
     last_check_at: Any
     last_check_status: str

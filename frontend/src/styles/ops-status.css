@@ -109,6 +109,49 @@
   gap: 4px;
 }
 
+.opsStatusMarketplaceList {
+  display: grid;
+  gap: 12px;
+}
+
+.opsStatusMarketplace {
+  display: grid;
+  gap: 8px;
+}
+
+.opsStatusMarketplaceHead,
+.opsStatusStore {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.opsStatusMarketplaceHead span,
+.opsStatusStore span {
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.opsStatusStore {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.opsStatusStore > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.opsStatusFlags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .opsStatusError {
   padding: 12px 14px;
   border: 1px solid var(--danger-border);
@@ -124,6 +167,15 @@
   .opsStatusListItem {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .opsStatusMarketplaceHead,
+  .opsStatusStore {
+    flex-direction: column;
+  }
+
+  .opsStatusFlags {
+    justify-content: flex-start;
   }
 
   .opsStatusGrid,

@@ -21,6 +21,9 @@ type OpsSection = {
   summary?: Array<Record<string, unknown>>;
   recent?: Array<Record<string, unknown>>;
   rows?: Array<Record<string, unknown>>;
+  totals?: Record<string, unknown>;
+  providers?: Array<Record<string, unknown>>;
+  errors?: Array<Record<string, unknown>>;
 };
 type OpsStatusResp = {
   ok: boolean;
@@ -91,6 +94,8 @@ export default function SystemStatusFeature() {
   const workflowRecent = sections.workflows?.recent || [];
   const tableRows = sections.table_sizes?.rows || [];
   const driftRows = [...(sections.db_grants?.drift || []), ...(sections.db_grants?.function_drift || [])];
+  const marketplaceProviders = sections.marketplaces?.providers || [];
+  const marketplaceErrors = sections.marketplaces?.errors || [];
 
   return (
     <div className="opsStatusPage">
@@ -116,6 +121,7 @@ export default function SystemStatusFeature() {
       <section className="opsStatusGrid">
         <SectionCard section={sections.db_grants} />
         <SectionCard section={sections.storage} />
+        <SectionCard section={sections.marketplaces} />
         <SectionCard section={sections.workflows} />
         <SectionCard section={sections.table_sizes} />
       </section>
@@ -125,6 +131,59 @@ export default function SystemStatusFeature() {
         <Link to="/sources?tab=categories">Сопоставления категорий</Link>
         <Link to="/catalog/exchange?tab=export">Экспорт товаров</Link>
         <Link to="/admin/access">Права и роли</Link>
+      </section>
+
+      <section className="opsStatusSplit">
+        <Card title="Магазины площадок" className="opsStatusPanel">
+          {marketplaceProviders.length ? (
+            <div className="opsStatusMarketplaceList">
+              {marketplaceProviders.map((provider) => {
+                const stores = Array.isArray(provider.stores) ? provider.stores : [];
+                return (
+                  <div className="opsStatusMarketplace" key={String(provider.provider || provider.title)}>
+                    <div className="opsStatusMarketplaceHead">
+                      <strong>{String(provider.title || provider.provider || "Площадка")}</strong>
+                      <span>{stores.length} магазинов</span>
+                    </div>
+                    {stores.length ? stores.map((store) => (
+                      <div className="opsStatusStore" key={String(store.store_id || store.title)}>
+                        <div>
+                          <strong>{String(store.title || store.store_id || "Магазин")}</strong>
+                          <span>{String(store.last_check_status || "idle")} · {formatDate(store.last_check_at)}</span>
+                        </div>
+                        <div className="opsStatusFlags">
+                          <Badge tone={store.enabled ? "active" : "neutral"}>{store.enabled ? "Импорт" : "Без импорта"}</Badge>
+                          <Badge tone={store.export_enabled ? "active" : "neutral"}>{store.export_enabled ? "Экспорт" : "Без экспорта"}</Badge>
+                          <Badge tone={store.safe_test_enabled ? "pending" : "neutral"}>{store.safe_test_enabled ? "Safe-test" : "Не тестовый"}</Badge>
+                        </div>
+                      </div>
+                    )) : <p className="opsStatusEmpty">Магазины не подключены.</p>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="opsStatusEmpty">Данных по магазинам пока нет.</p>
+          )}
+        </Card>
+
+        <Card title="Ошибки marketplace API" className="opsStatusPanel">
+          {marketplaceErrors.length ? (
+            <div className="opsStatusList">
+              {marketplaceErrors.map((row, idx) => (
+                <div className="opsStatusListItem" key={`${row.provider}-${row.scope}-${idx}`}>
+                  <div>
+                    <strong>{String(row.title || row.provider || "Ошибка")}</strong>
+                    <span>{String(row.error || "Без текста ошибки")}</span>
+                  </div>
+                  <Badge tone="danger">{String(row.scope || "api")}</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="opsStatusEmpty">Ошибок доступа и методов площадок не найдено.</p>
+          )}
+        </Card>
       </section>
 
       <section className="opsStatusSplit">

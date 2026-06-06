@@ -185,6 +185,7 @@ class ApiReadSmokeTests(unittest.TestCase):
         with (
             patch.object(ops_routes, "_db_grants_section", return_value={"status": "ok", "title": "Права БД", "detail": "ok"}),
             patch.object(ops_routes, "_storage_section", return_value={"status": "ok", "title": "S3 / медиа", "detail": "ok"}),
+            patch.object(ops_routes, "_marketplace_section", return_value={"status": "ok", "title": "Маркетплейсы", "detail": "ok"}),
             patch.object(ops_routes, "_workflow_section", return_value={"status": "warn", "title": "Workflow runs", "detail": "queued"}),
             patch.object(ops_routes, "_table_size_section", return_value={"status": "ok", "title": "Размеры таблиц", "detail": "ok"}),
         ):
@@ -194,6 +195,7 @@ class ApiReadSmokeTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["status"], "warn")
         self.assertIn("db_grants", body["sections"])
+        self.assertIn("marketplaces", body["sections"])
         self.assertIn("workflows", body["sections"])
 
     def test_ozon_type_ids_resolve_from_flat_category_tree(self) -> None:
