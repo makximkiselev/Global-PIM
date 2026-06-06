@@ -139,10 +139,12 @@ export default function SourcesMappingFeature() {
   const initialCategoryId = categoryParam || (!explicitProductParam || storedMatchesExplicitProduct ? storedContext.categoryId : "") || "";
   const providerParam = String(searchParams.get("provider") || "").trim();
   const providerCategoryParam = String(searchParams.get("provider_category") || "").trim();
+  const parameterParam = String(searchParams.get("parameter") || "").trim();
   const productParam = explicitProductParam || (!categoryParam ? storedContext.productId : "");
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState(storedContext.categoryName);
+  const activeCategoryId = selectedCategoryId || categoryParam;
   const [categoryResolving, setCategoryResolving] = useState(
     (initialTab === "params" && !initialCategoryId) || !!providerCategoryParam,
   );
@@ -155,7 +157,7 @@ export default function SourcesMappingFeature() {
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
-  const nextAction = useMemo(() => sourcesNextAction(tab, selectedCategoryId, productParam), [productParam, selectedCategoryId, tab]);
+  const nextAction = useMemo(() => sourcesNextAction(tab, activeCategoryId, productParam), [productParam, activeCategoryId, tab]);
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
@@ -171,28 +173,28 @@ export default function SourcesMappingFeature() {
   }, [searchParams, storedContext.categoryId]);
 
   useEffect(() => {
-    if (!productParam && !selectedCategoryId) return;
+    if (!productParam && !activeCategoryId) return;
     try {
       window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
         productId: productParam,
-        categoryId: selectedCategoryId,
+        categoryId: activeCategoryId,
         categoryName: selectedCategoryName,
         updatedAt: new Date().toISOString(),
       }));
     } catch {
       // Context persistence is optional; explicit URL params remain authoritative.
     }
-  }, [productParam, selectedCategoryId, selectedCategoryName]);
+  }, [productParam, activeCategoryId, selectedCategoryName]);
 
   useEffect(() => {
-    if (!selectedCategoryId || selectedCategoryName) return;
+    if (!activeCategoryId || selectedCategoryName) return;
     let cancelled = false;
     (async () => {
       try {
         const data = await loadMappingBootstrap();
         if (cancelled) return;
-        const currentItem = (data.catalog_items || []).find((item) => item.id === selectedCategoryId);
-        const currentNode = (data.catalog_nodes || []).find((item) => item.id === selectedCategoryId);
+        const currentItem = (data.catalog_items || []).find((item) => item.id === activeCategoryId);
+        const currentNode = (data.catalog_nodes || []).find((item) => item.id === activeCategoryId);
         const nextName = currentItem?.name || currentItem?.path || currentNode?.name || "";
         if (nextName) setSelectedCategoryName((prev) => (prev === nextName ? prev : nextName));
       } catch {
@@ -202,7 +204,7 @@ export default function SourcesMappingFeature() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCategoryId, selectedCategoryName]);
+  }, [activeCategoryId, selectedCategoryName]);
 
   useEffect(() => {
     if (!providerParam || !providerCategoryParam) return;
@@ -313,7 +315,7 @@ export default function SourcesMappingFeature() {
   }
 
   if (rawTab === "competitors" || rawTab === "competitor" || rawTab === "competitor_links" || rawTab === "discovery") {
-    const categoryParam = selectedCategoryId ? `?category=${encodeURIComponent(selectedCategoryId)}` : "";
+    const categoryParam = activeCategoryId ? `?category=${encodeURIComponent(activeCategoryId)}` : "";
     return <Navigate to={`/data-prep/competitors${categoryParam}`} replace />;
   }
 
@@ -336,7 +338,7 @@ export default function SourcesMappingFeature() {
             key: "sources",
             label: "Категории и конкурентные карточки",
             description: "Сначала свяжи PIM-ветку с площадками, затем подтверди точные карточки re-store/store77 для SKU.",
-            href: selectedCategoryId ? sourcesHref("sources", selectedCategoryId, productParam) : undefined,
+            href: activeCategoryId ? sourcesHref("sources", activeCategoryId, productParam) : undefined,
             actionLabel: "Открыть",
             status: tab === "sources" ? "active" : "done",
           },
@@ -344,7 +346,7 @@ export default function SourcesMappingFeature() {
             key: "params",
             label: "Черновик PIM-параметров",
             description: "Создается из данных площадок, конкурентов и товаров. Одни только площадки не являются финальной моделью.",
-            href: selectedCategoryId ? sourcesHref("params", selectedCategoryId, productParam) : undefined,
+            href: activeCategoryId ? sourcesHref("params", activeCategoryId, productParam) : undefined,
             actionLabel: "Черновик",
             status: tab === "params" ? "active" : tab === "values" ? "done" : "todo",
           },
@@ -352,7 +354,7 @@ export default function SourcesMappingFeature() {
             key: "values",
             label: "Значения для выгрузки",
             description: "Нормализуй написания: 256 ГБ, eSIM, цвета и справочники площадок.",
-            href: selectedCategoryId ? sourcesHref("values", selectedCategoryId, productParam) : undefined,
+            href: activeCategoryId ? sourcesHref("values", activeCategoryId, productParam) : undefined,
             actionLabel: "Значения",
             status: tab === "values" ? "active" : "todo",
           },
@@ -360,7 +362,7 @@ export default function SourcesMappingFeature() {
             key: "export",
             label: "Проверить экспорт",
             description: "Когда категории, поля и значения закрыты, проверь готовность выгрузки.",
-            href: selectedCategoryId ? exportHref(selectedCategoryId, productParam) : undefined,
+            href: activeCategoryId ? exportHref(activeCategoryId, productParam) : undefined,
             actionLabel: "Экспорт",
             status: "todo",
           },
@@ -379,7 +381,7 @@ export default function SourcesMappingFeature() {
         </div>
         <div className="sourcesMappingContextActions">
           {productParam ? <a className="btn" href={`/products/${encodeURIComponent(productParam)}`}>Открыть SKU</a> : null}
-          <a className="btn" href={exportHref(selectedCategoryId, productParam)}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</a>
+          <a className="btn" href={exportHref(activeCategoryId, productParam)}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</a>
           <a className="btn primary" href={nextAction.href}>{nextAction.label}</a>
         </div>
       </div>
@@ -402,7 +404,7 @@ export default function SourcesMappingFeature() {
             forcedImportTab="categories"
             hideMainTabs
             hideImportTabs
-            selectedCategoryId={selectedCategoryId}
+            selectedCategoryId={activeCategoryId}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}
@@ -411,7 +413,8 @@ export default function SourcesMappingFeature() {
 
         {tab === "params" && !categoryResolving && (
           <SourcesParamsWorkspaceSection
-            selectedCategoryId={selectedCategoryId}
+            selectedCategoryId={activeCategoryId}
+            focusParameter={parameterParam}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}
@@ -420,7 +423,8 @@ export default function SourcesMappingFeature() {
 
         {tab === "values" && (
           <SourcesValueMappingSection
-            selectedCategoryId={selectedCategoryId}
+            selectedCategoryId={activeCategoryId}
+            focusParameter={parameterParam}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}

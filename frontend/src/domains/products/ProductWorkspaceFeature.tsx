@@ -196,6 +196,15 @@ type ProductParameterFlowMarketplace = {
   mapping_reason?: string;
 };
 
+type ProductParameterFlowBlocker = {
+  code?: string;
+  parameter?: string;
+  target?: string;
+  provider?: string;
+  target_id?: string;
+  message?: string;
+};
+
 type ProductParameterFlowRow = {
   key: string;
   code?: string;
@@ -213,7 +222,7 @@ type ProductParameterFlow = {
     source_values?: number;
     blockers?: number;
   };
-  blockers?: Array<{ code?: string; parameter?: string; target?: string; provider?: string; target_id?: string; message?: string }>;
+  blockers?: ProductParameterFlowBlocker[];
   items?: ProductParameterFlowRow[];
 };
 
@@ -530,6 +539,35 @@ function flowRowForFeature(parameterFlow: ProductParameterFlow | null, feature: 
   }) || null;
 }
 
+function productSourceFixHref(blocker: ProductParameterFlowBlocker, categoryId: string, productId: string) {
+  const category = encodeURIComponent(normalizeText(categoryId));
+  const product = encodeURIComponent(normalizeText(productId));
+  const parameter = encodeURIComponent(normalizeText(blocker.parameter));
+  const provider = encodeURIComponent(normalizeText(blocker.provider));
+  const base = blocker.target === "values" ? "values" : "params";
+  const query = new URLSearchParams();
+  query.set("tab", base);
+  if (category) query.set("category", normalizeText(categoryId));
+  if (product) query.set("product", normalizeText(productId));
+  if (parameter) query.set("parameter", normalizeText(blocker.parameter));
+  if (provider) query.set("provider", normalizeText(blocker.provider));
+  return `/sources?${query.toString()}`;
+}
+
+function productBlockerActionLabel(blocker: ProductParameterFlowBlocker) {
+  if (blocker.code === "empty_value") return "Заполнить";
+  if (blocker.code === "value_mapping_required") return "Сопоставить значение";
+  if (blocker.code === "parameter_mapping_required") return "Сопоставить поле";
+  return "Открыть";
+}
+
+function productBlockerTitle(blocker: ProductParameterFlowBlocker) {
+  if (blocker.code === "empty_value") return "Пустое значение";
+  if (blocker.code === "value_mapping_required") return "Нет значения для площадки";
+  if (blocker.code === "parameter_mapping_required") return "Нет поля площадки";
+  return "Блокер параметра";
+}
+
 function mediaSourceLabel(url: string): string {
   const normalized = normalizeText(url).toLowerCase();
   if (normalized.includes("/competitors/restore/")) return "re-store";
@@ -792,6 +830,8 @@ function ProductAttributeWorkbench({
   rawFeatureCount,
   channels,
   parameterFlow,
+  productId,
+  categoryId,
   selectedKey,
   onSelect,
 }: {
@@ -800,6 +840,8 @@ function ProductAttributeWorkbench({
   rawFeatureCount: number;
   channels: ChannelsSummary | null;
   parameterFlow: ProductParameterFlow | null;
+  productId: string;
+  categoryId: string;
   selectedKey: string;
   onSelect: (key: string) => void;
 }) {
@@ -816,6 +858,7 @@ function ProductAttributeWorkbench({
   const exportReadyCount = Number(parameterFlow?.summary?.features_ready || 0) || features.filter((feature) => featureValue(feature) && sourceEntriesForFeature(feature).length).length;
   const attentionCount = Number(parameterFlow?.summary?.features_attention || 0);
   const blockerCount = Number(parameterFlow?.summary?.blockers || parameterFlow?.blockers?.length || 0);
+  const blockerItems = (parameterFlow?.blockers || []).slice(0, 6);
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
@@ -854,6 +897,56 @@ function ProductAttributeWorkbench({
           <span><b>{withSourceCount}</b>с источником</span>
           <span><b>{blockerCount || attentionCount || noValueCount}</b>{blockerCount || attentionCount ? "блокеры" : "без значения"}</span>
         </div>
+        {blockerItems.length ? (
+          <div className="productParamBlockerList" aria-label="Блокеры параметров">
+            {blockerItems.map((blocker, index) => {
+              const targetFeature = features.find((feature) => featureIdentity(feature.name || feature.code) === featureIdentity(blocker.parameter || ""));
+              const localKey = targetFeature ? featureKey(targetFeature, features.indexOf(targetFeature)) : "";
+              const meta = [
+                blocker.provider ? productSourceLabel(blocker.provider) : "",
+                blocker.target_id || "",
+              ].filter(Boolean).join(" · ");
+              if (blocker.code === "empty_value") {
+                return (
+                  <button
+                    key={`${blocker.code}-${blocker.parameter}-${index}`}
+                    type="button"
+                    className="productParamBlocker"
+                    onClick={() => localKey && onSelect(localKey)}
+                  >
+                    <span>
+                      <strong>{productBlockerTitle(blocker)}</strong>
+                      <em>{blocker.parameter || "Параметр"}{meta ? ` · ${meta}` : ""}</em>
+                    </span>
+                    <b>{productBlockerActionLabel(blocker)}</b>
+                  </button>
+                );
+              }
+              return (
+                <Link
+                  key={`${blocker.code}-${blocker.parameter}-${index}`}
+                  className="productParamBlocker"
+                  to={productSourceFixHref(blocker, categoryId, productId)}
+                >
+                  <span>
+                    <strong>{productBlockerTitle(blocker)}</strong>
+                    <em>{blocker.parameter || "Параметр"}{meta ? ` · ${meta}` : ""}</em>
+                  </span>
+                  <b>{productBlockerActionLabel(blocker)}</b>
+                </Link>
+              );
+            })}
+            {blockerCount > blockerItems.length ? (
+              <Link className="productParamBlocker isMore" to={`/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`}>
+                <span>
+                  <strong>Еще {blockerCount - blockerItems.length}</strong>
+                  <em>Полный список в проверке экспорта</em>
+                </span>
+                <b>Открыть</b>
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
         <div className="productParamSearchHint">Выберите параметр, чтобы увидеть как он собрался и как уйдет на площадки.</div>
         <div className="productParamList">
           {features.map((feature, index) => {
@@ -2092,6 +2185,8 @@ function ProductWorkspaceFeature() {
                   rawFeatureCount={rawFeatures.length}
                   channels={channels}
                   parameterFlow={parameterFlow}
+                  productId={product.id}
+                  categoryId={product.category_id}
                   selectedKey={selectedFeatureKey}
                   onSelect={setSelectedFeatureKey}
                 />

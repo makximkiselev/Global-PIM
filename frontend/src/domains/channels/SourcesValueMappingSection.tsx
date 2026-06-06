@@ -98,6 +98,7 @@ type ValueAiJobResp = {
 
 type Props = {
   selectedCategoryId?: string;
+  focusParameter?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
 };
 
@@ -243,7 +244,8 @@ function searchMatch(node: CatalogNode, q: string) {
   return String(node.name || "").toLowerCase().includes(q);
 }
 
-export default function SourcesValueMappingSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
+export default function SourcesValueMappingSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", onSelectedCategoryChange }: Props) {
+  const selectedCategoryId = selectedCategoryIdProp || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("category") || "" : "");
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(true);
   const [treeQuery, setTreeQuery] = useState("");
@@ -354,6 +356,20 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     const list = Array.isArray(data?.items) ? data!.items : [];
     return list.filter((item) => needsValueMapping(item)).length;
   }, [data]);
+
+  useEffect(() => {
+    const focus = String(focusParameter || "").trim().toLowerCase();
+    const list = Array.isArray(data?.items) ? data!.items : [];
+    if (!focus || !list.length) return;
+    const match = list.find((item) => {
+      const hay = `${item.catalog_name || ""} ${item.title || ""} ${item.group || ""}`.toLowerCase();
+      return hay.includes(focus) || focus.includes(String(item.catalog_name || item.title || "").trim().toLowerCase());
+    });
+    setFieldQuery(focusParameter);
+    setScopeFilter("all");
+    setWorkFilter("all");
+    if (match) setActiveDictId(match.dict_id);
+  }, [focusParameter, data]);
 
   useEffect(() => {
     if (!filteredItems.length) {

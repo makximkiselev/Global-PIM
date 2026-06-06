@@ -909,12 +909,17 @@ Next fix in the category flow:
    - `GET /api/products/{product_id}/parameter-flow` returns `summary.blockers` and a bounded `blockers[]` list;
    - blockers use stable codes for empty PIM values, missing parameter mappings, and missing value mappings;
    - product screens can show blocker counts without parsing marketplace labels or guessing from text.
+18. Product blocker actions are wired into the active product workspace:
+   - the attributes tab shows the first actionable blockers next to readiness counters;
+   - empty PIM values select the affected product parameter in-place;
+   - parameter/value blockers open `/sources` with `category`, `product`, `parameter`, and `provider`;
+   - params and values workspaces read deep-link parameters and focus/search the affected field after data loads.
 
 Next block:
 
-1. Turn `parameter-flow.blockers[]` into direct UI actions: open product attribute, sources params, or values tab with the affected parameter preselected.
-2. Configure real QA credentials outside git and enable authenticated smoke in deploy (`SMARTPIM_AUTH_SMOKE=1` with `SMARTPIM_SMOKE_EMAIL/PASSWORD`).
-3. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
+1. Configure real QA credentials outside git and enable authenticated smoke in deploy (`SMARTPIM_AUTH_SMOKE=1` with `SMARTPIM_SMOKE_EMAIL/PASSWORD`).
+2. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
+3. Reduce values/params loading ambiguity by showing API/auth errors inline instead of leaving the user on a temporary empty/loading state.
 
 ## Verification Commands
 

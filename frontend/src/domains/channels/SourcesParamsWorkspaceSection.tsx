@@ -106,6 +106,7 @@ type CompetitorCategoryResp = {
 
 type Props = {
   selectedCategoryId?: string;
+  focusParameter?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
 };
 
@@ -482,7 +483,8 @@ function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds
   ].filter((group) => group.items.length > 0);
 }
 
-export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
+export default function SourcesParamsWorkspaceSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", onSelectedCategoryChange }: Props) {
+  const selectedCategoryId = selectedCategoryIdProp || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("category") || "" : "");
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
@@ -710,6 +712,19 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   }, [competitors]);
   const hasCompetitorEvidence = competitorTotals.links > 0 || competitorTotals.review > 0;
   const infoModelIsEmpty = !!selectedCategoryId && !initialParamsLoading && hasProviderCategoryMapping && stats.total === 0;
+
+  useEffect(() => {
+    const focus = qnorm(focusParameter);
+    if (!focus || !paramRows.length) return;
+    const match = paramRows.find((row) => {
+      const hay = qnorm([row.catalog_name, row.group, row.id].join(" "));
+      return hay.includes(focus) || focus.includes(qnorm(row.catalog_name || ""));
+    });
+    setFieldQuery(focusParameter);
+    setGroupFilter("all");
+    setQueueFilter("all");
+    if (match) setSelectedRowId(String(match.id || ""));
+  }, [focusParameter, paramRows]);
 
   useEffect(() => {
     if (!paramRows.length || !queueRows.length) {
