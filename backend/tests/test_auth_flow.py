@@ -3037,6 +3037,38 @@ class AuthFlowTests(unittest.TestCase):
         self.assertIn("nano_sim_esim", candidates[0]["url"])
         self.assertIn("nano SIM+eSIM", candidates[0]["title"])
 
+    def test_store77_seed_candidate_matrix_for_memory_sim_and_color(self) -> None:
+        cases = [
+            (
+                "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+                "apple_iphone_16_pro_max_2/telefon_apple_iphone_16_pro_max_256gb_esim_desert_titanium/",
+                "esim_only",
+            ),
+            (
+                "Смартфон Apple iPhone 16 Pro Max 1Tb eSIM Desert Titanium (Global)",
+                "apple_iphone_16_pro_max_2/telefon_apple_iphone_16_pro_max_1tb_esim_desert_titanium/",
+                "esim_only",
+            ),
+            (
+                "Смартфон Apple iPhone 16 Pro Max 256Gb nano SIM+eSIM Desert Titanium (Global)",
+                "apple_iphone_16_pro_max_2/telefon_apple_iphone_16_pro_max_256gb_nano_sim_esim_desert_titanium/",
+                "nano_sim_esim",
+            ),
+            (
+                "Смартфон Apple iPhone 17 Pro 256Gb eSIM Orange (Global)",
+                "apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_cosmic_orange/",
+                "esim_only",
+            ),
+        ]
+
+        for title, url_fragment, sim_profile in cases:
+            with self.subTest(title=title):
+                candidates = competitor_mapping_routes._store77_seed_candidates_for_product({"id": "product", "title": title})
+                self.assertEqual(len(candidates), 1)
+                self.assertIn(url_fragment, candidates[0]["url"])
+                self.assertEqual(candidates[0]["candidate_sim_profile"], sim_profile)
+                self.assertGreaterEqual(candidates[0]["confidence_score"], 0.82)
+
     def test_approving_candidate_rejects_sibling_variants(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")
         self.client.post("/api/auth/login", json={"login": "owner", "password": "testpass123"})

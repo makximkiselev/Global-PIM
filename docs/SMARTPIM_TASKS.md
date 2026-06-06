@@ -953,6 +953,11 @@ Next fix in the category flow:
    - Store77 summaries explain that category pages, deterministic URL and search terms were checked;
    - re-store summaries distinguish direct URL + search from search-only partial scans;
    - product UI renders this evidence as separate readable rows instead of one compressed string.
+28. Store77 exact seed matching has broader regression coverage:
+   - checks 256Gb and 1Tb memory slugs;
+   - checks eSIM-only and nano SIM+eSIM slug separation;
+   - checks Desert Titanium and Cosmic Orange color slugs;
+   - keeps generated candidates above the visible review threshold without auto-confirming them.
 
 Next block:
 
