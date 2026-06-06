@@ -207,6 +207,7 @@ export default function SystemStatusFeature() {
         <SectionCard section={sections.info_model_versions} />
         <SectionCard section={sections.growth_controls} />
         <SectionCard section={sections.release_safety} />
+        <SectionCard section={sections.auth_smoke} />
         <SectionCard section={sections.table_sizes} />
       </section>
 
@@ -442,6 +443,11 @@ export default function SystemStatusFeature() {
         <Card title="Release safety" className="opsStatusPanel">
           <MetricStrip section={sections.release_safety} />
           <IssueList items={sections.release_safety?.items} empty="Чеклист релиза пуст." />
+        </Card>
+
+        <Card title="Authenticated smoke" className="opsStatusPanel">
+          <MetricStrip section={sections.auth_smoke} />
+          <IssueList items={sections.auth_smoke?.items} empty="Authenticated smoke не настроен." />
         </Card>
       </section>
     </div>

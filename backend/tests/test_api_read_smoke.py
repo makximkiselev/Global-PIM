@@ -196,6 +196,7 @@ class ApiReadSmokeTests(unittest.TestCase):
             patch.object(ops_routes, "_access_section", return_value={"status": "ok", "title": "Доступ и роли", "detail": "ok"}),
             patch.object(ops_routes, "_info_model_versions_section", return_value={"status": "ok", "title": "Версии инфо-моделей", "detail": "ok"}),
             patch.object(ops_routes, "_release_safety_section", return_value={"status": "ok", "title": "Release safety", "detail": "ok"}),
+            patch.object(ops_routes, "_auth_smoke_section", return_value={"status": "warn", "title": "Authenticated smoke", "detail": "disabled"}),
             patch.object(ops_routes, "_table_size_section", return_value={"status": "ok", "title": "Размеры таблиц", "detail": "ok"}),
         ):
             response = self.client.get("/api/ops/status")
@@ -209,6 +210,26 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertIn("workflows", body["sections"])
         self.assertIn("review_queue", body["sections"])
         self.assertIn("lineage", body["sections"])
+        self.assertIn("auth_smoke", body["sections"])
+
+    def test_ops_auth_smoke_section_exposes_only_flags(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "SMARTPIM_AUTH_SMOKE": "1",
+                "SMARTPIM_SMOKE_EMAIL": "qa@example.test",
+                "SMARTPIM_SMOKE_PASSWORD": "super-secret",
+            },
+            clear=False,
+        ):
+            section = ops_routes._auth_smoke_section()
+
+        self.assertEqual(section["status"], "ok")
+        self.assertEqual(section["totals"]["enabled"], True)
+        self.assertEqual(section["totals"]["email_configured"], True)
+        self.assertEqual(section["totals"]["password_configured"], True)
+        self.assertNotIn("qa@example.test", str(section))
+        self.assertNotIn("super-secret", str(section))
 
     def test_template_save_stamps_bounded_info_model_history(self) -> None:
         saved: list[dict] = []

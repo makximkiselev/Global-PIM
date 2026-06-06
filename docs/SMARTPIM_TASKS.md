@@ -918,12 +918,16 @@ Next fix in the category flow:
    - values mapping catches first-load API/auth errors and shows a red inline diagnostic instead of an empty list;
    - params mapping shows load errors inside the parameter queue instead of falling through to an empty-model message;
    - both paths keep a login/action link visible when the backend returns auth-related failure.
+20. `/admin/status` now shows authenticated smoke readiness without exposing secrets:
+   - `/api/ops/status` returns `auth_smoke` with only boolean flags for enabled/email/password/ready;
+   - the UI renders it beside Release safety;
+   - tests assert that smoke email/password values are not serialized.
 
 Next block:
 
 1. Configure real QA credentials outside git and enable authenticated smoke in deploy (`SMARTPIM_AUTH_SMOKE=1` with `SMARTPIM_SMOKE_EMAIL/PASSWORD`).
 2. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
-3. Add a small admin/status hint showing whether authenticated smoke is configured on the server, without exposing secrets.
+3. Add a guided retry action on params/values load errors, so the user can retry the failed request without a full page reload.
 
 ## Verification Commands
 

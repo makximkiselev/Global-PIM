@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -199,7 +200,7 @@ def _table_size_section() -> Dict[str, Any]:
         cur.execute(
             """
             SELECT
-              relname AS table_name,
+              c.relname AS table_name,
               pg_total_relation_size(c.oid)::bigint AS total_bytes,
               pg_relation_size(c.oid)::bigint AS table_bytes,
               COALESCE(s.n_live_tup, 0)::bigint AS estimated_rows
@@ -710,6 +711,44 @@ def _release_safety_section() -> Dict[str, Any]:
     )
 
 
+def _auth_smoke_section() -> Dict[str, Any]:
+    enabled = _text(os.getenv("SMARTPIM_AUTH_SMOKE")).lower() in {"1", "true", "yes", "on"}
+    email_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_EMAIL")))
+    password_configured = bool(_text(os.getenv("SMARTPIM_SMOKE_PASSWORD")))
+    ready = enabled and email_configured and password_configured
+    partial = enabled and not ready
+    status = "ok" if ready else "critical" if partial else "warn"
+    if ready:
+        detail = "Authenticated deploy smoke включен и секреты заданы."
+    elif partial:
+        detail = "Authenticated deploy smoke включен, но не все секреты заданы."
+    else:
+        detail = "Authenticated deploy smoke выключен; публичный smoke остается активным."
+    return _section(
+        status,
+        "Authenticated smoke",
+        detail,
+        totals={
+            "enabled": enabled,
+            "email_configured": email_configured,
+            "password_configured": password_configured,
+            "ready": ready,
+        },
+        items=[
+            {
+                "title": "SMARTPIM_AUTH_SMOKE",
+                "issue": "Включает authenticated smoke в deploy." if enabled else "Выключен; deploy проверяет только публичные маршруты.",
+                "status": "configured" if enabled else "disabled",
+            },
+            {
+                "title": "SMARTPIM_SMOKE_EMAIL / SMARTPIM_SMOKE_PASSWORD",
+                "issue": "Секреты заданы вне git." if email_configured and password_configured else "Нужно задать оба секрета на сервере/в окружении deploy.",
+                "status": "configured" if email_configured and password_configured else "missing",
+            },
+        ],
+    )
+
+
 def _safe_section(fn: Any) -> Dict[str, Any]:
     try:
         return fn()
@@ -733,6 +772,7 @@ def ops_status(request: Request) -> Dict[str, Any]:
         "access": _safe_section(_access_section),
         "info_model_versions": _safe_section(_info_model_versions_section),
         "release_safety": _safe_section(_release_safety_section),
+        "auth_smoke": _safe_section(_auth_smoke_section),
         "table_sizes": _safe_section(_table_size_section),
     }
     if any(section.get("status") == "critical" for section in sections.values()):
