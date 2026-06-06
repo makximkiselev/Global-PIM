@@ -937,7 +937,8 @@ Next fix in the category flow:
 24. Deploy public smoke requests are now bounded:
    - `curl_retry` uses `APP_PUBLIC_SMOKE_TIMEOUT` for each public health/db-grants request;
    - the SPA `HEAD` smoke also uses the same timeout;
-   - a transient public network hang can no longer leave deployment stuck after services already restarted.
+   - a transient public network hang can no longer leave deployment stuck after services already restarted;
+   - if db-grants public smoke only fails from the deploy machine, deploy verifies local+public db-grants from the server before continuing.
 
 Next block:
 

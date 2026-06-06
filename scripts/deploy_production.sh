@@ -405,7 +405,10 @@ ssh_run "bash /tmp/global-pim-${RELEASE_ID}.remote.sh"
 echo "==> Post-deploy smoke"
 ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WORKER_SERVICE_NAME} && systemctl is-active ${APP_VALUE_WORKER_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL} && curl -fsS ${APP_LOCAL_DB_GRANTS_HEALTH_URL}"
 curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
-curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1
+if ! curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1; then
+  echo "WARN: public db-grants smoke timed out from deploy machine; verifying from server"
+  ssh_run "curl -fsS --max-time ${APP_PUBLIC_SMOKE_TIMEOUT} ${APP_LOCAL_DB_GRANTS_HEALTH_URL} >/dev/null && curl -fsS --max-time ${APP_PUBLIC_SMOKE_TIMEOUT} ${APP_PUBLIC_DB_GRANTS_HEALTH_URL} >/dev/null"
+fi
 curl -I -fsS --max-time "${APP_PUBLIC_SMOKE_TIMEOUT}" "${APP_PUBLIC_BASE_URL}" >/dev/null
 if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" ]]; then
   echo "==> Scenario smoke"
