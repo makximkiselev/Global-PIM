@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 from urllib.request import Request, build_opener
 from urllib.request import HTTPSHandler
 
@@ -25,6 +25,9 @@ DEFAULT_ROUTES = (
     ("/admin/invites", ("Приглашения", "НОВОЕ ПРИГЛАШЕНИЕ")),
     ("/admin/status", ("Состояние системы", "Workflow runs")),
 )
+DEFAULT_PRODUCT_FLOW_CATEGORY_ID = "12547e4d-7713-414e-8aaf-a2fe919e1d3d"
+DEFAULT_PRODUCT_FLOW_PRODUCT_ID = "product_70"
+DEFAULT_PRODUCT_FLOW_SKU_MARKER = "50001"
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,24 @@ def parse_vite_assets(html: str) -> tuple[bool, list[str]]:
 
 def result_status(results: Iterable[CheckResult]) -> int:
     return 0 if all(item.ok for item in results) else 1
+
+
+def build_product_flow_routes(category_id: str, product_id: str, sku_marker: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    category = quote(str(category_id or "").strip(), safe="")
+    product = quote(str(product_id or "").strip(), safe="")
+    sku = str(sku_marker or "").strip()
+    if not category or not product:
+        return ()
+    product_markers = ("Параметры PIM", "Медиа", sku) if sku else ("Параметры PIM", "Медиа")
+    export_markers = ("Экспорт товаров", "Я.Маркет", "OZON", sku) if sku else ("Экспорт товаров", "Я.Маркет", "OZON")
+    return (
+        ("/", ("Рабочая сводка", "Открыть товары")),
+        (f"/templates/{category}", ("Инфо-модели", "К сопоставлениям")),
+        (f"/sources?tab=params&category={category}&product={product}", ("Сопоставления", "Черновик PIM-параметров")),
+        (f"/sources?tab=values&category={category}&product={product}", ("Сопоставления", "Значения")),
+        (f"/products/{product}?tab=attributes", product_markers),
+        (f"/catalog/exchange?tab=export&product={product}", export_markers),
+    )
 
 
 def print_results(results: Iterable[CheckResult]) -> None:
@@ -145,7 +166,15 @@ def public_smoke(base_url: str, timeout: int, *, insecure_ssl: bool = False) -> 
     return results
 
 
-async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, require_auth: bool, *, insecure_ssl: bool = False) -> list[CheckResult]:
+async def browser_smoke(
+    base_url: str,
+    timeout: int,
+    allow_auth_wall: bool,
+    require_auth: bool,
+    *,
+    insecure_ssl: bool = False,
+    extra_routes: Iterable[tuple[str, tuple[str, ...]]] = (),
+) -> list[CheckResult]:
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -186,7 +215,7 @@ async def browser_smoke(base_url: str, timeout: int, allow_auth_wall: bool, requ
         elif require_auth:
             results.append(CheckResult("browser login", False, "credentials required"))
 
-        for route, markers in DEFAULT_ROUTES:
+        for route, markers in (*DEFAULT_ROUTES, *tuple(extra_routes)):
             try:
                 await goto_app_page(page, f"{base_url}{route}")
                 body = await page.locator("body").inner_text()
@@ -219,6 +248,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-auth", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_REQUIRE_AUTH") == "1")
     parser.add_argument("--insecure-ssl", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_INSECURE_SSL") == "1")
     parser.add_argument("--public-only", action="store_true", help="Skip browser checks even if SMARTPIM_SMOKE_BROWSER=1.")
+    parser.add_argument("--product-flow", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_PRODUCT_FLOW") == "1", help="Add catalog -> info-model -> product -> export browser route markers for one SKU.")
+    parser.add_argument("--flow-category-id", default=os.environ.get("SMARTPIM_SMOKE_FLOW_CATEGORY_ID", DEFAULT_PRODUCT_FLOW_CATEGORY_ID))
+    parser.add_argument("--flow-product-id", default=os.environ.get("SMARTPIM_SMOKE_FLOW_PRODUCT_ID", DEFAULT_PRODUCT_FLOW_PRODUCT_ID))
+    parser.add_argument("--flow-sku-marker", default=os.environ.get("SMARTPIM_SMOKE_FLOW_SKU_MARKER", DEFAULT_PRODUCT_FLOW_SKU_MARKER))
     return parser
 
 
@@ -227,7 +260,17 @@ async def async_main(argv: list[str]) -> int:
     start = time.monotonic()
     results = public_smoke(args.base_url, args.timeout, insecure_ssl=args.insecure_ssl)
     if args.browser and not args.public_only:
-        results.extend(await browser_smoke(args.base_url, args.timeout, args.allow_auth_wall, args.require_auth, insecure_ssl=args.insecure_ssl))
+        product_flow_routes = build_product_flow_routes(args.flow_category_id, args.flow_product_id, args.flow_sku_marker) if args.product_flow else ()
+        results.extend(
+            await browser_smoke(
+                args.base_url,
+                args.timeout,
+                args.allow_auth_wall,
+                args.require_auth,
+                insecure_ssl=args.insecure_ssl,
+                extra_routes=product_flow_routes,
+            )
+        )
     print_results(results)
     print(f"Smoke duration: {time.monotonic() - start:.1f}s")
     return result_status(results)

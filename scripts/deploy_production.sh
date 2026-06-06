@@ -58,6 +58,7 @@ case "${SMARTPIM_AUTH_SMOKE}" in
 esac
 APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
 APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL="${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL:-0}"
+APP_SCENARIO_SMOKE_PRODUCT_FLOW="${APP_SCENARIO_SMOKE_PRODUCT_FLOW:-0}"
 SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
@@ -84,6 +85,7 @@ Optional post-deploy scenario smoke:
   APP_SCENARIO_SMOKE_INSECURE_SSL=1 can be used on local machines with a stale Python CA bundle.
   APP_SCENARIO_SMOKE_BROWSER=1 runs Playwright route checks after public checks.
   APP_SCENARIO_SMOKE_REQUIRE_AUTH=1 requires SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD.
+  APP_SCENARIO_SMOKE_PRODUCT_FLOW=1 adds the catalog -> info-model -> product -> export route flow.
   SMARTPIM_AUTH_SMOKE=1 enables scenario/browser/require-auth defaults for authenticated deploy smoke.
 USAGE
       exit 0
@@ -423,6 +425,9 @@ if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" ]]; then
   fi
   if [[ "${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL}" == "1" ]]; then
     smoke_args+=(--allow-auth-wall)
+  fi
+  if [[ "${APP_SCENARIO_SMOKE_PRODUCT_FLOW}" == "1" ]]; then
+    smoke_args+=(--product-flow)
   fi
   if [[ "${APP_SCENARIO_SMOKE_INSECURE_SSL}" == "1" ]]; then
     smoke_args+=(--insecure-ssl)

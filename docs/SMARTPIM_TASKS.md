@@ -939,6 +939,11 @@ Next fix in the category flow:
    - the SPA `HEAD` smoke also uses the same timeout;
    - a transient public network hang can no longer leave deployment stuck after services already restarted;
    - if db-grants public smoke only fails from the deploy machine, deploy verifies local+public db-grants from the server before continuing.
+25. Scenario smoke can now cover the real product route flow once authenticated smoke credentials are present:
+   - `scripts/scenario_smoke.py --browser --require-auth --product-flow` checks dashboard -> info-model -> params -> values -> product attributes -> export for one SKU;
+   - default fixture is category `12547e4d-7713-414e-8aaf-a2fe919e1d3d`, product `product_70`, marker `50001`;
+   - deploy can enable it with `APP_SCENARIO_SMOKE_PRODUCT_FLOW=1`;
+   - category/product/SKU markers are configurable through `SMARTPIM_SMOKE_FLOW_CATEGORY_ID`, `SMARTPIM_SMOKE_FLOW_PRODUCT_ID`, and `SMARTPIM_SMOKE_FLOW_SKU_MARKER`.
 
 Next block:
 
@@ -946,7 +951,7 @@ Next block:
    - `SMARTPIM_AUTH_SMOKE=1`
    - `SMARTPIM_SMOKE_EMAIL=...`
    - `SMARTPIM_SMOKE_PASSWORD=...`
-2. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
+2. Enable `APP_SCENARIO_SMOKE_PRODUCT_FLOW=1` together with authenticated smoke after QA credentials are stored.
 
 ## Verification Commands
 

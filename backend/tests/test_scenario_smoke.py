@@ -55,3 +55,21 @@ def test_browser_smoke_require_auth_fails_without_credentials(monkeypatch):
             "set SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD",
         )
     ]
+
+
+def test_build_product_flow_routes_are_parameterized_and_escaped():
+    routes = scenario_smoke.build_product_flow_routes("cat/id", "product 70", "50001")
+
+    assert routes == (
+        ("/", ("Рабочая сводка", "Открыть товары")),
+        ("/templates/cat%2Fid", ("Инфо-модели", "К сопоставлениям")),
+        ("/sources?tab=params&category=cat%2Fid&product=product%2070", ("Сопоставления", "Черновик PIM-параметров")),
+        ("/sources?tab=values&category=cat%2Fid&product=product%2070", ("Сопоставления", "Значения")),
+        ("/products/product%2070?tab=attributes", ("Параметры PIM", "Медиа", "50001")),
+        ("/catalog/exchange?tab=export&product=product%2070", ("Экспорт товаров", "Я.Маркет", "OZON", "50001")),
+    )
+
+
+def test_build_product_flow_routes_requires_category_and_product():
+    assert scenario_smoke.build_product_flow_routes("", "product_70", "50001") == ()
+    assert scenario_smoke.build_product_flow_routes("category", "", "50001") == ()
