@@ -2674,6 +2674,12 @@
   font-weight:600;
 }
 
+.sm-valuesEmpty.is-error{
+  border-color:color-mix(in srgb, var(--danger) 34%, rgba(15,23,42,.12));
+  background:color-mix(in srgb, var(--danger) 8%, rgba(249,250,252,.6));
+  color:color-mix(in srgb, var(--danger) 58%, var(--text));
+}
+
 .sm-valuesEmpty p{
   margin:0;
 }
@@ -2751,6 +2757,27 @@
   padding:12px 18px;
   border-bottom:1px solid var(--values-line);
   background:rgba(var(--bg-rgb),.08);
+}
+
+.sm-valuesError{
+  display:grid;
+  gap:4px;
+  margin:12px 18px 0;
+  padding:12px 14px;
+  border:1px solid color-mix(in srgb, var(--danger) 32%, var(--values-line));
+  border-radius:14px;
+  background:color-mix(in srgb, var(--danger) 8%, var(--panel));
+  color:color-mix(in srgb, var(--danger) 58%, var(--text));
+}
+
+.sm-valuesError strong{
+  font-size:13px;
+  font-weight:950;
+}
+
+.sm-valuesError span{
+  font-size:12px;
+  font-weight:750;
 }
 
 .sourcesMappingCanvas .sm-valuesMeta span,

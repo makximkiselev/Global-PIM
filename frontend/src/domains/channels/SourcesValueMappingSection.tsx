@@ -255,6 +255,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
   const [fieldQuery, setFieldQuery] = useState("");
   const [data, setData] = useState<ValuesResp | null>(null);
   const [loadingValues, setLoadingValues] = useState(false);
+  const [valuesError, setValuesError] = useState("");
   const [activeDictId, setActiveDictId] = useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [aiValueLoading, setAiValueLoading] = useState("");
@@ -303,10 +304,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
     if (!selectedCategoryId) {
       setData(null);
       setActiveDictId("");
+      setValuesError("");
       return;
     }
     let cancelled = false;
     setLoadingValues(true);
+    setValuesError("");
     void api<ValuesResp>(`/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}`)
       .then((resp) => {
         if (cancelled) return;
@@ -316,6 +319,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
           if (prev && resp.items.some((item) => item.dict_id === prev)) return prev;
           return first?.dict_id || "";
         });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setData(null);
+        setActiveDictId("");
+        setValuesError(err instanceof Error ? err.message : "Не удалось загрузить значения категории");
       })
       .finally(() => {
         if (!cancelled) setLoadingValues(false);
@@ -513,6 +522,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
           : result?.message || result?.ai_error || "AI не нашел уверенных пар.",
       );
       setLoadingValues(true);
+      setValuesError("");
       const refreshed = await api<ValuesResp>(`/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}`);
       setData(refreshed);
     } catch (e: any) {
@@ -540,6 +550,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
         },
       );
       setLoadingValues(true);
+      setValuesError("");
       const refreshed = await api<ValuesResp>(`/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}`);
       setData(refreshed);
       setValueMapDraft((prev) => {
@@ -681,6 +692,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
             <span>{unitCheckCount} числовых проверок</span>
             <span>{allReadyCount} готовы</span>
           </div>
+          {valuesError ? (
+            <div className="sm-valuesError">
+              <strong>Не удалось загрузить значения</strong>
+              <span>{valuesError === "AUTH_REQUIRED" ? "Сессия истекла или нет прав доступа. Войдите заново и вернитесь к этой категории." : valuesError}</span>
+            </div>
+          ) : null}
 
           <div className="sm-valuesWorkbench">
             <div className="sm-valuesFields">
@@ -738,6 +755,14 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                   <div className="sm-valuesEmpty">Выбери категорию слева.</div>
                 ) : loadingValues ? (
                   <div className="sm-valuesEmpty">Загружаю поля со значениями…</div>
+                ) : valuesError ? (
+                  <div className="sm-valuesEmpty is-error">
+                    <p>{valuesError === "AUTH_REQUIRED" ? "Нужно войти заново, чтобы загрузить значения категории." : valuesError}</p>
+                    <div className="sm-valuesEmptyActions">
+                      <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+                      <Link className="btn btn-primary" to="/login">Войти</Link>
+                    </div>
+                  </div>
                 ) : filteredItems.length === 0 ? (
                   <div className="sm-valuesEmpty">
                     <p>{emptyValuesMessage}</p>

@@ -1092,6 +1092,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                     </div>
                   </div>
                 ))
+              ) : error ? (
+                <div className="paramsAlert isError">
+                  <strong>Не удалось загрузить параметры категории</strong>
+                  <span>{error === "AUTH_REQUIRED" ? "Сессия истекла или нет прав доступа. Войдите заново и вернитесь к этой категории." : error}</span>
+                  <Link className="btn sm" to="/login">Войти</Link>
+                </div>
               ) : queueRows.length ? queueRows.map((row) => {
                 const coverage = rowProviderCoverage(row, codes);
                 const needsAttention = rowNeedsAttention(row, codes);

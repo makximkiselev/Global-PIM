@@ -914,12 +914,16 @@ Next fix in the category flow:
    - empty PIM values select the affected product parameter in-place;
    - parameter/value blockers open `/sources` with `category`, `product`, `parameter`, and `provider`;
    - params and values workspaces read deep-link parameters and focus/search the affected field after data loads.
+19. Params/values loading failures are now explicit:
+   - values mapping catches first-load API/auth errors and shows a red inline diagnostic instead of an empty list;
+   - params mapping shows load errors inside the parameter queue instead of falling through to an empty-model message;
+   - both paths keep a login/action link visible when the backend returns auth-related failure.
 
 Next block:
 
 1. Configure real QA credentials outside git and enable authenticated smoke in deploy (`SMARTPIM_AUTH_SMOKE=1` with `SMARTPIM_SMOKE_EMAIL/PASSWORD`).
 2. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
-3. Reduce values/params loading ambiguity by showing API/auth errors inline instead of leaving the user on a temporary empty/loading state.
+3. Add a small admin/status hint showing whether authenticated smoke is configured on the server, without exposing secrets.
 
 ## Verification Commands
 

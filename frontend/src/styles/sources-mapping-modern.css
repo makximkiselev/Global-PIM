@@ -3415,6 +3415,23 @@
   color: var(--success-strong);
 }
 
+.paramsAlert.isError {
+  display: grid;
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+  color: color-mix(in srgb, var(--danger) 58%, var(--text));
+}
+
+.paramsAlert.isError strong,
+.paramsAlert.isError span {
+  display: block;
+}
+
+.paramsAlert.isError .btn {
+  width: fit-content;
+}
+
 .paramsInfoModelEmptyGuide {
   display: grid;
   gap: 8px;
