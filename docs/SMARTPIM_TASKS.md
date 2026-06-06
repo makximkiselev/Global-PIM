@@ -923,11 +923,22 @@ Next fix in the category flow:
    - the UI renders it beside Release safety;
    - tests assert that smoke email/password values are not serialized.
 
+21. Deploy/auth smoke configuration is now consistent:
+   - `scripts/deploy_production.sh` loads optional smoke secrets from `~/.config/global-pim/smoke.env` or `SMARTPIM_SMOKE_ENV_FILE`;
+   - `SMARTPIM_AUTH_SMOKE=1` enables scenario/browser/require-auth deploy smoke defaults;
+   - deploy still fails before upload/restart when authenticated smoke is enabled without email/password.
+22. Params/values load errors now have guided retry actions:
+   - parameter mapping errors show a retry button next to the diagnostic and inside the queue;
+   - value mapping errors show a retry button in both the top diagnostic and empty-error state;
+   - login links stay visible only for auth-required failures.
+
 Next block:
 
-1. Configure real QA credentials outside git and enable authenticated smoke in deploy (`SMARTPIM_AUTH_SMOKE=1` with `SMARTPIM_SMOKE_EMAIL/PASSWORD`).
+1. Store real QA smoke credentials in `~/.config/global-pim/smoke.env` on the deploy machine:
+   - `SMARTPIM_AUTH_SMOKE=1`
+   - `SMARTPIM_SMOKE_EMAIL=...`
+   - `SMARTPIM_SMOKE_PASSWORD=...`
 2. Continue browser QA from catalog -> info-model -> product attributes -> export on one real SKU without creating a new info-model unless the user starts that path manually.
-3. Add a guided retry action on params/values load errors, so the user can retry the failed request without a full page reload.
 
 ## Verification Commands
 

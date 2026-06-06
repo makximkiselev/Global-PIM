@@ -491,6 +491,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
   const [details, setDetails] = useState<AttrDetailsResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [detailsReloadSeq, setDetailsReloadSeq] = useState(0);
   const [notice, setNotice] = useState("");
   const [aiMatching, setAiMatching] = useState(false);
   const [aiJob, setAiJob] = useState<AttrAiMatchJobResp | null>(null);
@@ -545,7 +546,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
     return () => {
       cancelled = true;
     };
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, detailsReloadSeq]);
+
+  const retryDetailsLoad = () => {
+    if (!selectedCategoryId || loading) return;
+    setDetailsReloadSeq((value) => value + 1);
+  };
 
   useEffect(() => {
     if (!aiJob?.job_id || aiJob.status === "completed" || aiJob.status === "failed") return;
@@ -961,10 +967,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
         ) : null}
 
         {error ? (
-          <div className="paramsAlert">
-            {error.includes("CATEGORY_NOT_DIRECTLY_MAPPED")
+          <div className="paramsAlert isError">
+            <span>
+              {error.includes("CATEGORY_NOT_DIRECTLY_MAPPED")
               ? "Для этой категории или ее родителя сначала нужна связка с категориями площадок."
               : error}
+            </span>
+            <button className="btn sm" type="button" onClick={retryDetailsLoad} disabled={loading}>Повторить</button>
+            {error === "AUTH_REQUIRED" ? <Link className="btn sm" to="/login">Войти</Link> : null}
           </div>
         ) : null}
         {mappingInherited && !infoModelIsEmpty ? (
@@ -1096,7 +1106,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                 <div className="paramsAlert isError">
                   <strong>Не удалось загрузить параметры категории</strong>
                   <span>{error === "AUTH_REQUIRED" ? "Сессия истекла или нет прав доступа. Войдите заново и вернитесь к этой категории." : error}</span>
-                  <Link className="btn sm" to="/login">Войти</Link>
+                  <button className="btn sm" type="button" onClick={retryDetailsLoad} disabled={loading}>Повторить</button>
+                  {error === "AUTH_REQUIRED" ? <Link className="btn sm" to="/login">Войти</Link> : null}
                 </div>
               ) : queueRows.length ? queueRows.map((row) => {
                 const coverage = rowProviderCoverage(row, codes);

@@ -9,6 +9,13 @@ if [[ -f "${APP_ENV_FILE}" ]]; then
   source "${APP_ENV_FILE}"
   set +a
 fi
+SMARTPIM_SMOKE_ENV_FILE="${SMARTPIM_SMOKE_ENV_FILE:-$HOME/.config/global-pim/smoke.env}"
+if [[ -f "${SMARTPIM_SMOKE_ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${SMARTPIM_SMOKE_ENV_FILE}"
+  set +a
+fi
 
 APP_SERVER_HOST="${APP_SERVER_HOST:-}"
 APP_SERVER_USER="${APP_SERVER_USER:-}"
@@ -34,10 +41,21 @@ APP_LOCAL_HEALTH_URL="http://127.0.0.1:18010/api/health"
 APP_LOCAL_DB_GRANTS_HEALTH_URL="http://127.0.0.1:18010/api/health/db-grants"
 APP_PUBLIC_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health"
 APP_PUBLIC_DB_GRANTS_HEALTH_URL="${APP_PUBLIC_BASE_URL%/}/api/health/db-grants"
-APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
+APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-}"
 APP_SCENARIO_SMOKE_INSECURE_SSL="${APP_SCENARIO_SMOKE_INSECURE_SSL:-0}"
-APP_SCENARIO_SMOKE_BROWSER="${APP_SCENARIO_SMOKE_BROWSER:-0}"
-APP_SCENARIO_SMOKE_REQUIRE_AUTH="${APP_SCENARIO_SMOKE_REQUIRE_AUTH:-0}"
+SMARTPIM_AUTH_SMOKE="${SMARTPIM_AUTH_SMOKE:-0}"
+case "${SMARTPIM_AUTH_SMOKE}" in
+  1|true|TRUE|yes|YES|on|ON)
+    APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-1}"
+    APP_SCENARIO_SMOKE_BROWSER="${APP_SCENARIO_SMOKE_BROWSER:-1}"
+    APP_SCENARIO_SMOKE_REQUIRE_AUTH="${APP_SCENARIO_SMOKE_REQUIRE_AUTH:-1}"
+    ;;
+  *)
+    APP_SCENARIO_SMOKE_BROWSER="${APP_SCENARIO_SMOKE_BROWSER:-0}"
+    APP_SCENARIO_SMOKE_REQUIRE_AUTH="${APP_SCENARIO_SMOKE_REQUIRE_AUTH:-0}"
+    ;;
+esac
+APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
 APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL="${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL:-0}"
 SKIP_BUILD=0
 
@@ -53,6 +71,8 @@ Usage: scripts/deploy_production.sh [--skip-build]
 
 Environment is loaded automatically from:
   ${APP_ENV_FILE}
+Smoke credentials are loaded automatically from:
+  ${SMARTPIM_SMOKE_ENV_FILE}
 
 Options:
   --skip-build  deploy existing frontend/dist without running npm build
@@ -62,6 +82,7 @@ Optional post-deploy scenario smoke:
   APP_SCENARIO_SMOKE_INSECURE_SSL=1 can be used on local machines with a stale Python CA bundle.
   APP_SCENARIO_SMOKE_BROWSER=1 runs Playwright route checks after public checks.
   APP_SCENARIO_SMOKE_REQUIRE_AUTH=1 requires SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD.
+  SMARTPIM_AUTH_SMOKE=1 enables scenario/browser/require-auth defaults for authenticated deploy smoke.
 USAGE
       exit 0
       ;;

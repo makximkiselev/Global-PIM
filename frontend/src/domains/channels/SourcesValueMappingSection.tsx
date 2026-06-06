@@ -256,6 +256,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
   const [data, setData] = useState<ValuesResp | null>(null);
   const [loadingValues, setLoadingValues] = useState(false);
   const [valuesError, setValuesError] = useState("");
+  const [valuesReloadSeq, setValuesReloadSeq] = useState(0);
   const [activeDictId, setActiveDictId] = useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [aiValueLoading, setAiValueLoading] = useState("");
@@ -332,7 +333,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
     return () => {
       cancelled = true;
     };
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, valuesReloadSeq]);
+
+  const retryValuesLoad = () => {
+    if (!selectedCategoryId || loadingValues) return;
+    setValuesReloadSeq((value) => value + 1);
+  };
 
   const filteredItems = useMemo(() => {
     const q = String(fieldQuery || "").trim().toLowerCase();
@@ -696,6 +702,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
             <div className="sm-valuesError">
               <strong>Не удалось загрузить значения</strong>
               <span>{valuesError === "AUTH_REQUIRED" ? "Сессия истекла или нет прав доступа. Войдите заново и вернитесь к этой категории." : valuesError}</span>
+              <button className="btn sm" type="button" onClick={retryValuesLoad} disabled={loadingValues}>Повторить</button>
+              {valuesError === "AUTH_REQUIRED" ? <Link className="btn sm" to="/login">Войти</Link> : null}
             </div>
           ) : null}
 
@@ -759,8 +767,9 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                   <div className="sm-valuesEmpty is-error">
                     <p>{valuesError === "AUTH_REQUIRED" ? "Нужно войти заново, чтобы загрузить значения категории." : valuesError}</p>
                     <div className="sm-valuesEmptyActions">
+                      <button className="btn" type="button" onClick={retryValuesLoad} disabled={loadingValues}>Повторить загрузку</button>
                       <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
-                      <Link className="btn btn-primary" to="/login">Войти</Link>
+                      {valuesError === "AUTH_REQUIRED" ? <Link className="btn btn-primary" to="/login">Войти</Link> : null}
                     </div>
                   </div>
                 ) : filteredItems.length === 0 ? (
