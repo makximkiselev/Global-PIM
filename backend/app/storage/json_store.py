@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
 from app.core.json_store import read_doc as core_read_json, write_doc as core_write_json
@@ -159,8 +161,59 @@ def load_templates_db() -> Dict[str, Any]:
     return _migrate_templates_db(load_templates_db_rel())
 
 
+def _template_fingerprint(template: Dict[str, Any], attrs: List[Dict[str, Any]]) -> str:
+    meta = template.get("meta") if isinstance(template.get("meta"), dict) else {}
+    clean_meta = json.loads(json.dumps(meta, ensure_ascii=False, default=str))
+    if isinstance(clean_meta, dict):
+        info_model = clean_meta.get("info_model") if isinstance(clean_meta.get("info_model"), dict) else {}
+        for key in ("history", "version", "updated_at"):
+            info_model.pop(key, None)
+        clean_meta["info_model"] = info_model
+    payload = {
+        "template": {
+            "id": template.get("id"),
+            "name": template.get("name"),
+            "category_id": template.get("category_id"),
+            "meta": clean_meta,
+        },
+        "attributes": attrs,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _stamp_template_versions(db: Dict[str, Any]) -> None:
+    templates = db.get("templates") if isinstance(db.get("templates"), dict) else {}
+    attrs_by_template = db.get("attributes") if isinstance(db.get("attributes"), dict) else {}
+    now = datetime.now(timezone.utc).isoformat()
+    for template_id, template in templates.items():
+        if not isinstance(template, dict):
+            continue
+        attrs = attrs_by_template.get(template_id) if isinstance(attrs_by_template.get(template_id), list) else []
+        meta = template.get("meta") if isinstance(template.get("meta"), dict) else {}
+        info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
+        history = info_model.get("history") if isinstance(info_model.get("history"), list) else []
+        fingerprint = _template_fingerprint(template, attrs)
+        if history and str(history[-1].get("fingerprint") or "") == fingerprint:
+            continue
+        next_version = int(history[-1].get("version") or 0) + 1 if history else 1
+        history = [*history[-24:], {
+            "version": next_version,
+            "created_at": now,
+            "status": str(info_model.get("status") or "draft"),
+            "fingerprint": fingerprint,
+            "attributes_count": len(attrs),
+        }]
+        info_model["history"] = history
+        info_model["version"] = next_version
+        info_model["updated_at"] = now
+        meta["info_model"] = info_model
+        template["meta"] = meta
+
+
 def save_templates_db(db: Dict[str, Any]) -> None:
     db = _migrate_templates_db(db)
+    _stamp_template_versions(db)
     save_templates_db_rel(db)
 
 

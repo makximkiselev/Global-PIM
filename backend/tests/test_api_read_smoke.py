@@ -17,6 +17,7 @@ from app.api.routes import marketplace_mapping as marketplace_mapping_routes
 from app.api.routes import ops as ops_routes
 from app.api.routes import ozon_market as ozon_market_routes
 from app.api.routes import templates as templates_routes
+from app.storage import json_store as storage_json_store
 
 
 class ApiReadSmokeTests(unittest.TestCase):
@@ -208,6 +209,31 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertIn("workflows", body["sections"])
         self.assertIn("review_queue", body["sections"])
         self.assertIn("lineage", body["sections"])
+
+    def test_template_save_stamps_bounded_info_model_history(self) -> None:
+        saved: list[dict] = []
+        db = {
+            "version": 2,
+            "templates": {"tpl1": {"id": "tpl1", "name": "Phones", "category_id": "cat1", "meta": {"info_model": {"status": "draft"}}}},
+            "attributes": {"tpl1": [{"id": "a1", "name": "Бренд", "code": "brand", "type": "text"}]},
+            "category_to_template": {},
+            "category_to_templates": {},
+        }
+
+        with patch.object(storage_json_store, "save_templates_db_rel", side_effect=lambda payload: saved.append(deepcopy(payload))):
+            storage_json_store.save_templates_db(deepcopy(db))
+            storage_json_store.save_templates_db(deepcopy(saved[-1]))
+            changed = deepcopy(saved[-1])
+            changed["attributes"]["tpl1"].append({"id": "a2", "name": "Память", "code": "memory", "type": "text"})
+            storage_json_store.save_templates_db(changed)
+
+        first_history = saved[0]["templates"]["tpl1"]["meta"]["info_model"]["history"]
+        second_history = saved[1]["templates"]["tpl1"]["meta"]["info_model"]["history"]
+        third_history = saved[2]["templates"]["tpl1"]["meta"]["info_model"]["history"]
+        self.assertEqual(len(first_history), 1)
+        self.assertEqual(len(second_history), 1)
+        self.assertEqual(len(third_history), 2)
+        self.assertEqual(saved[2]["templates"]["tpl1"]["meta"]["info_model"]["version"], 2)
 
     def test_ozon_type_ids_resolve_from_flat_category_tree(self) -> None:
         doc = {
