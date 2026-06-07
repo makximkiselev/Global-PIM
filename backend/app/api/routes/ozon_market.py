@@ -1058,11 +1058,45 @@ async def import_category_attributes(req: ImportCategoryAttrsReq) -> Dict[str, A
 @router.post("/import/attribute-values")
 async def import_attribute_values(req: ImportAttributeValuesReq) -> Dict[str, Any]:
     default_store = _default_import_store_credentials()
-    token = (req.token or "").strip() or _env_api_key() or str(default_store.get("api_key") or "").strip()
-    if not token:
-        raise HTTPException(status_code=400, detail="OZON_API_KEY_MISSING")
+    credential_candidates: List[Tuple[str, str, str]] = []
+    explicit_token = (req.token or "").strip()
+    explicit_client_id = (req.client_id or "").strip()
+    if explicit_token:
+        credential_candidates.append(("request", explicit_token, explicit_client_id))
+    env_token = _env_api_key()
+    env_client_id = _env_client_id()
+    if env_token:
+        credential_candidates.append(("env", env_token, env_client_id))
+    if default_store:
+        credential_candidates.append(
+            (
+                str(default_store.get("title") or default_store.get("id") or "default_store"),
+                str(default_store.get("api_key") or default_store.get("token") or "").strip(),
+                str(default_store.get("client_id") or "").strip(),
+            )
+        )
+    for store in ConnectorsStateReadAdapter().import_stores("ozon", enabled_only=True):
+        credential_candidates.append(
+            (
+                str(store.get("title") or store.get("id") or "store"),
+                str(store.get("api_key") or store.get("token") or "").strip(),
+                str(store.get("client_id") or "").strip(),
+            )
+        )
 
-    client_id = (req.client_id or "").strip() or _env_client_id() or str(default_store.get("client_id") or "").strip()
+    unique_credentials: List[Tuple[str, str, str]] = []
+    seen_credentials: Set[str] = set()
+    for label, token, client_id in credential_candidates:
+        if not token or not client_id:
+            continue
+        key = f"{client_id}::{token}"
+        if key in seen_credentials:
+            continue
+        seen_credentials.add(key)
+        unique_credentials.append((label, token, client_id))
+
+    if not unique_credentials:
+        raise HTTPException(status_code=400, detail="OZON_API_KEY_MISSING")
     category_id_raw = _to_str_id(req.category_id)
     category_id, parsed_type_id = _parse_ozon_category_ref(category_id_raw)
     if not category_id:
@@ -1080,17 +1114,30 @@ async def import_attribute_values(req: ImportAttributeValuesReq) -> Dict[str, An
         raise HTTPException(status_code=400, detail="OZON_TYPE_ID_NOT_RESOLVED")
 
     used_type_id = int(resolved_type_ids[0])
-    fetched = await _fetch_attribute_values_all_pages(
-        category_id=category_id,
-        type_id=used_type_id,
-        attribute_id=int(req.attribute_id),
-        language=language,
-        limit=int(req.limit),
-        last_value_id=req.last_value_id,
-        max_pages=40,
-        token=token,
-        client_id=client_id,
-    )
+    fetched: Optional[Dict[str, Any]] = None
+    credential_errors: List[str] = []
+    used_label = ""
+    for label, token, client_id in unique_credentials:
+        try:
+            fetched = await _fetch_attribute_values_all_pages(
+                category_id=category_id,
+                type_id=used_type_id,
+                attribute_id=int(req.attribute_id),
+                language=language,
+                limit=int(req.limit),
+                last_value_id=req.last_value_id,
+                max_pages=40,
+                token=token,
+                client_id=client_id,
+            )
+            used_label = label
+            break
+        except Exception as e:
+            credential_errors.append(f"{label}: {e}")
+            continue
+    if fetched is None:
+        tail = " | ".join(credential_errors[-4:]) if credential_errors else "NO_RESPONSE"
+        raise HTTPException(status_code=502, detail=f"OZON_HTTP_FAILED {tail}")
 
     doc = read_doc(CATEGORY_ATTR_VALUES_PATH, default={"items": {}})
     if not isinstance(doc, dict):
@@ -1110,7 +1157,7 @@ async def import_attribute_values(req: ImportAttributeValuesReq) -> Dict[str, An
         "raw": _attribute_values_raw_payload(fetched),
     }
     write_doc(CATEGORY_ATTR_VALUES_PATH, doc)
-    return {"ok": True, "key": key, "values_count": len(fetched.get("values") or [])}
+    return {"ok": True, "key": key, "values_count": len(fetched.get("values") or []), "source": used_label}
 
 
 @router.get("/categories/tree")
