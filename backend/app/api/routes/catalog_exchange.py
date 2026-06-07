@@ -1501,8 +1501,20 @@ def _ozon_allowed_value_rows(category_ref: Any, attr_id: Any) -> List[Dict[str, 
         if not isinstance(row, dict):
             continue
         values = row.get("values") if isinstance(row.get("values"), list) else []
-        return [item for item in values if isinstance(item, dict)]
+        return _clean_ozon_allowed_rows(values)
     return []
+
+
+def _clean_ozon_allowed_rows(values: List[Any]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for item in values:
+        if isinstance(item, dict):
+            out.append(item)
+            continue
+        value = str(item or "").strip()
+        if value:
+            out.append({"value": value})
+    return out
 
 
 def _ozon_allowed_values_by_attr(category_ref: Any) -> Dict[str, List[Dict[str, Any]]]:
@@ -1527,7 +1539,7 @@ def _ozon_allowed_values_by_attr(category_ref: Any) -> Dict[str, List[Dict[str, 
         if not attr_id:
             continue
         values = row.get("values") if isinstance(row.get("values"), list) else []
-        clean_values = [item for item in values if isinstance(item, dict)]
+        clean_values = _clean_ozon_allowed_rows(values)
         if type_id is not None:
             try:
                 if int(row.get("type_id") or 0) != int(type_id):
@@ -1663,22 +1675,17 @@ def _ozon_attribute_value_payload(
                     payloads = []
                     break
                 dictionary_value_id = _ozon_dictionary_value_id(part_match)
-                if dictionary_value_id is None:
-                    payloads = []
-                    break
-                payloads.append(
-                    {
-                        "value": _ozon_value_text(part_match) or part,
-                        "dictionary_value_id": dictionary_value_id,
-                    }
-                )
+                payload = {"value": _ozon_value_text(part_match) or part}
+                if dictionary_value_id is not None:
+                    payload["dictionary_value_id"] = dictionary_value_id
+                payloads.append(payload)
             if payloads:
                 return payloads, None
             return None, f"{attr_name}: значение не найдено в справочнике Ozon"
         dictionary_value_id = _ozon_dictionary_value_id(match)
         matched_value = _ozon_value_text(match)
         if dictionary_value_id is None:
-            return None, f"{attr_name}: у значения Ozon нет dictionary_value_id"
+            return [{"value": matched_value or value}], None
         return [{"value": matched_value or value, "dictionary_value_id": dictionary_value_id}], None
     if _ozon_attribute_is_numeric(meta):
         numeric_value, ambiguous = _ozon_numeric_text(value)
