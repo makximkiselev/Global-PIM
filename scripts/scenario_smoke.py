@@ -96,6 +96,44 @@ def build_product_flow_routes(category_id: str, product_id: str, sku_marker: str
     )
 
 
+def validate_export_latest_run(payload: dict[str, Any]) -> CheckResult:
+    run = payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    run_id = str(run.get("id") or "").strip()
+    batches = run.get("batches") if isinstance(run.get("batches"), list) else []
+    summary = run.get("summary") if isinstance(run.get("summary"), dict) else {}
+    if payload.get("ok") is not True or not run_id:
+        return CheckResult("export latest run", False, "latest run response is missing")
+    if not batches:
+        return CheckResult("export latest run", False, f"{run_id}: no batches")
+    blockers: list[dict[str, Any]] = []
+    details: list[dict[str, Any]] = []
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        for blocker in batch.get("blockers") if isinstance(batch.get("blockers"), list) else []:
+            if not isinstance(blocker, dict):
+                continue
+            blockers.append(blocker)
+            details.extend([item for item in (blocker.get("missing_details") or []) if isinstance(item, dict)])
+    blocked = int(summary.get("blocked_target_items") or 0)
+    ready = int(summary.get("ready_target_items") or 0)
+    if blocked > 0:
+        if not blockers:
+            return CheckResult("export latest run", False, f"{run_id}: summary has blockers but blocker rows are empty")
+        if not details:
+            return CheckResult("export latest run", False, f"{run_id}: blockers have no machine-readable missing_details")
+        missing_fix = [
+            str(detail.get("code") or detail.get("message") or "unknown")
+            for detail in details
+            if not str(detail.get("fix_href") or "").strip() or not str(detail.get("fix_label") or "").strip()
+        ]
+        if missing_fix:
+            return CheckResult("export latest run", False, f"{run_id}: blocker fix links missing for {', '.join(missing_fix[:5])}")
+    elif ready <= 0:
+        return CheckResult("export latest run", False, f"{run_id}: no ready or blocked target rows")
+    return CheckResult("export latest run", True, f"{run_id}: ready={ready}, blocked={blocked}, batches={len(batches)}")
+
+
 def print_results(results: Iterable[CheckResult]) -> None:
     for result in results:
         marker = "PASS" if result.ok else "FAIL"
@@ -174,6 +212,7 @@ async def browser_smoke(
     *,
     insecure_ssl: bool = False,
     extra_routes: Iterable[tuple[str, tuple[str, ...]]] = (),
+    export_latest_product_id: str = "",
 ) -> list[CheckResult]:
     try:
         from playwright.async_api import async_playwright
@@ -238,6 +277,17 @@ async def browser_smoke(
             except Exception as exc:
                 results.append(CheckResult(f"browser route {route}", False, str(exc)))
 
+        if export_latest_product_id:
+            try:
+                product = quote(str(export_latest_product_id).strip(), safe="")
+                response = await page.request.get(f"{base_url}/api/catalog/exchange/export/latest-run?product_id={product}")
+                if response.status != 200:
+                    results.append(CheckResult("export latest run", False, f"status={response.status}"))
+                else:
+                    results.append(validate_export_latest_run(await response.json()))
+            except Exception as exc:
+                results.append(CheckResult("export latest run", False, str(exc)))
+
         await browser.close()
 
     results.append(CheckResult("browser console", not console_errors, "; ".join(console_errors[:3])))
@@ -254,6 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--insecure-ssl", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_INSECURE_SSL") == "1")
     parser.add_argument("--public-only", action="store_true", help="Skip browser checks even if SMARTPIM_SMOKE_BROWSER=1.")
     parser.add_argument("--product-flow", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_PRODUCT_FLOW") == "1", help="Add catalog -> info-model -> product -> export browser route markers for one SKU.")
+    parser.add_argument("--export-latest", action="store_true", default=os.environ.get("SMARTPIM_SMOKE_EXPORT_LATEST") == "1", help="After browser login, assert the latest saved export run for the smoke SKU has rows and actionable blockers.")
     parser.add_argument("--flow-category-id", default=os.environ.get("SMARTPIM_SMOKE_FLOW_CATEGORY_ID", DEFAULT_PRODUCT_FLOW_CATEGORY_ID))
     parser.add_argument("--flow-product-id", default=os.environ.get("SMARTPIM_SMOKE_FLOW_PRODUCT_ID", DEFAULT_PRODUCT_FLOW_PRODUCT_ID))
     parser.add_argument("--flow-sku-marker", default=os.environ.get("SMARTPIM_SMOKE_FLOW_SKU_MARKER", DEFAULT_PRODUCT_FLOW_SKU_MARKER))
@@ -274,6 +325,7 @@ async def async_main(argv: list[str]) -> int:
                 args.require_auth,
                 insecure_ssl=args.insecure_ssl,
                 extra_routes=product_flow_routes,
+                export_latest_product_id=args.flow_product_id if args.export_latest else "",
             )
         )
     print_results(results)

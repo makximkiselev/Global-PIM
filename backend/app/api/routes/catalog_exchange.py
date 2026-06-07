@@ -1661,6 +1661,27 @@ def _export_batch_from_preview(
     }
 
 
+def _export_run_with_fix_links(run: Dict[str, Any]) -> Dict[str, Any]:
+    out = deepcopy(run)
+    batches = out.get("batches") if isinstance(out.get("batches"), list) else []
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        blockers = batch.get("blockers") if isinstance(batch.get("blockers"), list) else []
+        for blocker in blockers:
+            if not isinstance(blocker, dict):
+                continue
+            product_id = str(blocker.get("product_id") or "").strip()
+            category_id = str(blocker.get("category_id") or "").strip()
+            details = blocker.get("missing_details") if isinstance(blocker.get("missing_details"), list) else []
+            blocker["missing_details"] = [
+                _export_missing_detail_with_fix(detail, product_id=product_id, category_id=category_id)
+                for detail in details
+                if isinstance(detail, dict)
+            ]
+    return out
+
+
 def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, Any]]) -> Dict[str, Any]:
     product_count = len([pid for pid in product_ids if str(pid or "").strip()])
     target_count = len(batches)
@@ -2284,7 +2305,7 @@ def get_catalog_export_run(run_id: str) -> Dict[str, Any]:
     row = (runs.get("runs") or {}).get(run_id)
     if not isinstance(row, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
-    return {"ok": True, "run": row}
+    return {"ok": True, "run": _export_run_with_fix_links(row)}
 
 
 @router.get("/export/runs/{run_id}/package")
@@ -2293,7 +2314,7 @@ def get_catalog_export_package(run_id: str) -> Dict[str, Any]:
     row = (runs.get("runs") or {}).get(run_id)
     if not isinstance(row, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
-    return {"ok": True, "package": _build_export_package(row)}
+    return {"ok": True, "package": _build_export_package(_export_run_with_fix_links(row))}
 
 
 @router.get("/export/latest-run")
@@ -2320,4 +2341,4 @@ def get_latest_catalog_export_run(
     latest = max(filtered, key=lambda row: str(row.get("created_at") or row.get("id") or ""), default=None)
     if not latest:
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
-    return {"ok": True, "run": latest}
+    return {"ok": True, "run": _export_run_with_fix_links(latest)}

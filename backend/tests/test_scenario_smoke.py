@@ -73,3 +73,44 @@ def test_build_product_flow_routes_are_parameterized_and_escaped():
 def test_build_product_flow_routes_requires_category_and_product():
     assert scenario_smoke.build_product_flow_routes("", "product_70", "50001") == ()
     assert scenario_smoke.build_product_flow_routes("category", "", "50001") == ()
+
+
+def test_validate_export_latest_run_requires_fix_links_for_blockers():
+    result = scenario_smoke.validate_export_latest_run(
+        {
+            "ok": True,
+            "run": {
+                "id": "export_1",
+                "summary": {"ready_target_items": 1, "blocked_target_items": 1},
+                "batches": [
+                    {
+                        "blockers": [
+                            {
+                                "missing_details": [
+                                    {"code": "value_mapping_required", "message": "Цвет не сопоставлен"}
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            },
+        }
+    )
+
+    assert result.ok is False
+    assert "fix links missing" in result.detail
+
+
+def test_validate_export_latest_run_accepts_ready_rows_without_blockers():
+    result = scenario_smoke.validate_export_latest_run(
+        {
+            "ok": True,
+            "run": {
+                "id": "export_2",
+                "summary": {"ready_target_items": 2, "blocked_target_items": 0},
+                "batches": [{"blockers": []}],
+            },
+        }
+    )
+
+    assert result == scenario_smoke.CheckResult("export latest run", True, "export_2: ready=2, blocked=0, batches=1")

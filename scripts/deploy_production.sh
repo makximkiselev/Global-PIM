@@ -59,6 +59,7 @@ esac
 APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
 APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL="${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL:-0}"
 APP_SCENARIO_SMOKE_PRODUCT_FLOW="${APP_SCENARIO_SMOKE_PRODUCT_FLOW:-0}"
+APP_SCENARIO_SMOKE_EXPORT_LATEST="${APP_SCENARIO_SMOKE_EXPORT_LATEST:-${SMARTPIM_SMOKE_EXPORT_LATEST:-0}}"
 APP_RUN_DB_MIGRATIONS="${APP_RUN_DB_MIGRATIONS:-0}"
 SKIP_BUILD=0
 
@@ -87,6 +88,7 @@ Optional post-deploy scenario smoke:
   APP_SCENARIO_SMOKE_BROWSER=1 runs Playwright route checks after public checks.
   APP_SCENARIO_SMOKE_REQUIRE_AUTH=1 requires SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD.
   APP_SCENARIO_SMOKE_PRODUCT_FLOW=1 adds the catalog -> info-model -> product -> export route flow.
+  APP_SCENARIO_SMOKE_EXPORT_LATEST=1 checks the latest saved export run for the smoke SKU.
   SMARTPIM_AUTH_SMOKE=1 enables scenario/browser/require-auth defaults for authenticated deploy smoke.
   APP_RUN_DB_MIGRATIONS=1 runs Alembic migrations before service restart.
 USAGE
@@ -437,6 +439,9 @@ if [[ "${APP_RUN_SCENARIO_SMOKE}" == "1" ]]; then
   fi
   if [[ "${APP_SCENARIO_SMOKE_PRODUCT_FLOW}" == "1" ]]; then
     smoke_args+=(--product-flow)
+  fi
+  if [[ "${APP_SCENARIO_SMOKE_EXPORT_LATEST}" == "1" ]]; then
+    smoke_args+=(--export-latest)
   fi
   if [[ "${APP_SCENARIO_SMOKE_INSECURE_SSL}" == "1" ]]; then
     smoke_args+=(--insecure-ssl)

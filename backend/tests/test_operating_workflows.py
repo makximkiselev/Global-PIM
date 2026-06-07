@@ -1553,6 +1553,38 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(image["status"], "needs_review")
         self.assertEqual(image["source"], "store77")
 
+    def test_saved_export_run_backfills_blocker_fix_links(self) -> None:
+        run = {
+            "id": "export_old",
+            "batches": [
+                {
+                    "provider": "yandex_market",
+                    "blockers": [
+                        {
+                            "product_id": "product_1",
+                            "category_id": "cat-phone",
+                            "missing_details": [
+                                {
+                                    "code": "value_mapping_required",
+                                    "message": "Цвет: значение не сопоставлено с Я.Маркет",
+                                    "target": "values",
+                                    "parameter": "Цвет",
+                                    "provider": "yandex_market",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        hydrated = catalog_exchange._export_run_with_fix_links(run)
+
+        detail = hydrated["batches"][0]["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["fix_href"], "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82&provider=yandex_market")
+        self.assertEqual(detail["fix_label"], "Открыть значения")
+        self.assertNotIn("fix_href", run["batches"][0]["blockers"][0]["missing_details"][0])
+
     def test_product_channels_summary_reads_competitor_links_from_relational_store(self) -> None:
         product = {
             "id": "product_1",
