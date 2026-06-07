@@ -84,7 +84,7 @@ def build_product_flow_routes(category_id: str, product_id: str, sku_marker: str
     sku = str(sku_marker or "").strip()
     if not category or not product:
         return ()
-    product_markers = ("Параметры PIM", "Медиа", sku) if sku else ("Параметры PIM", "Медиа")
+    product_markers = ("ПАРАМЕТРЫ PIM", "Параметры и значения", "Медиа", sku) if sku else ("ПАРАМЕТРЫ PIM", "Параметры и значения", "Медиа")
     export_markers = ("Экспорт товаров", "Я.Маркет", "OZON", sku) if sku else ("Экспорт товаров", "Я.Маркет", "OZON")
     return (
         ("/", ("Рабочая сводка", "Открыть товары")),
@@ -203,11 +203,16 @@ async def browser_smoke(
 
         if email and password:
             await goto_app_page(page, f"{base_url}/login")
-            await page.fill('input[name="loginValue"]', email)
+            await page.fill('input[name="loginValue"], input[name="login"]', email)
             await page.fill('input[name="password"]', password)
-            await page.click('button[type="submit"]')
+            async with page.expect_response(lambda response: "/api/auth/login" in response.url, timeout=timeout * 1000):
+                await page.click('button[type="submit"]')
             try:
                 await page.wait_for_load_state("networkidle", timeout=min(timeout * 1000, 5000))
+            except Exception:
+                pass
+            try:
+                await page.wait_for_url(lambda url: "/login" not in url, timeout=min(timeout * 1000, 5000))
             except Exception:
                 pass
             body = await page.locator("body").inner_text()
