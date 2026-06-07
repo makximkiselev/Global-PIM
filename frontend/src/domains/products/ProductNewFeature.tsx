@@ -1351,6 +1351,15 @@ export default function ProductNewFeature() {
   const enabledVariantCount = variants.filter((variant) => variant.enabled !== false).length;
   const disabledVariantCount = Math.max(0, variants.length - enabledVariantCount);
   const variantAxisColumns = selectedParamLabels.length ? selectedParamLabels : [{ id: "__variant", label: "Вариант", values: [] }];
+  const enabledVariants = variants.filter((variant) => variant.enabled !== false);
+  const variantAxesSummary = selectedParamLabels
+    .filter((axis) => axis.values.length)
+    .map((axis) => `${axis.label}: ${axis.values.length}`)
+    .join(" · ");
+  const generatedGroupTitle = productType === "multi"
+    ? normStr(title) || enabledVariants[0]?.title || "Группа SKU"
+    : normStr(title) || "SKU";
+  const variantPreviewSample = enabledVariants.slice(0, 4);
   const readyToCreate = Boolean(normStr(title) && categoryId && enabledVariantCount);
   const canGoNext =
     activeStep === 0
@@ -1510,6 +1519,20 @@ export default function ProductNewFeature() {
                     ))}
                   </div>
                 ) : null}
+                {productType === "multi" ? (
+                  <div className="pnVariantGroupPreview">
+                    <div>
+                      <span>Группа после создания</span>
+                      <strong>{generatedGroupTitle}</strong>
+                      <em>{variantAxesSummary || "Оси вариантов еще не выбраны"}</em>
+                    </div>
+                    <div>
+                      <span>SKU к созданию</span>
+                      <strong>{enabledVariantCount || "—"}</strong>
+                      <em>{disabledVariantCount ? `${disabledVariantCount} исключено` : variants.length ? "все комбинации включены" : "сначала соберите SKU"}</em>
+                    </div>
+                  </div>
+                ) : null}
                 {variantErr ? <div className="pn-hint pn-hintWarn">{variantErr}</div> : null}
                 {variants.length && disabledVariantCount ? (
                   <div className="pnWizardNotice">
@@ -1647,9 +1670,23 @@ export default function ProductNewFeature() {
                 <div className="pnWizardReviewGrid">
                   <div><span>Тип</span><strong>{productType === "single" ? "Один SKU" : "С вариантами"}</strong></div>
                   <div><span>SKU к созданию</span><strong>{enabledVariantCount}</strong></div>
+                  <div><span>Группа</span><strong>{productType === "multi" ? generatedGroupTitle : "не нужна"}</strong></div>
+                  <div><span>Оси</span><strong>{productType === "multi" ? variantAxesSummary || "не выбраны" : "нет"}</strong></div>
                   <div><span>Источники</span><strong>после создания</strong></div>
                   <div><span>Параметры</span><strong>{filledFeatures}</strong></div>
                 </div>
+                {productType === "multi" && variantPreviewSample.length ? (
+                  <div className="pnVariantReviewSample">
+                    <span>Первые SKU в группе</span>
+                    {variantPreviewSample.map((variant) => (
+                      <div key={variant.key}>
+                        <strong>{variant.title}</strong>
+                        <em>{Object.values(variant.params).filter(Boolean).join(" / ") || "один SKU"}</em>
+                      </div>
+                    ))}
+                    {enabledVariantCount > variantPreviewSample.length ? <small>Еще {enabledVariantCount - variantPreviewSample.length} SKU будут созданы в этой же группе.</small> : null}
+                  </div>
+                ) : null}
                 <div className="pnWizardNotice">
                   После создания одного SKU откроется карточка товара. После создания линейки откроется группа SKU, чтобы сначала проверить состав,
                   общие факты и отличия, а затем перейти к подбору конкурентов и выгрузке выбранных SKU.

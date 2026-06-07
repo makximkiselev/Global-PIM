@@ -716,6 +716,7 @@ Current state:
 8. Creation blocks duplicate manual SKU GT inside the variant matrix before calling backend.
 9. Variant-family creation now opens the created product group directly, so the next step is group-level SKU review and enrichment instead of a single product card.
 10. Created product groups show a next-step guide with direct actions to competitor matching for the first SKU and export preparation for the selected SKU group.
+11. Variant creation now previews the generated SKU group title, selected variant axes, enabled/excluded SKU count, and a sample of SKU rows before final creation.
 
 Known problems:
 
@@ -727,7 +728,7 @@ Next tasks:
 
 1. Re-test full path for a real product family: base data -> axes -> matrix -> create -> group competitor scan -> enrichment -> validation.
 2. Browser-check group workspace after creation with a real newly created family and refine selected-SKU guidance if it is still unclear.
-3. Add stronger preview of generated group title and variant axes before final create.
+3. Add stronger preview of generated group title and variant axes before final create. Done in the wizard SKU/review steps; still needs a browser pass with a fresh real family.
 
 ### P0.6 Catalog / Products / Export UX
 
