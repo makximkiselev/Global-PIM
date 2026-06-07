@@ -370,6 +370,54 @@ function featureIdentity(value: unknown): string {
   return normalizeText(value).toLowerCase().replace(/[\s-]+/g, "_");
 }
 
+function parameterLookupText(value: unknown): string {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parameterAliasCandidates(value: unknown): string[] {
+  const text = parameterLookupText(value);
+  const aliases = new Set<string>([text]);
+  const withoutSlash = text.replace(/\s+товара\b/g, "").replace(/\s+устройства\b/g, "").trim();
+  if (withoutSlash) aliases.add(withoutSlash);
+  if (text.includes("упаков") && text.includes("вес")) aliases.add("вес упаковки");
+  if (text.includes("упаков") && text.includes("длин")) aliases.add("длина упаковки");
+  if (text.includes("упаков") && text.includes("шир")) aliases.add("ширина упаковки");
+  if (text.includes("упаков") && text.includes("выс")) aliases.add("высота упаковки");
+  if (!text.includes("упаков") && text.includes("вес")) aliases.add("вес устройства");
+  if (!text.includes("упаков") && text.includes("длин")) aliases.add("длина устройства");
+  if (!text.includes("упаков") && text.includes("шир")) aliases.add("ширина устройства");
+  if (!text.includes("упаков") && text.includes("выс")) aliases.add("высота устройства");
+  return Array.from(aliases).filter(Boolean);
+}
+
+function featureSearchHaystack(feature: ProductFeatureValue): string[] {
+  return [feature.name, feature.code]
+    .map(parameterLookupText)
+    .filter(Boolean);
+}
+
+function findFeatureByParameter(features: ProductFeatureValue[], parameter: unknown): ProductFeatureValue | null {
+  const candidates = parameterAliasCandidates(parameter);
+  if (!candidates.length) return null;
+
+  const exact = features.find((feature) => {
+    const haystack = featureSearchHaystack(feature);
+    return candidates.some((candidate) => haystack.includes(candidate));
+  });
+  if (exact) return exact;
+
+  const contains = features.find((feature) => {
+    const haystack = featureSearchHaystack(feature);
+    return candidates.some((candidate) => haystack.some((item) => item.includes(candidate) || candidate.includes(item)));
+  });
+  return contains || null;
+}
+
 function isProductFeatureCode(codeOrName: unknown): boolean {
   const raw = featureIdentity(codeOrName);
   if (!raw) return true;
@@ -834,6 +882,9 @@ function ProductAttributeWorkbench({
   categoryId,
   selectedKey,
   onSelect,
+  onSaveFeatureValue,
+  savingFeatureKey,
+  saveNotice,
 }: {
   features: ProductFeatureValue[];
   hasInfoModel: boolean;
@@ -844,11 +895,17 @@ function ProductAttributeWorkbench({
   categoryId: string;
   selectedKey: string;
   onSelect: (key: string) => void;
+  onSaveFeatureValue: (feature: ProductFeatureValue, value: string) => Promise<void>;
+  savingFeatureKey: string;
+  saveNotice: string;
 }) {
   const selectedFeature = useMemo(() => {
     return features.find((feature, index) => featureKey(feature, index) === selectedKey) || features[0] || null;
   }, [features, selectedKey]);
   const selectedValue = selectedFeature ? featureValue(selectedFeature) : "";
+  const selectedFeatureKey = selectedFeature ? featureKey(selectedFeature, features.indexOf(selectedFeature)) : "";
+  const selectedIsSystem = Boolean(selectedFeature?.locked || normalizeText(selectedFeature?.field_layer) === "system" || normalizeText(selectedFeature?.fill_source) === "system");
+  const [draftValue, setDraftValue] = useState(selectedValue);
   const sourceEntries = selectedFeature ? sourceEntriesForFeature(selectedFeature) : [];
   const selectedFlowRow = flowRowForFeature(parameterFlow, selectedFeature);
   const projections = selectedFlowRow?.marketplaces || [];
@@ -864,6 +921,11 @@ function ProductAttributeWorkbench({
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
     return values.size > 1;
   }).length;
+  const draftChanged = draftValue !== selectedValue;
+
+  useEffect(() => {
+    setDraftValue(selectedValue);
+  }, [selectedFeatureKey, selectedValue]);
 
   if (!hasInfoModel) {
     return (
@@ -900,7 +962,7 @@ function ProductAttributeWorkbench({
         {blockerItems.length ? (
           <div className="productParamBlockerList" aria-label="Блокеры параметров">
             {blockerItems.map((blocker, index) => {
-              const targetFeature = features.find((feature) => featureIdentity(feature.name || feature.code) === featureIdentity(blocker.parameter || ""));
+              const targetFeature = findFeatureByParameter(features, blocker.parameter);
               const localKey = targetFeature ? featureKey(targetFeature, features.indexOf(targetFeature)) : "";
               const meta = [
                 blocker.provider ? productSourceLabel(blocker.provider) : "",
@@ -982,7 +1044,29 @@ function ProductAttributeWorkbench({
               </div>
               <div className="productCanonicalValue">
                 <span>{featureFillSourceLabel(selectedFeature)}</span>
-                <strong title={selectedValue || undefined}>{selectedValue ? compactText(selectedValue, 180) : "Не заполнено"}</strong>
+                <textarea
+                  className="productCanonicalInput"
+                  value={draftValue}
+                  placeholder="Введите значение параметра"
+                  disabled={selectedIsSystem || savingFeatureKey === selectedFeatureKey}
+                  onChange={(event) => setDraftValue(event.target.value)}
+                />
+                {selectedIsSystem ? (
+                  <div className="productParamEmpty">Системное поле заполняется из карточки товара и не редактируется вручную.</div>
+                ) : null}
+                <div className="productCanonicalActions">
+                  <Button onClick={() => setDraftValue(selectedValue)} disabled={!draftChanged || savingFeatureKey === selectedFeatureKey}>
+                    Отменить
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => void onSaveFeatureValue(selectedFeature, draftValue)}
+                    disabled={!draftChanged || selectedIsSystem || savingFeatureKey === selectedFeatureKey}
+                  >
+                    {savingFeatureKey === selectedFeatureKey ? "Сохраняем" : "Сохранить значение"}
+                  </Button>
+                </div>
+                {saveNotice ? <div className="productParamSaveNotice">{saveNotice}</div> : null}
                 {selectedValue.length > 180 ? (
                   <details className="productLongValue">
                     <summary>Показать полный текст</summary>
@@ -1472,6 +1556,8 @@ function ProductWorkspaceFeature() {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [mediaSaving, setMediaSaving] = useState(false);
   const [mediaNotice, setMediaNotice] = useState("");
+  const [featureSavingKey, setFeatureSavingKey] = useState("");
+  const [featureNotice, setFeatureNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1496,6 +1582,8 @@ function ProductWorkspaceFeature() {
       setCompetitorBulkRun(null);
       setMediaSaving(false);
       setMediaNotice("");
+      setFeatureSavingKey("");
+      setFeatureNotice("");
       let shellResolved = false;
       let fullProductResolved = false;
       let summaryProduct: ProductData | null = null;
@@ -1741,6 +1829,64 @@ function ProductWorkspaceFeature() {
     }
   }
 
+  async function saveFeatureValue(feature: ProductFeatureValue, value: string) {
+    if (!product) return;
+    if (feature.locked || normalizeText(feature.field_layer) === "system" || normalizeText(feature.fill_source) === "system") return;
+    const normalizedValue = normalizeText(value);
+    const targetCode = featureIdentity(feature.code);
+    const targetName = featureIdentity(feature.name);
+    const currentFeatures = Array.isArray(product.content?.features) ? product.content?.features || [] : [];
+    let matched = false;
+    const nextFeatures = currentFeatures.map((item) => {
+      const code = featureIdentity(item.code);
+      const name = featureIdentity(item.name);
+      const same = (targetCode && code === targetCode) || (targetName && name === targetName) || (targetCode && name === targetCode) || (targetName && code === targetName);
+      if (!same) return item;
+      matched = true;
+      return {
+        ...item,
+        ...feature,
+        source_values: item.source_values || feature.source_values,
+        value: normalizedValue,
+      };
+    });
+    if (!matched) {
+      nextFeatures.push({
+        ...feature,
+        value: normalizedValue,
+      });
+    }
+    const nextContent: ProductContent = {
+      ...(product.content || {}),
+      features: nextFeatures,
+    };
+    const optimisticProduct = { ...product, content: nextContent };
+    const savingKey = featureKey(feature, features.indexOf(feature) >= 0 ? features.indexOf(feature) : 0);
+    setProduct(optimisticProduct);
+    setFeatureSavingKey(savingKey);
+    setFeatureNotice("");
+    try {
+      const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: nextContent }),
+      });
+      const nextProduct = response.product || optimisticProduct;
+      setProduct(nextProduct);
+      setFeatureNotice(normalizedValue ? "Значение сохранено в PIM." : "Значение очищено.");
+      try {
+        const flowResponse = await api<ProductParameterFlow>(`/products/${product.id}/parameter-flow`);
+        setParameterFlow(flowResponse);
+      } catch {
+        setParameterFlow(null);
+      }
+    } catch (err) {
+      setProduct(product);
+      setFeatureNotice(err instanceof Error ? err.message : "Не удалось сохранить значение.");
+    } finally {
+      setFeatureSavingKey("");
+    }
+  }
+
   async function deleteProduct() {
     if (!product) return;
     const title = normalizeText(product.title) || normalizeText(product.sku_gt) || product.id;
@@ -1802,11 +1948,20 @@ function ProductWorkspaceFeature() {
       setSelectedFeatureKey("");
       return;
     }
+    const requestedParameter = normalizeText(searchParams.get("parameter"));
+    if (requestedParameter) {
+      const requestedFeature = findFeatureByParameter(features, requestedParameter);
+      if (requestedFeature) {
+        const requestedIndex = features.indexOf(requestedFeature);
+        setSelectedFeatureKey(featureKey(requestedFeature, requestedIndex >= 0 ? requestedIndex : 0));
+        return;
+      }
+    }
     setSelectedFeatureKey((prev) => {
       if (prev && features.some((feature, index) => featureKey(feature, index) === prev)) return prev;
       return featureKey(features[0], 0);
     });
-  }, [features]);
+  }, [features, searchParams]);
 
   useEffect(() => {
     if (!competitorGroupItems.length) {
@@ -2189,6 +2344,9 @@ function ProductWorkspaceFeature() {
                   categoryId={product.category_id}
                   selectedKey={selectedFeatureKey}
                   onSelect={setSelectedFeatureKey}
+                  onSaveFeatureValue={saveFeatureValue}
+                  savingFeatureKey={featureSavingKey}
+                  saveNotice={featureNotice}
                 />
               </Card>
             ) : null}

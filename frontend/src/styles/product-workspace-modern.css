@@ -2180,6 +2180,16 @@
   font-weight:800;
 }
 
+.productParamSaveNotice{
+  padding:10px 12px;
+  border:1px solid color-mix(in srgb, var(--success) 28%, transparent);
+  border-radius:14px;
+  background:color-mix(in srgb, var(--success) 8%, transparent);
+  color:var(--success-strong);
+  font-size:12px;
+  font-weight:850;
+}
+
 .productLongValue{
   border-top:1px solid rgba(var(--line-rgb), .55);
   padding-top:10px;
