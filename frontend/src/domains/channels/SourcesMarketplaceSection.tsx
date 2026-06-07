@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import CategorySidebar from "../../components/CategorySidebar";
@@ -94,6 +95,27 @@ function invalidateSourcesReadCaches(categoryId?: string) {
   clearPersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY);
   clearPersistentSourcesCache(SOURCES_ATTR_BOOTSTRAP_CACHE_KEY);
   clearPersistentAttrDetailsCache(categoryId);
+}
+
+async function readCategoriesMappingBootstrap(): Promise<CategoriesResp> {
+  const now = Date.now();
+  if (categoriesMappingCache.data && now - categoriesMappingCache.ts < SOURCES_MAPPING_CACHE_TTL_MS) {
+    return categoriesMappingCache.data;
+  }
+  const persisted = loadPersistentSourcesCache<CategoriesResp>(SOURCES_CATEGORIES_CACHE_KEY, SOURCES_MAPPING_CACHE_TTL_MS);
+  if (persisted) {
+    categoriesMappingCache = { ts: Date.now(), data: persisted };
+    return persisted;
+  }
+  const data = await api<CategoriesResp>("/marketplaces/mapping/import/categories/bootstrap");
+  categoriesMappingCache = { ts: Date.now(), data };
+  savePersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY, data);
+  return data;
+}
+
+async function readMappingIssues(): Promise<MappingIssue[]> {
+  const data = await api<MappingIssuesResp>("/marketplaces/mapping/issues");
+  return (data.items || []).filter((item) => String(item.status || "open") === "open");
 }
 
 type Provider = {
@@ -986,10 +1008,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     renderFeatureDetailExtra,
     renderFeatureSidebarExtra,
   } = props;
+  const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<MainTab>(forcedMainTab || "import");
   const [importTab, setImportTab] = useState<ImportTab>(forcedImportTab || "categories");
 
-  const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string>("");
@@ -1082,6 +1104,28 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [clearModalPreserveTemplates, setClearModalPreserveTemplates] = useState(true);
   const selectedCatalogId = controlledSelectedCategoryId || selectedCatalogIdState;
   const activeAttrCategoryId = useCatalogTreeForFeatures ? (selectedCatalogId || attrSelectedCategoryId) : attrSelectedCategoryId;
+  const categoriesQuery = useQuery({
+    queryKey: ["sources-categories-bootstrap"],
+    queryFn: readCategoriesMappingBootstrap,
+    staleTime: SOURCES_MAPPING_CACHE_TTL_MS,
+  });
+  const mappingIssuesQuery = useQuery({
+    queryKey: ["sources-mapping-issues"],
+    queryFn: readMappingIssues,
+    staleTime: 30_000,
+  });
+  const loading = categoriesQuery.isLoading && !catalogItems.length;
+
+  const applyCategoriesMappingData = useCallback((data: CategoriesResp) => {
+    setCatalogNodes(data.catalog_nodes || []);
+    setCatalogItems(data.catalog_items || []);
+    setProviders(data.providers || []);
+    setProviderCategories(data.provider_categories || {});
+    setProviderCategoriesLazy(!!data.provider_categories_lazy);
+    setMappings(data.mappings || {});
+    setBindingStates(data.binding_states || {});
+    setCompetitorStates(data.competitor_states || {});
+  }, []);
 
   function applySelectedCatalogId(nextId: string) {
     if (!controlledSelectedCategoryId) {
@@ -1112,60 +1156,51 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (forcedImportTab && importTab !== forcedImportTab) setImportTab(forcedImportTab);
   }, [forcedImportTab, importTab]);
 
+  useEffect(() => {
+    if (!categoriesQuery.data) return;
+    applyCategoriesMappingData(categoriesQuery.data);
+    setErr(null);
+    setSyncMsg("");
+  }, [applyCategoriesMappingData, categoriesQuery.data]);
+
+  useEffect(() => {
+    if (!categoriesQuery.error) return;
+    setErr((categoriesQuery.error as Error).message || "Ошибка загрузки");
+  }, [categoriesQuery.error]);
+
+  useEffect(() => {
+    if (!mappingIssuesQuery.data) return;
+    setMappingIssues(mappingIssuesQuery.data);
+  }, [mappingIssuesQuery.data]);
+
+  useEffect(() => {
+    if (mappingIssuesQuery.error) setMappingIssues([]);
+  }, [mappingIssuesQuery.error]);
+
   async function loadCategoriesMapping(): Promise<CategoriesResp | null> {
-    const now = Date.now();
-    if (categoriesMappingCache.data && now - categoriesMappingCache.ts < SOURCES_MAPPING_CACHE_TTL_MS) {
-      const data = categoriesMappingCache.data;
-      setCatalogNodes(data.catalog_nodes || []);
-      setCatalogItems(data.catalog_items || []);
-      setProviders(data.providers || []);
-      setProviderCategories(data.provider_categories || {});
-      setProviderCategoriesLazy(!!data.provider_categories_lazy);
-      setMappings(data.mappings || {});
-      setBindingStates(data.binding_states || {});
-      setCompetitorStates(data.competitor_states || {});
-      return data;
-    }
-    const persisted = loadPersistentSourcesCache<CategoriesResp>(SOURCES_CATEGORIES_CACHE_KEY, SOURCES_MAPPING_CACHE_TTL_MS);
-    if (persisted) {
-      categoriesMappingCache = { ts: Date.now(), data: persisted };
-      setCatalogNodes(persisted.catalog_nodes || []);
-      setCatalogItems(persisted.catalog_items || []);
-      setProviders(persisted.providers || []);
-      setProviderCategories(persisted.provider_categories || {});
-      setProviderCategoriesLazy(!!persisted.provider_categories_lazy);
-      setMappings(persisted.mappings || {});
-      setBindingStates(persisted.binding_states || {});
-      setCompetitorStates(persisted.competitor_states || {});
-      return persisted;
-    }
-    setLoading(true);
     setErr(null);
     try {
-      const data = await api<CategoriesResp>("/marketplaces/mapping/import/categories/bootstrap");
-      categoriesMappingCache = { ts: Date.now(), data };
-      savePersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY, data);
-      setCatalogNodes(data.catalog_nodes || []);
-      setCatalogItems(data.catalog_items || []);
-      setProviders(data.providers || []);
-      setProviderCategories(data.provider_categories || {});
-      setProviderCategoriesLazy(!!data.provider_categories_lazy);
-      setMappings(data.mappings || {});
-      setBindingStates(data.binding_states || {});
-      setCompetitorStates(data.competitor_states || {});
+      const data = await queryClient.fetchQuery({
+        queryKey: ["sources-categories-bootstrap"],
+        queryFn: readCategoriesMappingBootstrap,
+        staleTime: 0,
+      });
+      applyCategoriesMappingData(data);
       return data;
     } catch (e) {
       setErr((e as Error).message || "Ошибка загрузки");
       return null;
-    } finally {
-      setLoading(false);
     }
   }
 
   async function loadMappingIssues() {
     try {
-      const data = await api<MappingIssuesResp>("/marketplaces/mapping/issues");
-      setMappingIssues((data.items || []).filter((item) => String(item.status || "open") === "open"));
+      const items = await queryClient.fetchQuery({
+        queryKey: ["sources-mapping-issues"],
+        queryFn: readMappingIssues,
+        staleTime: 0,
+      });
+      setMappingIssues(items);
     } catch {
       setMappingIssues([]);
     }
@@ -1197,13 +1232,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       };
     } catch (e) {
       setErr((e as Error).message || "Ошибка загрузки категорий площадки");
-    }
-  }
-
-  async function loadInitialReadModel() {
-    const [data] = await Promise.all([loadCategoriesMapping(), loadMappingIssues()]);
-    if (data) {
-      setSyncMsg("");
     }
   }
 
@@ -1424,6 +1452,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setSyncMsg("Обновление локального кэша...");
     try {
       invalidateSourcesReadCaches();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sources-categories-bootstrap"] }),
+        queryClient.invalidateQueries({ queryKey: ["sources-mapping-issues"] }),
+      ]);
       await Promise.all([loadCategoriesMapping(), loadMappingIssues()]);
       if (mainTab === "import" && importTab === "features") {
         await loadAttrBootstrap();
@@ -1433,13 +1465,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setSyncing(false);
     }
   }
-
-  useEffect(() => {
-    (async () => {
-      await loadInitialReadModel();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (mainTab !== "import" || importTab !== "features") return;
