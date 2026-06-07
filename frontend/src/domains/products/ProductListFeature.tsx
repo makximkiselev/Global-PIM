@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { Link, useSearchParams } from "react-router-dom";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import Card from "../../components/ui/Card";
@@ -649,29 +650,164 @@ function ProductListTable({
   loading,
 }: ProductListTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.includes(row.id));
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const columns = useMemo<ColumnDef<ProductItem>[]>(() => [
+    {
+      id: "select",
+      header: () => (
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={(event) => onToggleAll(event.target.checked)}
+          aria-label="Выбрать все товары на странице"
+        />
+      ),
+      cell: ({ row }) => {
+        const product = row.original;
+        const title = String(product.title || product.name || "").trim() || product.id;
+        return (
+          <input
+            type="checkbox"
+            checked={selectedIdSet.has(product.id)}
+            onChange={(event) => onToggleRow(product.id, event.target.checked)}
+            aria-label={`Выбрать товар ${title}`}
+          />
+        );
+      },
+      meta: { className: "productListTableCheckCol" },
+    },
+    {
+      id: "product",
+      header: () => "Товар",
+      cell: ({ row }) => {
+        const product = row.original;
+        const title = String(product.title || product.name || "").trim() || product.id;
+        const sku = String(product.sku_gt || "").trim() || "Без SKU";
+        return (
+          <div className="productListTitleCell">
+            <div className="productListThumbWrap">
+              <div className="productListThumb productListThumbEmpty" aria-hidden="true">
+                SKU
+              </div>
+            </div>
+            <div className="productListTitleMeta">
+              <Link
+                className="productListPrimaryLink"
+                to={`/products/${encodeURIComponent(product.id)}`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {title}
+              </Link>
+              <div className="productListSku">{sku}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "category",
+      header: () => "Категория",
+      cell: ({ row }) => {
+        const category = compactCategoryPath(row.original.category_path);
+        return (
+          <div className="productListCategoryCell">
+            <div className="productListCellMeta isStrong">{category.primary}</div>
+            {category.secondary ? <div className="productListCellSubtle">{category.secondary}</div> : null}
+          </div>
+        );
+      },
+    },
+    {
+      id: "template",
+      header: () => "Инфо-модель",
+      cell: ({ row }) => {
+        const product = row.original;
+        const templateName = String(product.effective_template_name || "").trim();
+        return templateName ? (
+          <Link
+            className="productListInlineLink"
+            to={templateHref(product)}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {templateName}
+          </Link>
+        ) : (
+          <Link
+            className="productListMissingLink"
+            to={templateHref(product)}
+            onClick={(event) => event.stopPropagation()}
+          >
+            Собрать модель
+          </Link>
+        );
+      },
+    },
+    {
+      id: "group",
+      header: () => "Семейство",
+      cell: ({ row }) => {
+        const group = displayGroupName(row.original);
+        return (
+          <div className="productListGroupCell">
+            <div className="productListCellMeta isStrong">{group.primary}</div>
+            {group.secondary ? <div className="productListCellSubtle">{group.secondary}</div> : null}
+          </div>
+        );
+      },
+    },
+    {
+      id: "next",
+      header: () => "Что сделать",
+      cell: ({ row }) => {
+        const nextStep = getProductNextStep(row.original);
+        return (
+          <div className="productListNextStep">
+            <Badge tone={nextStep.tone}>{nextStep.title}</Badge>
+            <div>{nextStep.detail}</div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "channels",
+      header: () => "Площадки",
+      cell: ({ row }) => <ProductChannelsCell product={row.original} />,
+    },
+    {
+      id: "action",
+      header: () => "Действие",
+      cell: ({ row }) => {
+        const nextStep = getProductNextStep(row.original);
+        return (
+          <Link className="btn productListRowAction" to={nextStep.href}>
+            {nextStep.cta}
+          </Link>
+        );
+      },
+      meta: { className: "productListActionCol" },
+    },
+  ], [allSelected, onToggleAll, onToggleRow, selectedIdSet]);
+  const table = useReactTable({
+    data: rows,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => row.id,
+  });
 
   return (
     <div className="productListTableShell">
       <div className="productListTableScroller">
         <table className="productListTable">
           <thead>
-            <tr>
-              <th className="productListTableCheckCol">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={(event) => onToggleAll(event.target.checked)}
-                  aria-label="Выбрать все товары на странице"
-                />
-              </th>
-              <th>Товар</th>
-              <th>Категория</th>
-              <th>Инфо-модель</th>
-              <th>Семейство</th>
-              <th>Что сделать</th>
-              <th>Площадки</th>
-              <th className="productListActionCol">Действие</th>
-            </tr>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id} className={(header.column.columnDef.meta as { className?: string } | undefined)?.className || ""}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                ))}
+              </tr>
+            ))}
           </thead>
           <tbody>
             {loading
@@ -687,14 +823,9 @@ function ProductListTable({
                     <td><span className="productListSkeleton productListSkeletonAction" /></td>
                   </tr>
                 ))
-              : rows.map((product) => {
-                  const title = String(product.title || product.name || "").trim() || product.id;
-                  const sku = String(product.sku_gt || "").trim() || "Без SKU";
-                  const templateName = String(product.effective_template_name || "").trim();
-                  const category = compactCategoryPath(product.category_path);
-                  const group = displayGroupName(product);
-                  const nextStep = getProductNextStep(product);
-                  const isSelected = selectedIds.includes(product.id);
+              : table.getRowModel().rows.map((row) => {
+                  const product = row.original;
+                  const isSelected = selectedIdSet.has(product.id);
                   const isFocused = selectedProductId === product.id;
                   return (
                     <tr
@@ -702,78 +833,15 @@ function ProductListTable({
                       className={`productListRow${isFocused ? " isFocused" : ""}${isSelected ? " isSelected" : ""}`}
                       onClick={() => onSelectOnly(product.id)}
                     >
-                      <td className="productListTableCheckCol" onClick={(event) => event.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(event) => onToggleRow(product.id, event.target.checked)}
-                          aria-label={`Выбрать товар ${title}`}
-                        />
-                      </td>
-                      <td>
-                        <div className="productListTitleCell">
-                          <div className="productListThumbWrap">
-                            <div className="productListThumb productListThumbEmpty" aria-hidden="true">
-                              SKU
-                            </div>
-                          </div>
-                          <div className="productListTitleMeta">
-                            <Link
-                              className="productListPrimaryLink"
-                              to={`/products/${encodeURIComponent(product.id)}`}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              {title}
-                            </Link>
-                            <div className="productListSku">{sku}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="productListCategoryCell">
-                          <div className="productListCellMeta isStrong">{category.primary}</div>
-                          {category.secondary ? <div className="productListCellSubtle">{category.secondary}</div> : null}
-                        </div>
-                      </td>
-                      <td>
-                        {templateName ? (
-                          <Link
-                            className="productListInlineLink"
-                            to={templateHref(product)}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {templateName}
-                          </Link>
-                        ) : (
-                          <Link
-                            className="productListMissingLink"
-                            to={templateHref(product)}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            Собрать модель
-                          </Link>
-                        )}
-                      </td>
-                      <td>
-                        <div className="productListGroupCell">
-                          <div className="productListCellMeta isStrong">{group.primary}</div>
-                          {group.secondary ? <div className="productListCellSubtle">{group.secondary}</div> : null}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="productListNextStep">
-                          <Badge tone={nextStep.tone}>{nextStep.title}</Badge>
-                          <div>{nextStep.detail}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <ProductChannelsCell product={product} />
-                      </td>
-                      <td className="productListActionCol" onClick={(event) => event.stopPropagation()}>
-                        <Link className="btn productListRowAction" to={nextStep.href}>
-                          {nextStep.cta}
-                        </Link>
-                      </td>
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className={(cell.column.columnDef.meta as { className?: string } | undefined)?.className || ""}
+                          onClick={cell.column.id === "select" || cell.column.id === "action" ? (event) => event.stopPropagation() : undefined}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
                     </tr>
                   );
                 })}
