@@ -1661,6 +1661,15 @@ def _ozon_attribute_is_numeric(meta: Dict[str, Any]) -> bool:
     return value_type in {"decimal", "integer", "float", "number"}
 
 
+def _ozon_attribute_is_required(binding: Dict[str, Any], meta: Dict[str, Any]) -> bool:
+    return bool(
+        binding.get("required")
+        or binding.get("is_required")
+        or meta.get("is_required")
+        or meta.get("required")
+    )
+
+
 def _ozon_numeric_text(value: Any, *, attr_name: str = "") -> tuple[str, bool]:
     text = str(value or "").strip().replace(",", ".")
     numbers = re.findall(r"\d+(?:\.\d+)?", text)
@@ -1883,6 +1892,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
 
         attributes: List[Dict[str, Any]] = []
         value_mapping_missing: List[Tuple[str, str]] = []
+        warnings: List[Dict[str, Any]] = []
         mapped_attribute_values_count = 0
         for row in rows:
             if not isinstance(row, dict):
@@ -1921,7 +1931,19 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 if appended:
                     mapped_attribute_values_count += 1
                 if error:
-                    value_mapping_missing.append((catalog_name, error))
+                    attr_meta = ozon_attr_meta.get(str(attr_id)) or {}
+                    if _ozon_attribute_is_required(binding, attr_meta):
+                        value_mapping_missing.append((catalog_name, error))
+                    else:
+                        warnings.append(
+                            {
+                                "code": "optional_value_omitted",
+                                "message": f"{error}. Необязательный Ozon-атрибут пропущен в payload.",
+                                "target": "values",
+                                "parameter": catalog_name,
+                                "provider_parameter": str(binding.get("name") or row.get("catalog_name") or "").strip(),
+                            }
+                        )
         for attr_id, attr_name, attr_value in (
             ("8229", "Тип", type_value),
             ("85", "Бренд", vendor),
@@ -2045,6 +2067,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 "ready": ready,
                 "missing": missing,
                 "missing_details": missing_details,
+                "warnings": warnings,
                 "payload_item": {
                     "offer_id": offer_id,
                     "name": name,
@@ -2089,9 +2112,19 @@ def _export_batch_from_preview(
     ready_count = int(preview.get("ready_count") or 0)
     not_ready_count = int(preview.get("not_ready_count") or max(0, count - ready_count))
     blockers: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
+        item_warnings = item.get("warnings") if isinstance(item.get("warnings"), list) else []
+        for warning in item_warnings:
+            if not isinstance(warning, dict):
+                continue
+            row = dict(warning)
+            row["product_id"] = str(item.get("product_id") or "").strip()
+            row["product_title"] = str(item.get("product_title") or "").strip()
+            row["category_id"] = str(item.get("category_id") or "").strip()
+            warnings.append(row)
         missing = item.get("missing") if isinstance(item.get("missing"), list) else []
         missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
         missing_details = item.get("missing_details") if isinstance(item.get("missing_details"), list) else []
@@ -2125,6 +2158,8 @@ def _export_batch_from_preview(
         "not_ready_count": not_ready_count,
         "blockers_count": len(blockers),
         "blockers": blockers[:20],
+        "warnings_count": len(warnings),
+        "warnings": warnings[:50],
         "count": count,
         "items": items,
     }
