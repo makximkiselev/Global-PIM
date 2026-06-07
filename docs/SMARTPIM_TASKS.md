@@ -109,7 +109,7 @@ Library adoption sequence:
 4. Frontend form foundation:
    - add React Hook Form and Zod;
    - migrate connector store forms, export target selection, and admin user/role forms.
-   Status: in progress. React Hook Form, Zod, and hookform resolvers are installed. Login, registration, invite acceptance, password change, and admin user/role/password guard validation now use shared typed schemas while preserving existing API payloads. Remaining work: migrate connector store forms and export target selection from local guards to the same form foundation.
+   Status: in progress. React Hook Form, Zod, and hookform resolvers are installed. Login, registration, invite acceptance, password change, admin user/role/password guards, connector store forms, and export target validation now use typed schemas while preserving existing API payloads. Export target selection no longer allows a store chip to look selected while its provider is off; unchecking a provider clears its selected stores, and checking a store explicitly enables that provider. Remaining work: migrate smaller inline edit forms in connector schedules/value mapping when those screens are next touched.
 5. Backend migration foundation:
    - introduce Alembic migration files for schema changes;
    - stop adding new `CREATE TABLE`/`ALTER TABLE` blocks to route/runtime code;

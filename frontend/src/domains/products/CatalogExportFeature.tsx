@@ -8,6 +8,7 @@ import DataToolbar from "../../components/data/DataToolbar";
 import InspectorPanel from "../../components/data/InspectorPanel";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import { api } from "../../lib/api";
+import { exportSelectionSchema } from "../../lib/exportValidation";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import EmptyState from "../../components/ui/EmptyState";
@@ -587,7 +588,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   }, [exportJobQuery.error, jobId]);
 
   function requestExport() {
-    if (activeTargets.length === 0 || loading) return;
+    if (loading) return;
+    const validation = exportSelectionSchema.pick({ targets: true }).safeParse({ targets: activeTargets });
+    if (!validation.success) {
+      setErr(validation.error.issues[0]?.message || "Выберите магазины для экспорта");
+      return;
+    }
     setBroadScopeConfirmed(false);
     setConfirmOpen(true);
   }
@@ -606,7 +612,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       targets: activeTargets,
       limit: runLimit,
     };
-    exportMutation.mutate({ startedAt, payload });
+    const validation = exportSelectionSchema.safeParse(payload);
+    if (!validation.success) {
+      setErr(validation.error.issues[0]?.message || "Проверьте область и магазины экспорта");
+      return;
+    }
+    exportMutation.mutate({ startedAt, payload: validation.data });
   }
 
   async function loadExportPackage(download = false) {
@@ -882,6 +893,9 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           disabled={!stores.length}
                           onChange={(e) => {
                             setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
+                            if (!e.target.checked) {
+                              setSelectedStores((prev) => ({ ...prev, [provider.code]: [] }));
+                            }
                           }}
                         />
                         <span>{provider.title}</span>
@@ -900,6 +914,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                                   if (e.target.checked) next.add(store.id);
                                   else next.delete(store.id);
                                   setSelectedStores((prev) => ({ ...prev, [provider.code]: Array.from(next) }));
+                                  setSelectedProviders((prev) => ({ ...prev, [provider.code]: next.size > 0 }));
                                 }}
                               />
                               <span>{store.title}</span>

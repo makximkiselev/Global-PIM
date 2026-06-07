@@ -1,6 +1,9 @@
 import { type CSSProperties, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
+import { ConnectorStoreFormValues, connectorStoreSchema, defaultConnectorStoreValues } from "../../lib/connectorsValidation";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -64,6 +67,17 @@ type StatusResp = {
   schedule_options: ScheduleOption[];
 };
 type ConnectorsView = "overview" | "marketplaces" | "stores";
+type StoreProvider = ConnectorStoreFormValues["provider"];
+type StoreAuthMode = ConnectorStoreFormValues["auth_mode"];
+
+function normalizeStoreProvider(provider: string): StoreProvider {
+  return provider === "ozon" ? "ozon" : "yandex_market";
+}
+
+function normalizeStoreAuthMode(value: string | undefined, provider: StoreProvider): StoreAuthMode {
+  if (value === "auto" || value === "api-key" || value === "oauth" || value === "bearer") return value;
+  return provider === "ozon" ? "api-key" : "auto";
+}
 
 function fmtDate(s?: string | null) {
   if (!s) return "еще не запускался";
@@ -109,18 +123,19 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   const [copiedErrorKey, setCopiedErrorKey] = useState("");
   const [storeModalOpen, setStoreModalOpen] = useState(false);
   const [storeModalMode, setStoreModalMode] = useState<"create" | "edit">("create");
-  const [storeProvider, setStoreProvider] = useState("yandex_market");
   const [editingStoreId, setEditingStoreId] = useState("");
-  const [storeTitle, setStoreTitle] = useState("");
-  const [storeBusinessId, setStoreBusinessId] = useState("");
-  const [storeClientId, setStoreClientId] = useState("");
-  const [storeEnabled, setStoreEnabled] = useState(true);
-  const [storeExportEnabled, setStoreExportEnabled] = useState(false);
-  const [storeSafeTestEnabled, setStoreSafeTestEnabled] = useState(false);
-  const [storeNotes, setStoreNotes] = useState("");
-  const [storeToken, setStoreToken] = useState("");
-  const [storeAuthMode, setStoreAuthMode] = useState<"auto" | "api-key" | "oauth" | "bearer">("auto");
   const [checkingStoreId, setCheckingStoreId] = useState("");
+  const {
+    formState: { errors: storeErrors },
+    handleSubmit: handleStoreSubmit,
+    register: registerStore,
+    reset: resetStore,
+    watch: watchStore,
+  } = useForm<ConnectorStoreFormValues>({
+    defaultValues: defaultConnectorStoreValues("yandex_market"),
+    resolver: zodResolver(connectorStoreSchema),
+  });
+  const storeProvider = watchStore("provider");
 
   async function load() {
     setLoading(true);
@@ -187,34 +202,29 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   }
 
   function openCreateStore(provider: string) {
-    setStoreProvider(provider);
+    const normalizedProvider = normalizeStoreProvider(provider);
     setStoreModalMode("create");
     setEditingStoreId("");
-    setStoreTitle("");
-    setStoreBusinessId("");
-    setStoreClientId("");
-    setStoreEnabled(true);
-    setStoreExportEnabled(false);
-    setStoreSafeTestEnabled(false);
-    setStoreNotes("");
-    setStoreToken("");
-    setStoreAuthMode("auto");
+    resetStore(defaultConnectorStoreValues(normalizedProvider));
     setStoreModalOpen(true);
   }
 
   function openEditStore(provider: string, store: ImportStore) {
-    setStoreProvider(provider);
+    const normalizedProvider = normalizeStoreProvider(provider);
     setStoreModalMode("edit");
     setEditingStoreId(store.id);
-    setStoreTitle(store.title || "");
-    setStoreBusinessId(store.business_id || "");
-    setStoreClientId(store.client_id || "");
-    setStoreEnabled(!!store.enabled);
-    setStoreExportEnabled(store.export_enabled === true);
-    setStoreSafeTestEnabled(store.safe_test_enabled === true);
-    setStoreNotes(store.notes || "");
-    setStoreToken(store.token || store.api_key || "");
-    setStoreAuthMode((store.auth_mode as "auto" | "api-key" | "oauth" | "bearer") || (provider === "ozon" ? "api-key" : "auto"));
+    resetStore({
+      provider: normalizedProvider,
+      title: store.title || "",
+      business_id: store.business_id || "",
+      client_id: store.client_id || "",
+      token: store.token || store.api_key || "",
+      auth_mode: normalizeStoreAuthMode(store.auth_mode, normalizedProvider),
+      enabled: !!store.enabled,
+      export_enabled: store.export_enabled === true,
+      safe_test_enabled: store.safe_test_enabled === true,
+      notes: store.notes || "",
+    });
     setStoreModalOpen(true);
   }
 
@@ -223,38 +233,26 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setEditingStoreId("");
   }
 
-  async function saveStore() {
-    if (!storeTitle.trim()) {
-      setError("Заполните название магазина");
-      return;
-    }
-    if (storeProvider === "yandex_market" && !storeBusinessId.trim()) {
-      setError("Заполните ID кабинета");
-      return;
-    }
-    if (storeProvider === "ozon" && (!storeClientId.trim() || !storeToken.trim())) {
-      setError("Заполните ID клиента и ключ доступа");
-      return;
-    }
+  async function saveStore(values: ConnectorStoreFormValues) {
     setSaving(true);
     setError("");
     try {
       const payload = {
-        provider: storeProvider,
-        title: storeTitle.trim(),
-        business_id: storeBusinessId.trim(),
-        client_id: storeClientId.trim(),
-        api_key: storeProvider === "ozon" ? storeToken.trim() : "",
-        token: storeToken.trim(),
-        auth_mode: storeAuthMode,
-        enabled: storeEnabled,
-        export_enabled: storeExportEnabled,
-        safe_test_enabled: storeSafeTestEnabled,
-        notes: storeNotes.trim(),
+        provider: values.provider,
+        title: values.title,
+        business_id: values.business_id,
+        client_id: values.client_id,
+        api_key: values.provider === "ozon" ? values.token : "",
+        token: values.token,
+        auth_mode: values.auth_mode,
+        enabled: values.enabled,
+        export_enabled: values.export_enabled,
+        safe_test_enabled: values.safe_test_enabled,
+        notes: values.notes,
       };
       const r = storeModalMode === "create"
         ? await api<StatusResp>("/connectors/status/import-stores", { method: "POST", body: JSON.stringify(payload) })
-        : await api<StatusResp>(`/connectors/status/import-stores/${encodeURIComponent(storeProvider)}/${encodeURIComponent(editingStoreId)}`, { method: "PUT", body: JSON.stringify(payload) });
+        : await api<StatusResp>(`/connectors/status/import-stores/${encodeURIComponent(values.provider)}/${encodeURIComponent(editingStoreId)}`, { method: "PUT", body: JSON.stringify(payload) });
       setProviders(r.providers || []);
       setScheduleOptions(r.schedule_options || []);
       closeStoreModal();
@@ -601,62 +599,65 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
         onClose={closeStoreModal}
         title={storeModalMode === "create" ? "Добавить магазин" : "Изменить магазин"}
       >
-        <Field label="Название магазина">
-          <TextInput value={storeTitle} onChange={(e) => setStoreTitle(e.target.value)} />
-        </Field>
-        {storeProvider === "yandex_market" ? (
-          <>
-            <Field label="ID кабинета">
-              <TextInput value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
-            </Field>
-            <Field
-              label="Ключ доступа"
-              hint="Ключ хранится скрыто и используется только для проверки доступа и импорта."
-            >
-              <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
-            </Field>
-            <Field label="Тип авторизации">
-              <Select value={storeAuthMode} onChange={(e) => setStoreAuthMode(e.target.value as "auto" | "api-key" | "oauth" | "bearer")}>
-                <option value="auto">Авто</option>
-                <option value="api-key">Ключ доступа</option>
-                <option value="oauth">OAuth</option>
-                <option value="bearer">Bearer</option>
-              </Select>
-            </Field>
-          </>
-        ) : (
-          <>
-            <Field label="ID клиента">
-              <TextInput value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
-            </Field>
-            <Field label="Ключ доступа">
-              <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
-            </Field>
-          </>
-        )}
-        <Field label="Комментарий">
-          <Textarea className="cs-textArea" value={storeNotes} onChange={(e) => setStoreNotes(e.target.value)} />
-        </Field>
-        <label className="cs-checkRow">
-          <input type="checkbox" checked={storeEnabled} onChange={(e) => setStoreEnabled(e.target.checked)} />
-          <span>Использовать для импорта</span>
-        </label>
-        <label className="cs-checkRow">
-          <input type="checkbox" checked={storeExportEnabled} onChange={(e) => setStoreExportEnabled(e.target.checked)} />
-          <span>Разрешить выгрузку товаров</span>
-        </label>
-        <label className="cs-checkRow">
-          <input type="checkbox" checked={storeSafeTestEnabled} onChange={(e) => setStoreSafeTestEnabled(e.target.checked)} />
-          <span>Разрешить safe-test выгрузки</span>
-        </label>
-        <div className="cs-modalActions">
-          <Button variant="primary" onClick={saveStore} disabled={saving}>
-            {storeModalMode === "create" ? "Создать" : "Сохранить"}
-          </Button>
-          <Button onClick={closeStoreModal} disabled={saving}>
-            Отмена
-          </Button>
-        </div>
+        <form onSubmit={handleStoreSubmit(saveStore)}>
+          <Field label="Название магазина" error={storeErrors.title?.message}>
+            <TextInput {...registerStore("title")} />
+          </Field>
+          {storeProvider === "yandex_market" ? (
+            <>
+              <Field label="ID кабинета" error={storeErrors.business_id?.message}>
+                <TextInput {...registerStore("business_id")} />
+              </Field>
+              <Field
+                label="Ключ доступа"
+                hint="Ключ хранится скрыто и используется только для проверки доступа и импорта."
+                error={storeErrors.token?.message}
+              >
+                <TextInput {...registerStore("token")} />
+              </Field>
+              <Field label="Тип авторизации" error={storeErrors.auth_mode?.message}>
+                <Select {...registerStore("auth_mode")}>
+                  <option value="auto">Авто</option>
+                  <option value="api-key">Ключ доступа</option>
+                  <option value="oauth">OAuth</option>
+                  <option value="bearer">Bearer</option>
+                </Select>
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="ID клиента" error={storeErrors.client_id?.message}>
+                <TextInput {...registerStore("client_id")} />
+              </Field>
+              <Field label="Ключ доступа" error={storeErrors.token?.message}>
+                <TextInput {...registerStore("token")} />
+              </Field>
+            </>
+          )}
+          <Field label="Комментарий" error={storeErrors.notes?.message}>
+            <Textarea className="cs-textArea" {...registerStore("notes")} />
+          </Field>
+          <label className="cs-checkRow">
+            <input type="checkbox" {...registerStore("enabled")} />
+            <span>Использовать для импорта</span>
+          </label>
+          <label className="cs-checkRow">
+            <input type="checkbox" {...registerStore("export_enabled")} />
+            <span>Разрешить выгрузку товаров</span>
+          </label>
+          <label className="cs-checkRow">
+            <input type="checkbox" {...registerStore("safe_test_enabled")} />
+            <span>Разрешить safe-test выгрузки</span>
+          </label>
+          <div className="cs-modalActions">
+            <Button variant="primary" type="submit" disabled={saving}>
+              {storeModalMode === "create" ? "Создать" : "Сохранить"}
+            </Button>
+            <Button onClick={closeStoreModal} disabled={saving}>
+              Отмена
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
