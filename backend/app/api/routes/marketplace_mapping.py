@@ -8,7 +8,7 @@ import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import httpx
@@ -1435,6 +1435,41 @@ def _product_feature_values_for_names(category_ids: List[str], catalog_names: Li
                 if len(values) >= limit:
                     return values
     return values
+
+
+def _product_feature_values_by_name(category_ids: List[str], *, limit_per_name: int = 120) -> Dict[str, List[str]]:
+    if not category_ids:
+        return {}
+    try:
+        products = query_products_full(category_ids=category_ids, limit=420)
+    except Exception:
+        return {}
+    out: Dict[str, List[str]] = {}
+    seen_by_name: Dict[str, set[str]] = {}
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        features = content.get("features") if isinstance(content.get("features"), list) else []
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            feature_name = _norm_name(feature.get("name") or feature.get("code"))
+            if not feature_name:
+                continue
+            raw_value = feature.get("value") if "value" in feature else feature.get("values")
+            candidates = [str(item or "").strip() for item in raw_value] if isinstance(raw_value, list) else [str(raw_value or "").strip()]
+            values = out.setdefault(feature_name, [])
+            seen = seen_by_name.setdefault(feature_name, set())
+            for value in candidates:
+                key = normalize_value_key(value)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                values.append(value)
+                if len(values) >= limit_per_name:
+                    break
+    return out
 
 
 def _catalog_names_for_category_dict(catalog_category_id: str, dict_id: str) -> List[str]:
@@ -4527,6 +4562,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
     }
 
     out: List[Dict[str, Any]] = []
+    product_values_cache: Dict[Tuple[str, ...], Dict[str, List[str]]] = {}
     for raw in catalog_params.values():
         if not isinstance(raw, dict):
             continue
@@ -4555,9 +4591,12 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         for child_id in _descendant_ids(evidence_category_id, children_by_parent):
             if child_id not in evidence_category_ids:
                 evidence_category_ids.append(child_id)
-        product_pim_values = _product_feature_values_for_names(
-            evidence_category_ids,
-            [str(raw.get("catalog_name") or dict_doc.get("title") or dict_id)],
+        evidence_key = tuple(evidence_category_ids)
+        if evidence_key not in product_values_cache:
+            product_values_cache[evidence_key] = _product_feature_values_by_name(evidence_category_ids)
+        product_pim_values = product_values_cache[evidence_key].get(
+            _norm_name(str(raw.get("catalog_name") or dict_doc.get("title") or dict_id)),
+            [],
         )
         pim_values = _merge_unique_values(dict_pim_values, product_pim_values)
         value_count = len(pim_values)
