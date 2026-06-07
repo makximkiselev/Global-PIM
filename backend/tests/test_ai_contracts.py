@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.core.ai_contracts import json_object_from_text, parse_attribute_row_suggestions, parse_value_pair_suggestions
+from app.core.ai_contracts import (
+    json_object_from_text,
+    parse_attribute_row_suggestions,
+    parse_competitor_candidate_suggestions,
+    parse_value_pair_suggestions,
+)
 
 
 def test_json_object_from_text_extracts_fenced_json():
@@ -40,4 +45,25 @@ def test_parse_attribute_row_suggestions_accepts_single_dict_aliases():
 
     assert parse_attribute_row_suggestions(payload) == [
         {"catalog_name": "Количество SIM-карт", "group": "", "yandex_id": "sim_count", "confirmed": False}
+    ]
+
+
+def test_parse_competitor_candidate_suggestions_accepts_candidates_and_items_alias():
+    payload = """
+    ```json
+    {"items":[
+      {"url":" https://store77.net/item ","title":" iPhone 17 Pro ","brand":"Apple","sku":"A1","reason":"pattern"},
+      {"url":"","title":"missing url"}
+    ]}
+    ```
+    """
+
+    assert parse_competitor_candidate_suggestions(payload) == [
+        {
+            "url": "https://store77.net/item",
+            "title": "iPhone 17 Pro",
+            "brand": "Apple",
+            "sku": "A1",
+            "reason": "pattern",
+        }
     ]

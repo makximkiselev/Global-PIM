@@ -20,6 +20,7 @@ import httpx
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from app.core.ai_contracts import json_object_from_text, parse_competitor_candidate_suggestions
 from app.core.llm import LlmError, llm_chat_text
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
 from app.core.products.parameter_flow import dict_id_for_product_feature
@@ -836,15 +837,6 @@ def _confirmed_competitor_candidate_examples(
     return out
 
 
-def _ai_candidate_items_from_response(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    raw_items: Any = payload.get("candidates")
-    if not isinstance(raw_items, list):
-        raw_items = payload.get("items")
-    if not isinstance(raw_items, list):
-        return []
-    return [item for item in raw_items if isinstance(item, dict)]
-
-
 async def _discover_ai_competitor_candidates(product: Dict[str, Any], source: Dict[str, Any]) -> List[Dict[str, Any]]:
     if os.getenv("ENABLE_AI_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
         return []
@@ -879,7 +871,7 @@ async def _discover_ai_competitor_candidates(product: Dict[str, Any], source: Di
             temperature=0.1,
             timeout_seconds=_AI_COMPETITOR_DISCOVERY_TIMEOUT_SECONDS,
         )
-        parsed = _json_object_from_text(llm_response.get("content") or "")
+        parsed_items = parse_competitor_candidate_suggestions(llm_response.get("content") or "")
     except LlmError:
         return []
     except Exception:
@@ -887,7 +879,7 @@ async def _discover_ai_competitor_candidates(product: Dict[str, Any], source: Di
 
     out: List[Dict[str, Any]] = []
     seen_urls: set[str] = set()
-    for item in _ai_candidate_items_from_response(parsed):
+    for item in parsed_items:
         url = str(item.get("url") or "").strip()
         if not url or url in seen_urls or detect_site(url) != source_id:
             continue
@@ -3081,24 +3073,7 @@ def _persist_ai_mapping_memory(template_id: str, mapping_by_site: Any, *, contex
 
 
 def _json_object_from_text(text: str) -> Dict[str, Any]:
-    raw = str(text or "").strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?", "", raw, flags=re.I).strip()
-        raw = re.sub(r"```$", "", raw).strip()
-    try:
-        obj = json.loads(raw)
-        return obj if isinstance(obj, dict) else {}
-    except Exception:
-        pass
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            obj = json.loads(raw[start : end + 1])
-            return obj if isinstance(obj, dict) else {}
-        except Exception:
-            return {}
-    return {}
+    return json_object_from_text(text)
 
 
 def _validate_llm_suggestions(

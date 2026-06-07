@@ -102,3 +102,33 @@ def parse_attribute_row_suggestions(text: str) -> List[Dict[str, Any]]:
         return []
     parsed = AiAttributeRowsResponse.model_validate({"rows": [_coerce_attribute_row(row) for row in rows]})
     return [item.model_dump() for item in parsed.rows if item.catalog_name]
+
+
+class AiCompetitorCandidateSuggestion(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    url: str = ""
+    title: str = ""
+    brand: str = ""
+    sku: str = ""
+    reason: str = ""
+
+    @field_validator("url", "title", "brand", "sku", "reason", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
+class AiCompetitorCandidatesResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    candidates: List[AiCompetitorCandidateSuggestion] = Field(default_factory=list)
+
+
+def parse_competitor_candidate_suggestions(text: str) -> List[Dict[str, Any]]:
+    obj = json_object_from_text(text)
+    raw_items = obj.get("candidates") if isinstance(obj.get("candidates"), list) else obj.get("items")
+    if not isinstance(raw_items, list):
+        return []
+    parsed = AiCompetitorCandidatesResponse.model_validate({"candidates": raw_items})
+    return [item.model_dump() for item in parsed.candidates if item.url]
