@@ -373,6 +373,53 @@ def _extract_values_from_result(result: Any) -> List[str]:
     return out
 
 
+def _extract_value_rows_from_result(result: Any) -> List[Dict[str, Any]]:
+    items: List[Any] = []
+    if isinstance(result, list):
+        items = result
+    elif isinstance(result, dict):
+        if isinstance(result.get("values"), list):
+            items = result.get("values") or []
+        elif isinstance(result.get("items"), list):
+            items = result.get("items") or []
+
+    out: List[Dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, str):
+            value = item.strip()
+            if value:
+                out.append({"value": value})
+            continue
+        if isinstance(item, (int, float)):
+            out.append({"value": str(item)})
+            continue
+        if not isinstance(item, dict):
+            continue
+        value = ""
+        for key in ("value", "name", "title", "label"):
+            text = str(item.get(key) or "").strip()
+            if text:
+                value = text
+                break
+        if not value:
+            continue
+        row: Dict[str, Any] = {"value": value}
+        for key in ("dictionary_value_id", "id", "value_id"):
+            raw_id = item.get(key)
+            if raw_id is None:
+                continue
+            try:
+                dict_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if dict_id > 0:
+                row["dictionary_value_id"] = dict_id
+                row.setdefault("id", dict_id)
+                break
+        out.append(row)
+    return out
+
+
 def _extract_last_value_id(result: Any) -> Optional[int]:
     if isinstance(result, dict):
         for key in ("last_value_id", "last_id"):
@@ -414,7 +461,7 @@ async def _fetch_attribute_values_all_pages(
     client_id: str,
 ) -> Dict[str, Any]:
     seen: Set[str] = set()
-    values: List[str] = []
+    values: List[Dict[str, Any]] = []
     pages_raw: List[Dict[str, Any]] = []
     has_next_any = False
     cursor = last_value_id
@@ -436,11 +483,12 @@ async def _fetch_attribute_values_all_pages(
             pages_raw.append(body)
 
         result = body.get("result") if isinstance(body, dict) else {}
-        page_vals = _extract_values_from_result(result)
-        for s in page_vals:
-            if s not in seen:
+        page_vals = _extract_value_rows_from_result(result)
+        for row in page_vals:
+            s = str(row.get("value") or "").strip()
+            if s and s not in seen:
                 seen.add(s)
-                values.append(s)
+                values.append(row)
 
         has_next = bool(body.get("has_next")) if isinstance(body, dict) else False
         if not has_next and isinstance(result, dict):
