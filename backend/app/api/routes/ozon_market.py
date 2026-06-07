@@ -1057,11 +1057,12 @@ async def import_category_attributes(req: ImportCategoryAttrsReq) -> Dict[str, A
 
 @router.post("/import/attribute-values")
 async def import_attribute_values(req: ImportAttributeValuesReq) -> Dict[str, Any]:
-    token = (req.token or "").strip() or _env_api_key()
+    default_store = _default_import_store_credentials()
+    token = (req.token or "").strip() or _env_api_key() or str(default_store.get("api_key") or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="OZON_API_KEY_MISSING")
 
-    client_id = (req.client_id or "").strip() or _env_client_id()
+    client_id = (req.client_id or "").strip() or _env_client_id() or str(default_store.get("client_id") or "").strip()
     category_id_raw = _to_str_id(req.category_id)
     category_id, parsed_type_id = _parse_ozon_category_ref(category_id_raw)
     if not category_id:
