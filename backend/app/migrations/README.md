@@ -2,7 +2,7 @@
 
 Alembic owns new schema changes from this point forward.
 
-Current production already has the legacy runtime-created schema, so the first revision is a no-op baseline. Revision `20260607_0002` documents the operational workflow/channel tables that were previously created at runtime; revision `20260607_0003` documents the `json_documents` table used by the Postgres JSON store; revision `20260607_0004` documents auth/control-plane tables (`users`, `roles`, organizations, members, invites); revision `20260607_0005` documents connector settings and connected store tables; revision `20260607_0006` documents marketplace attribute provider bindings. Do not add new runtime `CREATE TABLE` / `ALTER TABLE` blocks for new features; add an Alembic revision instead.
+Current production already has the legacy runtime-created schema, so the first revision is a no-op baseline. Revision `20260607_0002` documents the operational workflow/channel tables that were previously created at runtime; revision `20260607_0003` documents the `json_documents` table used by the Postgres JSON store; revision `20260607_0004` documents auth/control-plane tables (`users`, `roles`, organizations, members, invites); revision `20260607_0005` documents connector settings and connected store tables; revision `20260607_0006` documents marketplace attribute provider bindings; revision `20260607_0007` documents catalog nodes and marketplace category mappings. Do not add new runtime `CREATE TABLE` / `ALTER TABLE` blocks for new features; add an Alembic revision instead.
 
 Run manually from `backend/`:
 
