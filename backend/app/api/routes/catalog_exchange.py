@@ -6,8 +6,6 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
-import subprocess
-import sys
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
@@ -30,6 +28,7 @@ from app.core.workflow_jobs import (
     list_workflow_jobs,
     prune_export_jobs,
     save_export_job,
+    start_export_worker_process,
 )
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
 from app.storage.relational_pim_store import (
@@ -1774,15 +1773,6 @@ def _export_request_key(req: CatalogExportRunReq) -> str:
     )
     return f"{selection_key}|targets={'/'.join(sorted(target_parts))}"
 
-
-def _backend_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _repo_root() -> Path:
-    return _backend_root().parent
-
-
 def _save_export_job(job: Dict[str, Any]) -> Dict[str, Any]:
     return save_export_job(job)
 
@@ -1813,28 +1803,7 @@ def _public_export_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _start_export_worker_process(job_id: str, organization_id: Optional[str]) -> None:
-    env = os.environ.copy()
-    backend_root = str(_backend_root())
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-    command = [
-        sys.executable,
-        "-m",
-        "app.workers.catalog_export_prepare",
-        "--job-id",
-        job_id,
-    ]
-    if organization_id:
-        command.extend(["--organization-id", organization_id])
-    subprocess.Popen(
-        command,
-        cwd=str(_repo_root()),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    start_export_worker_process(job_id, organization_id)
 
 
 def _build_import_overview_payload(

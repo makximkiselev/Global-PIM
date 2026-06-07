@@ -5,6 +5,35 @@ from copy import deepcopy
 from app.core import workflow_jobs
 
 
+def test_start_worker_process_builds_detached_python_module_command(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_popen(command, **kwargs):
+        calls.append({"command": command, **kwargs})
+        return object()
+
+    monkeypatch.setattr(workflow_jobs.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("PYTHONPATH", "/existing/path")
+
+    workflow_jobs.start_worker_process("app.workers.example", "job_1", "org_1")
+
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["command"] == [
+        workflow_jobs.sys.executable,
+        "-m",
+        "app.workers.example",
+        "--job-id",
+        "job_1",
+        "--organization-id",
+        "org_1",
+    ]
+    assert str(workflow_jobs.backend_root()) in call["env"]["PYTHONPATH"]
+    assert "/existing/path" in call["env"]["PYTHONPATH"]
+    assert call["cwd"] == str(workflow_jobs.repo_root())
+    assert call["start_new_session"] is True
+
+
 def test_prune_stale_workflow_jobs_marks_only_expired_jobs(monkeypatch):
     saved: list[dict] = []
     jobs = [

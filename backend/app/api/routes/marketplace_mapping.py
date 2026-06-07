@@ -4,8 +4,6 @@ import asyncio
 import json
 import os
 import re
-import subprocess
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +32,8 @@ from app.core.workflow_jobs import (
     prune_value_ai_jobs,
     save_attr_ai_job,
     save_value_ai_job,
+    start_attr_ai_match_worker_process,
+    start_value_ai_match_worker_process,
 )
 from app.storage.json_store import (
     ensure_global_attribute,
@@ -2562,67 +2562,12 @@ _ATTR_AI_JOB_TTL_SECONDS = ATTR_AI_JOB_TTL_SECONDS
 _VALUE_AI_WORKFLOW = VALUE_AI_WORKFLOW
 _VALUE_AI_JOB_TTL_SECONDS = VALUE_AI_JOB_TTL_SECONDS
 
-
-def _backend_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _repo_root() -> Path:
-    return _backend_root().parent
-
-
 def _start_attr_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
-    env = os.environ.copy()
-    backend_root = str(_backend_root())
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-
-    command = [
-        sys.executable,
-        "-m",
-        "app.workers.marketplace_attribute_ai_match",
-        "--job-id",
-        job_id,
-    ]
-    if organization_id:
-        command.extend(["--organization-id", organization_id])
-
-    subprocess.Popen(
-        command,
-        cwd=str(_repo_root()),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    start_attr_ai_match_worker_process(job_id, organization_id)
 
 
 def _start_value_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
-    env = os.environ.copy()
-    backend_root = str(_backend_root())
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-
-    command = [
-        sys.executable,
-        "-m",
-        "app.workers.marketplace_value_ai_match",
-        "--job-id",
-        job_id,
-    ]
-    if organization_id:
-        command.extend(["--organization-id", organization_id])
-
-    subprocess.Popen(
-        command,
-        cwd=str(_repo_root()),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    start_value_ai_match_worker_process(job_id, organization_id)
 
 
 def _job_ts(value: Any) -> float:

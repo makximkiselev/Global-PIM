@@ -3,6 +3,9 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 import os
+from pathlib import Path
+import subprocess
+import sys
 from typing import Any, Dict, List, Optional
 
 from app.storage.relational_pim_store import (
@@ -19,6 +22,50 @@ EXPORT_WORKFLOW = "catalog_export_prepare"
 ATTR_AI_JOB_TTL_SECONDS = 300.0
 VALUE_AI_JOB_TTL_SECONDS = 300.0
 EXPORT_JOB_TTL_SECONDS = 900.0
+
+
+def backend_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def repo_root() -> Path:
+    return backend_root().parent
+
+
+def start_worker_process(module: str, job_id: str, organization_id: Optional[str]) -> None:
+    normalized_module = str(module or "").strip()
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_module or not normalized_job_id:
+        return
+    env = os.environ.copy()
+    backend_path = str(backend_root())
+    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
+    env["PYTHONPATH"] = backend_path if not existing_pythonpath else f"{backend_path}{os.pathsep}{existing_pythonpath}"
+    command = [sys.executable, "-m", normalized_module, "--job-id", normalized_job_id]
+    normalized_org_id = str(organization_id or "").strip()
+    if normalized_org_id:
+        command.extend(["--organization-id", normalized_org_id])
+    subprocess.Popen(
+        command,
+        cwd=str(repo_root()),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def start_attr_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    start_worker_process("app.workers.marketplace_attribute_ai_match", job_id, organization_id)
+
+
+def start_value_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    start_worker_process("app.workers.marketplace_value_ai_match", job_id, organization_id)
+
+
+def start_export_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    start_worker_process("app.workers.catalog_export_prepare", job_id, organization_id)
 
 
 def ai_match_timeout_seconds() -> float:
