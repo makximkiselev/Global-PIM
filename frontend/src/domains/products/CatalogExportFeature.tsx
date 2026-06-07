@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type Table } from "@tanstack/react-table";
 import { Link } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";
 import CatalogExchangePicker, { type ExchangeNode } from "../../components/CatalogExchangePicker";
@@ -124,6 +125,12 @@ type ExportPackageResp = {
     }>;
   };
 };
+type ExportRunBatch = ExportRunResp["batches"][number];
+type ExportPackageBatch = NonNullable<ExportPackageResp["package"]["batches"]>[number];
+type ExportPackageItemRow = {
+  batch: ExportPackageBatch;
+  item: ExportPackageBatch["items"][number];
+};
 
 type ExportBlocker = {
   provider: string;
@@ -160,6 +167,37 @@ function SummaryMetricRow({ items }: { items: MetricItem[] }) {
         </div>
       ))}
     </section>
+  );
+}
+
+function ResultsTable<TData>({ table }: { table: Table<TData> }) {
+  return (
+    <div className="cx-resultsTableWrap">
+      <table className="cx-resultsTable">
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <th key={header.id}>
+                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {table.getRowModel().rows.map((row) => (
+            <tr key={row.id}>
+              {row.getVisibleCells().map((cell) => (
+                <td key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -598,6 +636,133 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
   }
 
+  const exportQueueColumns = useMemo<ColumnDef<ExportRunBatch>[]>(() => [
+    {
+      id: "provider",
+      header: () => "Площадка",
+      cell: ({ row }) => providerTitle(row.original.provider),
+    },
+    {
+      id: "store",
+      header: () => "Магазин",
+      cell: ({ row }) => row.original.store_title || row.original.store_id,
+    },
+    {
+      id: "status",
+      header: () => "Статус",
+      cell: ({ row }) => (
+        <Badge tone={row.original.status === "ready" ? "active" : "pending"}>
+          {row.original.status === "ready" ? "Готово" : "Есть блокеры"}
+        </Badge>
+      ),
+    },
+    {
+      id: "ready",
+      header: () => "Готово",
+      cell: ({ row }) => row.original.ready_count,
+    },
+    {
+      id: "blocked",
+      header: () => "Блокеры",
+      cell: ({ row }) => row.original.not_ready_count ?? Math.max(0, row.original.count - row.original.ready_count),
+    },
+    {
+      id: "total",
+      header: () => "Всего",
+      cell: ({ row }) => row.original.count,
+    },
+  ], []);
+  const exportQueueTable = useReactTable({
+    data: run?.batches || [],
+    columns: exportQueueColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row, index) => `${row.provider}:${row.store_id}:${index}`,
+  });
+
+  const packageBatchColumns = useMemo<ColumnDef<ExportPackageBatch>[]>(() => [
+    {
+      id: "provider",
+      header: () => "Площадка",
+      cell: ({ row }) => providerTitle(row.original.provider),
+    },
+    {
+      id: "store",
+      header: () => "Магазин",
+      cell: ({ row }) => row.original.store_title || row.original.store_id,
+    },
+    {
+      id: "ready",
+      header: () => "Payload rows",
+      cell: ({ row }) => row.original.ready_count,
+    },
+    {
+      id: "status",
+      header: () => "Статус",
+      cell: ({ row }) => (
+        <Badge tone={row.original.status === "ready" ? "active" : "pending"}>
+          {row.original.status === "ready" ? "Готов" : `${row.original.blocked_count} блок.`}
+        </Badge>
+      ),
+    },
+  ], []);
+  const packageBatchTable = useReactTable({
+    data: exportPackage?.batches || [],
+    columns: packageBatchColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => `${row.provider}:${row.store_id}`,
+  });
+
+  const packageItemRows = useMemo<ExportPackageItemRow[]>(
+    () => (exportPackage?.batches || []).flatMap((batch) =>
+      (batch.items || []).slice(0, 6).map((item) => ({ batch, item })),
+    ),
+    [exportPackage],
+  );
+  const packageItemColumns = useMemo<ColumnDef<ExportPackageItemRow>[]>(() => [
+    {
+      id: "row",
+      header: () => "Payload row",
+      cell: ({ row }) => `${providerTitle(row.original.batch.provider)} · ${row.original.item.product_id}`,
+    },
+    {
+      id: "offer",
+      header: () => "Offer ID",
+      cell: ({ row }) => row.original.item.offer_id || "—",
+    },
+    {
+      id: "price",
+      header: () => "Цена",
+      cell: ({ row }) => row.original.item.audit?.price_source || "unknown",
+    },
+    {
+      id: "media",
+      header: () => "Медиа",
+      cell: ({ row }) => row.original.item.audit?.media_count ?? 0,
+    },
+    {
+      id: "attributes",
+      header: () => "Параметры",
+      cell: ({ row }) => {
+        const audit = row.original.item.audit || {};
+        return `${audit.attributes_with_source ?? 0}/${audit.attributes_total ?? 0}`;
+      },
+    },
+    {
+      id: "missing",
+      header: () => "Без источника",
+      cell: ({ row }) => {
+        const missing = row.original.item.audit?.missing_source || [];
+        return missing.length ? missing.slice(0, 3).join(", ") : "—";
+      },
+    },
+  ], []);
+  const packageItemTable = useReactTable({
+    data: packageItemRows,
+    columns: packageItemColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => `${row.batch.provider}:${row.batch.store_id}:${row.item.product_id}:${row.item.offer_id || ""}`,
+  });
+
   const inspector = (
     <div className="cx-workspaceInspector">
       <InspectorPanel title="Область" subtitle="Что уходит в выгрузку">
@@ -834,64 +999,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <div><span>Payload rows</span><strong>{exportPackage.summary?.ready_items ?? 0}</strong></div>
                       <div><span>Блокеры</span><strong>{exportPackage.summary?.blocked_items ?? 0}</strong></div>
                     </div>
-                    <div className="cx-resultsTableWrap">
-                      <table className="cx-resultsTable">
-                        <thead>
-                          <tr>
-                            <th>Площадка</th>
-                            <th>Магазин</th>
-                            <th>Payload rows</th>
-                            <th>Статус</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(exportPackage.batches || []).map((batch) => (
-                            <tr key={`${batch.provider}:${batch.store_id}`}>
-                              <td>{providerTitle(batch.provider)}</td>
-                              <td>{batch.store_title || batch.store_id}</td>
-                              <td>{batch.ready_count}</td>
-                              <td>
-                                <Badge tone={batch.status === "ready" ? "active" : "pending"}>
-                                  {batch.status === "ready" ? "Готов" : `${batch.blocked_count} блок.`}
-                                </Badge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="cx-resultsTableWrap">
-                      <table className="cx-resultsTable">
-                        <thead>
-                          <tr>
-                            <th>Payload row</th>
-                            <th>Offer ID</th>
-                            <th>Цена</th>
-                            <th>Медиа</th>
-                            <th>Параметры</th>
-                            <th>Без источника</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(exportPackage.batches || []).flatMap((batch) =>
-                            (batch.items || []).slice(0, 6).map((item) => ({ batch, item })),
-                          ).map(({ batch, item }) => {
-                            const audit = item.audit || {};
-                            const missing = audit.missing_source || [];
-                            return (
-                              <tr key={`${batch.provider}:${batch.store_id}:${item.product_id}:${item.offer_id || ""}`}>
-                                <td>{providerTitle(batch.provider)} · {item.product_id}</td>
-                                <td>{item.offer_id || "—"}</td>
-                                <td>{audit.price_source || "unknown"}</td>
-                                <td>{audit.media_count ?? 0}</td>
-                                <td>{audit.attributes_with_source ?? 0}/{audit.attributes_total ?? 0}</td>
-                                <td>{missing.length ? missing.slice(0, 3).join(", ") : "—"}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ResultsTable table={packageBatchTable} />
+                    <ResultsTable table={packageItemTable} />
                   </section>
                 ) : null}
 
@@ -902,36 +1011,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <div className="cx-paneSub">Видно, по каким каналам и магазинам собран batch и сколько SKU готовы к выгрузке.</div>
                     </div>
                   </div>
-                  <div className="cx-resultsTableWrap">
-                    <table className="cx-resultsTable">
-                      <thead>
-                        <tr>
-                          <th>Площадка</th>
-                          <th>Магазин</th>
-                          <th>Статус</th>
-                          <th>Готово</th>
-                          <th>Блокеры</th>
-                          <th>Всего</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {run.batches.map((row, idx) => (
-                          <tr key={`${row.provider}:${row.store_id}:${idx}`}>
-                            <td>{row.provider === "yandex_market" ? "Я.Маркет" : row.provider === "ozon" ? "OZON" : row.provider}</td>
-                            <td>{row.store_title}</td>
-                            <td>
-                              <Badge tone={row.status === "ready" ? "active" : "pending"}>
-                                {row.status === "ready" ? "Готово" : "Есть блокеры"}
-                              </Badge>
-                            </td>
-                            <td>{row.ready_count}</td>
-                            <td>{row.not_ready_count ?? Math.max(0, row.count - row.ready_count)}</td>
-                            <td>{row.count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResultsTable table={exportQueueTable} />
                 </section>
 
                 {exportBlockers.length > 0 ? (

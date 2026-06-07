@@ -37,6 +37,13 @@ def db_grants_health() -> Dict[str, Any]:
                 identity = cur.fetchone()
                 cur.execute(
                     """
+                    SELECT has_schema_privilege(current_user, 'public', 'USAGE') AS can_use_schema,
+                           has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_schema
+                    """
+                )
+                schema_privileges = cur.fetchone()
+                cur.execute(
+                    """
                     SELECT tablename,
                            has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT') AS can_select,
                            has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT') AS can_insert,
@@ -48,6 +55,10 @@ def db_grants_health() -> Dict[str, Any]:
                     """
                 )
                 missing: List[Dict[str, Any]] = []
+                if schema_privileges and not bool(schema_privileges[0]):
+                    missing.append({"schema": "public", "missing": ["USAGE"]})
+                if schema_privileges and not bool(schema_privileges[1]):
+                    missing.append({"schema": "public", "missing": ["CREATE"]})
                 for row in cur.fetchall():
                     table = str(row[0])
                     missing_privileges = [
