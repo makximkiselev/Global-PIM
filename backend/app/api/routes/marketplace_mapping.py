@@ -14,7 +14,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.ai_contracts import json_object_from_text, parse_value_pair_suggestions
+from app.core.ai_contracts import json_object_from_text, parse_attribute_row_suggestions, parse_value_pair_suggestions
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.matching import match_tokens, normalize_match_text, token_jaccard, value_pair_similarity
 from app.core.tenant_context import current_tenant_organization_id
@@ -3518,27 +3518,13 @@ async def _ollama_suggest_rows(
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
 
     response_text = str(data.get("response") or "").strip() if isinstance(data, dict) else ""
-    obj = _json_extract(response_text)
-    if not obj:
-        return None
-    rows = obj.get("rows")
-    if not isinstance(rows, list) and obj.get("pim_name"):
-        rows = [obj]
-    if not isinstance(rows, list):
+    rows = parse_attribute_row_suggestions(response_text)
+    if not rows:
         return None
 
     y_map = {str(x.get("id") or "").strip(): x for x in selected_yandex_params if str(x.get("id") or "").strip()}
     out: List[Dict[str, Any]] = []
     for rr in rows:
-        if not isinstance(rr, dict):
-            continue
-        if isinstance(rr, list):
-            rr = {
-                "catalog_name": rr[0] if len(rr) > 0 else "",
-                "group": "",
-                "yandex_id": rr[1] if len(rr) > 1 else "",
-                "confirmed": True,
-            }
         name = str(rr.get("catalog_name") or "").strip()
         if not name:
             continue
