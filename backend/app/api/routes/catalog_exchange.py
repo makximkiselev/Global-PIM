@@ -1347,6 +1347,57 @@ def _infer_ozon_model_name(product: Dict[str, Any]) -> str:
     return re.sub(r"\s+", " ", value).strip(" -/,")
 
 
+def _number_from_measure(value: Any, *, target_unit: str) -> Optional[int]:
+    text = str(value or "").strip().lower().replace(",", ".")
+    if not text:
+        return None
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    number = float(match.group(0))
+    if target_unit == "mm" and re.search(r"\bсм\b|сантим", text):
+        number *= 10
+    if target_unit == "g" and re.search(r"\bкг\b|килограмм", text):
+        number *= 1000
+    if number <= 0:
+        return None
+    return max(1, int(round(number)))
+
+
+def _ozon_package_measurements(product: Dict[str, Any]) -> Dict[str, int]:
+    length = _number_from_measure(
+        _extract_product_value(product, "Длина упаковки")
+        or _extract_product_value(product, "Длина устройства")
+        or _extract_product_value(product, "Толщина"),
+        target_unit="mm",
+    )
+    width = _number_from_measure(
+        _extract_product_value(product, "Ширина упаковки")
+        or _extract_product_value(product, "Ширина устройства"),
+        target_unit="mm",
+    )
+    height = _number_from_measure(
+        _extract_product_value(product, "Высота упаковки")
+        or _extract_product_value(product, "Высота устройства"),
+        target_unit="mm",
+    )
+    weight = _number_from_measure(
+        _extract_product_value(product, "Вес упаковки")
+        or _extract_product_value(product, "Вес устройства"),
+        target_unit="g",
+    )
+    out: Dict[str, int] = {}
+    if length:
+        out["depth"] = length
+    if width:
+        out["width"] = width
+    if height:
+        out["height"] = height
+    if weight:
+        out["weight"] = weight
+    return out
+
+
 def _upsert_ozon_attribute(
     attributes: List[Dict[str, Any]],
     attr_id: str,
@@ -1481,6 +1532,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         type_value = inferred_type or type_value
         model_group = model_group or inferred_model_group
         tnved = _infer_ozon_tnved(product, type_value)
+        measurements = _ozon_package_measurements(product)
 
         attributes: List[Dict[str, Any]] = []
         value_mapping_missing: List[str] = []
@@ -1579,6 +1631,16 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         if not tnved:
             missing.append("Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен")
             missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен", "params", parameter="ТН ВЭД коды ЕАЭС"))
+        for key, label in {
+            "depth": "Длина упаковки/товара",
+            "width": "Ширина упаковки/товара",
+            "height": "Высота упаковки/товара",
+            "weight": "Вес упаковки/товара",
+        }.items():
+            if key not in measurements:
+                message = f"Ozon: заполните {label} для отправки карточки"
+                missing.append(message)
+                missing_details.append(_missing_detail("required_parameter_missing", message, "params", parameter=label))
         for pname in sorted(set(value_mapping_missing)):
             message = f"{pname}: значение не сопоставлено с Ozon"
             missing.append(message)
@@ -1602,6 +1664,17 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                     "description_category_id": ozon_category_id,
                     "price": OZON_TECHNICAL_EXPORT_PRICE,
                     "price_source": "technical_placeholder",
+                    **(
+                        {
+                            "depth": measurements["depth"],
+                            "width": measurements["width"],
+                            "height": measurements["height"],
+                            "dimension_unit": "mm",
+                        }
+                        if {"depth", "width", "height"}.issubset(measurements.keys())
+                        else {}
+                    ),
+                    **({"weight": measurements["weight"], "weight_unit": "g"} if "weight" in measurements else {}),
                     "images": pictures,
                     "attributes": attributes,
                 },

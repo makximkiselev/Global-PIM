@@ -2860,6 +2860,10 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "features": [
                     {"code": "brand", "name": "Бренд", "value": "Apple"},
                     {"code": "camera_type", "name": "Тип основных камер", "value": "телефото"},
+                    {"code": "package_length", "name": "Длина упаковки", "value": "170"},
+                    {"code": "package_width", "name": "Ширина упаковки", "value": "90"},
+                    {"code": "package_height", "name": "Высота упаковки", "value": "40"},
+                    {"code": "package_weight", "name": "Вес упаковки", "value": "320"},
                 ],
             },
         }
@@ -2893,6 +2897,10 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(item["missing"], [])
         self.assertEqual(item["payload_item"]["price"], "1000000")
         self.assertEqual(item["payload_item"]["price_source"], "technical_placeholder")
+        self.assertEqual(item["payload_item"]["depth"], 170)
+        self.assertEqual(item["payload_item"]["width"], 90)
+        self.assertEqual(item["payload_item"]["height"], 40)
+        self.assertEqual(item["payload_item"]["weight"], 320)
         attrs = {str(attr["id"]): attr["values"][0]["value"] for attr in item["payload_item"]["attributes"]}
         attr_values = {str(attr["id"]): attr["values"][0] for attr in item["payload_item"]["attributes"]}
         self.assertEqual(attrs["8229"], "Смартфон")
