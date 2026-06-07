@@ -959,6 +959,8 @@ function ProductAttributeWorkbench({
     ...field,
     feature: findFeatureByParameter(features, field.parameter),
   })).filter((field): field is typeof field & { feature: ProductFeatureValue } => Boolean(field.feature));
+  const selectedIsPackageDimension = Boolean(selectedFeature && packageDimensionTargets.some((target) => target.feature === selectedFeature));
+  const showPackageDimensionPanel = Boolean(packageDimensionTargets.length && (dimensionBlockers.length || selectedIsPackageDimension));
   const [dimensionDrafts, setDimensionDrafts] = useState<Record<string, string>>({});
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
@@ -1067,11 +1069,11 @@ function ProductAttributeWorkbench({
             ) : null}
           </div>
         ) : null}
-        {dimensionBlockers.length && packageDimensionTargets.length ? (
+        {showPackageDimensionPanel ? (
           <div className="productLogisticsQuickPanel">
             <div className="productLogisticsQuickHead">
               <strong>Габариты для Ozon</strong>
-              <span>{dimensionBlockers.length} поля мешают экспорту</span>
+              <span>{dimensionBlockers.length ? `${dimensionBlockers.length} поля мешают экспорту` : "Заполните комплектом, затем вернитесь в проверку экспорта"}</span>
             </div>
             <div className="productLogisticsQuickGrid">
               {packageDimensionTargets.map((target) => (
