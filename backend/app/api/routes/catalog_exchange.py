@@ -1619,6 +1619,16 @@ def _match_ozon_allowed_value(value: Any, allowed_rows: List[Dict[str, Any]]) ->
         for row in allowed_rows:
             if normalize_value_key(_ozon_value_text(row)) == candidate_key:
                 return row
+    raw_tokens = [
+        token
+        for token in re.findall(r"[a-zа-я0-9]+", raw_text, flags=re.IGNORECASE)
+        if token not in {"apple", "samsung", "xiaomi", "honor", "huawei", "google"}
+    ]
+    if raw_tokens and any(any(ch.isdigit() for ch in token) for token in raw_tokens):
+        for row in allowed_rows:
+            allowed_key = normalize_value_key(_ozon_value_text(row))
+            if allowed_key and all(token in allowed_key for token in raw_tokens):
+                return row
     return None
 
 
@@ -1651,7 +1661,7 @@ def _ozon_attribute_is_numeric(meta: Dict[str, Any]) -> bool:
     return value_type in {"decimal", "integer", "float", "number"}
 
 
-def _ozon_numeric_text(value: Any) -> tuple[str, bool]:
+def _ozon_numeric_text(value: Any, *, attr_name: str = "") -> tuple[str, bool]:
     text = str(value or "").strip().replace(",", ".")
     numbers = re.findall(r"\d+(?:\.\d+)?", text)
     if not numbers:
@@ -1661,6 +1671,9 @@ def _ozon_numeric_text(value: Any) -> tuple[str, bool]:
         cleaned = number.rstrip("0").rstrip(".") if "." in number else number
         if cleaned not in unique:
             unique.append(cleaned)
+    attr_key = normalize_value_key(attr_name)
+    if len(unique) > 1 and ("camera" in attr_key or "кам" in attr_key):
+        return max(unique, key=lambda item: float(item)), False
     if len(unique) > 1:
         return "", True
     return unique[0], False
@@ -1715,7 +1728,7 @@ def _ozon_attribute_value_payload(
             return [{"value": matched_value or value}], None
         return [{"value": matched_value or value, "dictionary_value_id": dictionary_value_id}], None
     if _ozon_attribute_is_numeric(meta):
-        numeric_value, ambiguous = _ozon_numeric_text(value)
+        numeric_value, ambiguous = _ozon_numeric_text(value, attr_name=attr_name)
         if ambiguous:
             return None, f"{attr_name}: числовое значение неоднозначно для Ozon"
         if not numeric_value:

@@ -3882,7 +3882,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         attr = next(item for item in response["items"][0]["payload_item"]["attributes"] if item["id"] == "8587")
         self.assertEqual(attr["values"][0]["value"], "6.9")
 
-    def test_ozon_export_preview_blocks_ambiguous_numeric_values(self) -> None:
+    def test_ozon_export_preview_uses_max_camera_resolution_for_numeric_field(self) -> None:
         product = {
             "id": "product_1",
             "sku_gt": "GT-1",
@@ -3925,8 +3925,64 @@ class OperatingWorkflowTests(unittest.TestCase):
             response = catalog_exchange._ozon_export_preview(["product_1"], 10)
 
         item = response["items"][0]
-        self.assertNotIn("4422", {str(attr["id"]) for attr in item["payload_item"]["attributes"]})
-        self.assertIn("Разрешение основной камеры, Мпикс: числовое значение неоднозначно для Ozon", item["missing"])
+        attr = next(row for row in item["payload_item"]["attributes"] if row["id"] == "4422")
+        self.assertEqual(attr["values"], [{"value": "48"}])
+        self.assertNotIn("Разрешение основной камеры, Мпикс: числовое значение неоднозначно для Ozon", item["missing"])
+
+    def test_ozon_export_preview_fuzzy_maps_model_code_dictionary_values(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "processor", "name": "Процессор", "value": "Apple A18 Pro"},
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                ],
+            },
+        }
+        rows = [{"catalog_name": "Процессор", "provider_map": {"ozon": {"id": "10313", "name": "Процессор", "export": True}}}]
+
+        def fake_read_doc(path, default=None):
+            if path == catalog_exchange.OZON_CATEGORY_ATTRS_PATH:
+                return {
+                    "items": {
+                        "15621050": {
+                            "attributes": [
+                                {"id": 10313, "name": "Процессор", "type_id": 95139, "type": "String", "dictionary_id": 45530936}
+                            ]
+                        }
+                    }
+                }
+            if path == catalog_exchange.OZON_CATEGORY_ATTR_VALUES_PATH:
+                return {
+                    "items": {
+                        "15621050:95139:10313": {
+                            "category_id": "15621050",
+                            "type_id": 95139,
+                            "attribute_id": 10313,
+                            "values": [{"id": 972192594, "value": "A18 Pro Bionic"}],
+                        }
+                    }
+                }
+            return deepcopy(default)
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "type:15621050:95139"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", return_value=""),
+            patch.object(catalog_exchange, "read_doc", side_effect=fake_read_doc),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        attr = next(item for item in response["items"][0]["payload_item"]["attributes"] if item["id"] == "10313")
+        self.assertEqual(attr["values"][0]["value"], "A18 Pro Bionic")
+        self.assertEqual(attr["values"][0]["dictionary_value_id"], 972192594)
 
     def test_ozon_export_batch_does_not_block_on_tree_source_only(self) -> None:
         preview = {
