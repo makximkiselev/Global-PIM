@@ -1,17 +1,25 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../app/auth/AuthContext";
 import AuthWorkspaceScene from "../components/auth/AuthWorkspaceScene";
 import AuthViewTransitionLink from "../components/auth/AuthViewTransitionLink";
+import { LoginFormValues, loginSchema } from "../lib/authValidation";
 
 export default function Login() {
   const { authenticated, loading, login, firstPath } = useAuth();
   const [searchParams] = useSearchParams();
-  const [loginValue, setLoginValue] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const {
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    register,
+  } = useForm<LoginFormValues>({
+    defaultValues: { login: "", password: "" },
+    resolver: zodResolver(loginSchema),
+  });
 
   const sessionError = useMemo(() => {
     if (searchParams.get("denied") === "1") return "Отказ в доступе. Войдите заново.";
@@ -19,16 +27,12 @@ export default function Login() {
     return "";
   }, [searchParams]);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError("");
+  async function onSubmit(values: LoginFormValues) {
+    setSubmitError("");
     try {
-      await login(loginValue.trim(), password);
+      await login(values.login.trim(), values.password);
     } catch (err) {
-      setError((err as Error).message || "Ошибка входа");
-    } finally {
-      setSubmitting(false);
+      setSubmitError((err as Error).message || "Ошибка входа");
     }
   }
 
@@ -58,24 +62,23 @@ export default function Login() {
         </div>
       }
     >
-      <form className="authPanelForm" onSubmit={onSubmit}>
+      <form className="authPanelForm" onSubmit={handleSubmit(onSubmit)}>
         <label className="authPanelField">
           <span>Логин или email</span>
           <input
-            value={loginValue}
-            onChange={(e) => setLoginValue(e.target.value)}
+            {...register("login")}
             autoComplete="username"
             placeholder="Например, owner@company.ru"
           />
         </label>
+        {errors.login ? <div className="authPanelError">{errors.login.message}</div> : null}
 
         <label className="authPanelField">
           <span>Пароль</span>
           <div className="authPanelPassword">
             <input
               type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register("password")}
               autoComplete="current-password"
               placeholder="Введите пароль"
             />
@@ -89,12 +92,13 @@ export default function Login() {
             </button>
           </div>
         </label>
+        {errors.password ? <div className="authPanelError">{errors.password.message}</div> : null}
 
         {sessionError ? <div className="authPanelError">{sessionError}</div> : null}
-        {error ? <div className="authPanelError">{error}</div> : null}
+        {submitError ? <div className="authPanelError">{submitError}</div> : null}
 
-        <button className="authPanelSubmit" type="submit" disabled={submitting}>
-          {submitting ? "Входим..." : "Войти"}
+        <button className="authPanelSubmit" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Входим..." : "Войти"}
         </button>
       </form>
     </AuthWorkspaceScene>

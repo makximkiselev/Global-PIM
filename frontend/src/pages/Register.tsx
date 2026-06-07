@@ -1,39 +1,41 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../app/auth/AuthContext";
 import AuthWorkspaceScene from "../components/auth/AuthWorkspaceScene";
 import AuthViewTransitionLink from "../components/auth/AuthViewTransitionLink";
+import { RegisterFormValues, registerSchema } from "../lib/authValidation";
 
 export default function Register() {
   const { authenticated, loading, firstPath, refresh } = useAuth();
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const {
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    register,
+  } = useForm<RegisterFormValues>({
+    defaultValues: { email: "", name: "", organizationName: "", password: "" },
+    resolver: zodResolver(registerSchema),
+  });
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError("");
+  async function onSubmit(values: RegisterFormValues) {
+    setSubmitError("");
     try {
       await api("/platform/register", {
         method: "POST",
         body: JSON.stringify({
-          email: email.trim(),
-          password,
-          name: name.trim(),
-          organization_name: organizationName.trim(),
+          email: values.email.trim(),
+          password: values.password,
+          name: values.name.trim(),
+          organization_name: values.organizationName.trim(),
         }),
       });
       await refresh();
     } catch (err) {
-      setError((err as Error).message || "Ошибка регистрации");
-    } finally {
-      setSubmitting(false);
+      setSubmitError((err as Error).message || "Ошибка регистрации");
     }
   }
 
@@ -63,44 +65,43 @@ export default function Register() {
         </div>
       }
     >
-      <form className="authPanelForm authPanelFormRegister" onSubmit={onSubmit}>
+      <form className="authPanelForm authPanelFormRegister" onSubmit={handleSubmit(onSubmit)}>
         <label className="authPanelField authPanelFieldLight">
           <span>Название организации</span>
           <input
-            value={organizationName}
-            onChange={(e) => setOrganizationName(e.target.value)}
+            {...register("organizationName")}
             autoComplete="organization"
             placeholder="Например, Global Trade"
           />
         </label>
+        {errors.organizationName ? <div className="authPanelError authPanelErrorLight">{errors.organizationName.message}</div> : null}
 
         <label className="authPanelField authPanelFieldLight">
           <span>Имя администратора</span>
           <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            {...register("name")}
             autoComplete="name"
             placeholder="Иван Петров"
           />
         </label>
+        {errors.name ? <div className="authPanelError authPanelErrorLight">{errors.name.message}</div> : null}
 
         <label className="authPanelField authPanelFieldLight">
           <span>Email администратора</span>
           <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            {...register("email")}
             autoComplete="email"
             placeholder="owner@company.ru"
           />
         </label>
+        {errors.email ? <div className="authPanelError authPanelErrorLight">{errors.email.message}</div> : null}
 
         <label className="authPanelField authPanelFieldLight">
           <span>Пароль</span>
           <div className="authPanelPassword">
             <input
               type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register("password")}
               autoComplete="new-password"
               placeholder="Придумайте пароль"
             />
@@ -114,11 +115,12 @@ export default function Register() {
             </button>
           </div>
         </label>
+        {errors.password ? <div className="authPanelError authPanelErrorLight">{errors.password.message}</div> : null}
 
-        {error ? <div className="authPanelError authPanelErrorLight">{error}</div> : null}
+        {submitError ? <div className="authPanelError authPanelErrorLight">{submitError}</div> : null}
 
-        <button className="authPanelSubmit authPanelSubmitLight" type="submit" disabled={submitting}>
-          {submitting ? "Создаем организацию..." : "Создать организацию"}
+        <button className="authPanelSubmit authPanelSubmitLight" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Создаем организацию..." : "Создать организацию"}
         </button>
       </form>
     </AuthWorkspaceScene>

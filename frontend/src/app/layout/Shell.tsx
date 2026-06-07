@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../../lib/api";
+import { changePasswordSchema } from "../../lib/authValidation";
 import { useAuth } from "../auth/AuthContext";
 import AppShell from "../../components/layout/AppShell";
 import ShellSidebarNav, { type ShellNavGroup } from "../../components/layout/ShellSidebarNav";
@@ -201,13 +202,21 @@ export default function Shell({ children }: { children: ReactNode }) {
   }, [currentLocation, visibleGroups]);
 
   async function submitPasswordChange() {
-    setSavingPassword(true);
     setPasswordError("");
     setPasswordOk("");
+    const validation = changePasswordSchema.safeParse({ currentPassword, newPassword });
+    if (!validation.success) {
+      setPasswordError(validation.error.issues[0]?.message || "Проверьте пароль");
+      return;
+    }
+    setSavingPassword(true);
     try {
       await api("/auth/change-password", {
         method: "POST",
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+        body: JSON.stringify({
+          current_password: validation.data.currentPassword,
+          new_password: validation.data.newPassword,
+        }),
       });
       setCurrentPassword("");
       setNewPassword("");

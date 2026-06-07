@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../lib/api";
+import { adminCreateUserSchema, adminResetPasswordSchema, adminRoleSchema, adminUserSchema } from "../../lib/authValidation";
 import { useAuth } from "../../app/auth/AuthContext";
 import Button from "../../components/ui/Button";
 import Textarea from "../../components/ui/Textarea";
@@ -283,15 +284,26 @@ export default function AdminAccessFeature() {
   }
 
   async function saveRole() {
-    setSaving(true);
     setError("");
+    const validation = adminRoleSchema.safeParse({
+      code: editingRole.code,
+      name: editingRole.name,
+      description: editingRole.description || "",
+      pages: editingRole.pages,
+      actions: editingRole.actions,
+    });
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message || "Проверьте заполнение роли");
+      return;
+    }
+    setSaving(true);
     try {
       const payload = {
-        code: editingRole.code,
-        name: editingRole.name,
-        description: editingRole.description || "",
-        pages: editingRole.pages,
-        actions: editingRole.actions,
+        code: validation.data.code,
+        name: validation.data.name,
+        description: validation.data.description,
+        pages: validation.data.pages,
+        actions: validation.data.actions,
       };
       if (editingRole.id) {
         await api(`/auth/admin/roles/${encodeURIComponent(editingRole.id)}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -322,16 +334,28 @@ export default function AdminAccessFeature() {
   }
 
   async function saveUser() {
-    setSaving(true);
     setError("");
+    const validation = adminUserSchema.safeParse({
+      login: editingUser.login,
+      email: editingUser.email || "",
+      name: editingUser.name,
+      role_ids: editingUser.role_ids,
+      is_active: editingUser.is_active,
+      password: userPassword,
+    });
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message || "Проверьте заполнение пользователя");
+      return;
+    }
+    setSaving(true);
     try {
       const payload = {
-        login: editingUser.login,
-        email: editingUser.email,
-        name: editingUser.name,
-        role_ids: editingUser.role_ids,
-        is_active: editingUser.is_active,
-        password: userPassword || undefined,
+        login: validation.data.login,
+        email: validation.data.email,
+        name: validation.data.name,
+        role_ids: validation.data.role_ids,
+        is_active: validation.data.is_active,
+        password: validation.data.password || undefined,
       };
       if (editingUser.id) {
         await api(`/auth/admin/users/${encodeURIComponent(editingUser.id)}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -348,18 +372,30 @@ export default function AdminAccessFeature() {
   }
 
   async function createUser() {
-    setSaving(true);
     setError("");
+    const validation = adminCreateUserSchema.safeParse({
+      login: createUserDraft.login,
+      email: createUserDraft.email,
+      name: createUserDraft.name,
+      role_ids: createUserDraft.role_ids,
+      is_active: createUserDraft.is_active,
+      password: createUserPassword,
+    });
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message || "Проверьте заполнение пользователя");
+      return;
+    }
+    setSaving(true);
     try {
       await api("/auth/admin/users", {
         method: "POST",
         body: JSON.stringify({
-          login: createUserDraft.login,
-          email: createUserDraft.email,
-          name: createUserDraft.name,
-          role_ids: createUserDraft.role_ids,
-          is_active: createUserDraft.is_active,
-          password: createUserPassword || undefined,
+          login: validation.data.login,
+          email: validation.data.email,
+          name: validation.data.name,
+          role_ids: validation.data.role_ids,
+          is_active: validation.data.is_active,
+          password: validation.data.password,
         }),
       });
       setShowCreateUserModal(false);
@@ -375,13 +411,18 @@ export default function AdminAccessFeature() {
 
   async function doResetPassword() {
     if (!editingUser.id) return;
-    setSaving(true);
     setError("");
     setResetPasswordResult("");
+    const validation = adminResetPasswordSchema.safeParse({ password: resetPassword });
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message || "Проверьте новый пароль");
+      return;
+    }
+    setSaving(true);
     try {
       const data = await api<{ ok: boolean; password: string }>(`/auth/admin/users/${encodeURIComponent(editingUser.id)}/reset-password`, {
         method: "POST",
-        body: JSON.stringify({ password: resetPassword || undefined }),
+        body: JSON.stringify({ password: validation.data.password || undefined }),
       });
       setResetPassword("");
       setResetPasswordResult(data.password || "");
