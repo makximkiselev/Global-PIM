@@ -978,6 +978,11 @@ Next fix in the category flow:
 33. Product source summaries no longer use stale/rejected candidates as current evidence:
    - stale or rejected competitor candidates remain in counters/history but do not drive source status;
    - after a clean scan with no valid re-store candidates, the source shows the fresh “no exact match” result instead of an old hidden AI suggestion.
+34. re-store discovery now checks profile category pages and keeps direct SIM conflicts visible:
+   - iPhone discovery scans calculated direct URL, filtered re-store category pages and then search terms;
+   - category URLs include model, memory and color filters where they can be derived from the SKU title;
+   - a direct card that matches model/memory/color but differs by SIM is shown as a low-confidence review candidate instead of disappearing as “0 candidates”;
+   - source evidence lists these category URLs and the UI labels them as generic source category checks, not Store77-only.
 
 Next block:
 

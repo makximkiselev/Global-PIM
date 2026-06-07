@@ -239,7 +239,7 @@ function sourceScanTime(summary: CompetitorSourceSummary): string {
 
 function scanStepLabel(value: string): string {
   if (value === "direct_url") return "расчетный URL re-store";
-  if (value === "category_pages") return "категории Store77";
+  if (value === "category_pages") return "категории источника";
   if (value === "deterministic_url") return "расчетный URL Store77";
   if (value === "search_terms") return "поиск по названию";
   return value;

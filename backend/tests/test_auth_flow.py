@@ -2463,6 +2463,70 @@ class AuthFlowTests(unittest.TestCase):
                 self.assertEqual(competitor_mapping_routes._restore_iphone_direct_url(product), expected_url)
                 self.assertEqual(competitor_mapping_routes._restore_iphone_direct_candidate_title(product), expected_candidate_title)
 
+    def test_restore_category_urls_for_iphone_variant_filters(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+
+        urls = competitor_mapping_routes._restore_iphone_category_urls(product)
+
+        self.assertEqual(
+            urls[0],
+            "https://re-store.ru/smartfony/apple/iphone-16-pro/type_iphone-16-pro-max/hdd_256gb/colors_titanium-desert/",
+        )
+        self.assertIn(
+            "https://re-store.ru/smartfony/apple/iphone-16-pro/type_iphone-16-pro-max/colors_titanium-desert/",
+            urls,
+        )
+
+    def test_restore_seed_candidate_surfaces_direct_sim_conflict_for_review(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50001",
+        }
+        html = r''':[{\"property\":\"Память\",\"values\":[{\"value\":\"256 ГБ\"}],\"hint\":\"\"},{\"property\":\"Цвет\",\"values\":[{\"value\":\"песчаный титановый\"}],\"hint\":\"\"},{\"property\":\"SIM-карта\",\"values\":[{\"value\":\"SIM + eSIM\"}],\"hint\":\"\"}]'''
+
+        with patch.object(competitor_mapping_routes, "_fetch_search_html", new=AsyncMock(return_value=html)):
+            candidates = asyncio.run(competitor_mapping_routes._restore_seed_candidates_for_product(product))
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/10116MAX256DSTN/")
+        self.assertLess(candidates[0]["confidence_score"], 0.78)
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.45)
+        self.assertEqual(candidates[0]["profile_specs"]["SIM-карта"], "SIM + eSIM")
+        self.assertTrue(any("конфликт SIM" in reason for reason in candidates[0]["confidence_reasons"]))
+
+    def test_restore_discovery_scans_category_pages_before_search(self) -> None:
+        product = {
+            "id": "product_70",
+            "title": "Смартфон Apple iPhone 16 Pro Max 512Gb eSIM Desert Titanium (Global)",
+            "sku_gt": "50011",
+        }
+        direct_html = ""
+        category_html = r'''
+          <script>
+          window.__payload = {\"name\":\"Apple iPhone 16 Pro Max eSIM 512GB, Desert Titanium\",
+          \"price\":\"139990\",\"brand\":\"Apple\",\"skuCode\":\"AG_10116MAX512DSTe\",
+          \"link\":\"/catalog/AG_10116MAX512DSTE/\"};
+          </script>
+        '''
+
+        async def fake_fetch(url: str) -> str:
+            if "/catalog/" in url:
+                return direct_html
+            if "/smartfony/apple/iphone-16-pro/" in url:
+                return category_html
+            raise AssertionError("search must not run after exact category candidate")
+
+        with patch.object(competitor_mapping_routes, "_fetch_search_html", new=AsyncMock(side_effect=fake_fetch)):
+            candidates = asyncio.run(competitor_mapping_routes._discover_restore_candidates(product))
+
+        self.assertEqual(candidates[0]["url"], "https://re-store.ru/catalog/AG_10116MAX512DSTE/")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.9)
+
     def test_restore_search_rejects_iphone_17_esim_for_iphone_17e(self) -> None:
         html = r'''
           <script>

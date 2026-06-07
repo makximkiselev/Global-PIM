@@ -2067,14 +2067,19 @@ def _product_source_scan_evidence(product: Dict[str, Any], source_id: str) -> Di
     }
     if normalized_source_id == "restore":
         direct_url = _restore_iphone_direct_url(product)
+        category_urls = _restore_iphone_category_urls(product)
         if direct_url:
             evidence["direct_url"] = direct_url
             evidence["expected_urls"] = [direct_url]
-            evidence["scan_steps"] = ["direct_url", "search_terms"]
-            evidence["exact_miss_reason"] = "Проверили расчетный re-store URL и поисковые запросы. Точная карточка появится здесь, если URL откроется и модель/память/цвет/SIM пройдут скоринг."
+            if category_urls:
+                evidence["category_urls"] = category_urls[:4]
+            evidence["scan_steps"] = ["direct_url", "category_pages", "search_terms"] if category_urls else ["direct_url", "search_terms"]
+            evidence["exact_miss_reason"] = "Проверили расчетный re-store URL, профильные категории и поисковые запросы. Точная карточка появится здесь, если URL откроется и модель/память/цвет/SIM пройдут скоринг."
         else:
-            evidence["scan_steps"] = ["search_terms"]
-            evidence["exact_miss_reason"] = "Для этого SKU нельзя безопасно собрать расчетный re-store URL; проверяем только поисковые запросы."
+            if category_urls:
+                evidence["category_urls"] = category_urls[:4]
+            evidence["scan_steps"] = ["category_pages", "search_terms"] if category_urls else ["search_terms"]
+            evidence["exact_miss_reason"] = "Для этого SKU нельзя безопасно собрать расчетный re-store URL; проверяем профильные категории и поисковые запросы."
     elif normalized_source_id == "store77":
         category_urls = _store77_category_urls_for_product(product)
         if category_urls:
@@ -3532,6 +3537,51 @@ def _restore_iphone_direct_candidate_title(product: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+def _restore_iphone_category_urls(product: Dict[str, Any]) -> List[str]:
+    profile = _variant_profile(product.get("title"))
+    model = str(profile.get("model") or "")
+    memory = str(profile.get("memory") or "")
+    color = str(profile.get("color") or "")
+    model_match = re.fullmatch(r"iphone_(\d{1,2})(?:_(e|pro_max|pro|plus|mini))?", model)
+    memory_match = re.fullmatch(r"(\d+)(gb|tb)", memory)
+    color_filters = {
+        "desert_titanium": "titanium-desert",
+        "natural_titanium": "titanium-natural",
+        "white_titanium": "titanium-white",
+        "black_titanium": "titanium-black",
+        "blue": "blue",
+        "silver": "silver",
+        "orange": "orange",
+        "pink": "pink",
+    }
+    if not model_match:
+        return []
+    generation = model_match.group(1)
+    suffix = model_match.group(2) or ""
+    if suffix in {"pro", "pro_max"}:
+        base = f"https://re-store.ru/smartfony/apple/iphone-{generation}-pro/"
+    elif suffix == "e":
+        base = f"https://re-store.ru/smartfony/apple/iphone-{generation}e/"
+    else:
+        base = f"https://re-store.ru/smartfony/apple/iphone-{generation}/"
+    type_slug = f"iphone-{generation}" + (f"-{suffix.replace('_', '-')}" if suffix else "")
+    filters = [f"type_{type_slug}"]
+    if memory_match:
+        memory_value = memory
+        filters.append(f"hdd_{memory_value}")
+    if color in color_filters:
+        filters.append(f"colors_{color_filters[color]}")
+    urls = []
+    if filters:
+        urls.append(urljoin(base, "/".join(filters) + "/"))
+    if color in color_filters:
+        urls.append(urljoin(base, f"type_{type_slug}/colors_{color_filters[color]}/"))
+    if memory_match:
+        memory_value = memory
+        urls.append(urljoin(base, f"type_{type_slug}/hdd_{memory_value}/"))
+    return list(dict.fromkeys(urls))
+
+
 async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[Dict[str, Any]]:
     oura_candidate = _restore_oura_seed_candidate_for_product(product)
     if oura_candidate:
@@ -3552,7 +3602,29 @@ async def _restore_seed_candidates_for_product(product: Dict[str, Any]) -> List[
     if score < 0.78:
         score, reasons = _near_miss_confidence_for_candidate(product, profile_text, "", "Apple")
     if score < 0.78:
-        return []
+        product_profile = _variant_profile(product.get("title"))
+        candidate_profile = _variant_profile(f"Apple {profile_text}")
+        same_variant_without_sim = all(
+            not product_profile.get(key)
+            or not candidate_profile.get(key)
+            or product_profile.get(key) == candidate_profile.get(key)
+            for key in ("model", "memory", "color", "region", "ring_size", "band_type", "band_color", "band_size")
+        )
+        product_sim = product_profile.get("sim") or "unknown"
+        candidate_sim = candidate_profile.get("sim") or "unknown"
+        if (
+            same_variant_without_sim
+            and product_sim != "unknown"
+            and candidate_sim != "unknown"
+            and product_sim != candidate_sim
+        ):
+            score = max(_VISIBLE_DISCOVERY_CONFIDENCE_SCORE, 0.46)
+            reasons = [
+                f"конфликт SIM: PIM={product_sim}, re-store={candidate_sim}",
+                "модель, память и цвет совпали; нужна ручная проверка",
+            ]
+        else:
+            return []
     display_score = score if score < 0.8 else min(0.98, max(score, 0.89))
     return [
         {
@@ -3630,6 +3702,21 @@ async def _discover_restore_candidates(product: Dict[str, Any]) -> List[Dict[str
         for candidate in out
     ):
         return sorted(out, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    for url in _restore_iphone_category_urls(product):
+        try:
+            html = await _fetch_search_html(url)
+        except Exception:
+            continue
+        for candidate in _extract_restore_search_candidates(html, product):
+            candidate_url = str(candidate.get("url") or "")
+            if not candidate_url or candidate_url in seen:
+                continue
+            seen.add(candidate_url)
+            out.append(candidate)
+            if len(out) >= 5:
+                return await _enrich_restore_candidates_for_review(product, out)
+        if any(float(candidate.get("confidence_score") or 0) >= 0.9 for candidate in out):
+            return await _enrich_restore_candidates_for_review(product, out)
     for term in _query_terms_for_product(product):
         url = f"https://re-store.ru/search/?q={quote_plus(term)}"
         try:
