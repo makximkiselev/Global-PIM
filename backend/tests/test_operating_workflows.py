@@ -3322,7 +3322,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             {
                 "catalog_name": "Степень защиты",
                 "provider_map": {
-                    "yandex_market": {"id": "14876852", "name": "Степень защиты", "export": True}
+                    "yandex_market": {"id": "14876852", "name": "Степень защиты", "export": True, "required": True}
                 },
             }
         ]
@@ -3366,6 +3366,75 @@ class OperatingWorkflowTests(unittest.TestCase):
             },
             item["missing_details"],
         )
+
+    def test_yandex_export_preview_skips_optional_unmapped_controlled_value(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Apple iPhone",
+            "sku_gt": "GT-1",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "line", "name": "Линейка", "value": "iPhone"},
+                    {"code": "feature", "name": "Особенности", "value": "Неподдерживаемое значение"},
+                ],
+            },
+        }
+        rows = [
+            {
+                "catalog_name": "Линейка",
+                "provider_map": {
+                    "yandex_market": {"id": "14876854", "name": "Линейка", "export": True, "required": False}
+                },
+            },
+            {
+                "catalog_name": "Особенности",
+                "provider_map": {
+                    "yandex_market": {"id": "14876853", "name": "Особенности", "export": True, "required": False}
+                },
+            }
+        ]
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-phone": {"yandex_market": "ym-phone"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(
+                yandex_market,
+                "_load_attr_value_refs",
+                return_value={
+                    "cat-phone": {
+                        "catalog_params": {
+                            "line": {"catalog_name": "Линейка", "dict_id": "dict_line"},
+                            "feature": {"catalog_name": "Особенности", "dict_id": "dict_feature"}
+                        }
+                    }
+                },
+            ),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+            patch.object(
+                yandex_market,
+                "provider_export_value_details",
+                side_effect=lambda dict_id, provider, value: (
+                    {"value": "iPhone", "mapped": True, "reason": "allowed_exact"}
+                    if dict_id == "dict_line"
+                    else {"value": "", "mapped": False, "reason": "value_missing"}
+                ),
+            ),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], True)
+        self.assertNotIn("Особенности: значение не сопоставлено с Я.Маркет", item["missing"])
+        self.assertEqual(len(item["payload_item"]["parameterValues"]), 1)
 
     def test_yandex_export_preview_uses_provider_specific_output_value(self) -> None:
         product = {

@@ -2126,6 +2126,13 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             ym = pmap.get("yandex_market") if isinstance(pmap.get("yandex_market"), dict) else {}
             if not isinstance(ym, dict):
                 continue
+            export_bindings = [
+                binding
+                for binding in _provider_bindings(ym)
+                if bool(binding.get("export")) and str(binding.get("id") or "").strip()
+            ]
+            if not export_bindings:
+                continue
             value = _extract_product_value(p, pname)
             if not value:
                 continue
@@ -2138,15 +2145,13 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             ] if isinstance(raw_mapped_values, list) else []
             value = str(value_details.get("value") or "").strip()
             if not bool(value_details.get("mapped", True)):
-                value_mapping_missing.append(pname)
+                if any(bool(binding.get("required")) or bool(ym.get("required")) for binding in export_bindings):
+                    value_mapping_missing.append(pname)
+                continue
             if not value and not mapped_values_for_payload:
                 continue
-            for binding in _provider_bindings(ym):
-                if not bool(binding.get("export")):
-                    continue
+            for binding in export_bindings:
                 ypid = str(binding.get("id") or "").strip()
-                if not ypid:
-                    continue
                 mapped_parameter_values_count += 1
                 present_param_ids.add(ypid)
                 parameter_values.append(
