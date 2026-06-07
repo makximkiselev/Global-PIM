@@ -59,6 +59,7 @@ esac
 APP_RUN_SCENARIO_SMOKE="${APP_RUN_SCENARIO_SMOKE:-0}"
 APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL="${APP_SCENARIO_SMOKE_ALLOW_AUTH_WALL:-0}"
 APP_SCENARIO_SMOKE_PRODUCT_FLOW="${APP_SCENARIO_SMOKE_PRODUCT_FLOW:-0}"
+APP_RUN_DB_MIGRATIONS="${APP_RUN_DB_MIGRATIONS:-0}"
 SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
@@ -87,6 +88,7 @@ Optional post-deploy scenario smoke:
   APP_SCENARIO_SMOKE_REQUIRE_AUTH=1 requires SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD.
   APP_SCENARIO_SMOKE_PRODUCT_FLOW=1 adds the catalog -> info-model -> product -> export route flow.
   SMARTPIM_AUTH_SMOKE=1 enables scenario/browser/require-auth defaults for authenticated deploy smoke.
+  APP_RUN_DB_MIGRATIONS=1 runs Alembic migrations before service restart.
 USAGE
       exit 0
       ;;
@@ -145,6 +147,7 @@ if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
 fi
 
 require_file "${ROOT_DIR}/backend/app/requirements.txt"
+require_file "${ROOT_DIR}/backend/alembic.ini"
 require_file "${ROOT_DIR}/backend/main.py"
 require_file "${ROOT_DIR}/backend/.env.example"
 require_file "${ROOT_DIR}/frontend/package.json"
@@ -292,6 +295,7 @@ APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME}"
 APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME}"
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME}"
 APP_DB_ROLE="${APP_DB_ROLE}"
+APP_RUN_DB_MIGRATIONS="${APP_RUN_DB_MIGRATIONS}"
 REMOTE_TMP_ARCHIVE="${REMOTE_TMP_ARCHIVE}"
 REMOTE_TMP_EXTRACT="${REMOTE_TMP_EXTRACT}"
 RELEASE_ID="${RELEASE_ID}"
@@ -336,6 +340,7 @@ rm -rf "\${APP_SERVER_PATH}/backend/app" "\${APP_SERVER_PATH}/backend/scripts" "
 cp -R "\${REMOTE_TMP_EXTRACT}/backend/app" "\${APP_SERVER_PATH}/backend/app"
 cp -R "\${REMOTE_TMP_EXTRACT}/backend/scripts" "\${APP_SERVER_PATH}/backend/scripts"
 cp "\${REMOTE_TMP_EXTRACT}/backend/main.py" "\${APP_SERVER_PATH}/backend/main.py"
+cp "\${REMOTE_TMP_EXTRACT}/backend/alembic.ini" "\${APP_SERVER_PATH}/backend/alembic.ini"
 cp "\${REMOTE_TMP_EXTRACT}/backend/.env.example" "\${APP_SERVER_PATH}/backend/.env.example"
 cp -R "\${REMOTE_TMP_EXTRACT}/frontend/dist" "\${APP_SERVER_PATH}/frontend/dist"
 cp "\${REMOTE_TMP_EXTRACT}/certs/ca.crt" "\${APP_SERVER_PATH}/certs/ca.crt"
@@ -374,6 +379,10 @@ else
 fi
 
 repair_app_db_grants
+
+if [[ "\${APP_RUN_DB_MIGRATIONS}" == "1" ]]; then
+  (cd "\${APP_SERVER_PATH}/backend" && "\${APP_SERVER_PATH}/.venv/bin/python" scripts/run_migrations.py)
+fi
 
 systemctl restart "\${APP_SERVICE_NAME}"
 if systemctl list-unit-files "\${APP_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then
