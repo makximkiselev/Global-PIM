@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import Card from "../../components/ui/Card";
@@ -82,6 +83,22 @@ type QueueMode = "all" | "issues" | "no_template" | "no_ym" | "no_oz";
 const DEFAULT_PAGE_SIZE = 50;
 const RICH_PRODUCTS_TIMEOUT_MS = 3500;
 
+type ProductListQueryFilters = {
+  query: string;
+  parentCategoryId: string;
+  subCategoryId: string;
+  groupFilter: string;
+  templateFilter: string;
+  marketFilter: "all" | "on" | "off";
+  ozonFilter: "all" | "on" | "off";
+  queueMode: QueueMode;
+  currentPage: number;
+};
+
+type ProductListQueryData = ProductsPageDataResp & {
+  isFallbackMode: boolean;
+};
+
 function buildCategoryPath(nodeById: Map<string, CatalogNode>, categoryId: string): string {
   const target = String(categoryId || "").trim();
   if (!target) return "";
@@ -94,6 +111,156 @@ function buildCategoryPath(nodeById: Map<string, CatalogNode>, categoryId: strin
     current = current.parent_id ? nodeById.get(String(current.parent_id)) : undefined;
   }
   return chain.reverse().join(" / ");
+}
+
+function normalizeProductListValue(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function productListParams(filters: ProductListQueryFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.query) params.set("q", filters.query);
+  if (filters.parentCategoryId) params.set("parent", filters.parentCategoryId);
+  if (filters.subCategoryId) params.set("sub", filters.subCategoryId);
+  if (filters.groupFilter) params.set("group", filters.groupFilter);
+  if (filters.templateFilter) params.set("template", filters.templateFilter);
+  if (filters.marketFilter !== "all") params.set("ym", filters.marketFilter);
+  if (filters.ozonFilter !== "all") params.set("oz", filters.ozonFilter);
+  if (filters.queueMode !== "all") params.set("view", filters.queueMode);
+  params.set("page", String(filters.currentPage));
+  params.set("page_size", String(DEFAULT_PAGE_SIZE));
+  return params;
+}
+
+function timeoutSignal(parentSignal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  parentSignal?.addEventListener("abort", abort, { once: true });
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      window.clearTimeout(timeoutId);
+      parentSignal?.removeEventListener("abort", abort);
+    },
+  };
+}
+
+function toFallbackProductRows(
+  items: CoreCatalogProductResp["items"],
+  catalogNodes: CatalogNode[],
+  filters: ProductListQueryFilters,
+): ProductItem[] {
+  const nodeById = new Map<string, CatalogNode>();
+  for (const node of catalogNodes) nodeById.set(node.id, node);
+  let rows = items.map((item) => {
+    const id = String(item.id || "").trim();
+    const categoryId = String(item.category_id || "").trim();
+    return {
+      id,
+      title: String(item.title || item.name || "").trim(),
+      name: String(item.title || item.name || "").trim(),
+      category_id: categoryId,
+      category_path: buildCategoryPath(nodeById, categoryId),
+      sku_pim: String(item.sku_pim || "").trim(),
+      sku_gt: String(item.sku_gt || "").trim(),
+      group_id: String(item.group_id || "").trim(),
+      group_name: String(item.group_id || "").trim(),
+      marketplace_statuses: {},
+      effective_template_id: "",
+      effective_template_name: "",
+      effective_template_source_category_id: "",
+    } satisfies ProductItem;
+  });
+
+  const filterByBranch = (categoryId: string) => {
+    const allowed = new Set<string>();
+    const stack = [categoryId];
+    while (stack.length) {
+      const nextId = stack.pop() as string;
+      if (allowed.has(nextId)) continue;
+      allowed.add(nextId);
+      for (const node of catalogNodes) {
+        if (String(node.parent_id || "") === nextId) stack.push(node.id);
+      }
+    }
+    rows = rows.filter((row) => allowed.has(row.category_id));
+  };
+
+  if (filters.parentCategoryId) filterByBranch(filters.parentCategoryId);
+  if (filters.subCategoryId) filterByBranch(filters.subCategoryId);
+
+  if (filters.groupFilter === "__ungrouped__") rows = rows.filter((row) => !row.group_id);
+  else if (filters.groupFilter) rows = rows.filter((row) => row.group_id === filters.groupFilter);
+
+  if (filters.query) {
+    const qn = normalizeProductListValue(filters.query);
+    rows = rows.filter((row) =>
+      [row.title, row.name, row.sku_gt, row.sku_pim, row.group_name, row.category_path].some((value) =>
+        normalizeProductListValue(value).includes(qn),
+      ),
+    );
+  }
+
+  if (filters.queueMode === "no_template") rows = rows.filter((row) => !row.effective_template_name);
+
+  rows.sort((left, right) =>
+    normalizeProductListValue(left.sku_gt || left.title || left.id).localeCompare(
+      normalizeProductListValue(right.sku_gt || right.title || right.id),
+      "ru",
+    ),
+  );
+  return rows;
+}
+
+async function loadProductListData(filters: ProductListQueryFilters, signal?: AbortSignal): Promise<ProductListQueryData> {
+  const richTimeout = timeoutSignal(signal, RICH_PRODUCTS_TIMEOUT_MS);
+  try {
+    const data = await api<ProductsPageDataResp>(`/catalog/products-page-data?${productListParams(filters).toString()}`, {
+      signal: richTimeout.signal,
+    });
+    return {
+      products: Array.isArray(data.products) ? data.products : [],
+      nodes: Array.isArray(data.nodes) ? data.nodes : [],
+      groups: Array.isArray(data.groups) ? data.groups : [],
+      templates: Array.isArray(data.templates) ? data.templates : [],
+      total: Math.max(0, Number(data.total || 0)),
+      page: Number(data.page || filters.currentPage),
+      page_size: Math.max(1, Number(data.page_size || DEFAULT_PAGE_SIZE)),
+      ok: data.ok,
+      isFallbackMode: false,
+    };
+  } catch (richError) {
+    const fallbackTimeout = timeoutSignal(signal, RICH_PRODUCTS_TIMEOUT_MS);
+    try {
+      const [catalogNodes, coreProducts] = await Promise.all([
+        api<{ nodes: CatalogNode[] }>("/catalog/nodes", { signal: fallbackTimeout.signal }),
+        api<CoreCatalogProductResp>("/catalog/products", { signal: fallbackTimeout.signal }),
+      ]);
+      const fallbackRows = toFallbackProductRows(coreProducts.items || [], catalogNodes.nodes || [], filters);
+      const pageOffset = (filters.currentPage - 1) * DEFAULT_PAGE_SIZE;
+      return {
+        products: fallbackRows.slice(pageOffset, pageOffset + DEFAULT_PAGE_SIZE),
+        nodes: Array.isArray(catalogNodes.nodes) ? catalogNodes.nodes : [],
+        groups: [],
+        templates: [],
+        total: fallbackRows.length,
+        page: filters.currentPage,
+        page_size: DEFAULT_PAGE_SIZE,
+        ok: true,
+        isFallbackMode: true,
+      };
+    } catch (fallbackError) {
+      const message = fallbackError instanceof DOMException && fallbackError.name === "AbortError"
+        ? "Каталог отвечает слишком долго. Попробуй обновить страницу или проверить backend read-model."
+        : (fallbackError as Error).message || (richError as Error).message || "Не удалось загрузить очередь товаров";
+      throw new Error(message);
+    } finally {
+      fallbackTimeout.cleanup();
+    }
+  } finally {
+    richTimeout.cleanup();
+  }
 }
 
 function normalizeStatus(status?: string, present?: boolean): "good" | "warn" | "neutral" {
@@ -656,15 +823,7 @@ function ProductBulkActionBar({
 
 export default function ProductListFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [isFallbackMode, setIsFallbackMode] = useState(false);
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [nodes, setNodes] = useState<CatalogNode[]>([]);
-  const [groups, setGroups] = useState<GroupItem[]>([]);
-  const [templates, setTemplates] = useState<TemplateItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [deleteError, setDeleteError] = useState("");
   const [searchDraft, setSearchDraft] = useState(searchParams.get("q") || "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -740,163 +899,34 @@ export default function ProductListFeature() {
     return () => window.clearTimeout(timeoutId);
   }, [deferredSearchDraft, query]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const nodeById = new Map<string, CatalogNode>();
+  const productListFilters = useMemo<ProductListQueryFilters>(() => ({
+    query,
+    parentCategoryId,
+    subCategoryId,
+    groupFilter,
+    templateFilter,
+    marketFilter,
+    ozonFilter,
+    queueMode,
+    currentPage,
+  }), [currentPage, groupFilter, marketFilter, ozonFilter, parentCategoryId, query, queueMode, subCategoryId, templateFilter]);
 
-    function normalize(value: unknown): string {
-      return String(value || "").trim().toLowerCase();
-    }
+  const productListQuery = useQuery({
+    queryKey: ["product-registry", productListFilters, refreshToken],
+    queryFn: ({ signal }) => loadProductListData(productListFilters, signal),
+    staleTime: 10_000,
+  });
 
-    function toFallbackProductRows(items: CoreCatalogProductResp["items"], catalogNodes: CatalogNode[]): ProductItem[] {
-      for (const node of catalogNodes) nodeById.set(node.id, node);
-      let rows = items.map((item) => {
-        const id = String(item.id || "").trim();
-        const categoryId = String(item.category_id || "").trim();
-        return {
-          id,
-          title: String(item.title || item.name || "").trim(),
-          name: String(item.title || item.name || "").trim(),
-          category_id: categoryId,
-          category_path: buildCategoryPath(nodeById, categoryId),
-          sku_pim: String(item.sku_pim || "").trim(),
-          sku_gt: String(item.sku_gt || "").trim(),
-          group_id: String(item.group_id || "").trim(),
-          group_name: String(item.group_id || "").trim(),
-          marketplace_statuses: {},
-          effective_template_id: "",
-          effective_template_name: "",
-          effective_template_source_category_id: "",
-        } satisfies ProductItem;
-      });
-
-      if (parentCategoryId) {
-        const allowed = new Set<string>();
-        const stack = [parentCategoryId];
-        while (stack.length) {
-          const nextId = stack.pop() as string;
-          if (allowed.has(nextId)) continue;
-          allowed.add(nextId);
-          for (const node of catalogNodes) {
-            if (String(node.parent_id || "") === nextId) stack.push(node.id);
-          }
-        }
-        rows = rows.filter((row) => allowed.has(row.category_id));
-      }
-
-      if (subCategoryId) {
-        const allowed = new Set<string>();
-        const stack = [subCategoryId];
-        while (stack.length) {
-          const nextId = stack.pop() as string;
-          if (allowed.has(nextId)) continue;
-          allowed.add(nextId);
-          for (const node of catalogNodes) {
-            if (String(node.parent_id || "") === nextId) stack.push(node.id);
-          }
-        }
-        rows = rows.filter((row) => allowed.has(row.category_id));
-      }
-
-      if (groupFilter === "__ungrouped__") rows = rows.filter((row) => !row.group_id);
-      else if (groupFilter) rows = rows.filter((row) => row.group_id === groupFilter);
-
-      if (query) {
-        const qn = normalize(query);
-        rows = rows.filter((row) =>
-          [row.title, row.name, row.sku_gt, row.sku_pim, row.group_name, row.category_path].some((value) =>
-            normalize(value).includes(qn),
-          ),
-        );
-      }
-
-      if (queueMode === "no_template") rows = rows.filter((row) => !row.effective_template_name);
-
-      rows.sort((left, right) =>
-        normalize(left.sku_gt || left.title || left.id).localeCompare(normalize(right.sku_gt || right.title || right.id), "ru"),
-      );
-      return rows;
-    }
-
-    setLoading(true);
-    setLoadError("");
-    setIsFallbackMode(false);
-
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    if (parentCategoryId) params.set("parent", parentCategoryId);
-    if (subCategoryId) params.set("sub", subCategoryId);
-    if (groupFilter) params.set("group", groupFilter);
-    if (templateFilter) params.set("template", templateFilter);
-    if (marketFilter !== "all") params.set("ym", marketFilter);
-    if (ozonFilter !== "all") params.set("oz", ozonFilter);
-    if (queueMode !== "all") params.set("view", queueMode);
-    params.set("page", String(currentPage));
-    params.set("page_size", String(DEFAULT_PAGE_SIZE));
-
-    const richController = new AbortController();
-    const richTimeout = window.setTimeout(() => richController.abort(), RICH_PRODUCTS_TIMEOUT_MS);
-
-    api<ProductsPageDataResp>(`/catalog/products-page-data?${params.toString()}`, { signal: richController.signal })
-      .then((data) => {
-        window.clearTimeout(richTimeout);
-        if (controller.signal.aborted) return;
-        setProducts(Array.isArray(data.products) ? data.products : []);
-        setNodes(Array.isArray(data.nodes) ? data.nodes : []);
-        setGroups(Array.isArray(data.groups) ? data.groups : []);
-        setTemplates(Array.isArray(data.templates) ? data.templates : []);
-        setTotal(Math.max(0, Number(data.total || 0)));
-        setPageSize(Math.max(1, Number(data.page_size || DEFAULT_PAGE_SIZE)));
-      })
-      .catch(async (error) => {
-        window.clearTimeout(richTimeout);
-        if (controller.signal.aborted) return;
-        try {
-          const fallbackController = new AbortController();
-          const fallbackTimeout = window.setTimeout(() => fallbackController.abort(), RICH_PRODUCTS_TIMEOUT_MS);
-          const abortFallback = () => fallbackController.abort();
-          controller.signal.addEventListener("abort", abortFallback, { once: true });
-          try {
-            const [catalogNodes, coreProducts] = await Promise.all([
-              api<{ nodes: CatalogNode[] }>("/catalog/nodes", { signal: fallbackController.signal }),
-              api<CoreCatalogProductResp>("/catalog/products", { signal: fallbackController.signal }),
-            ]);
-            if (controller.signal.aborted) return;
-            const fallbackRows = toFallbackProductRows(coreProducts.items || [], catalogNodes.nodes || []);
-            const pageOffset = (currentPage - 1) * DEFAULT_PAGE_SIZE;
-            const pagedRows = fallbackRows.slice(pageOffset, pageOffset + DEFAULT_PAGE_SIZE);
-            setProducts(pagedRows);
-            setNodes(Array.isArray(catalogNodes.nodes) ? catalogNodes.nodes : []);
-            setGroups([]);
-            setTemplates([]);
-            setTotal(fallbackRows.length);
-            setPageSize(DEFAULT_PAGE_SIZE);
-            setIsFallbackMode(true);
-            setLoadError("");
-          } finally {
-            window.clearTimeout(fallbackTimeout);
-            controller.signal.removeEventListener("abort", abortFallback);
-          }
-        } catch (fallbackError) {
-          if (controller.signal.aborted) return;
-          setProducts([]);
-          const fallbackMessage = fallbackError instanceof DOMException && fallbackError.name === "AbortError"
-            ? "Каталог отвечает слишком долго. Попробуй обновить страницу или проверить backend read-model."
-            : (fallbackError as Error).message || (error as Error).message || "Не удалось загрузить очередь товаров";
-          setLoadError(fallbackMessage);
-        }
-      })
-      .finally(() => {
-        window.clearTimeout(richTimeout);
-        if (!controller.signal.aborted) setLoading(false);
-      });
-
-    return () => {
-      controller.abort();
-      richController.abort();
-      window.clearTimeout(richTimeout);
-    };
-  }, [query, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, queueMode, currentPage, refreshToken]);
+  const data = productListQuery.data;
+  const products = data?.products || [];
+  const nodes = data?.nodes || [];
+  const groups = data?.groups || [];
+  const templates = data?.templates || [];
+  const total = data?.total || 0;
+  const pageSize = data?.page_size || DEFAULT_PAGE_SIZE;
+  const loading = productListQuery.isLoading || productListQuery.isFetching;
+  const loadError = deleteError || (productListQuery.error ? (productListQuery.error as Error).message : "");
+  const isFallbackMode = Boolean(data?.isFallbackMode);
 
   useEffect(() => {
     setSelectedIds((current) => current.filter((id) => products.some((product) => product.id === id)));
@@ -1000,7 +1030,7 @@ export default function ProductListFeature() {
     if (!selectedIds.length) return;
     const ok = window.confirm(`Удалить выбранные товары безвозвратно? SKU: ${selectedIds.length}`);
     if (!ok) return;
-    setLoadError("");
+    setDeleteError("");
     try {
       await api("/catalog/products/bulk-delete", {
         method: "POST",
@@ -1010,7 +1040,7 @@ export default function ProductListFeature() {
       setSelectedProductId(null);
       setRefreshToken((value) => value + 1);
     } catch (error) {
-      setLoadError((error as Error).message || "Не удалось удалить товары");
+      setDeleteError((error as Error).message || "Не удалось удалить товары");
     }
   }
 

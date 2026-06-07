@@ -5896,10 +5896,16 @@ def query_catalog_product_page_rows(
 
         if q:
             clauses.append(
-                "(LOWER(title) LIKE %s OR LOWER(COALESCE(sku_gt, '')) LIKE %s OR LOWER(COALESCE(category_path, '')) LIKE %s)"
+                "("
+                "LOWER(title) LIKE %s OR "
+                "LOWER(COALESCE(sku_gt, '')) LIKE %s OR "
+                "LOWER(COALESCE(sku_pim, '')) LIKE %s OR "
+                "LOWER(product_id) LIKE %s OR "
+                "LOWER(COALESCE(category_path, '')) LIKE %s"
+                ")"
             )
             like = f"%{q}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, like, like])
 
         where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         order_sql = " ORDER BY CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN 0 ELSE 1 END, CASE WHEN COALESCE(sku_gt, '') ~ '^[0-9]+$' THEN LPAD(sku_gt, 32, '0') ELSE LOWER(COALESCE(sku_gt, '')) END, LOWER(title), product_id"
@@ -6021,10 +6027,16 @@ def query_catalog_product_group_facets(
 
         if q:
             clauses.append(
-                "(LOWER(title) LIKE %s OR LOWER(COALESCE(sku_gt, '')) LIKE %s OR LOWER(COALESCE(category_path, '')) LIKE %s)"
+                "("
+                "LOWER(title) LIKE %s OR "
+                "LOWER(COALESCE(sku_gt, '')) LIKE %s OR "
+                "LOWER(COALESCE(sku_pim, '')) LIKE %s OR "
+                "LOWER(product_id) LIKE %s OR "
+                "LOWER(COALESCE(category_path, '')) LIKE %s"
+                ")"
             )
             like = f"%{q}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, like, like])
 
         where_sql = f" WHERE {' AND '.join(clauses)}"
         with conn.cursor() as cur:
