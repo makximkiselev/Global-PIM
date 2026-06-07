@@ -3518,15 +3518,17 @@ class AuthFlowTests(unittest.TestCase):
             },
         ]
         saved_jobs: list[dict] = []
-
-        async def fake_run(_job_id: str, _product_id: str) -> None:
-            return None
+        started_jobs: list[tuple[str, str]] = []
 
         with (
             patch.object(competitor_mapping_routes, "load_competitor_mapping_db", return_value=store),
             patch.object(competitor_mapping_routes, "list_pim_channel_links", side_effect=self._channel_link_reader(channel_links)),
             patch.object(competitor_mapping_routes, "upsert_pim_workflow_run", side_effect=lambda row, workflow=None: saved_jobs.append(deepcopy(row)) or row),
-            patch.object(competitor_mapping_routes, "_run_product_enrich_job", side_effect=fake_run),
+            patch.object(
+                competitor_mapping_routes,
+                "_start_product_enrich_worker_process",
+                side_effect=lambda job_id, org_id: started_jobs.append((job_id, org_id)),
+            ),
             patch.object(competitor_mapping_routes, "now_iso", return_value="2026-05-27T10:00:00+00:00"),
         ):
             response = self.client.post(
@@ -3540,6 +3542,7 @@ class AuthFlowTests(unittest.TestCase):
         self.assertEqual(payload["jobs"][0]["product_id"], "product_113")
         self.assertEqual(payload["skipped"], [{"product_id": "product_114", "reason": "no_confirmed_links"}])
         self.assertEqual(saved_jobs[0]["product_id"], "product_113")
+        self.assertEqual(started_jobs[0][0], saved_jobs[0]["job_id"])
 
     def test_competitor_discovery_unknown_background_run_keeps_polling(self) -> None:
         auth_core.ensure_owner_account("owner", "testpass123", name="Owner")

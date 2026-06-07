@@ -17,7 +17,7 @@ from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
 from app.core import value_mapping
-from app.workers import marketplace_attribute_ai_match, marketplace_value_ai_match
+from app.workers import competitor_product_enrich, marketplace_attribute_ai_match, marketplace_value_ai_match
 
 
 class OperatingWorkflowTests(unittest.TestCase):
@@ -1195,6 +1195,28 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved_jobs[-1]["status"], "completed")
         self.assertEqual(saved_jobs[-1]["matched_count"], 3)
         self.assertEqual(saved_jobs[-1]["media_images_count"], 1)
+
+    def test_competitor_product_enrich_worker_executes_claimed_job(self) -> None:
+        saved_job = {
+            "id": "enrich_job_test",
+            "job_id": "enrich_job_test",
+            "product_id": "product_1",
+            "status": "queued",
+        }
+        executed: list[tuple[str, str]] = []
+
+        async def execute(job_id: str, product_id: str) -> None:
+            executed.append((job_id, product_id))
+
+        with (
+            patch.object(competitor_product_enrich.workflow_jobs, "claim_competitor_product_enrich_job", return_value=deepcopy(saved_job)),
+            patch.object(competitor_product_enrich.competitor_mapping, "_run_product_enrich_job", side_effect=execute),
+        ):
+            result = asyncio.run(competitor_product_enrich.run_once("enrich_job_test", "org_default"))
+
+        self.assertEqual(result["job_id"], "enrich_job_test")
+        self.assertEqual(result["product_id"], "product_1")
+        self.assertEqual(executed, [("enrich_job_test", "product_1")])
 
     def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
         req = CatalogImportRunReq.model_validate(

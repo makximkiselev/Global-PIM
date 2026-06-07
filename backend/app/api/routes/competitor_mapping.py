@@ -18,7 +18,7 @@ from urllib.parse import quote, quote_plus, urljoin, urlparse
 
 import httpx
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app.core.ai_contracts import (
     json_object_from_text,
@@ -57,6 +57,7 @@ from app.core.competitors.extract_competitor_fields import (
     extract_competitor_content,
 )
 from app.core.competitors.restore_specs import extract_restore_product_content_from_html
+from app.core.workflow_jobs import start_competitor_product_enrich_worker_process
 
 router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
 
@@ -5817,7 +5818,11 @@ async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
 
 
 @router.post("/discovery/products/{product_id}/enrich/jobs")
-async def start_product_enrich_job(product_id: str, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+def _start_product_enrich_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    start_competitor_product_enrich_worker_process(job_id, organization_id)
+
+
+async def start_product_enrich_job(product_id: str) -> Dict[str, Any]:
     normalized_product_id = str(product_id or "").strip()
     if not normalized_product_id:
         raise HTTPException(status_code=400, detail="product_id required")
@@ -5835,12 +5840,13 @@ async def start_product_enrich_job(product_id: str, background_tasks: Background
         "updated_ts": monotonic(),
     }
     upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
-    background_tasks.add_task(_run_product_enrich_job, job_id, normalized_product_id)
+    organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
+    _start_product_enrich_worker_process(job_id, organization_id)
     return _public_product_enrich_job(job)
 
 
 @router.post("/discovery/product-enrich/jobs/batch")
-async def start_product_enrich_batch_jobs(payload: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def start_product_enrich_batch_jobs(payload: Dict[str, Any]) -> Dict[str, Any]:
     raw_product_ids = payload.get("product_ids") if isinstance(payload.get("product_ids"), list) else []
     product_ids: List[str] = []
     seen: Set[str] = set()
@@ -5880,7 +5886,8 @@ async def start_product_enrich_batch_jobs(payload: Dict[str, Any], background_ta
             "updated_ts": monotonic(),
         }
         upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
-        background_tasks.add_task(_run_product_enrich_job, job_id, product_id)
+        organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
+        _start_product_enrich_worker_process(job_id, organization_id)
         jobs.append(_public_product_enrich_job(job))
     return {
         "ok": True,

@@ -18,6 +18,7 @@ from app.storage.relational_pim_store import (
 ATTR_AI_WORKFLOW = "marketplace_attribute_ai_match"
 VALUE_AI_WORKFLOW = "marketplace_value_ai_match"
 EXPORT_WORKFLOW = "catalog_export_prepare"
+COMPETITOR_PRODUCT_ENRICH_WORKFLOW = "competitor_product_enrich"
 
 ATTR_AI_JOB_TTL_SECONDS = 300.0
 VALUE_AI_JOB_TTL_SECONDS = 300.0
@@ -32,7 +33,13 @@ def repo_root() -> Path:
     return backend_root().parent
 
 
-def start_worker_process(module: str, job_id: str, organization_id: Optional[str]) -> None:
+def start_worker_process(
+    module: str,
+    job_id: str,
+    organization_id: Optional[str],
+    *,
+    extra_env: Optional[Dict[str, str]] = None,
+) -> None:
     normalized_module = str(module or "").strip()
     normalized_job_id = str(job_id or "").strip()
     if not normalized_module or not normalized_job_id:
@@ -41,6 +48,9 @@ def start_worker_process(module: str, job_id: str, organization_id: Optional[str
     backend_path = str(backend_root())
     existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
     env["PYTHONPATH"] = backend_path if not existing_pythonpath else f"{backend_path}{os.pathsep}{existing_pythonpath}"
+    for key, value in (extra_env or {}).items():
+        if key:
+            env[str(key)] = str(value)
     command = [sys.executable, "-m", normalized_module, "--job-id", normalized_job_id]
     normalized_org_id = str(organization_id or "").strip()
     if normalized_org_id:
@@ -66,6 +76,10 @@ def start_value_ai_match_worker_process(job_id: str, organization_id: Optional[s
 
 def start_export_worker_process(job_id: str, organization_id: Optional[str]) -> None:
     start_worker_process("app.workers.catalog_export_prepare", job_id, organization_id)
+
+
+def start_competitor_product_enrich_worker_process(job_id: str, organization_id: Optional[str]) -> None:
+    start_worker_process("app.workers.competitor_product_enrich", job_id, organization_id)
 
 
 def ai_match_timeout_seconds() -> float:
@@ -220,6 +234,23 @@ def prune_export_jobs() -> int:
         ttl_seconds=EXPORT_JOB_TTL_SECONDS,
         message="Подготовка экспорта была прервана. Запустите проверку заново.",
         error="STALE_EXPORT_JOB",
+    )
+
+
+def save_competitor_product_enrich_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    return save_workflow_job(job, workflow=COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+
+
+def get_competitor_product_enrich_job(job_id: str) -> Optional[Dict[str, Any]]:
+    return get_workflow_job(job_id, workflow=COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+
+
+def claim_competitor_product_enrich_job(job_id: str) -> Optional[Dict[str, Any]]:
+    return claim_workflow_job(
+        job_id,
+        workflow=COMPETITOR_PRODUCT_ENRICH_WORKFLOW,
+        phase="extracting",
+        message="Загружаю параметры, описание и медиа из подтвержденных карточек конкурентов.",
     )
 
 
