@@ -1129,16 +1129,16 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <div><span>Отправлено</span><strong>{submission.summary?.submitted_batches ?? 0}</strong></div>
                       <div><span>Ошибки</span><strong>{submission.summary?.failed_batches ?? 0}</strong></div>
                     </div>
-                    <div className="cx-exportBlockers">
+                    <div className="cx-submissionBatches">
                       {(submission.batches || []).map((batch) => (
-                        <div key={`${batch.provider}:${batch.store_id}`} className="cx-exportBlocker">
-                          <div className="cx-exportBlockerHead">
+                        <div key={`${batch.provider}:${batch.store_id}`} className={`cx-submissionBatch ${batch.status === "submitted" ? "isSubmitted" : "isFailed"}`}>
+                          <div className="cx-submissionBatchHead">
                             <strong>{providerTitle(batch.provider)} · {batch.store_title || batch.store_id}</strong>
                             <Badge tone={batch.status === "submitted" ? "active" : "danger"}>
                               {batch.status === "submitted" ? "Принято" : "Ошибка"}
                             </Badge>
                           </div>
-                          <div className="cx-exportBlockerProduct">
+                          <div className="cx-submissionBatchMeta">
                             SKU в запросе: <b>{batch.result?.request?.items ?? batch.ready_items ?? 0}</b>
                             {batch.result?.status_code ? <> · HTTP <b>{batch.result.status_code}</b></> : null}
                           </div>
