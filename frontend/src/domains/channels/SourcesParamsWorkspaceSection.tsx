@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import CategorySidebar from "../../components/CategorySidebar";
 import { api } from "../../lib/api";
@@ -505,6 +507,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [savingRowId, setSavingRowId] = useState("");
   const [providerSearch, setProviderSearch] = useState<Record<string, string>>({});
+  const paramsQueueRef = useRef<HTMLDivElement | null>(null);
 
   async function loadDetails(categoryId: string) {
     const resp = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
@@ -678,6 +681,25 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
         return String(a.catalog_name || "").localeCompare(String(b.catalog_name || ""), "ru");
       });
   }, [paramRows, codes, queueFilter, groupFilter, fieldQuery]);
+  const queueColumns = useMemo<ColumnDef<AttrRow>[]>(() => [
+    {
+      id: "param",
+      accessorFn: (row) => row.catalog_name || row.id,
+    },
+  ], []);
+  const queueTable = useReactTable({
+    data: queueRows,
+    columns: queueColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => String(row.id || row.catalog_name || ""),
+  });
+  const tableQueueRows = queueTable.getRowModel().rows;
+  const queueVirtualizer = useVirtualizer({
+    count: tableQueueRows.length,
+    getScrollElement: () => paramsQueueRef.current,
+    estimateSize: () => 152,
+    overscan: 8,
+  });
 
   const selectedRow = useMemo(() => {
     const fromSelected = queueRows.find((row) => String(row.id) === selectedRowId);
@@ -769,6 +791,81 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
       setError(err instanceof Error ? err.message : "Ошибка AI-сопоставления");
       setAiMatching(false);
     }
+  }
+
+  function renderParamCard(row: AttrRow) {
+    const coverage = rowProviderCoverage(row, codes);
+    const needsAttention = rowNeedsAttention(row, codes);
+    const active = String(selectedRow?.id || "") === String(row.id || "");
+    return (
+      <button
+        className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${active ? "isSelected" : ""}`}
+        type="button"
+        onClick={() => setSelectedRowId(String(row.id || ""))}
+      >
+        <div className="paramsParamMain">
+          <div className="paramsParamHead">
+            <strong>{row.catalog_name || "Параметр"}</strong>
+            <span>{paramGroupLabel(row)}</span>
+          </div>
+          <div className="paramsParamMeta">
+            {rowHasValues(row, codes) ? <span>есть значения</span> : null}
+            {rowHasComplexBindings(row, codes) ? <span>несколько полей площадки</span> : null}
+          </div>
+        </div>
+        <div className="paramsParamStatus">
+          <span>{coverage}/{codes.length}</span>
+          <strong>{rowStatusLabel(row, codes)}</strong>
+        </div>
+        <div className="paramsParamProviders">
+          {codes.map((code) => {
+            const value = row.provider_map?.[code];
+            const bindings = providerBindings(value);
+            const valuesCount = bindings.reduce((acc, item) => acc + (item.values?.length || 0), 0);
+            const originChips = providerOriginChips(bindings);
+            const valueModes = bindings.map(providerValueMode);
+            return (
+              <div className="paramsProviderCell" key={`${row.id}-${code}`}>
+                <span>{PROVIDER_LABEL[code] || code}</span>
+                {bindings.length ? (
+                  <div className="paramsProviderBindings">
+                    {bindings.map((item) => <b key={`${code}-${item.id || item.name}`}>{item.name || item.id}</b>)}
+                    {bindings.length > 1 ? <small>{bindings.length} поля площадки</small> : null}
+                  </div>
+                ) : (
+                  <strong>не связано</strong>
+                )}
+                {originChips.length ? (
+                  <div className="paramsProviderOrigins">
+                    {originChips.map((item) => (
+                      <i
+                        key={`${code}-${item.source}`}
+                        className={mappingOriginClass(item.source)}
+                        title={item.reasons.join("\n") || "Причина сопоставления пока не записана."}
+                      >
+                        {mappingOriginLabel(item.source)}
+                        {formatConfidence(item.confidence) ? ` ${formatConfidence(item.confidence)}` : ""}
+                        {item.count > 1 ? ` x${item.count}` : ""}
+                      </i>
+                    ))}
+                  </div>
+                ) : null}
+                {valueModes.length ? (
+                  <div className="paramsProviderKinds">
+                    {valueModes.map((mode, index) => (
+                      <i key={`${code}-${mode.code}-${index}`} className={`is${mode.code}`} title={mode.hint}>
+                        {mode.label}
+                      </i>
+                    ))}
+                  </div>
+                ) : null}
+                <em>{valuesCount ? `${valuesCount} значений` : bindings.length > 1 ? `${bindings.length} поля` : bindings[0]?.kind || "параметр"}</em>
+              </div>
+            );
+          })}
+        </div>
+      </button>
+    );
   }
 
   async function saveRows(nextRows: AttrRow[], rowId = "") {
@@ -1086,7 +1183,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
               ))}
             </div>
 
-            <div className="paramsQueueList">
+            <div ref={paramsQueueRef} className={`paramsQueueList ${tableQueueRows.length ? "isVirtual" : ""}`}>
               <div className="paramsMatrixHead" aria-hidden="true">
                 <span>Поле PIM</span>
                 <span>Статус</span>
@@ -1109,81 +1206,23 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                   <button className="btn sm" type="button" onClick={retryDetailsLoad} disabled={loading}>Повторить</button>
                   {error === "AUTH_REQUIRED" ? <Link className="btn sm" to="/login">Войти</Link> : null}
                 </div>
-              ) : queueRows.length ? queueRows.map((row) => {
-                const coverage = rowProviderCoverage(row, codes);
-                const needsAttention = rowNeedsAttention(row, codes);
-                const active = String(selectedRow?.id || "") === String(row.id || "");
-                return (
-                  <button
-                    className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${active ? "isSelected" : ""}`}
-                    key={row.id || row.catalog_name}
-                    type="button"
-                    onClick={() => setSelectedRowId(String(row.id || ""))}
-                  >
-                    <div className="paramsParamMain">
-                      <div className="paramsParamHead">
-                        <strong>{row.catalog_name || "Параметр"}</strong>
-                        <span>{paramGroupLabel(row)}</span>
+              ) : tableQueueRows.length ? (
+                <div className="paramsVirtualInner" style={{ height: `${queueVirtualizer.getTotalSize()}px` }}>
+                  {queueVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const row = tableQueueRows[virtualRow.index];
+                    if (!row) return null;
+                    return (
+                      <div
+                        className="paramsVirtualRow"
+                        key={row.id}
+                        style={{ transform: `translateY(${virtualRow.start}px)` }}
+                      >
+                        {renderParamCard(row.original)}
                       </div>
-                      <div className="paramsParamMeta">
-                        {rowHasValues(row, codes) ? <span>есть значения</span> : null}
-                        {rowHasComplexBindings(row, codes) ? <span>несколько полей площадки</span> : null}
-                      </div>
-                    </div>
-                    <div className="paramsParamStatus">
-                      <span>{coverage}/{codes.length}</span>
-                      <strong>{rowStatusLabel(row, codes)}</strong>
-                    </div>
-                    <div className="paramsParamProviders">
-                      {codes.map((code) => {
-                        const value = row.provider_map?.[code];
-                        const bindings = providerBindings(value);
-                        const valuesCount = bindings.reduce((acc, item) => acc + (item.values?.length || 0), 0);
-                        const originChips = providerOriginChips(bindings);
-                        const valueModes = bindings.map(providerValueMode);
-                        return (
-                          <div className="paramsProviderCell" key={`${row.id}-${code}`}>
-                            <span>{PROVIDER_LABEL[code] || code}</span>
-                            {bindings.length ? (
-                              <div className="paramsProviderBindings">
-                                {bindings.map((item) => <b key={`${code}-${item.id || item.name}`}>{item.name || item.id}</b>)}
-                                {bindings.length > 1 ? <small>{bindings.length} поля площадки</small> : null}
-                              </div>
-                            ) : (
-                              <strong>не связано</strong>
-                            )}
-                            {originChips.length ? (
-                              <div className="paramsProviderOrigins">
-                                {originChips.map((item) => (
-                                  <i
-                                    key={`${code}-${item.source}`}
-                                    className={mappingOriginClass(item.source)}
-                                    title={item.reasons.join("\n") || "Причина сопоставления пока не записана."}
-                                  >
-                                    {mappingOriginLabel(item.source)}
-                                    {formatConfidence(item.confidence) ? ` ${formatConfidence(item.confidence)}` : ""}
-                                    {item.count > 1 ? ` x${item.count}` : ""}
-                                  </i>
-                                ))}
-                              </div>
-                            ) : null}
-                            {valueModes.length ? (
-                              <div className="paramsProviderKinds">
-                                {valueModes.map((mode, index) => (
-                                  <i key={`${code}-${mode.code}-${index}`} className={`is${mode.code}`} title={mode.hint}>
-                                    {mode.label}
-                                  </i>
-                                ))}
-                              </div>
-                            ) : null}
-                            <em>{valuesCount ? `${valuesCount} значений` : bindings.length > 1 ? `${bindings.length} поля` : bindings[0]?.kind || "параметр"}</em>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </button>
-                );
-              }) : (
+                    );
+                  })}
+                </div>
+              ) : (
                 <div className="paramsAlert">
                   {infoModelIsEmpty
                     ? "Инфо-модель пустая. Сначала соберите черновик модели категории из источников."
