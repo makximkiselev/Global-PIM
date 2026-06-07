@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -661,6 +662,66 @@ def _upsert_attr_values_dictionary_for_category(
         "updated_at": _now_iso(),
     }
     save_attribute_value_refs_category_doc(cid, payload)
+
+
+def _category_summary(category_id: str, catalog_by_id: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    category = catalog_by_id.get(str(category_id or "").strip()) or {}
+    return {
+        "id": str(category.get("id") or category_id or "").strip(),
+        "name": str(category.get("name") or category_id or "").strip(),
+        "path": str(category.get("path") or category.get("name") or category_id or "").strip(),
+    }
+
+
+def _catalog_params_from_payload(payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    params = payload.get("catalog_params")
+    return params if isinstance(params, dict) else {}
+
+
+def _inherited_value_payload(
+    catalog_category_id: str,
+    values_items: Dict[str, Any],
+    parent_by_id: Dict[str, str],
+    catalog_by_id: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    cur = str(parent_by_id.get(str(catalog_category_id or "").strip()) or "").strip()
+    seen: set[str] = set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        parent_payload = values_items.get(cur) if isinstance(values_items.get(cur), dict) else {}
+        parent_params = _catalog_params_from_payload(parent_payload)
+        if parent_params:
+            inherited = deepcopy(parent_payload)
+            source_category = _category_summary(cur, catalog_by_id)
+            inherited["catalog_category_id"] = str(catalog_category_id or "").strip()
+            inherited["source_category_id"] = cur
+            inherited["branch_sources"] = [source_category]
+            next_params = inherited.get("catalog_params") if isinstance(inherited.get("catalog_params"), dict) else {}
+            for raw in next_params.values():
+                if isinstance(raw, dict) and not isinstance(raw.get("source_category"), dict):
+                    raw["source_category"] = source_category
+            return inherited
+        cur = str(parent_by_id.get(cur) or "").strip()
+    return {}
+
+
+def _inherited_attr_rows(
+    catalog_category_id: str,
+    attr_items: Dict[str, Any],
+    parent_by_id: Dict[str, str],
+) -> tuple[str, List[Dict[str, Any]]]:
+    cur = str(parent_by_id.get(str(catalog_category_id or "").strip()) or "").strip()
+    seen: set[str] = set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        parent_payload = attr_items.get(cur) if isinstance(attr_items.get(cur), dict) else {}
+        rows = parent_payload.get("rows") if isinstance(parent_payload.get("rows"), list) else []
+        if rows:
+            return cur, [x for x in rows if isinstance(x, dict)]
+        cur = str(parent_by_id.get(cur) or "").strip()
+    return "", []
 
 
 def _catalog_param_group_locks() -> Dict[str, str]:
@@ -4317,6 +4378,44 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
             items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
             payload = items.get(cid) if isinstance(items, dict) and isinstance(items.get(cid), dict) else {}
             catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+    if not catalog_params and isinstance(items, dict):
+        inherited_payload = _inherited_value_payload(
+            catalog_category_id=cid,
+            values_items=items,
+            parent_by_id=parent_by_id,
+            catalog_by_id=catalog_by_id,
+        )
+        inherited_params = _catalog_params_from_payload(inherited_payload)
+        if inherited_params:
+            payload = inherited_payload
+            catalog_params = inherited_params
+    if not catalog_params:
+        attr_doc = _load_attr_mapping_doc()
+        attr_items = attr_doc.get("items") if isinstance(attr_doc.get("items"), dict) else {}
+        inherited_attr_category_id, inherited_attr_rows = _inherited_attr_rows(
+            catalog_category_id=cid,
+            attr_items=attr_items,
+            parent_by_id=parent_by_id,
+        )
+        if inherited_attr_category_id and inherited_attr_rows:
+            _upsert_attr_values_dictionary_for_category(
+                inherited_attr_category_id,
+                inherited_attr_rows,
+                mappings=_load_mappings(),
+                parent_by_id=parent_by_id,
+            )
+            values_doc = _load_attr_values_dict_doc()
+            items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
+            inherited_payload = _inherited_value_payload(
+                catalog_category_id=cid,
+                values_items=items,
+                parent_by_id=parent_by_id,
+                catalog_by_id=catalog_by_id,
+            )
+            inherited_params = _catalog_params_from_payload(inherited_payload)
+            if inherited_params:
+                payload = inherited_payload
+                catalog_params = inherited_params
     if not catalog_params and isinstance(items, dict):
         branch_payload = _value_payload_with_descendant_refs(
             catalog_category_id=cid,

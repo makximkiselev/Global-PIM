@@ -637,6 +637,89 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(version_provider["missing_values"], ["Global"])
         self.assertFalse(by_title["Линейка"]["needs_value_mapping"])
 
+    def test_value_details_materializes_inherited_parent_attr_rows(self) -> None:
+        dictionaries = {
+            "items": [
+                {
+                    "id": "dict_color",
+                    "title": "Цвет",
+                    "type": "select",
+                    "items": [{"value": "Desert Titanium"}],
+                    "meta": {"source_reference": {}, "export_map": {}},
+                }
+            ]
+        }
+        attr_doc = {
+            "items": {
+                "cat-parent": {
+                    "rows": [
+                        {
+                            "catalog_name": "Цвет",
+                            "group": "Внешний вид",
+                            "confirmed": True,
+                            "provider_map": {
+                                "yandex_market": {
+                                    "id": "ym_color",
+                                    "name": "Цвет товара",
+                                    "kind": "ENUM",
+                                    "values": ["черный", "титановый"],
+                                    "required": True,
+                                }
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+        saved_values: dict[str, object] = {}
+
+        def load_values_doc():
+            return {"items": deepcopy(saved_values)}
+
+        def save_values_doc(category_id, payload):
+            saved_values[str(category_id)] = deepcopy(payload)
+
+        with (
+            patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
+            patch.object(
+                marketplace_mapping,
+                "_load_catalog_nodes",
+                return_value=[
+                    {"id": "cat-parent", "parent_id": None, "name": "iPhone 16", "path": "Смартфоны / Apple / iPhone 16"},
+                    {"id": "cat-child", "parent_id": "cat-parent", "name": "iPhone 16 Pro Max", "path": "Смартфоны / Apple / iPhone 16 / iPhone 16 Pro Max"},
+                ],
+            ),
+            patch.object(
+                marketplace_mapping,
+                "_catalog_rows",
+                return_value=[
+                    {"id": "cat-parent", "parent_id": None, "name": "iPhone 16", "path": "Смартфоны / Apple / iPhone 16"},
+                    {"id": "cat-child", "parent_id": "cat-parent", "name": "iPhone 16 Pro Max", "path": "Смартфоны / Apple / iPhone 16 / iPhone 16 Pro Max"},
+                ],
+            ),
+            patch.object(marketplace_mapping, "_catalog_parent_map", return_value={"cat-child": "cat-parent"}),
+            patch.object(marketplace_mapping, "_tree_maps", return_value=({"cat-child": "cat-parent"}, {"cat-parent": ["cat-child"]})),
+            patch.object(marketplace_mapping, "_load_attr_values_dict_doc", side_effect=load_values_doc),
+            patch.object(marketplace_mapping, "_load_attr_mapping_doc", return_value=deepcopy(attr_doc)),
+            patch.object(marketplace_mapping, "_load_mappings", return_value={}),
+            patch.object(marketplace_mapping, "ensure_global_attribute", return_value={"id": "attr_color", "dict_id": "dict_color"}),
+            patch.object(marketplace_mapping, "save_attribute_value_refs_category_doc", side_effect=save_values_doc),
+            patch.object(marketplace_mapping, "load_dictionaries_db", return_value=deepcopy(dictionaries)),
+            patch.object(marketplace_mapping, "load_dict", side_effect=lambda dict_id: next(d for d in dictionaries["items"] if d["id"] == dict_id)),
+            patch.object(marketplace_mapping, "provider_export_value_details", return_value={"value": "", "mapped": False, "reason": "value_missing"}),
+            patch.object(marketplace_mapping, "query_products_full", return_value=[]),
+        ):
+            response = marketplace_mapping.mapping_value_details("cat-child")
+
+        self.assertEqual(response["count"], 1)
+        self.assertEqual(response["branch_sources"][0]["id"], "cat-parent")
+        item = response["items"][0]
+        self.assertEqual(item["title"], "Цвет")
+        self.assertEqual(item["source_category"]["id"], "cat-parent")
+        provider = item["providers"][0]
+        self.assertEqual(provider["code"], "yandex_market")
+        self.assertEqual(provider["allowed_values"], ["черный", "титановый"])
+
     def test_value_details_treats_provider_numeric_kind_as_unit_check_not_dictionary_mapping(self) -> None:
         dictionaries = {
             "items": [

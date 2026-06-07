@@ -239,6 +239,22 @@ function collectParents(categoryId: string, parentById: Map<string, string>) {
   return out;
 }
 
+function categoryPathLabel(categoryId: string, nodes: CatalogNode[], parentById: Map<string, string>) {
+  const id = String(categoryId || "").trim();
+  if (!id) return "";
+  const byId = new Map(nodes.map((node) => [String(node.id || ""), node]));
+  const names: string[] = [];
+  let cur = id;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const node = byId.get(cur);
+    if (node?.name) names.unshift(node.name);
+    cur = String(parentById.get(cur) || "");
+  }
+  return names.length ? names.join(" / ") : id;
+}
+
 function searchMatch(node: CatalogNode, q: string) {
   if (!q) return true;
   return String(node.name || "").toLowerCase().includes(q);
@@ -283,6 +299,10 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
   const childrenByParent = useMemo(() => buildChildren(nodes), [nodes]);
   const parentById = useMemo(() => buildParents(nodes), [nodes]);
   const rootNodes = childrenByParent.get("") || [];
+  const selectedCategoryLabel = useMemo(
+    () => data?.category?.path || categoryPathLabel(selectedCategoryId, nodes, parentById) || "Категория не выбрана",
+    [data?.category?.path, nodes, parentById, selectedCategoryId],
+  );
 
   useEffect(() => {
     if (!selectedCategoryId) return;
@@ -691,7 +711,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
           </div>
 
           <div className="sm-valuesSummary">
-            <span>{data?.category?.path || "Категория не выбрана"}</span>
+            <span>{selectedCategoryLabel}</span>
             {branchSourcesCount ? <span>{branchSourcesCount} дочерних категорий</span> : null}
             <span>{mappingItemsCount} из {rawItemsCount} полей со справочниками</span>
             <span>{allUnresolvedCount} блокеров</span>
