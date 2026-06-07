@@ -5,15 +5,11 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from app.api.routes import marketplace_mapping
-from app.core.tenant_context import (
-    reset_current_tenant_organization_id,
-    set_current_tenant_organization_id,
-)
+from app.workers.workflow_runner import run_pending_workflow_jobs, run_workflow_loop, tenant_organization_scope
 
 
 async def run_once(job_id: str, organization_id: Optional[str] = None) -> Dict[str, Any]:
-    token = set_current_tenant_organization_id(organization_id) if organization_id else None
-    try:
+    with tenant_organization_scope(organization_id):
         marketplace_mapping._prune_value_ai_jobs()
         job = marketplace_mapping._claim_value_ai_job(job_id)
         if not isinstance(job, dict):
@@ -37,53 +33,19 @@ async def run_once(job_id: str, organization_id: Optional[str] = None) -> Dict[s
             "dict_id": dict_id,
             "provider": provider,
         }
-    finally:
-        if token is not None:
-            reset_current_tenant_organization_id(token)
 
 
 async def run_pending_once(organization_id: Optional[str] = None, *, limit: int = 10) -> Dict[str, Any]:
-    token = set_current_tenant_organization_id(organization_id) if organization_id else None
-    picked = 0
-    completed = 0
-    skipped = 0
-    failed = 0
-    errors: list[Dict[str, str]] = []
-    try:
-        marketplace_mapping._prune_value_ai_jobs()
-        jobs = marketplace_mapping.list_pim_workflow_runs(
-            workflow=marketplace_mapping._VALUE_AI_WORKFLOW,
-            statuses=["queued"],
-            limit=max(1, min(int(limit or 10), 100)),
-        )
-        for job in jobs:
-            job_id = str(job.get("job_id") or job.get("id") or job.get("run_id") or "").strip()
-            if not job_id:
-                continue
-            picked += 1
-            try:
-                result = await run_once(job_id, organization_id)
-                if isinstance(result, dict) and result.get("skipped"):
-                    skipped += 1
-                elif isinstance(result, dict) and result.get("ok") is False:
-                    failed += 1
-                    errors.append({"job_id": job_id, "error": str(result.get("reason") or "VALUE_AI_MATCH_JOB_FAILED")[:500]})
-                else:
-                    completed += 1
-            except Exception as exc:
-                failed += 1
-                errors.append({"job_id": job_id, "error": str(exc)[:500]})
-        return {
-            "ok": failed == 0,
-            "picked": picked,
-            "completed": completed,
-            "skipped": skipped,
-            "failed": failed,
-            "errors": errors,
-        }
-    finally:
-        if token is not None:
-            reset_current_tenant_organization_id(token)
+    return await run_pending_workflow_jobs(
+        organization_id=organization_id,
+        workflow=marketplace_mapping._VALUE_AI_WORKFLOW,
+        list_runs=marketplace_mapping.list_pim_workflow_runs,
+        run_one=lambda job_id: run_once(job_id),
+        prune=marketplace_mapping._prune_value_ai_jobs,
+        limit=limit,
+        max_limit=100,
+        default_error="VALUE_AI_MATCH_JOB_FAILED",
+    )
 
 
 async def run_loop(
@@ -92,10 +54,10 @@ async def run_loop(
     poll_interval_seconds: float = 5.0,
     limit: int = 10,
 ) -> None:
-    delay = max(float(poll_interval_seconds or 5.0), 0.5)
-    while True:
-        await run_pending_once(organization_id, limit=limit)
-        await asyncio.sleep(delay)
+    await run_workflow_loop(
+        lambda: run_pending_once(organization_id, limit=limit),
+        poll_interval_seconds=poll_interval_seconds,
+    )
 
 
 def main() -> None:

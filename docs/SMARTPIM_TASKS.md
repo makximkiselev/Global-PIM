@@ -118,11 +118,11 @@ Library adoption sequence:
 6. Worker foundation:
    - standardize workflow claim/save/status helpers;
    - move remaining long-running web background tasks to worker modules.
-   Status: partially done. Attribute AI, value AI and export preparation use persisted `pim_workflow_runs` and worker entrypoints; remaining work is to consolidate shared workflow helpers and remove remaining route-owned process spawning where practical.
+   Status: in progress. Attribute AI, value AI and export preparation use persisted `pim_workflow_runs` and worker entrypoints. Shared worker runner helpers now own tenant scoping, queued-job polling, counters and loop polling for these workers; remaining work is to move route-owned job claim/run internals into domain services and remove remaining route-owned process spawning where practical.
 7. AI foundation:
    - move LLM prompts/output validation into a typed AI service;
    - reuse it for competitor candidate suggestions, parameter matching, value matching, and export semantic audit.
-   Status: partially done. `app.core.llm` centralizes LLM transport and JSON extraction; remaining work is typed Pydantic output contracts shared across competitor suggestions, parameter matching, value matching and export semantic audit.
+   Status: in progress. `app.core.llm` centralizes LLM transport and now supports bounded `max_tokens` for OpenAI-compatible and Ollama-native calls. `app.core.ai_contracts` adds shared JSON extraction plus typed Pydantic value-pair suggestions used by value AI matching. Remaining work is to reuse typed contracts across competitor suggestions, parameter matching and export semantic audit.
 
 Initial success criteria:
 

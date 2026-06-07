@@ -16,6 +16,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.ai_contracts import json_object_from_text, parse_value_pair_suggestions
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.matching import match_tokens, normalize_match_text, token_jaccard, value_pair_similarity
 from app.core.tenant_context import current_tenant_organization_id
@@ -1536,11 +1537,7 @@ async def _ollama_suggest_value_pairs(
         if response.status_code >= 400:
             raise HTTPException(status_code=502, detail=f"OLLAMA_HTTP_{response.status_code}")
         data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
-    obj = _json_extract(str((data or {}).get("response") or ""))
-    pairs = obj.get("pairs") if isinstance(obj, dict) else None
-    if not isinstance(pairs, list):
-        return []
-    return [pair for pair in pairs if isinstance(pair, dict)]
+    return parse_value_pair_suggestions(str((data or {}).get("response") or ""))
 
 
 def _validated_value_suggestions(
@@ -2816,23 +2813,7 @@ async def _run_value_ai_match_job(job_id: str, catalog_category_id: str, dict_id
 
 
 def _json_extract(text: str) -> Optional[Dict[str, Any]]:
-    s = str(text or "").strip()
-    if not s:
-        return None
-    try:
-        obj = json.loads(s)
-        return obj if isinstance(obj, dict) else None
-    except Exception:
-        pass
-    m = re.search(r"\{[\s\S]*\}", s)
-    if not m:
-        return None
-    raw = m.group(0)
-    try:
-        obj = json.loads(raw)
-        return obj if isinstance(obj, dict) else None
-    except Exception:
-        return None
+    return json_object_from_text(text) or None
 
 
 def _norm_name(s: str) -> str:

@@ -26,6 +26,7 @@ async def llm_chat_text(
     model: Optional[str] = None,
     temperature: float = 0.2,
     timeout_seconds: float = 90.0,
+    max_tokens: Optional[int] = None,
 ) -> Dict[str, str]:
     model_name, normalized_profile = llm_model_for_profile(profile, model)
     api_base = os.getenv("LLM_API_BASE", "http://localhost:11434/v1").strip().rstrip("/")
@@ -35,6 +36,8 @@ async def llm_chat_text(
         "messages": messages,
         "temperature": temperature,
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max(1, int(max_tokens))
     headers: Dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -50,6 +53,8 @@ async def llm_chat_text(
                     "stream": False,
                     "options": {"temperature": temperature},
                 }
+                if max_tokens is not None:
+                    native_payload["options"]["num_predict"] = max(1, int(max_tokens))
                 res = await client.post(f"{native_base}/api/chat", json=native_payload, headers=headers)
     except Exception as exc:
         raise LlmError(f"LLM_ERROR:{exc.__class__.__name__}: {str(exc).strip()}") from exc
