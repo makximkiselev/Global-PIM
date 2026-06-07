@@ -1516,24 +1516,30 @@ def _ozon_allowed_values_by_attr(category_ref: Any) -> Dict[str, List[Dict[str, 
     items = doc.get("items") if isinstance(doc, dict) else {}
     if not isinstance(items, dict):
         return {"__all_loaded__": []}
-    out: Dict[str, List[Dict[str, Any]]] = {"__all_loaded__": []}
+    exact: Dict[str, List[Dict[str, Any]]] = {"__all_loaded__": []}
+    fallback: Dict[str, List[Dict[str, Any]]] = {}
     for row in items.values():
         if not isinstance(row, dict):
             continue
         if str(row.get("category_id") or "") != str(category_id):
             continue
-        if type_id is not None:
-            try:
-                if int(row.get("type_id") or 0) != int(type_id):
-                    continue
-            except (TypeError, ValueError):
-                continue
         attr_id = str(row.get("attribute_id") or "").strip()
         if not attr_id:
             continue
         values = row.get("values") if isinstance(row.get("values"), list) else []
-        out[attr_id] = [item for item in values if isinstance(item, dict)]
-    return out
+        clean_values = [item for item in values if isinstance(item, dict)]
+        if type_id is not None:
+            try:
+                if int(row.get("type_id") or 0) != int(type_id):
+                    fallback.setdefault(attr_id, clean_values)
+                    continue
+            except (TypeError, ValueError):
+                fallback.setdefault(attr_id, clean_values)
+                continue
+        exact[attr_id] = clean_values
+    for attr_id, values in fallback.items():
+        exact.setdefault(attr_id, values)
+    return exact
 
 
 def _ozon_value_text(row: Dict[str, Any]) -> str:

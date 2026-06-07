@@ -3753,9 +3753,9 @@ class OperatingWorkflowTests(unittest.TestCase):
             if path == catalog_exchange.OZON_CATEGORY_ATTR_VALUES_PATH:
                 return {
                     "items": {
-                        "15621050:95139:10096": {
+                        "15621050:95137:10096": {
                             "category_id": "15621050",
-                            "type_id": 95139,
+                            "type_id": 95137,
                             "attribute_id": 10096,
                             "values": [{"id": 61583, "value": "Черный"}],
                         }
