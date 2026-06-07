@@ -2034,6 +2034,70 @@
   background:rgba(var(--surface-rgb), .58);
 }
 
+.productLogisticsQuickPanel{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid rgba(var(--brand-rgb), .24);
+  border-radius:16px;
+  background:rgba(var(--brand-rgb), .08);
+}
+
+.productLogisticsQuickHead{
+  display:grid;
+  gap:2px;
+}
+
+.productLogisticsQuickHead strong{
+  font-size:13px;
+  font-weight:950;
+}
+
+.productLogisticsQuickHead span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+
+.productLogisticsQuickGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+}
+
+.productLogisticsQuickGrid label{
+  display:grid;
+  gap:5px;
+  min-width:0;
+}
+
+.productLogisticsQuickGrid span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.productLogisticsQuickGrid input{
+  width:100%;
+  min-width:0;
+  height:38px;
+  border:1px solid rgba(var(--line-rgb), .72);
+  border-radius:12px;
+  padding:0 10px;
+  background:rgba(var(--surface-rgb), .82);
+  color:var(--text);
+  font:inherit;
+  font-size:13px;
+  font-weight:850;
+  outline:none;
+}
+
+.productLogisticsQuickGrid input:focus{
+  border-color:rgba(var(--brand-rgb), .58);
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb), .1);
+}
+
 .productParamList{
   display:flex;
   flex-direction:column;

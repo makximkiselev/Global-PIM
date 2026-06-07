@@ -24,6 +24,11 @@ type ProductFeatureValue = {
   source_values?: Record<string, unknown>;
 };
 
+type FeatureValueUpdate = {
+  feature: ProductFeatureValue;
+  value: string;
+};
+
 type ProductRelation = {
   id?: string;
   sku?: string;
@@ -417,6 +422,13 @@ function findFeatureByParameter(features: ProductFeatureValue[], parameter: unkn
   });
   return contains || null;
 }
+
+const OZON_PACKAGE_DIMENSION_FIELDS: Array<{ key: string; label: string; parameter: string; placeholder: string }> = [
+  { key: "length", label: "Длина, мм", parameter: "Длина упаковки/товара", placeholder: "например 170" },
+  { key: "width", label: "Ширина, мм", parameter: "Ширина упаковки/товара", placeholder: "например 90" },
+  { key: "height", label: "Высота, мм", parameter: "Высота упаковки/товара", placeholder: "например 40" },
+  { key: "weight", label: "Вес, г", parameter: "Вес упаковки/товара", placeholder: "например 320" },
+];
 
 function isProductFeatureCode(codeOrName: unknown): boolean {
   const raw = featureIdentity(codeOrName);
@@ -903,6 +915,7 @@ function ProductAttributeWorkbench({
   selectedKey,
   onSelect,
   onSaveFeatureValue,
+  onSaveFeatureValues,
   savingFeatureKey,
   saveNotice,
 }: {
@@ -916,6 +929,7 @@ function ProductAttributeWorkbench({
   selectedKey: string;
   onSelect: (key: string) => void;
   onSaveFeatureValue: (feature: ProductFeatureValue, value: string) => Promise<void>;
+  onSaveFeatureValues: (updates: FeatureValueUpdate[]) => Promise<void>;
   savingFeatureKey: string;
   saveNotice: string;
 }) {
@@ -936,6 +950,16 @@ function ProductAttributeWorkbench({
   const attentionCount = Number(parameterFlow?.summary?.features_attention || 0);
   const blockerCount = Number(parameterFlow?.summary?.blockers || parameterFlow?.blockers?.length || 0);
   const blockerItems = (parameterFlow?.blockers || []).slice(0, 6);
+  const dimensionBlockers = (parameterFlow?.blockers || []).filter((blocker) =>
+    normalizeText(blocker.provider).toLowerCase() === "ozon"
+      && normalizeText(blocker.code) === "required_parameter_missing"
+      && normalizeText(blocker.parameter).includes("упаковки/товара"),
+  );
+  const packageDimensionTargets = OZON_PACKAGE_DIMENSION_FIELDS.map((field) => ({
+    ...field,
+    feature: findFeatureByParameter(features, field.parameter),
+  })).filter((field): field is typeof field & { feature: ProductFeatureValue } => Boolean(field.feature));
+  const [dimensionDrafts, setDimensionDrafts] = useState<Record<string, string>>({});
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
     const values = new Set(entries.map((item) => item.canonical || item.resolved || item.raw).filter(Boolean).map((item) => item.toLowerCase()));
@@ -946,6 +970,20 @@ function ProductAttributeWorkbench({
   useEffect(() => {
     setDraftValue(selectedValue);
   }, [selectedFeatureKey, selectedValue]);
+
+  useEffect(() => {
+    setDimensionDrafts(Object.fromEntries(
+      packageDimensionTargets.map((target) => [target.key, featureValue(target.feature)]),
+    ));
+  }, [features, parameterFlow]);
+
+  const changedDimensionUpdates = packageDimensionTargets
+    .map((target) => ({
+      feature: target.feature,
+      value: normalizeText(dimensionDrafts[target.key]),
+      current: featureValue(target.feature),
+    }))
+    .filter((item) => item.value !== item.current);
 
   if (!hasInfoModel) {
     return (
@@ -1027,6 +1065,34 @@ function ProductAttributeWorkbench({
                 <b>Открыть</b>
               </Link>
             ) : null}
+          </div>
+        ) : null}
+        {dimensionBlockers.length && packageDimensionTargets.length ? (
+          <div className="productLogisticsQuickPanel">
+            <div className="productLogisticsQuickHead">
+              <strong>Габариты для Ozon</strong>
+              <span>{dimensionBlockers.length} поля мешают экспорту</span>
+            </div>
+            <div className="productLogisticsQuickGrid">
+              {packageDimensionTargets.map((target) => (
+                <label key={target.key}>
+                  <span>{target.label}</span>
+                  <input
+                    value={dimensionDrafts[target.key] ?? ""}
+                    inputMode="numeric"
+                    placeholder={target.placeholder}
+                    onChange={(event) => setDimensionDrafts((prev) => ({ ...prev, [target.key]: event.target.value }))}
+                  />
+                </label>
+              ))}
+            </div>
+            <Button
+              variant="primary"
+              onClick={() => void onSaveFeatureValues(changedDimensionUpdates.map(({ feature, value }) => ({ feature, value })))}
+              disabled={!changedDimensionUpdates.length || Boolean(savingFeatureKey)}
+            >
+              Сохранить габариты
+            </Button>
           </div>
         ) : null}
         <div className="productParamSearchHint">Выберите параметр, чтобы увидеть как он собрался и как уйдет на площадки.</div>
@@ -1849,39 +1915,57 @@ function ProductWorkspaceFeature() {
     }
   }
 
-  async function saveFeatureValue(feature: ProductFeatureValue, value: string) {
+  async function saveFeatureValues(updates: FeatureValueUpdate[]) {
     if (!product) return;
-    if (isReadonlySystemFeature(feature)) return;
-    const normalizedValue = normalizeText(value);
-    const targetCode = featureIdentity(feature.code);
-    const targetName = featureIdentity(feature.name);
+    const cleanUpdates = updates
+      .filter((item) => item.feature && !isReadonlySystemFeature(item.feature))
+      .map((item) => ({ feature: item.feature, value: normalizeText(item.value) }));
+    if (!cleanUpdates.length) return;
     const currentFeatures = Array.isArray(product.content?.features) ? product.content?.features || [] : [];
-    let matched = false;
+    const matchedUpdateIndexes = new Set<number>();
     const nextFeatures = currentFeatures.map((item) => {
-      const code = featureIdentity(item.code);
-      const name = featureIdentity(item.name);
-      const same = (targetCode && code === targetCode) || (targetName && name === targetName) || (targetCode && name === targetCode) || (targetName && code === targetName);
-      if (!same) return item;
-      matched = true;
+      const itemCode = featureIdentity(item.code);
+      const itemName = featureIdentity(item.name);
+      const updateIndex = cleanUpdates.findIndex(({ feature }) => {
+        const targetCode = featureIdentity(feature.code);
+        const targetName = featureIdentity(feature.name);
+        return (targetCode && itemCode === targetCode) || (targetName && itemName === targetName) || (targetCode && itemName === targetCode) || (targetName && itemCode === targetName);
+      });
+      if (updateIndex < 0) return item;
+      matchedUpdateIndexes.add(updateIndex);
+      const update = cleanUpdates[updateIndex];
       return {
         ...item,
-        ...feature,
-        source_values: item.source_values || feature.source_values,
-        value: normalizedValue,
+        ...update.feature,
+        source_values: item.source_values || update.feature.source_values,
+        value: update.value,
       };
     });
-    if (!matched) {
-      nextFeatures.push({
-        ...feature,
-        value: normalizedValue,
-      });
+    cleanUpdates.forEach((update, index) => {
+      if (!matchedUpdateIndexes.has(index)) {
+        nextFeatures.push({
+          ...update.feature,
+          value: update.value,
+        });
+      }
+    });
+    if (nextFeatures.length === currentFeatures.length) {
+      let changed = false;
+      for (let index = 0; index < nextFeatures.length; index += 1) {
+        if (nextFeatures[index] !== currentFeatures[index]) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
     }
     const nextContent: ProductContent = {
       ...(product.content || {}),
       features: nextFeatures,
     };
     const optimisticProduct = { ...product, content: nextContent };
-    const savingKey = featureKey(feature, features.indexOf(feature) >= 0 ? features.indexOf(feature) : 0);
+    const firstFeature = cleanUpdates[0].feature;
+    const savingKey = cleanUpdates.length > 1 ? "bulk:features" : featureKey(firstFeature, features.indexOf(firstFeature) >= 0 ? features.indexOf(firstFeature) : 0);
     setProduct(optimisticProduct);
     setFeatureSavingKey(savingKey);
     setFeatureNotice("");
@@ -1892,7 +1976,7 @@ function ProductWorkspaceFeature() {
       });
       const nextProduct = response.product || optimisticProduct;
       setProduct(nextProduct);
-      setFeatureNotice(normalizedValue ? "Значение сохранено в PIM." : "Значение очищено.");
+      setFeatureNotice(cleanUpdates.length > 1 ? "Значения сохранены в PIM." : cleanUpdates[0].value ? "Значение сохранено в PIM." : "Значение очищено.");
       try {
         const flowResponse = await api<ProductParameterFlow>(`/products/${product.id}/parameter-flow`);
         setParameterFlow(flowResponse);
@@ -1905,6 +1989,10 @@ function ProductWorkspaceFeature() {
     } finally {
       setFeatureSavingKey("");
     }
+  }
+
+  async function saveFeatureValue(feature: ProductFeatureValue, value: string) {
+    await saveFeatureValues([{ feature, value }]);
   }
 
   async function deleteProduct() {
@@ -2365,6 +2453,7 @@ function ProductWorkspaceFeature() {
                   selectedKey={selectedFeatureKey}
                   onSelect={setSelectedFeatureKey}
                   onSaveFeatureValue={saveFeatureValue}
+                  onSaveFeatureValues={saveFeatureValues}
                   savingFeatureKey={featureSavingKey}
                   saveNotice={featureNotice}
                 />
