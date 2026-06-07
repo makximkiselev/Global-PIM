@@ -1594,6 +1594,31 @@ def _match_ozon_allowed_value(value: Any, allowed_rows: List[Dict[str, Any]]) ->
         for row in allowed_rows:
             if normalize_value_key(_ozon_value_text(row)) in candidate_keys:
                 return row
+    semantic_candidates: List[str] = []
+    raw_text = str(value or "").strip().lower()
+    if "face id" in raw_text or "распознаван" in raw_text and "лиц" in raw_text:
+        semantic_candidates.append("Распознавание лица")
+    if "только esim" in raw_text or ("esim" in raw_text and not re.search(r"(?<!e)sim", raw_text)):
+        semantic_candidates.append("Только eSIM")
+    if "4k" in raw_text or "4к" in raw_text:
+        semantic_candidates.append("3840x2160 4K")
+    if "glonass" in raw_text or "глонасс" in raw_text:
+        semantic_candidates.append("ГЛОНАСС")
+    if "galileo" in raw_text:
+        semantic_candidates.append("GALILEO")
+    if "beidou" in raw_text or "bei dou" in raw_text:
+        semantic_candidates.extend(["Beidou", "BDS"])
+    if "navic" in raw_text:
+        semantic_candidates.append("Navic")
+    if "oled" in raw_text:
+        semantic_candidates.append("OLED")
+    if "песчан" in raw_text or "desert" in raw_text:
+        semantic_candidates.append("бежевый")
+    for candidate in semantic_candidates:
+        candidate_key = normalize_value_key(candidate)
+        for row in allowed_rows:
+            if normalize_value_key(_ozon_value_text(row)) == candidate_key:
+                return row
     return None
 
 
@@ -1601,11 +1626,11 @@ def _split_ozon_dictionary_value(value: Any) -> List[str]:
     text = str(value or "").strip()
     if not text:
         return []
-    parts = re.split(r"\s*(?:[,;]|\s\+\s)\s*", text)
+    parts = re.split(r"\s*(?:[,;/]|\s\+\s)\s*", text)
     out: List[str] = []
     seen: Set[str] = set()
     for part in parts:
-        clean = part.strip()
+        clean = re.sub(r"^(?:and|и)\s+", "", part.strip(), flags=re.IGNORECASE)
         key = normalize_value_key(clean)
         if clean and key and key not in seen:
             seen.add(key)
