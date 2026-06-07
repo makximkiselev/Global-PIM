@@ -720,6 +720,70 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(provider["code"], "yandex_market")
         self.assertEqual(provider["allowed_values"], ["черный", "титановый"])
 
+    def test_value_details_includes_product_values_missing_from_dictionary(self) -> None:
+        dictionaries = {
+            "items": [
+                {
+                    "id": "dict_auth",
+                    "title": "Аутентификация",
+                    "type": "select",
+                    "items": [{"value": "разблокировка по лицу"}],
+                    "meta": {
+                        "source_reference": {
+                            "yandex_market": {
+                                "kind": "ENUM",
+                                "allowed_values": ["разблокировка по лицу", "сканер отпечатка пальца"],
+                            }
+                        },
+                        "export_map": {},
+                    },
+                }
+            ]
+        }
+        values_doc = {
+            "items": {
+                "cat-phone": {
+                    "catalog_params": {
+                        "auth": {"catalog_name": "Аутентификация", "dict_id": "dict_auth"}
+                    }
+                }
+            }
+        }
+        products = [
+            {
+                "id": "product_1",
+                "category_id": "cat-phone",
+                "content": {"features": [{"name": "Аутентификация", "value": "Face ID"}]},
+            }
+        ]
+
+        def fake_provider_details(_dict_id: str, _provider: str, value: str):
+            return {
+                "value": "разблокировка по лицу" if value == "разблокировка по лицу" else "",
+                "mapped": value == "разблокировка по лицу",
+                "reason": "allowed_exact" if value == "разблокировка по лицу" else "value_missing",
+            }
+
+        with (
+            patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
+            patch.object(marketplace_mapping, "_load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_rows", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(marketplace_mapping, "_catalog_parent_map", return_value={}),
+            patch.object(marketplace_mapping, "_tree_maps", return_value=({}, {})),
+            patch.object(marketplace_mapping, "_load_attr_values_dict_doc", return_value=deepcopy(values_doc)),
+            patch.object(marketplace_mapping, "load_dictionaries_db", return_value=deepcopy(dictionaries)),
+            patch.object(marketplace_mapping, "load_dict", side_effect=lambda dict_id: next(d for d in dictionaries["items"] if d["id"] == dict_id)),
+            patch.object(marketplace_mapping, "query_products_full", return_value=deepcopy(products)),
+            patch.object(marketplace_mapping, "provider_export_value_details", side_effect=fake_provider_details),
+        ):
+            response = marketplace_mapping.mapping_value_details("cat-phone")
+
+        item = response["items"][0]
+        provider = item["providers"][0]
+        self.assertEqual(item["pim_values"], ["разблокировка по лицу", "Face ID"])
+        self.assertEqual(provider["missing_values"], ["Face ID"])
+        self.assertTrue(item["needs_value_mapping"])
+
     def test_value_details_treats_provider_numeric_kind_as_unit_check_not_dictionary_mapping(self) -> None:
         dictionaries = {
             "items": [

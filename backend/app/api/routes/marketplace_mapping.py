@@ -1384,6 +1384,96 @@ def _dictionary_value_samples(dict_doc: Dict[str, Any], limit: int = 4) -> tuple
     return value_count, pim_sample, pim_values
 
 
+def _merge_unique_values(*groups: List[str], limit: int = 120) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for raw in group:
+            value = str(raw or "").strip()
+            key = normalize_value_key(value)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(value)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _product_feature_values_for_names(category_ids: List[str], catalog_names: List[str], *, limit: int = 120) -> List[str]:
+    wanted_names = {_norm_name(name) for name in catalog_names if _norm_name(name)}
+    if not category_ids or not wanted_names:
+        return []
+    try:
+        products = query_products_full(category_ids=category_ids, limit=420)
+    except Exception:
+        return []
+    values: List[str] = []
+    seen: set[str] = set()
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        features = content.get("features") if isinstance(content.get("features"), list) else []
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            feature_name = _norm_name(feature.get("name") or feature.get("code"))
+            if feature_name not in wanted_names:
+                continue
+            raw_value = feature.get("value") if "value" in feature else feature.get("values")
+            if isinstance(raw_value, list):
+                candidates = [str(item or "").strip() for item in raw_value]
+            else:
+                candidates = [str(raw_value or "").strip()]
+            for value in candidates:
+                key = normalize_value_key(value)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                values.append(value)
+                if len(values) >= limit:
+                    return values
+    return values
+
+
+def _catalog_names_for_category_dict(catalog_category_id: str, dict_id: str) -> List[str]:
+    cid = str(catalog_category_id or "").strip()
+    did = str(dict_id or "").strip()
+    if not cid or not did:
+        return []
+    values_doc = _load_attr_values_dict_doc()
+    items = values_doc.get("items") if isinstance(values_doc.get("items"), dict) else {}
+    catalog_nodes = _load_catalog_nodes()
+    _catalog_by_id, children_by_parent = _tree_maps(catalog_nodes)
+    category_ids = [cid, *_descendant_ids(cid, children_by_parent)]
+    names: List[str] = []
+    seen: set[str] = set()
+    for category_id in category_ids:
+        payload = items.get(category_id) if isinstance(items.get(category_id), dict) else {}
+        catalog_params = payload.get("catalog_params") if isinstance(payload.get("catalog_params"), dict) else {}
+        for raw in catalog_params.values():
+            if not isinstance(raw, dict) or str(raw.get("dict_id") or "").strip() != did:
+                continue
+            name = str(raw.get("catalog_name") or "").strip()
+            key = _norm_name(name)
+            if key and key not in seen:
+                seen.add(key)
+                names.append(name)
+    return names
+
+
+def _product_feature_values_for_category_dict(catalog_category_id: str, dict_id: str, *, limit: int = 120) -> List[str]:
+    cid = str(catalog_category_id or "").strip()
+    names = _catalog_names_for_category_dict(cid, dict_id)
+    if not cid or not names:
+        return []
+    catalog_nodes = _load_catalog_nodes()
+    _catalog_by_id, children_by_parent = _tree_maps(catalog_nodes)
+    category_ids = [cid, *_descendant_ids(cid, children_by_parent)]
+    return _product_feature_values_for_names(category_ids, names, limit=limit)
+
+
 def _provider_value_coverage(dict_id: str, provider: str, pim_values: List[str], *, limit: int = 80) -> Dict[str, Any]:
     missing: List[str] = []
     covered = 0
@@ -4449,7 +4539,7 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         export_map = meta.get("export_map") if isinstance(meta.get("export_map"), dict) else {}
         raw_bindings = raw.get("bindings") if isinstance(raw.get("bindings"), dict) else {}
         raw_scope = str(dict_doc.get("scope") or "").strip().lower()
-        value_count, pim_sample, pim_values = _dictionary_value_samples(dict_doc)
+        _dict_value_count, _dict_pim_sample, dict_pim_values = _dictionary_value_samples(dict_doc)
         if raw_scope == "variant":
             scope = "group"
             scope_label = "Группа"
@@ -4465,6 +4555,13 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
         for child_id in _descendant_ids(evidence_category_id, children_by_parent):
             if child_id not in evidence_category_ids:
                 evidence_category_ids.append(child_id)
+        product_pim_values = _product_feature_values_for_names(
+            evidence_category_ids,
+            [str(raw.get("catalog_name") or dict_doc.get("title") or dict_id)],
+        )
+        pim_values = _merge_unique_values(dict_pim_values, product_pim_values)
+        value_count = len(pim_values)
+        pim_sample = pim_values[:4]
         source_evidence = _feature_source_evidence(
             category_ids=evidence_category_ids,
             catalog_name=str(raw.get("catalog_name") or dict_doc.get("title") or dict_id),
@@ -4597,7 +4694,7 @@ async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: 
         raise HTTPException(status_code=404, detail="CATALOG_CATEGORY_NOT_FOUND")
 
     doc = load_dict(did)
-    pim_values = _dictionary_values(doc)
+    pim_values = _merge_unique_values(_dictionary_values(doc), _product_feature_values_for_category_dict(cid, did))
     dictionary_allowed_values = _provider_allowed_values(doc, provider)
     category_allowed_values: List[str] = []
     allowed_values = dictionary_allowed_values
