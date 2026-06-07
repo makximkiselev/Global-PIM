@@ -597,6 +597,43 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const loading = exportMutation.isPending || jobRunning;
 
   useEffect(() => {
+    if (!bootstrapInitialized || loading || jobId) return;
+    const exactProductScope = selectedProductIds.length === 1 && selectedNodeIds.length === 0;
+    const exactCategoryScope = selectedNodeIds.length === 1 && selectedProductIds.length === 0;
+    if (!exactProductScope && !exactCategoryScope) return;
+    let cancelled = false;
+    const path = latestRunPath();
+    void (async () => {
+      try {
+        const latest = await queryClient.fetchQuery({
+          queryKey: ["catalog-export-latest-run", path],
+          queryFn: () => api<LatestExportRunResp>(path),
+          staleTime: 0,
+        });
+        if (!cancelled && latest.run) {
+          setRun(latest.run);
+          setSubmission(latest.run.last_submission || null);
+        }
+      } catch {
+        if (!cancelled) {
+          setRun(null);
+          setSubmission(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bootstrapInitialized,
+    jobId,
+    loading,
+    queryClient,
+    selectedNodeIds.join(","),
+    selectedProductIds.join(","),
+  ]);
+
+  useEffect(() => {
     const job = exportJobQuery.data;
     if (!job) return;
     setPreparingMessage(job.message || (jobRunning ? "Export batch считается в фоне." : ""));
