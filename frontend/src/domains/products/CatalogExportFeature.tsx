@@ -16,6 +16,11 @@ import "../../styles/catalog-exchange.css";
 type Store = { id: string; title: string; enabled?: boolean; export_enabled?: boolean };
 type ProviderRow = { code: string; title: string; import_stores?: Store[] };
 type ConnectorsResp = { providers?: ProviderRow[] };
+type ExportBootstrapResp = {
+  nodes: ExchangeNode[];
+  counts: Record<string, number>;
+  providers: ProviderRow[];
+};
 type ExportRunResp = {
   ok: boolean;
   run_id: string;
@@ -164,6 +169,16 @@ function providerTitle(provider: string): string {
   return provider;
 }
 
+function exportableProviders(providers: ProviderRow[]): ProviderRow[] {
+  return providers
+    .filter((provider) => ["yandex_market", "ozon"].includes(provider.code))
+    .map((provider) => ({
+      ...provider,
+      import_stores: provider.import_stores || [],
+    }))
+    .filter((provider) => (provider.import_stores || []).length > 0);
+}
+
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
@@ -244,7 +259,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [selectedStores, setSelectedStores] = useState<Record<string, string[]>>({});
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [bootstrapInitialized, setBootstrapInitialized] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
   const [preparingMessage, setPreparingMessage] = useState("");
@@ -260,41 +275,46 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     ...String(searchParams.get("products") || "").split(","),
   ].map((item) => item.trim()).filter(Boolean);
 
+  const exportBootstrapQuery = useQuery({
+    queryKey: ["catalog-export-bootstrap"],
+    queryFn: async (): Promise<ExportBootstrapResp> => {
+      const [n, counts, c] = await Promise.all([
+        api<{ nodes: ExchangeNode[] }>("/catalog/nodes"),
+        api<{ counts: Record<string, number> }>("/catalog/products/counts"),
+        api<ConnectorsResp>("/connectors/status"),
+      ]);
+      return {
+        nodes: n.nodes || [],
+        counts: counts.counts || {},
+        providers: exportableProviders(c.providers || []),
+      };
+    },
+  });
+  const initialLoading = exportBootstrapQuery.isLoading && !bootstrapInitialized;
+
   useEffect(() => {
-    const load = async () => {
-      setInitialLoading(true);
-      try {
-        const [n, counts, c] = await Promise.all([
-          api<{ nodes: ExchangeNode[] }>("/catalog/nodes"),
-          api<{ counts: Record<string, number> }>("/catalog/products/counts"),
-          api<ConnectorsResp>("/connectors/status"),
-        ]);
-        setNodes(n.nodes || []);
-        setProductCountsByCategory(counts.counts || {});
-        const exportProviders = (c.providers || [])
-          .filter((x) => ["yandex_market", "ozon"].includes(x.code))
-          .map((provider) => ({
-            ...provider,
-            import_stores: provider.import_stores || [],
-          }))
-          .filter((provider) => (provider.import_stores || []).length > 0);
-        setProviders(exportProviders);
-        setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [
-          provider.code,
-          (provider.import_stores || []).some((store) => store.export_enabled !== false),
-        ])));
-        setSelectedStores(Object.fromEntries(exportProviders.map((provider) => [
-          provider.code,
-          (provider.import_stores || []).filter((store) => store.export_enabled !== false).map((store) => store.id),
-        ])));
-      } catch (e) {
-        setErr((e as Error).message || "Не удалось загрузить данные экспорта");
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-    void load();
-  }, []);
+    const data = exportBootstrapQuery.data;
+    if (!data) return;
+    setNodes(data.nodes);
+    setProductCountsByCategory(data.counts);
+    setProviders(data.providers);
+    if (!bootstrapInitialized) {
+      setSelectedProviders(Object.fromEntries(data.providers.map((provider) => [
+        provider.code,
+        (provider.import_stores || []).some((store) => store.export_enabled !== false),
+      ])));
+      setSelectedStores(Object.fromEntries(data.providers.map((provider) => [
+        provider.code,
+        (provider.import_stores || []).filter((store) => store.export_enabled !== false).map((store) => store.id),
+      ])));
+      setBootstrapInitialized(true);
+    }
+  }, [bootstrapInitialized, exportBootstrapQuery.data]);
+
+  useEffect(() => {
+    if (!exportBootstrapQuery.error) return;
+    setErr((exportBootstrapQuery.error as Error).message || "Не удалось загрузить данные экспорта");
+  }, [exportBootstrapQuery.error]);
 
   useEffect(() => {
     if (initialProductIds.length) return;
