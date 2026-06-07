@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";
 import CatalogExchangePicker, { type ExchangeNode } from "../../components/CatalogExchangePicker";
@@ -62,6 +63,19 @@ type ExportJobResp = {
   summary?: ExportRunResp["summary"];
   error?: string;
   run?: ExportRunResp | null;
+};
+type ExportJobRequest = {
+  startedAt: number;
+  payload: {
+    selection: {
+      mode: "mixed" | "all";
+      node_ids: string[];
+      product_ids: string[];
+      include_descendants: boolean;
+    };
+    targets: Array<{ provider: string; store_ids: string[] }>;
+    limit: number;
+  };
 };
 type ExportPackageResp = {
   ok: boolean;
@@ -220,6 +234,7 @@ function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
 }
 
 export default function CatalogExportFeature({ embedded = false }: { embedded?: boolean } = {}) {
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
@@ -230,11 +245,11 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [selectedStores, setSelectedStores] = useState<Record<string, string[]>>({});
   const [initialLoading, setInitialLoading] = useState(true);
-  const [loading, setLoading] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
   const [err, setErr] = useState("");
   const [preparingMessage, setPreparingMessage] = useState("");
   const [jobId, setJobId] = useState("");
+  const [jobStartedAt, setJobStartedAt] = useState(0);
   const [packageLoading, setPackageLoading] = useState(false);
   const [exportPackage, setExportPackage] = useState<ExportPackageResp["package"] | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -391,12 +406,6 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     return Array.from(byKey.values()).slice(0, 12);
   }, [run]);
 
-  function requestExport() {
-    if (activeTargets.length === 0 || loading) return;
-    setBroadScopeConfirmed(false);
-    setConfirmOpen(true);
-  }
-
   function latestRunPath() {
     const params = new URLSearchParams();
     if (selectedNodeIds.length === 1 && !selectedProductIds.length) params.set("category_id", selectedNodeIds[0]);
@@ -409,7 +418,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     const deadline = Date.now() + deadlineMs;
     while (Date.now() < deadline) {
       try {
-        const latest = await api<LatestExportRunResp>(latestRunPath());
+        const path = latestRunPath();
+        const latest = await queryClient.fetchQuery({
+          queryKey: ["catalog-export-latest-run", path],
+          queryFn: () => api<LatestExportRunResp>(path),
+          staleTime: 0,
+        });
         const candidate = latest.run;
         const createdAt = Date.parse(candidate?.created_at || "");
         if (!Number.isFinite(createdAt) || createdAt >= startedAt - 2_000) return candidate;
@@ -421,33 +435,109 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     return null;
   }
 
-  async function waitForExportJob(nextJobId: string, startedAt: number): Promise<ExportRunResp | null> {
-    const deadline = Date.now() + 180_000;
-    while (Date.now() < deadline) {
-      const job = await api<ExportJobResp>(`/catalog/exchange/export/jobs/${encodeURIComponent(nextJobId)}`);
-      setJobId(job.job_id || nextJobId);
-      setPreparingMessage(job.message || "Export batch считается в фоне.");
-      if (job.status === "completed" && job.run) return job.run;
-      if (job.status === "failed") {
-        throw new Error(job.error || job.message || "Export batch не завершился.");
+  const exportJobQuery = useQuery({
+    queryKey: ["catalog-export-job", jobId],
+    queryFn: () => api<ExportJobResp>(`/catalog/exchange/export/jobs/${encodeURIComponent(jobId)}`),
+    enabled: Boolean(jobId),
+    refetchInterval: (query) => {
+      const status = (query.state.data as ExportJobResp | undefined)?.status || "queued";
+      return status === "queued" || status === "running" ? 3_000 : false;
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async ({ payload }: ExportJobRequest) => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 28_000);
+      try {
+        return await api<ExportJobResp>("/catalog/exchange/export/jobs", {
+          method: "POST",
+          signal: controller.signal,
+          body: JSON.stringify(payload),
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
-      await new Promise((resolve) => window.setTimeout(resolve, 3_000));
+    },
+    onMutate: ({ startedAt }) => {
+      setJobStartedAt(startedAt);
+      setErr("");
+      setRun(null);
+      setPreparingMessage("");
+      setJobId("");
+      setExportPackage(null);
+    },
+    onSuccess: (job) => {
+      setJobId(job.job_id || "");
+      setPreparingMessage(job.message || "Export batch поставлен в очередь.");
+      if (job.status === "completed" && job.run) {
+        setRun(job.run);
+        setPreparingMessage("");
+        setJobId("");
+      }
+    },
+    onError: async (error, { startedAt }) => {
+      setPreparingMessage("Batch еще считается на сервере. Подхватываю сохраненный результат без перезапуска.");
+      const latest = await waitForLatestRun(startedAt);
+      if (latest) {
+        setRun(latest);
+        setErr("");
+      } else {
+        setErr((error as Error).message || "Ошибка подготовки экспорта");
+      }
+      setPreparingMessage("");
+    },
+  });
+
+  const jobRunning = Boolean(jobId) && !["completed", "failed"].includes(exportJobQuery.data?.status || "");
+  const loading = exportMutation.isPending || jobRunning;
+
+  useEffect(() => {
+    const job = exportJobQuery.data;
+    if (!job) return;
+    setPreparingMessage(job.message || (jobRunning ? "Export batch считается в фоне." : ""));
+    if (job.status === "completed") {
+      if (job.run) {
+        setRun(job.run);
+        setErr("");
+        setPreparingMessage("");
+        setJobId("");
+        void queryClient.invalidateQueries({ queryKey: ["catalog-export-latest-run"] });
+      } else if (jobStartedAt) {
+        void (async () => {
+          const latest = await waitForLatestRun(jobStartedAt, 20_000);
+          if (latest) {
+            setRun(latest);
+            setErr("");
+          } else {
+            setErr("Export batch завершился, но сохраненный результат пока не найден.");
+          }
+          setPreparingMessage("");
+          setJobId("");
+        })();
+      }
+    } else if (job.status === "failed") {
+      setErr(job.error || job.message || "Export batch не завершился.");
+      setPreparingMessage("");
+      setJobId("");
     }
-    return await waitForLatestRun(startedAt, 20_000);
+  }, [exportJobQuery.data, jobRunning, jobStartedAt, queryClient]);
+
+  useEffect(() => {
+    if (!exportJobQuery.error || !jobId) return;
+    setErr((exportJobQuery.error as Error).message || "Не удалось проверить статус export job.");
+  }, [exportJobQuery.error, jobId]);
+
+  function requestExport() {
+    if (activeTargets.length === 0 || loading) return;
+    setBroadScopeConfirmed(false);
+    setConfirmOpen(true);
   }
 
   async function startExport() {
     setConfirmOpen(false);
-    setLoading(true);
-    setErr("");
-    setRun(null);
-    setPreparingMessage("");
-    setJobId("");
-    setExportPackage(null);
     const runLimit = selectedProductIds.length ? Math.max(1, selectedProductIds.length) : 50;
     const startedAt = Date.now();
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 28_000);
     const payload = {
       selection: {
         mode: selectedNodeIds.length || selectedProductIds.length ? "mixed" : "all",
@@ -458,33 +548,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       targets: activeTargets,
       limit: runLimit,
     };
-    try {
-      const job = await api<ExportJobResp>("/catalog/exchange/export/jobs", {
-        method: "POST",
-        signal: controller.signal,
-        body: JSON.stringify(payload),
-      });
-      window.clearTimeout(timeoutId);
-      setJobId(job.job_id || "");
-      setPreparingMessage(job.message || "Export batch поставлен в очередь.");
-      const res = job.run || await waitForExportJob(job.job_id, startedAt);
-      if (!res) throw new Error("Export batch еще не вернул сохраненный результат.");
-      setRun(res);
-      setPreparingMessage("");
-    } catch (e) {
-      window.clearTimeout(timeoutId);
-      setPreparingMessage(jobId ? "Batch еще считается на сервере. Проверяю статус job и сохраненный результат." : "Batch еще считается на сервере. Подхватываю сохраненный результат без перезапуска.");
-      const latest = await waitForLatestRun(startedAt);
-      if (latest) {
-        setRun(latest);
-        setErr("");
-      } else {
-        setErr((e as Error).message || "Ошибка подготовки экспорта");
-      }
-    } finally {
-      setLoading(false);
-      setPreparingMessage("");
-    }
+    exportMutation.mutate({ startedAt, payload });
   }
 
   async function loadExportPackage(download = false) {

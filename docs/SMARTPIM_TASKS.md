@@ -101,7 +101,7 @@ Library adoption sequence:
    - add TanStack Query;
    - wrap the app with one query client;
    - migrate export job polling and selected product/category reads first.
-   Status: in progress. The app is wrapped in a shared `QueryClientProvider`, and product competitor discovery now uses TanStack Query for SKU context loading plus run-status polling. Remaining work: migrate export job polling, product registry reads, connector status, and sources mapping bootstrap/invalidation.
+   Status: in progress. The app is wrapped in a shared `QueryClientProvider`; product competitor discovery uses TanStack Query for SKU context loading plus run-status polling; export preparation now uses a mutation for job creation and query-owned polling for `/catalog/exchange/export/jobs/{job_id}`. Remaining work: migrate product registry reads, connector status, and sources mapping bootstrap/invalidation.
 3. Frontend table foundation:
    - add TanStack Table/Virtual;
    - migrate product queue/export target tables before dense parameter tables.
