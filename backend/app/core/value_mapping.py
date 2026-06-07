@@ -9,6 +9,7 @@ from app.storage.json_store import load_dict, save_dict
 def normalize_value_key(value: Any) -> str:
     s = str(value or "").strip().lower().replace("ё", "е").replace("×", "x")
     s = re.sub(r"(?<=[a-z0-9])е|е(?=[a-z0-9])", "e", s)
+    s = re.sub(r"\bglonass\b", "глонасс", s)
     return " ".join(s.split())
 
 
@@ -126,6 +127,50 @@ def _resolve_single_allowed_value(
         return provider_map[canonical_key]
     if canonical_key in allowed_by_key:
         return allowed_by_key[canonical_key]
+    semantic = _resolve_semantic_allowed_value(value, allowed_values)
+    if semantic:
+        return semantic
+    return None
+
+
+def _resolve_semantic_allowed_value(value: str, allowed_values: List[str]) -> Optional[str]:
+    key = normalize_value_key(value)
+    if not key or not allowed_values:
+        return None
+    allowed_by_key = {
+        normalize_value_key(candidate): str(candidate or "").strip()
+        for candidate in allowed_values
+        if normalize_value_key(candidate)
+    }
+
+    compact = re.sub(r"[\s\\/_-]+", "", key)
+    if compact in {"esim+esim", "dualеsim", "dualesim"}:
+        for candidate_key in ("dual esim", "2 nano sim+2 esim", "2 nano-sim/+esim"):
+            if candidate_key in allowed_by_key:
+                return allowed_by_key[candidate_key]
+
+    screen_match = re.search(r"(\d{3,4})\s*[xх]\s*(\d{3,4})", key)
+    if screen_match:
+        normalized_resolution = f"{screen_match.group(1)}x{screen_match.group(2)}"
+        if normalized_resolution in allowed_by_key:
+            return allowed_by_key[normalized_resolution]
+
+    if "4k" in key:
+        for allowed_key, allowed_text in allowed_by_key.items():
+            if "3840x2160" in allowed_key or "3840 2160" in allowed_key:
+                return allowed_text
+
+    if "мп" in key or "mp" in key:
+        numbers = [float(x.replace(",", ".")) for x in re.findall(r"\d+(?:[,.]\d+)?", key)]
+        if numbers:
+            primary = max(numbers)
+            for allowed_key, allowed_text in allowed_by_key.items():
+                bounds = [float(x.replace(",", ".")) for x in re.findall(r"\d+(?:[,.]\d+)?", allowed_key)]
+                if len(bounds) >= 2 and ("мп" in allowed_key or "mp" in allowed_key) and min(bounds[:2]) <= primary <= max(bounds[:2]):
+                    return allowed_text
+                if len(bounds) == 1 and abs(bounds[0] - primary) < 0.0001:
+                    return allowed_text
+
     return None
 
 
@@ -231,6 +276,9 @@ def provider_export_value_details(dict_id: Optional[str], provider: str, canonic
             return {"value": source_value, "mapped": True, "reason": "alias_allowed_exact"}
 
     if allowed:
+        semantic_value = _resolve_semantic_allowed_value(value, allowed)
+        if semantic_value:
+            return {"value": semantic_value, "mapped": True, "reason": "semantic_allowed"}
         composite_parts = _split_composite_value(value)
         if composite_parts:
             mapped_parts: List[str] = []

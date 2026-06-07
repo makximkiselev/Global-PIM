@@ -521,6 +521,45 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(details["reason"], "composite_allowed")
         self.assertEqual(details["values"], ["GPS", "GLONASS", "Galileo", "BeiDou", "NavIC"])
 
+    def test_provider_export_value_details_maps_common_semantic_formats(self) -> None:
+        cases = [
+            (
+                "eSIM + eSIM",
+                ["1 nano SIM", "Dual eSIM", "nano SIM+eSIM"],
+                "Dual eSIM",
+            ),
+            (
+                "Запись видео 4K со скоростью 60 кадров в секунду",
+                ["1920x1080", "3840x2160"],
+                "3840x2160",
+            ),
+            (
+                "48 МП + 48 МП + 12 МП",
+                ["10 - 14 МП", "15 - 49 МП", "50"],
+                "15 - 49 МП",
+            ),
+            (
+                "2868×1320",
+                ["2796x1290", "2868x1320"],
+                "2868x1320",
+            ),
+        ]
+        for raw_value, allowed_values, expected in cases:
+            dictionary = {
+                "id": "dict_semantic",
+                "items": [],
+                "aliases": {},
+                "meta": {
+                    "source_reference": {"yandex_market": {"allowed_values": allowed_values}},
+                    "export_map": {},
+                },
+            }
+            with patch.object(value_mapping, "load_dict", return_value=deepcopy(dictionary)):
+                details = value_mapping.provider_export_value_details("dict_semantic", "yandex_market", raw_value)
+            self.assertEqual(details["mapped"], True)
+            self.assertEqual(details["value"], expected)
+            self.assertIn(details["reason"], {"semantic_allowed", "allowed_exact"})
+
     def test_value_details_blocks_only_uncovered_pim_values(self) -> None:
         dictionaries = {
             "items": [
