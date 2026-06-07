@@ -392,6 +392,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     () => activeTargets.reduce((sum, item) => sum + item.store_ids.length, 0),
     [activeTargets],
   );
+  const selectedTargetWord = selectedTargetsCount === 1 ? "цель" : selectedTargetsCount > 1 && selectedTargetsCount < 5 ? "цели" : "целей";
   const exportBadgeText = initialLoading
     ? "Загружаю каналы"
     : providers.length === 0
@@ -406,10 +407,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     : "/sources?tab=sources";
   const exportEmptyTitle = providers.length === 0
     ? "Нет магазинов для экспорта"
-    : "Выберите магазины выше";
+    : activeTargets.length > 0
+      ? "Готово к подготовке"
+      : "Выберите магазины выше";
   const exportEmptyDescription = providers.length === 0
     ? "Сначала добавьте хотя бы один магазин в коннекторах или проверьте привязку категории к площадкам."
-    : "Отметьте Я.Маркет или Ozon и конкретные магазины, затем запустите подготовку по выбранной области каталога.";
+    : activeTargets.length > 0
+      ? `Выбрано ${selectedTargetsCount} ${selectedTargetWord} для области "${selectedScope}". Запустите подготовку в панели целей экспорта.`
+      : "Отметьте Я.Маркет или Ozon и конкретные магазины, затем запустите подготовку по выбранной области каталога.";
   const selectedTargetLabels = useMemo(() => {
     const out: string[] = [];
     for (const target of activeTargets) {
@@ -1085,7 +1090,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>
                   </div>
                 ) : (
-                  <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
+                  activeTargets.length > 0 ? null : <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
                     {loading ? "Готовлю…" : "Подготовить экспорт"}
                   </Button>
                 )}
