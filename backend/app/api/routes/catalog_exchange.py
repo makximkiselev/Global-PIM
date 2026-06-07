@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
+import httpx
 import os
 from pathlib import Path
 import re
@@ -44,6 +45,8 @@ from app.api.routes.yandex_market import (
     OfferCardsSyncReq,
     sync_offer_cards,
     ExportPreviewReq,
+    YANDEX_API_BASE,
+    _auth_headers as _yandex_auth_headers,
     yandex_export_preview,
     _effective_attr_rows,
     _extract_product_value,
@@ -53,8 +56,9 @@ from app.api.routes.yandex_market import (
     _preferred_offer_id,
     _export_media_url,
     _export_media_urls,
+    _guess_auth_modes as _yandex_guess_auth_modes,
 )
-from app.api.routes.ozon_market import OzonProductsSyncReq, sync_product_statuses
+from app.api.routes.ozon_market import OzonProductsSyncReq, sync_product_statuses, _post_api_key as _ozon_post_api_key
 from app.api.routes.competitor_mapping import (
     _ai_map_competitor_specs_to_template,
     _confirmed_links_for_product,
@@ -1095,6 +1099,10 @@ class CatalogExportRunReq(BaseModel):
     limit: int = Field(default=1000, ge=1, le=5000)
 
 
+class CatalogExportSubmitReq(BaseModel):
+    dry_run: bool = False
+
+
 def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selected_store_ids: Set[str]) -> List[Dict[str, Any]]:
     enabled_stores = [s for s in stores if bool(s.get("enabled", True))]
     if selected_store_ids:
@@ -1828,6 +1836,151 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _connector_store_by_id(provider: str, store_id: str) -> Dict[str, Any]:
+    sid = str(store_id or "").strip()
+    stores = ConnectorsStateReadAdapter().import_stores(provider)
+    for store in stores:
+        if not isinstance(store, dict):
+            continue
+        if str(store.get("id") or "").strip() == sid:
+            return store
+    return {}
+
+
+def _safe_submit_response(body: Any) -> Any:
+    if isinstance(body, dict):
+        return {
+            str(key): _safe_submit_response(value)
+            for key, value in body.items()
+            if str(key).lower() not in {"api_key", "token", "authorization", "password", "secret"}
+        }
+    if isinstance(body, list):
+        return [_safe_submit_response(item) for item in body[:50]]
+    return body
+
+
+async def _submit_yandex_export_batch(batch: Dict[str, Any], *, dry_run: bool = False) -> Dict[str, Any]:
+    items = batch.get("items") if isinstance(batch.get("items"), list) else []
+    payload_items = [
+        deepcopy(item.get("payload")) if isinstance(item, dict) and isinstance(item.get("payload"), dict) else {}
+        for item in items
+    ]
+    payload_items = [item for item in payload_items if item]
+    body = {"offerMappingEntries": [{"offer": item} for item in payload_items]}
+    if dry_run:
+        return {"ok": True, "dry_run": True, "request": {"items": len(payload_items)}, "response": {}}
+    store = _connector_store_by_id("yandex_market", str(batch.get("store_id") or ""))
+    business_id = str(store.get("business_id") or "").strip()
+    token = str(store.get("api_key") or store.get("token") or "").strip()
+    auth_mode = str(store.get("auth_mode") or "auto").strip().lower() or "auto"
+    if not business_id:
+        return {"ok": False, "error": "YANDEX_BUSINESS_ID_MISSING", "request": {"items": len(payload_items)}}
+    if not token:
+        return {"ok": False, "error": "YANDEX_TOKEN_MISSING", "request": {"items": len(payload_items)}}
+    last_error = ""
+    last_body: Any = {}
+    for mode in _yandex_guess_auth_modes(token, auth_mode):
+        headers = {
+            **_yandex_auth_headers(token, mode),
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    f"{YANDEX_API_BASE}/v2/businesses/{business_id}/offer-mappings/update",
+                    json=body,
+                    headers=headers,
+                )
+        except Exception as exc:
+            last_error = f"[{mode}] {exc.__class__.__name__}: {str(exc)[:400]}"
+            continue
+        try:
+            last_body = res.json() if res.content else {}
+        except Exception:
+            last_body = {"raw": res.text[:1000]}
+        if res.is_success:
+            return {
+                "ok": True,
+                "status_code": res.status_code,
+                "auth_mode": mode,
+                "request": {"items": len(payload_items)},
+                "response": _safe_submit_response(last_body),
+            }
+        last_error = f"[{mode}] {res.status_code}: {res.text[:500]}"
+    return {
+        "ok": False,
+        "error": last_error or "YANDEX_SUBMIT_FAILED",
+        "request": {"items": len(payload_items)},
+        "response": _safe_submit_response(last_body),
+    }
+
+
+async def _submit_ozon_export_batch(batch: Dict[str, Any], *, dry_run: bool = False) -> Dict[str, Any]:
+    items = batch.get("items") if isinstance(batch.get("items"), list) else []
+    payload_items = [
+        deepcopy(item.get("payload")) if isinstance(item, dict) and isinstance(item.get("payload"), dict) else {}
+        for item in items
+    ]
+    payload_items = [item for item in payload_items if item]
+    body = {"items": payload_items}
+    if dry_run:
+        return {"ok": True, "dry_run": True, "request": {"items": len(payload_items)}, "response": {}}
+    store = _connector_store_by_id("ozon", str(batch.get("store_id") or ""))
+    api_key = str(store.get("api_key") or store.get("token") or "").strip()
+    client_id = str(store.get("client_id") or "").strip()
+    if not api_key:
+        return {"ok": False, "error": "OZON_API_KEY_MISSING", "request": {"items": len(payload_items)}}
+    if not client_id:
+        return {"ok": False, "error": "OZON_CLIENT_ID_MISSING", "request": {"items": len(payload_items)}}
+    try:
+        response = await _ozon_post_api_key("/v3/product/import", body, api_key, client_id)
+        return {"ok": True, "request": {"items": len(payload_items)}, "response": _safe_submit_response(response)}
+    except HTTPException as exc:
+        return {"ok": False, "error": str(exc.detail), "request": {"items": len(payload_items)}}
+    except Exception as exc:
+        return {"ok": False, "error": f"{exc.__class__.__name__}: {str(exc)[:400]}", "request": {"items": len(payload_items)}}
+
+
+async def _submit_export_package(package: Dict[str, Any], *, dry_run: bool = False) -> Dict[str, Any]:
+    batches = package.get("batches") if isinstance(package.get("batches"), list) else []
+    submitted_batches: List[Dict[str, Any]] = []
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        provider = str(batch.get("provider") or "").strip()
+        if provider == "yandex_market":
+            result = await _submit_yandex_export_batch(batch, dry_run=dry_run)
+        elif provider == "ozon":
+            result = await _submit_ozon_export_batch(batch, dry_run=dry_run)
+        else:
+            result = {"ok": False, "error": f"UNSUPPORTED_PROVIDER:{provider}"}
+        submitted_batches.append(
+            {
+                "provider": provider,
+                "store_id": str(batch.get("store_id") or "").strip(),
+                "store_title": str(batch.get("store_title") or "").strip(),
+                "status": "submitted" if bool(result.get("ok")) else "failed",
+                "ready_items": len(batch.get("items") if isinstance(batch.get("items"), list) else []),
+                "result": result,
+            }
+        )
+    ok_count = sum(1 for item in submitted_batches if item.get("status") == "submitted")
+    return {
+        "ok": ok_count == len(submitted_batches) and bool(submitted_batches),
+        "status": "submitted" if ok_count == len(submitted_batches) and submitted_batches else "failed",
+        "run_id": str(package.get("run_id") or ""),
+        "submitted_at": _now_iso(),
+        "dry_run": bool(dry_run),
+        "summary": {
+            "batch_count": len(submitted_batches),
+            "submitted_batches": ok_count,
+            "failed_batches": max(0, len(submitted_batches) - ok_count),
+        },
+        "batches": submitted_batches,
+    }
+
+
 def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
     return "|".join(
         [
@@ -2315,6 +2468,27 @@ def get_catalog_export_package(run_id: str) -> Dict[str, Any]:
     if not isinstance(row, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
     return {"ok": True, "package": _build_export_package(_export_run_with_fix_links(row))}
+
+
+@router.post("/export/runs/{run_id}/submit")
+def submit_catalog_export_run(run_id: str, req: CatalogExportSubmitReq = CatalogExportSubmitReq()) -> Dict[str, Any]:
+    rid = str(run_id or "").strip()
+    runs = _load_runs(EXPORT_RUNS_PATH)
+    row = (runs.get("runs") or {}).get(rid)
+    if not isinstance(row, dict):
+        raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
+    package = _build_export_package(_export_run_with_fix_links(row))
+    if str(package.get("status") or "") != "ready":
+        raise HTTPException(status_code=409, detail="EXPORT_PACKAGE_NOT_READY")
+    submission = asyncio.run(_submit_export_package(package, dry_run=bool(req.dry_run)))
+    submissions = row.get("submissions") if isinstance(row.get("submissions"), list) else []
+    submissions.append(submission)
+    row["submissions"] = submissions[-20:]
+    row["last_submission"] = submission
+    row["updated_at"] = _now_iso()
+    runs["runs"][rid] = row
+    _save_runs(EXPORT_RUNS_PATH, runs)
+    return {"ok": bool(submission.get("ok")), "submission": submission, "run": _export_run_with_fix_links(row)}
 
 
 @router.get("/export/latest-run")

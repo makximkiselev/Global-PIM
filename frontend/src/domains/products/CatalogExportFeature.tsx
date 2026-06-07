@@ -126,6 +126,38 @@ type ExportPackageResp = {
     }>;
   };
 };
+type ExportSubmission = {
+  ok: boolean;
+  status: "submitted" | "failed" | string;
+  run_id: string;
+  submitted_at?: string;
+  dry_run?: boolean;
+  summary?: {
+    batch_count?: number;
+    submitted_batches?: number;
+    failed_batches?: number;
+  };
+  batches?: Array<{
+    provider: string;
+    store_id: string;
+    store_title: string;
+    status: "submitted" | "failed" | string;
+    ready_items?: number;
+    result?: {
+      ok?: boolean;
+      dry_run?: boolean;
+      error?: string;
+      status_code?: number;
+      request?: { items?: number };
+      response?: unknown;
+    };
+  }>;
+};
+type ExportSubmitResp = {
+  ok: boolean;
+  submission: ExportSubmission;
+  run?: ExportRunResp & { last_submission?: ExportSubmission };
+};
 type ExportRunBatch = ExportRunResp["batches"][number];
 type ExportPackageBatch = NonNullable<ExportPackageResp["package"]["batches"]>[number];
 type ExportPackageItemRow = {
@@ -309,7 +341,9 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [jobId, setJobId] = useState("");
   const [jobStartedAt, setJobStartedAt] = useState(0);
   const [packageLoading, setPackageLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [exportPackage, setExportPackage] = useState<ExportPackageResp["package"] | null>(null);
+  const [submission, setSubmission] = useState<ExportSubmission | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [broadScopeConfirmed, setBroadScopeConfirmed] = useState(false);
   const initialCategoryId = String(searchParams.get("category") || "").trim();
@@ -534,6 +568,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       setPreparingMessage("");
       setJobId("");
       setExportPackage(null);
+      setSubmission(null);
     },
     onSuccess: (job) => {
       setJobId(job.job_id || "");
@@ -653,6 +688,29 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       setErr((e as Error).message || "Не удалось собрать export payload.");
     } finally {
       setPackageLoading(false);
+    }
+  }
+
+  async function submitExportPackage() {
+    const runId = run?.run_id || run?.id || "";
+    if (!runId || submitting) return;
+    setSubmitting(true);
+    setErr("");
+    try {
+      const response = await api<ExportSubmitResp>(`/catalog/exchange/export/runs/${encodeURIComponent(runId)}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ dry_run: false }),
+      });
+      setSubmission(response.submission);
+      if (response.run) setRun(response.run);
+      if (!response.ok) {
+        const failed = response.submission.batches?.find((batch) => batch.status !== "submitted");
+        setErr(failed?.result?.error || "Часть batch не отправилась. Проверьте статус отправки ниже.");
+      }
+    } catch (e) {
+      setErr((e as Error).message || "Не удалось отправить export package.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -999,9 +1057,55 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <Button onClick={() => void loadExportPackage(false)} disabled={packageLoading}>
                         {packageLoading ? "Собираю…" : "Показать payload"}
                       </Button>
-                      <Button variant="primary" onClick={() => void loadExportPackage(true)} disabled={packageLoading}>
+                      <Button onClick={() => void loadExportPackage(true)} disabled={packageLoading}>
                         Скачать JSON
                       </Button>
+                      <Button variant="primary" onClick={() => void submitExportPackage()} disabled={submitting || packageLoading}>
+                        {submitting ? "Отправляю…" : "Отправить на площадки"}
+                      </Button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {submission ? (
+                  <section className="card cx-pane">
+                    <div className="cx-paneHead">
+                      <div>
+                        <div className="cx-paneTitle">Статус отправки</div>
+                        <div className="cx-paneSub">
+                          Результат последней отправки по этому run. Магазины не выбираются заново: используется готовый batch.
+                        </div>
+                      </div>
+                      <Badge tone={submission.ok ? "active" : "danger"}>
+                        {submission.ok ? "Отправлено" : "Есть ошибки"}
+                      </Badge>
+                    </div>
+                    <div className="cx-payloadSummary">
+                      <div><span>Run</span><strong>{submission.run_id}</strong></div>
+                      <div><span>Batch</span><strong>{submission.summary?.batch_count ?? 0}</strong></div>
+                      <div><span>Отправлено</span><strong>{submission.summary?.submitted_batches ?? 0}</strong></div>
+                      <div><span>Ошибки</span><strong>{submission.summary?.failed_batches ?? 0}</strong></div>
+                    </div>
+                    <div className="cx-exportBlockers">
+                      {(submission.batches || []).map((batch) => (
+                        <div key={`${batch.provider}:${batch.store_id}`} className="cx-exportBlocker">
+                          <div className="cx-exportBlockerHead">
+                            <strong>{providerTitle(batch.provider)} · {batch.store_title || batch.store_id}</strong>
+                            <Badge tone={batch.status === "submitted" ? "active" : "danger"}>
+                              {batch.status === "submitted" ? "Принято" : "Ошибка"}
+                            </Badge>
+                          </div>
+                          <div className="cx-exportBlockerProduct">
+                            SKU в запросе: <b>{batch.result?.request?.items ?? batch.ready_items ?? 0}</b>
+                            {batch.result?.status_code ? <> · HTTP <b>{batch.result.status_code}</b></> : null}
+                          </div>
+                          {batch.result?.error ? (
+                            <div className="cx-exportBlockerReasons">
+                              <span>{batch.result.error}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
                     </div>
                   </section>
                 ) : null}

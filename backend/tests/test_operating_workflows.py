@@ -3825,6 +3825,45 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(audit["attributes_without_source"], 1)
         self.assertEqual(audit["missing_source"], ["Тип"])
 
+    def test_submit_catalog_export_run_persists_dry_run_submission(self) -> None:
+        run = {
+            "id": "run-submit",
+            "selection": {"product_ids": ["product_1"]},
+            "targets": [{"provider": "yandex_market", "store_ids": ["ym-1"]}],
+            "batches": [
+                {
+                    "provider": "yandex_market",
+                    "store_id": "ym-1",
+                    "store_title": "GT USD",
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {"offerId": "GT-1", "name": "Ready item"},
+                        }
+                    ],
+                }
+            ],
+        }
+        runs_doc = {"runs": {"run-submit": deepcopy(run)}}
+        saved: dict[str, object] = {}
+
+        with (
+            patch.object(catalog_exchange, "_load_runs", return_value=deepcopy(runs_doc)),
+            patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, doc: saved.update(deepcopy(doc))),
+        ):
+            response = catalog_exchange.submit_catalog_export_run(
+                "run-submit",
+                catalog_exchange.CatalogExportSubmitReq(dry_run=True),
+            )
+
+        self.assertEqual(response["ok"], True)
+        submission = response["submission"]
+        self.assertEqual(submission["status"], "submitted")
+        self.assertEqual(submission["summary"]["submitted_batches"], 1)
+        self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["dry_run"], True)
+        self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["batches"][0]["provider"], "yandex_market")
+
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
 
