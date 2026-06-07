@@ -22,7 +22,7 @@ from app.core.json_store import read_doc, write_doc
 from app.core.media import dedupe_media_items, media_identity_keys
 from app.core.products.parameter_flow import dict_id_for_product_feature
 from app.core.tenant_context import current_tenant_organization_id
-from app.core.value_mapping import provider_export_value_details
+from app.core.value_mapping import normalize_value_key, provider_export_value_details
 from app.core.workflow_jobs import (
     EXPORT_JOB_TTL_SECONDS,
     EXPORT_WORKFLOW,
@@ -82,6 +82,8 @@ CATALOG_PATH = DATA_DIR / "catalog_nodes.json"
 IMPORT_RUNS_PATH = DATA_DIR / "catalog_import_runs.json"
 EXPORT_RUNS_PATH = DATA_DIR / "catalog_export_runs.json"
 OZON_CATEGORIES_TREE_PATH = DATA_DIR / "marketplaces" / "ozon" / "categories_tree.json"
+OZON_CATEGORY_ATTRS_PATH = DATA_DIR / "marketplaces" / "ozon" / "category_attributes.json"
+OZON_CATEGORY_ATTR_VALUES_PATH = DATA_DIR / "marketplaces" / "ozon" / "attribute_values.json"
 
 _EXPORT_WORKFLOW = EXPORT_WORKFLOW
 _EXPORT_JOB_TTL_SECONDS = EXPORT_JOB_TTL_SECONDS
@@ -1424,13 +1426,269 @@ def _upsert_ozon_attribute(
     )
 
 
-def _normalize_ozon_category_ref(category_ref: Any) -> str:
+def _ozon_category_type_ref(category_ref: Any) -> tuple[str, Optional[int]]:
     ref = str(category_ref or "").strip()
     if ref.startswith("type:"):
         parts = ref.split(":")
-        if len(parts) >= 3 and str(parts[1] or "").strip():
-            return str(parts[1] or "").strip()
-    return ref
+        category_id = str(parts[1] or "").strip() if len(parts) >= 2 else ""
+        type_raw = str(parts[2] or "").strip() if len(parts) >= 3 else ""
+        try:
+            return category_id, int(type_raw) if type_raw else None
+        except ValueError:
+            return category_id, None
+    return ref, None
+
+
+def _normalize_ozon_category_ref(category_ref: Any) -> str:
+    return _ozon_category_type_ref(category_ref)[0]
+
+
+def _ozon_attribute_meta(category_ref: Any) -> Dict[str, Dict[str, Any]]:
+    category_id, type_id = _ozon_category_type_ref(category_ref)
+    if not category_id:
+        return {}
+    try:
+        doc = read_doc(OZON_CATEGORY_ATTRS_PATH, default={"items": {}})
+    except Exception:
+        return {}
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    row = items.get(str(category_id)) if isinstance(items, dict) else None
+    if not isinstance(row, dict):
+        return {}
+    attrs = row.get("attributes") if isinstance(row.get("attributes"), list) else []
+    out: Dict[str, Dict[str, Any]] = {}
+    for attr in attrs:
+        if not isinstance(attr, dict):
+            continue
+        attr_id = str(attr.get("id") or attr.get("attribute_id") or "").strip()
+        if not attr_id:
+            continue
+        attr_type_id = attr.get("type_id")
+        if type_id is not None and attr_type_id is not None:
+            try:
+                if int(attr_type_id) != int(type_id):
+                    continue
+            except (TypeError, ValueError):
+                pass
+        out[attr_id] = attr
+    return out
+
+
+def _ozon_allowed_value_rows(category_ref: Any, attr_id: Any) -> List[Dict[str, Any]]:
+    category_id, type_id = _ozon_category_type_ref(category_ref)
+    attribute_id = str(attr_id or "").strip()
+    if not category_id or not attribute_id:
+        return []
+    try:
+        doc = read_doc(OZON_CATEGORY_ATTR_VALUES_PATH, default={"items": {}})
+    except Exception:
+        return []
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    if not isinstance(items, dict):
+        return []
+    keys: List[str] = []
+    if type_id is not None:
+        keys.append(f"{category_id}:{int(type_id)}:{attribute_id}")
+    keys.extend(
+        str(key)
+        for key, row in items.items()
+        if isinstance(row, dict)
+        and str(row.get("category_id") or "") == str(category_id)
+        and str(row.get("attribute_id") or "") == attribute_id
+    )
+    for key in keys:
+        row = items.get(key)
+        if not isinstance(row, dict):
+            continue
+        values = row.get("values") if isinstance(row.get("values"), list) else []
+        return [item for item in values if isinstance(item, dict)]
+    return []
+
+
+def _ozon_value_text(row: Dict[str, Any]) -> str:
+    for key in ("value", "name", "title"):
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _ozon_dictionary_value_id(row: Dict[str, Any]) -> Optional[int]:
+    for key in ("dictionary_value_id", "id", "value_id"):
+        raw = row.get(key)
+        if raw is None:
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return None
+
+
+def _match_ozon_allowed_value(value: Any, allowed_rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    key = normalize_value_key(value)
+    if not key:
+        return None
+    for row in allowed_rows:
+        if normalize_value_key(_ozon_value_text(row)) == key:
+            return row
+    semantic = str(value or "").strip().lower()
+    candidates: Set[str] = set()
+    if semantic in {"true", "yes", "да", "есть", "1"}:
+        candidates = {"да", "есть", "true", "yes"}
+    elif semantic in {"false", "no", "нет", "0", "отсутствует"}:
+        candidates = {"нет", "false", "no", "отсутствует"}
+    candidate_keys = {normalize_value_key(item) for item in candidates}
+    if candidate_keys:
+        for row in allowed_rows:
+            if normalize_value_key(_ozon_value_text(row)) in candidate_keys:
+                return row
+    return None
+
+
+def _split_ozon_dictionary_value(value: Any) -> List[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = re.split(r"\s*(?:[,;]|\s\+\s)\s*", text)
+    out: List[str] = []
+    seen: Set[str] = set()
+    for part in parts:
+        clean = part.strip()
+        key = normalize_value_key(clean)
+        if clean and key and key not in seen:
+            seen.add(key)
+            out.append(clean)
+    return out if len(out) > 1 else []
+
+
+def _ozon_attribute_is_dictionary(meta: Dict[str, Any], allowed_rows: List[Dict[str, Any]]) -> bool:
+    try:
+        dictionary_id = int(meta.get("dictionary_id") or 0)
+    except (TypeError, ValueError):
+        dictionary_id = 0
+    return dictionary_id > 0 or bool(allowed_rows)
+
+
+def _ozon_attribute_is_numeric(meta: Dict[str, Any]) -> bool:
+    value_type = str(meta.get("type") or meta.get("value_type") or "").strip().lower()
+    return value_type in {"decimal", "integer", "float", "number"}
+
+
+def _ozon_numeric_text(value: Any) -> tuple[str, bool]:
+    text = str(value or "").strip().replace(",", ".")
+    numbers = re.findall(r"\d+(?:\.\d+)?", text)
+    if not numbers:
+        return "", False
+    unique: List[str] = []
+    for number in numbers:
+        cleaned = number.rstrip("0").rstrip(".") if "." in number else number
+        if cleaned not in unique:
+            unique.append(cleaned)
+    if len(unique) > 1:
+        return "", True
+    return unique[0], False
+
+
+def _ozon_attribute_value_payload(
+    *,
+    category_ref: Any,
+    attr_id: str,
+    attr_name: str,
+    raw_value: Any,
+    attr_meta_by_id: Dict[str, Dict[str, Any]],
+    allowed_cache: Dict[str, List[Dict[str, Any]]],
+) -> tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None, None
+    meta = attr_meta_by_id.get(str(attr_id)) or {}
+    if not meta:
+        return [{"value": value}], None
+    allowed_rows = allowed_cache.get(str(attr_id))
+    if allowed_rows is None:
+        allowed_rows = _ozon_allowed_value_rows(category_ref, attr_id)
+        allowed_cache[str(attr_id)] = allowed_rows
+    if _ozon_attribute_is_dictionary(meta, allowed_rows):
+        if not allowed_rows:
+            return None, f"{attr_name}: справочник Ozon не импортирован"
+        match = _match_ozon_allowed_value(value, allowed_rows)
+        if not match:
+            payloads: List[Dict[str, Any]] = []
+            for part in _split_ozon_dictionary_value(value):
+                part_match = _match_ozon_allowed_value(part, allowed_rows)
+                if not part_match:
+                    payloads = []
+                    break
+                dictionary_value_id = _ozon_dictionary_value_id(part_match)
+                if dictionary_value_id is None:
+                    payloads = []
+                    break
+                payloads.append(
+                    {
+                        "value": _ozon_value_text(part_match) or part,
+                        "dictionary_value_id": dictionary_value_id,
+                    }
+                )
+            if payloads:
+                return payloads, None
+            return None, f"{attr_name}: значение не найдено в справочнике Ozon"
+        dictionary_value_id = _ozon_dictionary_value_id(match)
+        matched_value = _ozon_value_text(match)
+        if dictionary_value_id is None:
+            return None, f"{attr_name}: у значения Ozon нет dictionary_value_id"
+        return [{"value": matched_value or value, "dictionary_value_id": dictionary_value_id}], None
+    if _ozon_attribute_is_numeric(meta):
+        numeric_value, ambiguous = _ozon_numeric_text(value)
+        if ambiguous:
+            return None, f"{attr_name}: числовое значение неоднозначно для Ozon"
+        if not numeric_value:
+            return None, f"{attr_name}: значение не является числом для Ozon"
+        return [{"value": numeric_value}], None
+    return [{"value": value}], None
+
+
+def _append_ozon_attribute(
+    attributes: List[Dict[str, Any]],
+    *,
+    category_ref: Any,
+    attr_id: str,
+    name: str,
+    value: Any,
+    source: str,
+    attr_meta_by_id: Dict[str, Dict[str, Any]],
+    allowed_cache: Dict[str, List[Dict[str, Any]]],
+    replace: bool = False,
+) -> tuple[bool, Optional[str]]:
+    target = str(attr_id or "").strip()
+    clean_name = str(name or target).strip()
+    if not target:
+        return False, None
+    payloads, error = _ozon_attribute_value_payload(
+        category_ref=category_ref,
+        attr_id=target,
+        attr_name=clean_name,
+        raw_value=value,
+        attr_meta_by_id=attr_meta_by_id,
+        allowed_cache=allowed_cache,
+    )
+    if error:
+        return False, error
+    if not payloads:
+        return False, None
+    if replace:
+        attributes[:] = [attr for attr in attributes if str(attr.get("id") or "").strip() != target]
+    attributes.append(
+        {
+            "id": target,
+            "name": clean_name,
+            "values": payloads,
+            "sourceCatalogName": source,
+        }
+    )
+    return True, None
 
 
 def _ozon_category_store_sources(category_ref: Any) -> Optional[Dict[str, List[str]]]:
@@ -1533,9 +1791,11 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         model_group = model_group or inferred_model_group
         tnved = _infer_ozon_tnved(product, type_value)
         measurements = _ozon_package_measurements(product)
+        ozon_attr_meta = _ozon_attribute_meta(ozon_category_id)
+        ozon_allowed_cache: Dict[str, List[Dict[str, Any]]] = {}
 
         attributes: List[Dict[str, Any]] = []
-        value_mapping_missing: List[str] = []
+        value_mapping_missing: List[Tuple[str, str]] = []
         mapped_attribute_values_count = 0
         for row in rows:
             if not isinstance(row, dict):
@@ -1552,7 +1812,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             value_details = provider_export_value_details(dict_id, "ozon", value) if dict_id else {"value": value, "mapped": True}
             value = str(value_details.get("value") or "").strip()
             if not bool(value_details.get("mapped", True)):
-                value_mapping_missing.append(catalog_name)
+                value_mapping_missing.append((catalog_name, f"{catalog_name}: значение не сопоставлено с Ozon"))
             if not value:
                 continue
             for binding in _provider_bindings(oz):
@@ -1561,27 +1821,63 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 attr_id = str(binding.get("id") or "").strip()
                 if not attr_id:
                     continue
-                mapped_attribute_values_count += 1
-                attributes.append(
-                    {
-                        "id": attr_id,
-                        "name": str(binding.get("name") or row.get("catalog_name") or "").strip(),
-                        "values": [{"value": value}],
-                        "sourceCatalogName": catalog_name,
-                    }
+                appended, error = _append_ozon_attribute(
+                    attributes,
+                    category_ref=ozon_category_id,
+                    attr_id=attr_id,
+                    name=str(binding.get("name") or row.get("catalog_name") or "").strip(),
+                    value=value,
+                    source=catalog_name,
+                    attr_meta_by_id=ozon_attr_meta,
+                    allowed_cache=ozon_allowed_cache,
                 )
-        _upsert_ozon_attribute(attributes, "8229", "Тип", type_value, "Системное поле")
-        _upsert_ozon_attribute(attributes, "85", "Бренд", vendor, "Системное поле")
-        _upsert_ozon_attribute(attributes, "9048", "Название модели", model_group, "Системное поле")
-        if tnved:
-            _upsert_ozon_attribute(
+                if appended:
+                    mapped_attribute_values_count += 1
+                if error:
+                    value_mapping_missing.append((catalog_name, error))
+        for attr_id, attr_name, attr_value in (
+            ("8229", "Тип", type_value),
+            ("85", "Бренд", vendor),
+            ("9048", "Название модели", model_group),
+        ):
+            _appended, error = _append_ozon_attribute(
                 attributes,
-                "22232",
-                "ТН ВЭД коды ЕАЭС",
-                str(tnved.get("value") or ""),
-                "Системное поле",
-                int(tnved.get("dictionary_value_id")) if tnved.get("dictionary_value_id") is not None else None,
+                category_ref=ozon_category_id,
+                attr_id=attr_id,
+                name=attr_name,
+                value=attr_value,
+                source="Системное поле",
+                attr_meta_by_id=ozon_attr_meta,
+                allowed_cache=ozon_allowed_cache,
+                replace=True,
             )
+            if error:
+                value_mapping_missing.append((attr_name, error))
+        if tnved:
+            fallback_dictionary_value_id = tnved.get("dictionary_value_id")
+            if not ozon_attr_meta and fallback_dictionary_value_id is not None:
+                _upsert_ozon_attribute(
+                    attributes,
+                    "22232",
+                    "ТН ВЭД коды ЕАЭС",
+                    str(tnved.get("value") or ""),
+                    "Системное поле",
+                    int(fallback_dictionary_value_id),
+                )
+            else:
+                _appended, error = _append_ozon_attribute(
+                    attributes,
+                    category_ref=ozon_category_id,
+                    attr_id="22232",
+                    name="ТН ВЭД коды ЕАЭС",
+                    value=str(tnved.get("value") or ""),
+                    source="Системное поле",
+                    attr_meta_by_id=ozon_attr_meta,
+                    allowed_cache=ozon_allowed_cache,
+                    replace=True,
+                )
+                if error:
+                    value_mapping_missing.append(("ТН ВЭД коды ЕАЭС", error))
 
         missing: List[str] = []
         missing_details: List[Dict[str, Any]] = []
@@ -1641,10 +1937,14 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 message = f"Ozon: заполните {label} для отправки карточки"
                 missing.append(message)
                 missing_details.append(_missing_detail("required_parameter_missing", message, "params", parameter=label))
-        for pname in sorted(set(value_mapping_missing)):
-            message = f"{pname}: значение не сопоставлено с Ozon"
+        seen_value_mapping_messages: Set[Tuple[str, str]] = set()
+        for pname, message in value_mapping_missing:
+            key = (str(pname or "").strip(), str(message or "").strip())
+            if not key[0] or not key[1] or key in seen_value_mapping_messages:
+                continue
+            seen_value_mapping_messages.add(key)
             missing.append(message)
-            missing_details.append(_missing_detail("value_mapping_required", message, "values", parameter=pname))
+            missing_details.append(_missing_detail("value_mapping_required", message, "values", parameter=key[0]))
 
         ready = len(missing) == 0
         if ready:

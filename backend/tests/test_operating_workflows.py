@@ -3721,6 +3721,213 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn(("dict_protection", "ozon", "IP68 допускается погружение"), calls)
         self.assertNotIn("Степень защиты: значение не сопоставлено с Ozon", item["missing"])
 
+    def test_ozon_export_preview_maps_dictionary_values_to_dictionary_value_id(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro 256Gb Black",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "description": "Phone",
+                "features": [
+                    {"code": "color", "name": "Цвет", "value": "Черный"},
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                ],
+            },
+        }
+        rows = [{"catalog_name": "Цвет", "provider_map": {"ozon": {"id": "10096", "name": "Цвет", "export": True}}}]
+
+        def fake_read_doc(path, default=None):
+            if path == catalog_exchange.OZON_CATEGORY_ATTRS_PATH:
+                return {
+                    "items": {
+                        "15621050": {
+                            "attributes": [
+                                {"id": 10096, "name": "Цвет", "type_id": 95139, "type": "String", "dictionary_id": 1494}
+                            ]
+                        }
+                    }
+                }
+            if path == catalog_exchange.OZON_CATEGORY_ATTR_VALUES_PATH:
+                return {
+                    "items": {
+                        "15621050:95139:10096": {
+                            "category_id": "15621050",
+                            "type_id": 95139,
+                            "attribute_id": 10096,
+                            "values": [{"id": 61583, "value": "Черный"}],
+                        }
+                    }
+                }
+            return deepcopy(default)
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "type:15621050:95139"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", return_value=""),
+            patch.object(catalog_exchange, "read_doc", side_effect=fake_read_doc),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        attr = next(item for item in response["items"][0]["payload_item"]["attributes"] if item["id"] == "10096")
+        self.assertEqual(attr["values"][0]["value"], "Черный")
+        self.assertEqual(attr["values"][0]["dictionary_value_id"], 61583)
+        self.assertNotIn("Цвет: значение не найдено в справочнике Ozon", response["items"][0]["missing"])
+
+    def test_ozon_export_preview_maps_composite_dictionary_values(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [{"code": "wireless", "name": "Беспроводные интерфейсы", "value": "Bluetooth, NFC"}],
+            },
+        }
+        rows = [
+            {
+                "catalog_name": "Беспроводные интерфейсы",
+                "provider_map": {"ozon": {"id": "10387", "name": "Беспроводные интерфейсы", "export": True}},
+            }
+        ]
+
+        def fake_read_doc(path, default=None):
+            if path == catalog_exchange.OZON_CATEGORY_ATTRS_PATH:
+                return {
+                    "items": {
+                        "15621050": {
+                            "attributes": [
+                                {"id": 10387, "name": "Беспроводные интерфейсы", "type_id": 95139, "type": "String", "dictionary_id": 46583133}
+                            ]
+                        }
+                    }
+                }
+            if path == catalog_exchange.OZON_CATEGORY_ATTR_VALUES_PATH:
+                return {
+                    "items": {
+                        "15621050:95139:10387": {
+                            "category_id": "15621050",
+                            "type_id": 95139,
+                            "attribute_id": 10387,
+                            "values": [{"id": 1001, "value": "Bluetooth"}, {"id": 1002, "value": "NFC"}],
+                        }
+                    }
+                }
+            return deepcopy(default)
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "type:15621050:95139"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", return_value=""),
+            patch.object(catalog_exchange, "read_doc", side_effect=fake_read_doc),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        attr = next(item for item in response["items"][0]["payload_item"]["attributes"] if item["id"] == "10387")
+        self.assertEqual(
+            attr["values"],
+            [{"value": "Bluetooth", "dictionary_value_id": 1001}, {"value": "NFC", "dictionary_value_id": 1002}],
+        )
+
+    def test_ozon_export_preview_normalizes_numeric_values_before_export(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "screen", "name": "Диагональ экрана", "value": "6,9 дюйма"},
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                ],
+            },
+        }
+        rows = [{"catalog_name": "Диагональ экрана", "provider_map": {"ozon": {"id": "8587", "name": "Диагональ экрана, дюймы", "export": True}}}]
+
+        def fake_read_doc(path, default=None):
+            if path == catalog_exchange.OZON_CATEGORY_ATTRS_PATH:
+                return {
+                    "items": {
+                        "15621050": {
+                            "attributes": [
+                                {"id": 8587, "name": "Диагональ экрана, дюймы", "type_id": 95139, "type": "Decimal", "dictionary_id": 0}
+                            ]
+                        }
+                    }
+                }
+            if path == catalog_exchange.OZON_CATEGORY_ATTR_VALUES_PATH:
+                return {"items": {}}
+            return deepcopy(default)
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "type:15621050:95139"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", return_value=""),
+            patch.object(catalog_exchange, "read_doc", side_effect=fake_read_doc),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        attr = next(item for item in response["items"][0]["payload_item"]["attributes"] if item["id"] == "8587")
+        self.assertEqual(attr["values"][0]["value"], "6.9")
+
+    def test_ozon_export_preview_blocks_ambiguous_numeric_values(self) -> None:
+        product = {
+            "id": "product_1",
+            "sku_gt": "GT-1",
+            "title": "Смартфон Apple iPhone 17 Pro",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "camera", "name": "Разрешение основной камеры", "value": "48 МП + 12 МП"},
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                ],
+            },
+        }
+        rows = [{"catalog_name": "Разрешение основной камеры", "provider_map": {"ozon": {"id": "4422", "name": "Разрешение основной камеры, Мпикс", "export": True}}}]
+
+        def fake_read_doc(path, default=None):
+            if path == catalog_exchange.OZON_CATEGORY_ATTRS_PATH:
+                return {
+                    "items": {
+                        "15621050": {
+                            "attributes": [
+                                {"id": 4422, "name": "Разрешение основной камеры, Мпикс", "type_id": 95139, "type": "Decimal", "dictionary_id": 0}
+                            ]
+                        }
+                    }
+                }
+            if path == catalog_exchange.OZON_CATEGORY_ATTR_VALUES_PATH:
+                return {"items": {}}
+            return deepcopy(default)
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"cat-phone": {"ozon": "type:15621050:95139"}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(catalog_exchange, "dict_id_for_product_feature", return_value=""),
+            patch.object(catalog_exchange, "read_doc", side_effect=fake_read_doc),
+        ):
+            response = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        item = response["items"][0]
+        self.assertNotIn("4422", {str(attr["id"]) for attr in item["payload_item"]["attributes"]})
+        self.assertIn("Разрешение основной камеры, Мпикс: числовое значение неоднозначно для Ozon", item["missing"])
+
     def test_ozon_export_batch_does_not_block_on_tree_source_only(self) -> None:
         preview = {
             "count": 1,
