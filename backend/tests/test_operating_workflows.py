@@ -4201,6 +4201,19 @@ class OperatingWorkflowTests(unittest.TestCase):
             "/products/product_1?tab=attributes&parameter=%D0%92%D0%B5%D1%81+%D1%83%D0%BF%D0%B0%D0%BA%D0%BE%D0%B2%D0%BA%D0%B8%2F%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D0%B0",
         )
 
+    def test_export_extracts_first_non_empty_duplicate_feature_value(self) -> None:
+        product = {
+            "content": {
+                "features": [
+                    {"code": "package_weight", "name": "Вес упаковки, г", "value": ""},
+                    {"code": "вес_упаковки_г", "name": "Вес упаковки, г", "value": "320"},
+                ]
+            }
+        }
+
+        self.assertEqual(yandex_market._extract_product_value(product, "Вес упаковки"), "320")
+        self.assertEqual(catalog_exchange._ozon_package_measurements(product).get("weight"), 320)
+
     def test_export_package_includes_payload_lineage_audit(self) -> None:
         run = {
             "id": "run-1",

@@ -459,16 +459,22 @@ async def yandex_media_proxy(url: str = Query(..., min_length=8)) -> Response:
 def _extract_feature_value(product: Dict[str, Any], *, code: str = "", name: str = "") -> str:
     content = product.get("content") if isinstance(product.get("content"), dict) else {}
     feats = content.get("features") if isinstance(content.get("features"), list) else []
+    code_norm = _norm(code)
+    name_norm = _norm(name)
+    fallback = ""
     for f in feats:
         if not isinstance(f, dict):
             continue
         fcode = _norm(f.get("code"))
         fname = _norm(f.get("name"))
-        if code and fcode == _norm(code):
-            return str(f.get("value") or "").strip()
-        if name and fname == _norm(name):
-            return str(f.get("value") or "").strip()
-    return ""
+        matched = bool((code_norm and fcode == code_norm) or (name_norm and (fname == name_norm or fname.startswith(name_norm))))
+        if not matched:
+            continue
+        value = str(f.get("value") or "").strip()
+        if value:
+            return value
+        fallback = value
+    return fallback
 
 
 def _parameter_value_text(param: Dict[str, Any]) -> str:
