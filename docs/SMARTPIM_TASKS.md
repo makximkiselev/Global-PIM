@@ -115,7 +115,7 @@ Library adoption sequence:
    - introduce Alembic migration files for schema changes;
    - stop adding new `CREATE TABLE`/`ALTER TABLE` blocks to route/runtime code;
    - migrate existing runtime DDL gradually.
-   Status: in progress. Alembic baseline is now in the repo with a no-op production baseline revision and `backend/scripts/run_migrations.py`; deploy can run migrations explicitly with `APP_RUN_DB_MIGRATIONS=1`, but default deploy behavior remains unchanged. Existing runtime DDL still remains in storage/control-plane helpers and must be migrated gradually into revisions.
+   Status: in progress. Alembic baseline is now in the repo with a no-op production baseline revision and `backend/scripts/run_migrations.py`; deploy can run migrations explicitly with `APP_RUN_DB_MIGRATIONS=1`, but default deploy behavior remains unchanged. Revision `20260607_0002` now documents/owns `pim_channel_links` and `pim_workflow_runs`, the operational tables behind competitor links and long jobs. Existing runtime DDL still remains in storage/control-plane helpers and must be migrated gradually into revisions.
 6. Worker foundation:
    - standardize workflow claim/save/status helpers;
    - move remaining long-running web background tasks to worker modules.
