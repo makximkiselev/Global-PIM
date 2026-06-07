@@ -308,6 +308,14 @@
   line-height:1.35;
 }
 
+.cx-submissionBatchNote{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:700;
+  line-height:1.4;
+}
+
 .cx-head{
   display:flex;
   justify-content:space-between;

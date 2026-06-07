@@ -56,6 +56,7 @@ from app.api.routes.yandex_market import (
     _preferred_offer_id,
     _export_media_url,
     _export_media_urls,
+    _fetch_offer_mappings_once as _yandex_fetch_offer_mappings_once,
     _guess_auth_modes as _yandex_guess_auth_modes,
 )
 from app.api.routes.ozon_market import OzonProductsSyncReq, sync_product_statuses, _post_api_key as _ozon_post_api_key
@@ -1958,6 +1959,31 @@ def _safe_submit_response(body: Any) -> Any:
     return body
 
 
+def _batch_payload_offer_ids(batch: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    seen: Set[str] = set()
+    items = batch.get("items") if isinstance(batch.get("items"), list) else []
+    for item in items:
+        payload = item.get("payload") if isinstance(item, dict) and isinstance(item.get("payload"), dict) else {}
+        offer_id = str(payload.get("offerId") or payload.get("offer_id") or payload.get("shopSku") or "").strip()
+        if not offer_id or offer_id in seen:
+            continue
+        seen.add(offer_id)
+        out.append(offer_id)
+    return out
+
+
+def _submission_batch_processing_status(provider: str, result: Dict[str, Any]) -> str:
+    if not bool(result.get("ok")):
+        return "failed"
+    provider_code = str(provider or "").strip()
+    if provider_code == "ozon":
+        response = result.get("response") if isinstance(result.get("response"), dict) else {}
+        task_id = ((response.get("result") if isinstance(response.get("result"), dict) else {}) or {}).get("task_id")
+        return "processing" if task_id else "accepted"
+    return "processing"
+
+
 async def _submit_yandex_export_batch(batch: Dict[str, Any], *, dry_run: bool = False) -> Dict[str, Any]:
     items = batch.get("items") if isinstance(batch.get("items"), list) else []
     payload_items = [
@@ -2065,6 +2091,12 @@ async def _submit_export_package(package: Dict[str, Any], *, dry_run: bool = Fal
                 "store_title": str(batch.get("store_title") or "").strip(),
                 "status": "submitted" if bool(result.get("ok")) else "failed",
                 "ready_items": len(batch.get("items") if isinstance(batch.get("items"), list) else []),
+                "offer_ids": _batch_payload_offer_ids(batch),
+                "processing": {
+                    "status": _submission_batch_processing_status(provider, result),
+                    "checked_at": None,
+                    "message": "Отправлено на площадку; итог обработки еще не обновлялся" if bool(result.get("ok")) else "Площадка не приняла batch",
+                },
                 "result": result,
             }
         )
@@ -2082,6 +2114,153 @@ async def _submit_export_package(package: Dict[str, Any], *, dry_run: bool = Fal
         },
         "batches": submitted_batches,
     }
+
+
+def _matching_package_batch(package: Dict[str, Any], submission_batch: Dict[str, Any]) -> Dict[str, Any]:
+    provider = str(submission_batch.get("provider") or "").strip()
+    store_id = str(submission_batch.get("store_id") or "").strip()
+    for batch in package.get("batches") if isinstance(package.get("batches"), list) else []:
+        if not isinstance(batch, dict):
+            continue
+        if str(batch.get("provider") or "").strip() == provider and str(batch.get("store_id") or "").strip() == store_id:
+            return batch
+    return {}
+
+
+async def _refresh_yandex_submission_batch(batch: Dict[str, Any], package_batch: Dict[str, Any]) -> Dict[str, Any]:
+    offer_ids = [
+        str(item or "").strip()
+        for item in (batch.get("offer_ids") if isinstance(batch.get("offer_ids"), list) else [])
+        if str(item or "").strip()
+    ] or _batch_payload_offer_ids(package_batch)
+    if not offer_ids:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": "Нет offerId для проверки статуса Я.Маркета"}
+    store = _connector_store_by_id("yandex_market", str(batch.get("store_id") or ""))
+    business_id = str(store.get("business_id") or "").strip()
+    token = str(store.get("api_key") or store.get("token") or "").strip()
+    auth_mode = str(store.get("auth_mode") or "auto").strip().lower() or "auto"
+    if not business_id or not token:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": "Нет доступа к магазину Я.Маркета для проверки статуса"}
+    try:
+        result = await _yandex_fetch_offer_mappings_once(
+            token=token,
+            business_id=business_id,
+            offer_ids=offer_ids[:500],
+            language="RU",
+            modes=_yandex_guess_auth_modes(token, auth_mode),
+        )
+    except Exception as exc:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": f"{exc.__class__.__name__}: {str(exc)[:300]}"}
+    if not bool(result.get("ok")):
+        return {
+            "status": "unknown",
+            "checked_at": _now_iso(),
+            "message": str(result.get("error") or "Я.Маркет не вернул статус карточки")[:500],
+            "response": _safe_submit_response(result.get("body") if isinstance(result.get("body"), dict) else {}),
+        }
+    body = result.get("body") if isinstance(result.get("body"), dict) else {}
+    mappings = ((body.get("result") if isinstance(body.get("result"), dict) else {}) or {}).get("offerMappings")
+    if not isinstance(mappings, list):
+        mappings = body.get("offerMappings") if isinstance(body.get("offerMappings"), list) else []
+    statuses: List[str] = []
+    for row in mappings:
+        if not isinstance(row, dict):
+            continue
+        offer = row.get("offer") if isinstance(row.get("offer"), dict) else row
+        status = str(offer.get("cardStatus") or row.get("cardStatus") or "").strip()
+        if status:
+            statuses.append(status)
+    return {
+        "status": "accepted" if mappings else "processing",
+        "checked_at": _now_iso(),
+        "message": "Карточка найдена в кабинете Я.Маркета" if mappings else "Я.Маркет принял batch; карточка еще может появляться в кабинете",
+        "offer_ids": offer_ids,
+        "provider_statuses": sorted(set(statuses)),
+        "response": _safe_submit_response({"result_count": len(mappings), "statuses": sorted(set(statuses))}),
+    }
+
+
+async def _refresh_ozon_submission_batch(batch: Dict[str, Any]) -> Dict[str, Any]:
+    result = batch.get("result") if isinstance(batch.get("result"), dict) else {}
+    response = result.get("response") if isinstance(result.get("response"), dict) else {}
+    task_id = ((response.get("result") if isinstance(response.get("result"), dict) else {}) or {}).get("task_id")
+    if not task_id:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": "Нет task_id Ozon для проверки обработки"}
+    store = _connector_store_by_id("ozon", str(batch.get("store_id") or ""))
+    api_key = str(store.get("api_key") or store.get("token") or "").strip()
+    client_id = str(store.get("client_id") or "").strip()
+    if not api_key or not client_id:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": "Нет доступа к магазину Ozon для проверки task_id"}
+    try:
+        body = await _ozon_post_api_key("/v1/product/import/info", {"task_id": int(task_id)}, api_key, client_id)
+    except HTTPException as exc:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": str(exc.detail)[:500], "task_id": task_id}
+    except Exception as exc:
+        return {"status": "unknown", "checked_at": _now_iso(), "message": f"{exc.__class__.__name__}: {str(exc)[:300]}", "task_id": task_id}
+    items = ((body.get("result") if isinstance(body.get("result"), dict) else {}) or {}).get("items")
+    if not isinstance(items, list):
+        items = body.get("items") if isinstance(body.get("items"), list) else []
+    errors: List[str] = []
+    item_statuses: List[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or item.get("state") or "").strip()
+        if status:
+            item_statuses.append(status)
+        for err in item.get("errors") if isinstance(item.get("errors"), list) else []:
+            if isinstance(err, dict):
+                msg = str(err.get("message") or err.get("attribute_name") or err.get("code") or "").strip()
+            else:
+                msg = str(err or "").strip()
+            if msg:
+                errors.append(msg)
+    status = "failed" if errors else ("accepted" if items else "processing")
+    return {
+        "status": status,
+        "checked_at": _now_iso(),
+        "message": "Ozon вернул ошибки обработки" if errors else ("Ozon обработал task без ошибок" if items else "Ozon task еще в обработке"),
+        "task_id": task_id,
+        "provider_statuses": sorted(set(item_statuses)),
+        "errors": errors[:20],
+        "response": _safe_submit_response({"items_count": len(items), "statuses": sorted(set(item_statuses)), "errors": errors[:20]}),
+    }
+
+
+async def _refresh_export_submission_status(row: Dict[str, Any]) -> Dict[str, Any]:
+    submission = deepcopy(row.get("last_submission") if isinstance(row.get("last_submission"), dict) else {})
+    if not submission:
+        raise HTTPException(status_code=409, detail="EXPORT_SUBMISSION_NOT_FOUND")
+    package = _build_export_package(_export_run_with_fix_links(row))
+    refreshed_batches: List[Dict[str, Any]] = []
+    submission_batches = submission.get("batches") if isinstance(submission.get("batches"), list) else []
+    for batch in submission_batches:
+        if not isinstance(batch, dict):
+            continue
+        next_batch = deepcopy(batch)
+        provider = str(next_batch.get("provider") or "").strip()
+        package_batch = _matching_package_batch(package, next_batch)
+        if provider == "yandex_market":
+            processing = await _refresh_yandex_submission_batch(next_batch, package_batch)
+        elif provider == "ozon":
+            processing = await _refresh_ozon_submission_batch(next_batch)
+        else:
+            processing = {"status": "unknown", "checked_at": _now_iso(), "message": f"Проверка статуса не поддержана для {provider}"}
+        next_batch["processing"] = processing
+        refreshed_batches.append(next_batch)
+    statuses = [str((batch.get("processing") or {}).get("status") or "").strip() for batch in refreshed_batches if isinstance(batch, dict)]
+    failed = sum(1 for status in statuses if status == "failed")
+    accepted = sum(1 for status in statuses if status == "accepted")
+    processing_count = sum(1 for status in statuses if status == "processing")
+    submission["batches"] = refreshed_batches
+    submission["status_checked_at"] = _now_iso()
+    submission["processing_summary"] = {
+        "accepted_batches": accepted,
+        "processing_batches": processing_count,
+        "failed_batches": failed,
+        "unknown_batches": max(0, len(refreshed_batches) - accepted - processing_count - failed),
+    }
+    return submission
 
 
 def _selection_key(node_ids: List[str], product_ids: List[str], include_descendants: bool, limit: int) -> str:
@@ -2592,6 +2771,33 @@ def submit_catalog_export_run(run_id: str, req: CatalogExportSubmitReq = Catalog
     runs["runs"][rid] = row
     _save_runs(EXPORT_RUNS_PATH, runs)
     return {"ok": bool(submission.get("ok")), "submission": submission, "run": _export_run_with_fix_links(row)}
+
+
+@router.post("/export/runs/{run_id}/submit-status")
+def refresh_catalog_export_submit_status(run_id: str) -> Dict[str, Any]:
+    rid = str(run_id or "").strip()
+    runs = _load_runs(EXPORT_RUNS_PATH)
+    row = (runs.get("runs") or {}).get(rid)
+    if not isinstance(row, dict):
+        raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
+    submission = asyncio.run(_refresh_export_submission_status(row))
+    row["last_submission"] = submission
+    submissions = row.get("submissions") if isinstance(row.get("submissions"), list) else []
+    if submissions:
+        for idx in range(len(submissions) - 1, -1, -1):
+            item = submissions[idx]
+            if isinstance(item, dict) and str(item.get("submitted_at") or "") == str(submission.get("submitted_at") or ""):
+                submissions[idx] = submission
+                break
+        else:
+            submissions.append(submission)
+    else:
+        submissions = [submission]
+    row["submissions"] = submissions[-20:]
+    row["updated_at"] = _now_iso()
+    runs["runs"][rid] = row
+    _save_runs(EXPORT_RUNS_PATH, runs)
+    return {"ok": True, "submission": submission, "run": _export_run_with_fix_links(row)}
 
 
 @router.get("/export/latest-run")

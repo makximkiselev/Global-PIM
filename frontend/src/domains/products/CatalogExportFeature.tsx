@@ -132,11 +132,18 @@ type ExportSubmission = {
   status: "submitted" | "failed" | string;
   run_id: string;
   submitted_at?: string;
+  status_checked_at?: string;
   dry_run?: boolean;
   summary?: {
     batch_count?: number;
     submitted_batches?: number;
     failed_batches?: number;
+  };
+  processing_summary?: {
+    accepted_batches?: number;
+    processing_batches?: number;
+    failed_batches?: number;
+    unknown_batches?: number;
   };
   batches?: Array<{
     provider: string;
@@ -144,6 +151,14 @@ type ExportSubmission = {
     store_title: string;
     status: "submitted" | "failed" | string;
     ready_items?: number;
+    processing?: {
+      status?: "accepted" | "processing" | "failed" | "unknown" | string;
+      checked_at?: string;
+      message?: string;
+      task_id?: string | number;
+      provider_statuses?: string[];
+      errors?: string[];
+    };
     result?: {
       ok?: boolean;
       dry_run?: boolean;
@@ -241,6 +256,21 @@ function providerTitle(provider: string): string {
   if (provider === "yandex_market") return "Я.Маркет";
   if (provider === "ozon") return "OZON";
   return provider;
+}
+
+function processingLabel(status?: string): string {
+  if (status === "accepted") return "Обработано";
+  if (status === "processing") return "В обработке";
+  if (status === "failed") return "Ошибка обработки";
+  if (status === "unknown") return "Неизвестно";
+  return "Не проверялось";
+}
+
+function processingTone(status?: string): "active" | "pending" | "danger" | "neutral" {
+  if (status === "accepted") return "active";
+  if (status === "processing") return "pending";
+  if (status === "failed") return "danger";
+  return "neutral";
 }
 
 function exportableProviders(providers: ProviderRow[]): ProviderRow[] {
@@ -343,6 +373,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [jobStartedAt, setJobStartedAt] = useState(0);
   const [packageLoading, setPackageLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
   const [exportPackage, setExportPackage] = useState<ExportPackageResp["package"] | null>(null);
   const [submission, setSubmission] = useState<ExportSubmission | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -757,6 +788,24 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
   }
 
+  async function refreshSubmissionStatus() {
+    const runId = run?.run_id || run?.id || submission?.run_id || "";
+    if (!runId || statusRefreshing) return;
+    setStatusRefreshing(true);
+    setErr("");
+    try {
+      const response = await api<ExportSubmitResp>(`/catalog/exchange/export/runs/${encodeURIComponent(runId)}/submit-status`, {
+        method: "POST",
+      });
+      setSubmission(response.submission);
+      if (response.run) setRun(response.run);
+    } catch (e) {
+      setErr((e as Error).message || "Не удалось обновить статус отправки.");
+    } finally {
+      setStatusRefreshing(false);
+    }
+  }
+
   const exportQueueColumns = useMemo<ColumnDef<ExportRunBatch>[]>(() => [
     {
       id: "provider",
@@ -1117,31 +1166,49 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                         <div className="cx-paneTitle">Статус отправки</div>
                         <div className="cx-paneSub">
                           Результат последней отправки по этому run. Магазины не выбираются заново: используется готовый batch.
+                          {submission.status_checked_at ? ` Проверено: ${new Date(submission.status_checked_at).toLocaleString("ru-RU")}.` : ""}
                         </div>
                       </div>
-                      <Badge tone={submission.ok ? "active" : "danger"}>
-                        {submission.ok ? "Отправлено" : "Есть ошибки"}
-                      </Badge>
+                      <div className="cx-exportReadyActions">
+                        <Badge tone={submission.ok ? "active" : "danger"}>
+                          {submission.ok ? "Отправлено" : "Есть ошибки"}
+                        </Badge>
+                        <Button onClick={() => void refreshSubmissionStatus()} disabled={statusRefreshing}>
+                          {statusRefreshing ? "Проверяю…" : "Обновить статус"}
+                        </Button>
+                      </div>
                     </div>
                     <div className="cx-payloadSummary">
                       <div><span>Run</span><strong>{submission.run_id}</strong></div>
                       <div><span>Batch</span><strong>{submission.summary?.batch_count ?? 0}</strong></div>
                       <div><span>Отправлено</span><strong>{submission.summary?.submitted_batches ?? 0}</strong></div>
-                      <div><span>Ошибки</span><strong>{submission.summary?.failed_batches ?? 0}</strong></div>
+                      <div><span>В обработке</span><strong>{submission.processing_summary?.processing_batches ?? 0}</strong></div>
+                      <div><span>Обработано</span><strong>{submission.processing_summary?.accepted_batches ?? 0}</strong></div>
+                      <div><span>Ошибки</span><strong>{submission.processing_summary?.failed_batches ?? submission.summary?.failed_batches ?? 0}</strong></div>
                     </div>
                     <div className="cx-submissionBatches">
                       {(submission.batches || []).map((batch) => (
-                        <div key={`${batch.provider}:${batch.store_id}`} className={`cx-submissionBatch ${batch.status === "submitted" ? "isSubmitted" : "isFailed"}`}>
+                        <div key={`${batch.provider}:${batch.store_id}`} className={`cx-submissionBatch ${batch.processing?.status === "failed" || batch.status !== "submitted" ? "isFailed" : "isSubmitted"}`}>
                           <div className="cx-submissionBatchHead">
                             <strong>{providerTitle(batch.provider)} · {batch.store_title || batch.store_id}</strong>
-                            <Badge tone={batch.status === "submitted" ? "active" : "danger"}>
-                              {batch.status === "submitted" ? "Принято" : "Ошибка"}
+                            <Badge tone={batch.status === "submitted" ? processingTone(batch.processing?.status) : "danger"}>
+                              {batch.status === "submitted" ? processingLabel(batch.processing?.status) : "Ошибка"}
                             </Badge>
                           </div>
                           <div className="cx-submissionBatchMeta">
                             SKU в запросе: <b>{batch.result?.request?.items ?? batch.ready_items ?? 0}</b>
                             {batch.result?.status_code ? <> · HTTP <b>{batch.result.status_code}</b></> : null}
+                            {batch.processing?.task_id ? <> · task <b>{batch.processing.task_id}</b></> : null}
                           </div>
+                          {batch.processing?.message ? <div className="cx-submissionBatchNote">{batch.processing.message}</div> : null}
+                          {batch.processing?.provider_statuses?.length ? (
+                            <div className="cx-submissionBatchNote">Статусы: {batch.processing.provider_statuses.join(", ")}</div>
+                          ) : null}
+                          {batch.processing?.errors?.length ? (
+                            <div className="cx-exportBlockerReasons">
+                              {batch.processing.errors.slice(0, 3).map((error) => <span key={error}>{error}</span>)}
+                            </div>
+                          ) : null}
                           {batch.result?.error ? (
                             <div className="cx-exportBlockerReasons">
                               <span>{batch.result.error}</span>

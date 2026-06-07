@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 from copy import deepcopy
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
@@ -3913,6 +3913,60 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotIn("price_source", ozon_payload)
         self.assertEqual(ozon_payload["attributes"][0], {"id": 85, "values": [{"value": "Apple"}]})
         self.assertEqual(ozon_payload["attributes"][1]["values"][0]["dictionary_value_id"], 123)
+
+    def test_refresh_catalog_export_submit_status_persists_processing_result(self) -> None:
+        run = {
+            "id": "run-status",
+            "selection": {"product_ids": ["product_1"]},
+            "batches": [
+                {
+                    "provider": "ozon",
+                    "store_id": "oz-1",
+                    "store_title": "Ozon",
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {"offer_id": "GT-1", "name": "Ready item"},
+                        }
+                    ],
+                }
+            ],
+            "last_submission": {
+                "ok": True,
+                "status": "submitted",
+                "run_id": "run-status",
+                "submitted_at": "2026-06-07T00:00:00+00:00",
+                "summary": {"batch_count": 1, "submitted_batches": 1, "failed_batches": 0},
+                "batches": [
+                    {
+                        "provider": "ozon",
+                        "store_id": "oz-1",
+                        "store_title": "Ozon",
+                        "status": "submitted",
+                        "result": {"ok": True, "request": {"items": 1}, "response": {"result": {"task_id": 123}}},
+                    }
+                ],
+            },
+            "submissions": [],
+        }
+        runs_doc = {"runs": {"run-status": deepcopy(run)}}
+        saved: dict[str, object] = {}
+
+        with (
+            patch.object(catalog_exchange, "_load_runs", return_value=deepcopy(runs_doc)),
+            patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, doc: saved.update(deepcopy(doc))),
+            patch.object(catalog_exchange, "_refresh_ozon_submission_batch", new=AsyncMock(return_value={
+                "status": "accepted",
+                "checked_at": "2026-06-07T00:01:00+00:00",
+                "task_id": 123,
+                "message": "Ozon обработал task без ошибок",
+            })),
+        ):
+            response = catalog_exchange.refresh_catalog_export_submit_status("run-status")
+
+        self.assertEqual(response["submission"]["processing_summary"]["accepted_batches"], 1)
+        self.assertEqual(saved["runs"]["run-status"]["last_submission"]["batches"][0]["processing"]["status"], "accepted")
 
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
