@@ -495,6 +495,32 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(details["mapped"], True)
         self.assertEqual(saved["aliases"]["ip68 допускается погружение в воду на глубину до 6 метров"], "IP68")
 
+    def test_provider_export_value_details_maps_composite_allowed_values(self) -> None:
+        dictionary = {
+            "id": "dict_navigation",
+            "items": [{"value": "GPS"}, {"value": "GLONASS"}, {"value": "Galileo"}, {"value": "BeiDou"}, {"value": "NavIC"}],
+            "aliases": {},
+            "meta": {
+                "source_reference": {
+                    "yandex_market": {
+                        "allowed_values": ["GPS", "GLONASS", "Galileo", "QZSS", "BeiDou", "NavIC"],
+                    }
+                },
+                "export_map": {},
+            },
+        }
+
+        with patch.object(value_mapping, "load_dict", return_value=deepcopy(dictionary)):
+            details = value_mapping.provider_export_value_details(
+                "dict_navigation",
+                "yandex_market",
+                "GPS, GLONASS, Galileo, BeiDou, and NavIC",
+            )
+
+        self.assertEqual(details["mapped"], True)
+        self.assertEqual(details["reason"], "composite_allowed")
+        self.assertEqual(details["values"], ["GPS", "GLONASS", "Galileo", "BeiDou", "NavIC"])
+
     def test_value_details_blocks_only_uncovered_pim_values(self) -> None:
         dictionaries = {
             "items": [
@@ -3366,6 +3392,72 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotEqual(values["14876852"], "IP68 допускается погружение")
         self.assertIn(("dict_protection", "yandex_market", "IP68 допускается погружение"), calls)
         self.assertNotIn("Степень защиты: значение не сопоставлено с Я.Маркет", item["missing"])
+
+    def test_yandex_export_preview_uses_composite_output_values(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Apple iPhone",
+            "sku_gt": "GT-1",
+            "category_id": "cat-phone",
+            "status": "active",
+            "content": {
+                "description": "Phone",
+                "media_images": [{"url": "https://cdn.example.test/p.jpg"}],
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "navigation", "name": "Навигационная система", "value": "GPS, GLONASS, Galileo"},
+                ],
+            },
+        }
+        rows = [
+            {
+                "catalog_name": "Навигационная система",
+                "provider_map": {
+                    "yandex_market": {"id": "45130998", "name": "Навигационная система", "export": True}
+                },
+            }
+        ]
+
+        def export_value(dict_id, provider, value):
+            if dict_id == "dict_navigation":
+                return {
+                    "value": "GPS, GLONASS, Galileo",
+                    "values": ["GPS", "GLONASS", "Galileo"],
+                    "mapped": True,
+                    "reason": "composite_allowed",
+                }
+            return {"value": str(value), "mapped": True, "reason": "free_text"}
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-phone": {"yandex_market": "ym-phone"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-phone": rows}),
+            patch.object(
+                yandex_market,
+                "_load_attr_value_refs",
+                return_value={
+                    "cat-phone": {
+                        "catalog_params": {
+                            "navigation": {"catalog_name": "Навигационная система", "dict_id": "dict_navigation"}
+                        }
+                    }
+                },
+            ),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+            patch.object(yandex_market, "provider_export_value_details", side_effect=export_value),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        item = response["items"][0]
+        values = {
+            str(param["parameterId"]): [entry["value"] for entry in param["values"]]
+            for param in item["payload_item"]["parameterValues"]
+        }
+        self.assertEqual(values["45130998"], ["GPS", "GLONASS", "Galileo"])
+        self.assertNotIn("Навигационная система: значение не сопоставлено с Я.Маркет", item["missing"])
 
     def test_ozon_export_preview_blocks_unmapped_controlled_value(self) -> None:
         product = {

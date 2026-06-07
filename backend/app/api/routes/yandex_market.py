@@ -2130,10 +2130,16 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             if not value:
                 continue
             value_details = export_value_for(category_id, pname, value)
+            raw_mapped_values = value_details.get("values")
+            mapped_values_for_payload = [
+                str(item or "").strip()
+                for item in raw_mapped_values
+                if str(item or "").strip()
+            ] if isinstance(raw_mapped_values, list) else []
             value = str(value_details.get("value") or "").strip()
             if not bool(value_details.get("mapped", True)):
                 value_mapping_missing.append(pname)
-            if not value:
+            if not value and not mapped_values_for_payload:
                 continue
             for binding in _provider_bindings(ym):
                 if not bool(binding.get("export")):
@@ -2146,7 +2152,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
                 parameter_values.append(
                     {
                         "parameterId": ypid,
-                        "values": [{"value": value}],
+                        "values": [{"value": item} for item in (mapped_values_for_payload or [value])],
                         "sourceCatalogName": pname,
                     }
                 )

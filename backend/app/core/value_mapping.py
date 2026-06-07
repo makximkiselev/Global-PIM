@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from app.storage.json_store import load_dict, save_dict
 
 
 def normalize_value_key(value: Any) -> str:
-    s = str(value or "").strip().lower().replace("ё", "е")
+    s = str(value or "").strip().lower().replace("ё", "е").replace("×", "x")
+    s = re.sub(r"(?<=[a-z0-9])е|е(?=[a-z0-9])", "e", s)
     return " ".join(s.split())
 
 
@@ -80,6 +82,51 @@ def _set_export_map(doc: Dict[str, Any], provider: str, canonical_value: str, so
     meta["export_map"] = export_map
     doc["meta"] = meta
     return True
+
+
+def _split_composite_value(value: str) -> List[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"\s*(?:,|;|\band\b|\bи\b)\s*", raw, flags=re.IGNORECASE)
+    cleaned: List[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        text = str(part or "").strip(" .")
+        key = normalize_value_key(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned if len(cleaned) >= 2 else []
+
+
+def _resolve_single_allowed_value(
+    *,
+    value: str,
+    provider_map: Dict[str, str],
+    allowed_values: List[str],
+    aliases: Dict[str, str],
+) -> Optional[str]:
+    key = normalize_value_key(value)
+    if not key:
+        return None
+    if key in provider_map:
+        return provider_map[key]
+    allowed_by_key = {
+        normalize_value_key(candidate): str(candidate or "").strip()
+        for candidate in allowed_values
+        if normalize_value_key(candidate)
+    }
+    if key in allowed_by_key:
+        return allowed_by_key[key]
+    canonical = aliases.get(key, value)
+    canonical_key = normalize_value_key(canonical)
+    if canonical_key in provider_map:
+        return provider_map[canonical_key]
+    if canonical_key in allowed_by_key:
+        return allowed_by_key[canonical_key]
+    return None
 
 
 def canonicalize_dictionary_value(dict_id: str, raw_value: Any) -> str:
@@ -182,6 +229,33 @@ def provider_export_value_details(dict_id: Optional[str], provider: str, canonic
         source_value = str(candidate or "").strip()
         if source_value and normalize_value_key(source_value) == canonical_key:
             return {"value": source_value, "mapped": True, "reason": "alias_allowed_exact"}
+
+    if allowed:
+        composite_parts = _split_composite_value(value)
+        if composite_parts:
+            mapped_parts: List[str] = []
+            seen_parts: set[str] = set()
+            for part in composite_parts:
+                resolved = _resolve_single_allowed_value(
+                    value=part,
+                    provider_map=provider_map,
+                    allowed_values=allowed,
+                    aliases=aliases,
+                )
+                resolved_key = normalize_value_key(resolved)
+                if not resolved or not resolved_key:
+                    mapped_parts = []
+                    break
+                if resolved_key not in seen_parts:
+                    seen_parts.add(resolved_key)
+                    mapped_parts.append(resolved)
+            if mapped_parts:
+                return {
+                    "value": ", ".join(mapped_parts),
+                    "values": mapped_parts,
+                    "mapped": True,
+                    "reason": "composite_allowed",
+                }
 
     # Providers with an allowed-value list are controlled dictionaries. Falling
     # back to PIM canonical value would make the UI/export look ready while the
