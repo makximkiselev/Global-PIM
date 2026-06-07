@@ -21,6 +21,32 @@ from app.workers import marketplace_attribute_ai_match, marketplace_value_ai_mat
 
 
 class OperatingWorkflowTests(unittest.TestCase):
+    def test_library_matching_scores_reordered_value_names(self) -> None:
+        self.assertGreaterEqual(
+            marketplace_mapping._score_value_pair("SIM + eSIM", "eSIM SIM"),
+            0.92,
+        )
+        self.assertGreaterEqual(
+            marketplace_mapping._score_value_pair("Desert Titanium", "Titanium Desert"),
+            0.92,
+        )
+
+    def test_library_matching_keeps_ram_storage_blocker(self) -> None:
+        score = marketplace_mapping._pair_score(
+            {"id": "ym_ram", "name": "Оперативная память", "kind": "String"},
+            {"id": "oz_storage", "name": "Встроенная память", "kind": "String"},
+        )
+
+        self.assertEqual(score, 0.0)
+
+    def test_library_matching_scores_marketplace_alias_fields(self) -> None:
+        score = marketplace_mapping._pair_score(
+            {"id": "ym_sim", "name": "Кол-во SIM", "kind": "String"},
+            {"id": "oz_sim", "name": "Количество SIM-карт", "kind": "String"},
+        )
+
+        self.assertGreaterEqual(score, 0.75)
+
     def test_marketplace_attribute_ai_match_worker_executes_saved_job(self) -> None:
         saved_job = {
             "id": "attr_ai_job_test",

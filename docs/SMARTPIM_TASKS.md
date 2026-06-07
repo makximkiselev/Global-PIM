@@ -96,33 +96,33 @@ Library adoption sequence:
    - add RapidFuzz;
    - create shared matching utilities;
    - replace scattered token/string similarity helpers where behavior can be verified by tests.
-   Status: started 2026-06-06. `app.core.matching` now wraps RapidFuzz, competitor source-field matching, marketplace pair scoring, and draft global-attribute reuse use it behind existing domain blockers. Regression tests cover SIM-name similarity, draft fuzzy reuse, JSON parser resilience, and RAM/storage blockers.
+   Status: in progress. `app.core.matching` now wraps RapidFuzz for normalized text, token and value-pair similarity. Marketplace value matching and marketplace field pair scoring use it behind existing domain blockers; SIM-count aliasing is explicit domain logic, and RAM/storage remains a hard blocker. Regression tests cover reordered values, SIM-count field aliases, and RAM/storage blockers.
 2. Frontend data foundation:
    - add TanStack Query;
    - wrap the app with one query client;
    - migrate export job polling and selected product/category reads first.
-   Status: started 2026-06-06. The app is wrapped in a shared QueryClientProvider. Catalog export bootstrap/latest-run/job polling, the product registry list, connector status loading, admin access bootstrap, and sources-mapping category/issue/attribute bootstrap reads now use TanStack Query for caching, refetch, invalidation, polling, and prefetch. Sources mapping also invalidates the query cache after category links, descendant clears, attribute saves, and AI matches.
+   Status: planned. Current checkout still uses local `useState`/manual loading/polling in the main product/export/source screens and does not yet include TanStack Query dependencies.
 3. Frontend table foundation:
    - add TanStack Table/Virtual;
    - migrate product queue/export target tables before dense parameter tables.
-   Status: started 2026-06-06. The shared `DataTable` keeps its public props but now renders through TanStack Table and has optional TanStack Virtual row rendering for large result sets. Catalog import product-result rows now use the shared table instead of a local hand-written table and enable virtualization for broad import previews.
+   Status: planned. Current checkout still has local table markup in catalog import/export and product workspace screens and does not yet include TanStack Table/Virtual dependencies.
 4. Frontend form foundation:
    - add React Hook Form and Zod;
    - migrate connector store forms, export target selection, and admin user/role forms.
-   Status: started 2026-06-06. Login, register, invite-accept, connector store forms, and organization invite creation use React Hook Form, Zod, and `zodResolver` while preserving the existing APIs.
+   Status: planned. Current checkout still uses local form state for login/register/invite/admin/connectors and does not yet include React Hook Form/Zod dependencies.
 5. Backend migration foundation:
    - introduce Alembic migration files for schema changes;
    - stop adding new `CREATE TABLE`/`ALTER TABLE` blocks to route/runtime code;
    - migrate existing runtime DDL gradually.
-   Status: started 2026-06-06. Alembic skeleton exists under `backend/app/migrations`, reads DB URLs only from environment variables, and production deploy now runs `alembic upgrade head` before grant repair/restart. Workflow/channel-link tables have a safe `IF NOT EXISTS` migration as the first runtime-DDL extraction.
+   Status: planned. Current checkout still uses runtime DDL in storage/control-plane helpers and does not yet include Alembic files in the repo.
 6. Worker foundation:
    - standardize workflow claim/save/status helpers;
    - move remaining long-running web background tasks to worker modules.
-   Status: started 2026-06-06. `app.core.workflows` standardizes save/claim/prune/public payload helpers. Catalog export jobs, attribute AI jobs, value AI jobs, and export-semantic AI jobs can run from persisted `pim_workflow_runs`; export-semantic AI now also supports `--run-pending` and `--loop`.
+   Status: partially done. Attribute AI, value AI and export preparation use persisted `pim_workflow_runs` and worker entrypoints; remaining work is to consolidate shared workflow helpers and remove remaining route-owned process spawning where practical.
 7. AI foundation:
    - move LLM prompts/output validation into a typed AI service;
    - reuse it for competitor candidate suggestions, parameter matching, value matching, and export semantic audit.
-   Status: started 2026-06-06. `app.core.llm` now has shared JSON-object and Pydantic-model parsing helpers, `app.core.ai_schemas` holds reusable LLM output contracts, and `app.core.ai_service.llm_chat_model` centralizes chat + typed parse while preserving route-level test injection. Value AI suggestions, competitor AI candidate/spec suggestions, and export semantic AI suggestions parse through typed Pydantic payloads before domain validation checks canonical values, allowed outputs, target fields, transforms, statuses, and confidence.
+   Status: partially done. `app.core.llm` centralizes LLM transport and JSON extraction; remaining work is typed Pydantic output contracts shared across competitor suggestions, parameter matching, value matching and export semantic audit.
 
 Initial success criteria:
 

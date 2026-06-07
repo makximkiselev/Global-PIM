@@ -2179,8 +2179,9 @@ class AuthFlowTests(unittest.TestCase):
 
         evidence = competitor_mapping_routes._product_source_scan_evidence(product, "restore")
 
-        self.assertEqual(evidence["scan_steps"], ["direct_url", "search_terms"])
+        self.assertEqual(evidence["scan_steps"], ["direct_url", "category_pages", "search_terms"])
         self.assertEqual(evidence["expected_urls"], [evidence["direct_url"]])
+        self.assertTrue(evidence["category_urls"])
         self.assertIn("re-store URL", evidence["exact_miss_reason"])
 
     def test_product_source_scan_evidence_uses_restore_search_only_without_safe_direct_url(self) -> None:

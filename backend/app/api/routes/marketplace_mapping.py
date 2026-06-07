@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, write_doc, with_lock
+from app.core.matching import match_tokens, normalize_match_text, token_jaccard, value_pair_similarity
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import normalize_value_key, provider_export_value_details
 from app.storage.json_store import (
@@ -1466,21 +1467,7 @@ def _mapped_export_value_is_allowed(output_value: str, allowed_values: List[str]
 
 
 def _score_value_pair(pim_value: str, allowed_value: str) -> float:
-    pim = _norm_name(pim_value)
-    allowed = _norm_name(allowed_value)
-    if not pim or not allowed:
-        return 0.0
-    if pim == allowed:
-        return 1.0
-    pim_tokens = set(pim.split())
-    allowed_tokens = set(allowed.split())
-    overlap = len(pim_tokens & allowed_tokens) / max(len(pim_tokens | allowed_tokens), 1)
-    containment = 0.0
-    if len(pim) >= 3 and pim in allowed:
-        containment = len(pim) / max(len(allowed), 1)
-    elif len(allowed) >= 3 and allowed in pim:
-        containment = len(allowed) / max(len(pim), 1)
-    return max(overlap, containment * 0.9)
+    return value_pair_similarity(pim_value, allowed_value)
 
 
 def _deterministic_value_suggestions(pim_values: List[str], allowed_values: List[str]) -> List[Dict[str, Any]]:
@@ -2849,20 +2836,13 @@ def _json_extract(text: str) -> Optional[Dict[str, Any]]:
 
 
 def _norm_name(s: str) -> str:
-    t = str(s or "").lower().strip()
-    t = re.sub(r"\(.*?\)", " ", t)
-    t = t.replace("ё", "е")
-    t = re.sub(r"[,:;./\\|+_#№\"'`~!?-]+", " ", t)
-    t = re.sub(r"\b(мм|см|гц|ом|вт|г|ч|мин|mah|мaч|ip)\b", " ", t, flags=re.I)
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
+    return normalize_match_text(s, drop_units=True)
 
 
 def _tokens(s: str) -> set[str]:
-    t = _norm_name(s)
-    if not t:
+    out = match_tokens(s, drop_units=True)
+    if not out:
         return set()
-    out = {x for x in t.split(" ") if x}
     syn = {
         "цвет": {"окрас", "расцветка"},
         "шумоподавление": {"anc"},
@@ -2873,6 +2853,8 @@ def _tokens(s: str) -> set[str]:
         "наушников": {"наушники"},
     }
     ext = set(out)
+    if "sim" in out and ({"кол", "во"}.issubset(out) or "количество" in out or "число" in out):
+        ext.update({"sim_count", "sim_cards_count"})
     for w in list(out):
         for key, vals in syn.items():
             if w == key or w in vals:
@@ -2946,13 +2928,13 @@ def _pair_score(
     ot = _tokens(str(o.get("name") or ""))
     if not yt or not ot:
         return 0.0
-    inter = len(yt & ot)
-    union = max(1, len(yt | ot))
-    j = inter / union
+    j = token_jaccard(yt, ot)
+    fuzzy = value_pair_similarity(y_name, o_name)
     sub = 0.2 if (y_name and o_name and (y_name in o_name or o_name in y_name)) else 0.0
     kind_bonus = 0.1 if _kind_group(str(y.get("kind") or "")) == _kind_group(str(o.get("kind") or "")) else 0.0
+    domain_bonus = 0.2 if "sim_count" in yt and "sim_count" in ot else 0.0
     feedback = _feedback_bonus(y, o, feedback_doc)
-    return j + sub + kind_bonus + feedback
+    return max(j, fuzzy * 0.82) + sub + kind_bonus + domain_bonus + feedback
 
 
 def _service_names() -> List[str]:
