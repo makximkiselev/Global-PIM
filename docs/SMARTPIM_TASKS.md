@@ -80,6 +80,7 @@ Target architecture:
    - enrichment;
    - export readiness;
    - admin/auth.
+   Status: in progress. Export batch orchestration moved into `app.core.catalog_export_service` with explicit dependency callbacks; the API route now adapts FastAPI/Pydantic request objects to the domain service while preserving existing preview, hydration, batch and run payload behavior.
 3. Persistence is split into repositories by domain. Runtime DDL moves out of request handling and into migration scripts.
 4. Matching uses a shared engine:
    - RapidFuzz for base text similarity;

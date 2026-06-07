@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.core.catalog_export_service import CatalogExportRunDeps, build_catalog_export_run
 from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.export_contracts import export_payload_audit
 from app.core.json_store import read_doc, write_doc
@@ -2135,52 +2136,31 @@ def resolve_catalog_import(req: CatalogImportResolveReq) -> Dict[str, Any]:
 
 
 def _build_catalog_export_run(req: CatalogExportRunReq) -> Dict[str, Any]:
-    products = _resolve_products(req.selection.node_ids, req.selection.product_ids, bool(req.selection.include_descendants), limit=int(req.limit))
-    products = products[: int(req.limit)]
-    product_ids = [str(p.get("id") or "").strip() for p in products if str(p.get("id") or "").strip()]
-    enriched_from_candidates: List[str] = []
-    if product_ids:
-        enriched_from_candidates = sorted(asyncio.run(_enrich_export_products_from_candidate_media(products)))
-    marketplace_hydration: List[Dict[str, Any]] = []
-    if product_ids:
-        marketplace_hydration = asyncio.run(_hydrate_marketplace_product_content(product_ids, req.targets or [], int(req.limit)))
-        sibling_updates = _hydrate_missing_content_from_variant_siblings(query_products_full(ids=product_ids))
-        if sibling_updates:
-            _save_products(sibling_updates)
-            marketplace_hydration.append({"provider": "variant_sibling", "updated_products": len(sibling_updates), "count": len(sibling_updates)})
-    connectors_state = ConnectorsStateReadAdapter()
-    batches: List[Dict[str, Any]] = []
-    for target in req.targets or []:
-        provider = str(target.provider or "").strip()
-        if provider == "yandex_market":
-            preview = yandex_export_preview(ExportPreviewReq(product_ids=product_ids, only_active=False, limit=len(product_ids) or 1000))
-            stores = connectors_state.import_stores("yandex_market")
-            selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
-            selected_stores = _selected_export_stores(provider, stores, selected_store_ids)
-            for store in selected_stores:
-                batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))
-        elif provider == "ozon":
-            stores = connectors_state.import_stores("ozon")
-            selected_store_ids = {str(x or "").strip() for x in target.store_ids if str(x or "").strip()}
-            selected_stores = _selected_export_stores(provider, stores, selected_store_ids)
-            preview = _ozon_export_preview(product_ids, len(product_ids) or 1000)
-            for store in selected_stores:
-                batches.append(_export_batch_from_preview(provider=provider, store=store, preview=preview))
-    run_id = f"export_{uuid4().hex[:10]}"
-    summary = _summarize_export_batches(product_ids, batches)
-    runs = _load_runs(EXPORT_RUNS_PATH)
-    runs["runs"][run_id] = {
-        "id": run_id,
-        "created_at": _now_iso(),
-        "selection": req.selection.model_dump(),
-        "targets": [t.model_dump() for t in req.targets or []],
-        "summary": summary,
-        "batches": batches,
-        "enriched_from_candidates": enriched_from_candidates,
-        "marketplace_hydration": marketplace_hydration,
-    }
-    _save_runs(EXPORT_RUNS_PATH, runs)
-    return {"ok": True, "run_id": run_id, "count": len(product_ids), "summary": summary, "batches": batches, "enriched_from_candidates": enriched_from_candidates, "marketplace_hydration": marketplace_hydration}
+    deps = CatalogExportRunDeps(
+        resolve_products=lambda node_ids, product_ids, include_descendants, limit: _resolve_products(
+            node_ids,
+            product_ids,
+            include_descendants,
+            limit=limit,
+        ),
+        enrich_candidate_media=_enrich_export_products_from_candidate_media,
+        hydrate_marketplace_content=_hydrate_marketplace_product_content,
+        hydrate_variant_siblings=_hydrate_missing_content_from_variant_siblings,
+        save_products=_save_products,
+        query_products_by_ids=lambda product_ids: query_products_full(ids=product_ids),
+        connectors_state_factory=ConnectorsStateReadAdapter,
+        yandex_preview=lambda product_ids, limit: yandex_export_preview(
+            ExportPreviewReq(product_ids=product_ids, only_active=False, limit=limit)
+        ),
+        ozon_preview=_ozon_export_preview,
+        selected_export_stores=_selected_export_stores,
+        export_batch_from_preview=_export_batch_from_preview,
+        summarize_export_batches=_summarize_export_batches,
+        load_runs=lambda: _load_runs(EXPORT_RUNS_PATH),
+        save_runs=lambda runs: _save_runs(EXPORT_RUNS_PATH, runs),
+        now_iso=_now_iso,
+    )
+    return build_catalog_export_run(req, deps)
 
 
 @router.post("/export/run")
