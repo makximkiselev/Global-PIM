@@ -1505,6 +1505,37 @@ def _ozon_allowed_value_rows(category_ref: Any, attr_id: Any) -> List[Dict[str, 
     return []
 
 
+def _ozon_allowed_values_by_attr(category_ref: Any) -> Dict[str, List[Dict[str, Any]]]:
+    category_id, type_id = _ozon_category_type_ref(category_ref)
+    if not category_id:
+        return {"__all_loaded__": []}
+    try:
+        doc = read_doc(OZON_CATEGORY_ATTR_VALUES_PATH, default={"items": {}})
+    except Exception:
+        return {"__all_loaded__": []}
+    items = doc.get("items") if isinstance(doc, dict) else {}
+    if not isinstance(items, dict):
+        return {"__all_loaded__": []}
+    out: Dict[str, List[Dict[str, Any]]] = {"__all_loaded__": []}
+    for row in items.values():
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("category_id") or "") != str(category_id):
+            continue
+        if type_id is not None:
+            try:
+                if int(row.get("type_id") or 0) != int(type_id):
+                    continue
+            except (TypeError, ValueError):
+                continue
+        attr_id = str(row.get("attribute_id") or "").strip()
+        if not attr_id:
+            continue
+        values = row.get("values") if isinstance(row.get("values"), list) else []
+        out[attr_id] = [item for item in values if isinstance(item, dict)]
+    return out
+
+
 def _ozon_value_text(row: Dict[str, Any]) -> str:
     for key in ("value", "name", "title"):
         value = str(row.get(key) or "").strip()
@@ -1609,8 +1640,11 @@ def _ozon_attribute_value_payload(
         return [{"value": value}], None
     allowed_rows = allowed_cache.get(str(attr_id))
     if allowed_rows is None:
-        allowed_rows = _ozon_allowed_value_rows(category_ref, attr_id)
-        allowed_cache[str(attr_id)] = allowed_rows
+        if "__all_loaded__" in allowed_cache:
+            allowed_rows = []
+        else:
+            allowed_rows = _ozon_allowed_value_rows(category_ref, attr_id)
+            allowed_cache[str(attr_id)] = allowed_rows
     if _ozon_attribute_is_dictionary(meta, allowed_rows):
         if not allowed_rows:
             return None, f"{attr_name}: справочник Ozon не импортирован"
@@ -1792,7 +1826,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         tnved = _infer_ozon_tnved(product, type_value)
         measurements = _ozon_package_measurements(product)
         ozon_attr_meta = _ozon_attribute_meta(ozon_category_id)
-        ozon_allowed_cache: Dict[str, List[Dict[str, Any]]] = {}
+        ozon_allowed_cache = _ozon_allowed_values_by_attr(ozon_category_id)
 
         attributes: List[Dict[str, Any]] = []
         value_mapping_missing: List[Tuple[str, str]] = []
