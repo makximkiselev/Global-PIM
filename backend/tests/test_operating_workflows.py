@@ -4163,6 +4163,44 @@ class OperatingWorkflowTests(unittest.TestCase):
             "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82",
         )
 
+    def test_export_batch_blockers_link_product_attribute_fixes_to_sku(self) -> None:
+        preview = {
+            "count": 1,
+            "ready_count": 0,
+            "not_ready_count": 1,
+            "items": [
+                {
+                    "product_id": "product_1",
+                    "product_title": "iPhone",
+                    "category_id": "cat-phone",
+                    "ready": False,
+                    "missing": ["Ozon: заполните Вес упаковки/товара для отправки карточки"],
+                    "missing_details": [
+                        {
+                            "code": "required_parameter_missing",
+                            "message": "Ozon: заполните Вес упаковки/товара для отправки карточки",
+                            "target": "attributes",
+                            "parameter": "Вес упаковки/товара",
+                        }
+                    ],
+                    "payload_item": {"offer_id": "GT-1"},
+                }
+            ],
+        }
+
+        batch = catalog_exchange._export_batch_from_preview(
+            provider="ozon",
+            store={"id": "ozon-store", "title": "Ozon test"},
+            preview=preview,
+        )
+
+        detail = batch["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["fix_label"], "Заполнить в SKU")
+        self.assertEqual(
+            detail["fix_href"],
+            "/products/product_1?tab=attributes&parameter=%D0%92%D0%B5%D1%81+%D1%83%D0%BF%D0%B0%D0%BA%D0%BE%D0%B2%D0%BA%D0%B8%2F%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D0%B0",
+        )
+
     def test_export_package_includes_payload_lineage_audit(self) -> None:
         run = {
             "id": "run-1",

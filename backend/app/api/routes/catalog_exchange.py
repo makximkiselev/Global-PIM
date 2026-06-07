@@ -184,6 +184,10 @@ def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, cat
     elif target == "description" and product_id:
         href = f"/products/{product_id}?tab=description"
         label = "Открыть описание"
+    elif target == "attributes" and product_id:
+        query = urlencode({"tab": "attributes", **({"parameter": parameter} if parameter else {})})
+        href = f"/products/{product_id}?{query}"
+        label = "Заполнить в SKU"
     elif target == "import":
         href = f"/catalog/exchange?{_export_fix_query('import', category_id, product_id)}"
         label = "Импортировать фото"
@@ -2045,7 +2049,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             if key not in measurements:
                 message = f"Ozon: заполните {label} для отправки карточки"
                 missing.append(message)
-                missing_details.append(_missing_detail("required_parameter_missing", message, "params", parameter=label))
+                missing_details.append(_missing_detail("required_parameter_missing", message, "attributes", parameter=label))
         seen_value_mapping_messages: Set[Tuple[str, str]] = set()
         for pname, message in value_mapping_missing:
             key = (str(pname or "").strip(), str(message or "").strip())
