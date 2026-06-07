@@ -28,6 +28,7 @@ type ExportRunResp = {
   run_id: string;
   id?: string;
   created_at?: string;
+  last_submission?: ExportSubmission;
   count: number;
   summary?: {
     product_count?: number;
@@ -625,6 +626,11 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       setJobId("");
     }
   }, [exportJobQuery.data, jobRunning, jobStartedAt, queryClient]);
+
+  useEffect(() => {
+    if (!run?.last_submission) return;
+    setSubmission(run.last_submission);
+  }, [run?.last_submission]);
 
   useEffect(() => {
     if (!exportJobQuery.error || !jobId) return;
