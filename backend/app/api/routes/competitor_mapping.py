@@ -10,8 +10,6 @@ import mimetypes
 import os
 from pathlib import Path
 import re
-import subprocess
-import sys
 from time import monotonic
 from typing import Any, Dict, Optional, List, Tuple, Set
 from urllib.parse import quote, quote_plus, urljoin, urlparse
@@ -57,7 +55,7 @@ from app.core.competitors.extract_competitor_fields import (
     extract_competitor_content,
 )
 from app.core.competitors.restore_specs import extract_restore_product_content_from_html
-from app.core.workflow_jobs import start_competitor_product_enrich_worker_process
+from app.core.workflow_jobs import start_competitor_discovery_worker_process, start_competitor_product_enrich_worker_process
 
 router = APIRouter(prefix="/competitor-mapping", tags=["competitor-mapping"])
 
@@ -652,41 +650,8 @@ def _get_discovery_run(run_id: str) -> Optional[Dict[str, Any]]:
     return dict(run) if isinstance(run, dict) else None
 
 
-def _backend_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _repo_root() -> Path:
-    return _backend_root().parent
-
-
 def _start_discovery_worker_process(run_id: str, organization_id: Optional[str]) -> None:
-    env = os.environ.copy()
-    backend_root = str(_backend_root())
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-    env.setdefault("ENABLE_HTTP_COMPETITOR_DISCOVERY", "1")
-    env.setdefault("ENABLE_BROWSER_COMPETITOR_DISCOVERY", "1")
-
-    command = [
-        sys.executable,
-        "-m",
-        "app.workers.competitor_discovery_run",
-        "--run-id",
-        run_id,
-    ]
-    if organization_id:
-        command.extend(["--organization-id", organization_id])
-
-    subprocess.Popen(
-        command,
-        cwd=str(_repo_root()),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    start_competitor_discovery_worker_process(run_id, organization_id)
 
 
 def _remember_discovery_run(run: Dict[str, Any]) -> Dict[str, Any]:

@@ -39,6 +39,7 @@ def start_worker_process(
     organization_id: Optional[str],
     *,
     extra_env: Optional[Dict[str, str]] = None,
+    id_arg: str = "--job-id",
 ) -> None:
     normalized_module = str(module or "").strip()
     normalized_job_id = str(job_id or "").strip()
@@ -51,7 +52,7 @@ def start_worker_process(
     for key, value in (extra_env or {}).items():
         if key:
             env[str(key)] = str(value)
-    command = [sys.executable, "-m", normalized_module, "--job-id", normalized_job_id]
+    command = [sys.executable, "-m", normalized_module, str(id_arg or "--job-id"), normalized_job_id]
     normalized_org_id = str(organization_id or "").strip()
     if normalized_org_id:
         command.extend(["--organization-id", normalized_org_id])
@@ -80,6 +81,19 @@ def start_export_worker_process(job_id: str, organization_id: Optional[str]) -> 
 
 def start_competitor_product_enrich_worker_process(job_id: str, organization_id: Optional[str]) -> None:
     start_worker_process("app.workers.competitor_product_enrich", job_id, organization_id)
+
+
+def start_competitor_discovery_worker_process(run_id: str, organization_id: Optional[str]) -> None:
+    start_worker_process(
+        "app.workers.competitor_discovery_run",
+        run_id,
+        organization_id,
+        id_arg="--run-id",
+        extra_env={
+            "ENABLE_HTTP_COMPETITOR_DISCOVERY": "1",
+            "ENABLE_BROWSER_COMPETITOR_DISCOVERY": "1",
+        },
+    )
 
 
 def ai_match_timeout_seconds() -> float:

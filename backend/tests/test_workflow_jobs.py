@@ -34,6 +34,23 @@ def test_start_worker_process_builds_detached_python_module_command(monkeypatch)
     assert call["start_new_session"] is True
 
 
+def test_start_worker_process_accepts_custom_id_arg_and_extra_env(monkeypatch):
+    calls: list[dict] = []
+
+    monkeypatch.setattr(workflow_jobs.subprocess, "Popen", lambda command, **kwargs: calls.append({"command": command, **kwargs}) or object())
+
+    workflow_jobs.start_worker_process(
+        "app.workers.discovery",
+        "run_1",
+        None,
+        id_arg="--run-id",
+        extra_env={"ENABLE_HTTP_COMPETITOR_DISCOVERY": "1"},
+    )
+
+    assert calls[0]["command"] == [workflow_jobs.sys.executable, "-m", "app.workers.discovery", "--run-id", "run_1"]
+    assert calls[0]["env"]["ENABLE_HTTP_COMPETITOR_DISCOVERY"] == "1"
+
+
 def test_prune_stale_workflow_jobs_marks_only_expired_jobs(monkeypatch):
     saved: list[dict] = []
     jobs = [
