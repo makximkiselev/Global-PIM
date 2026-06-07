@@ -3453,6 +3453,44 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(batch["not_ready_count"], 0)
         self.assertEqual(batch["blockers"], [])
 
+    def test_export_batch_blockers_include_machine_readable_fix_actions(self) -> None:
+        preview = {
+            "count": 1,
+            "ready_count": 0,
+            "not_ready_count": 1,
+            "items": [
+                {
+                    "product_id": "product_1",
+                    "product_title": "iPhone",
+                    "category_id": "cat-phone",
+                    "ready": False,
+                    "missing": ["Цвет: значение не сопоставлено с Ozon"],
+                    "missing_details": [
+                        {
+                            "code": "value_mapping_required",
+                            "message": "Цвет: значение не сопоставлено с Ozon",
+                            "target": "values",
+                            "parameter": "Цвет",
+                        }
+                    ],
+                    "payload_item": {"offer_id": "GT-1"},
+                }
+            ],
+        }
+
+        batch = catalog_exchange._export_batch_from_preview(
+            provider="ozon",
+            store={"id": "ozon-store", "title": "Ozon test"},
+            preview=preview,
+        )
+
+        detail = batch["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["fix_label"], "Открыть значения")
+        self.assertEqual(
+            detail["fix_href"],
+            "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82",
+        )
+
     def test_export_package_includes_payload_lineage_audit(self) -> None:
         run = {
             "id": "run-1",

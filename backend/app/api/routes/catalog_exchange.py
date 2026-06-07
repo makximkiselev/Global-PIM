@@ -9,7 +9,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -141,6 +141,58 @@ def _media_review_count(media: Any) -> int:
 def _missing_detail(code: str, message: str, target: str, **extra: Any) -> Dict[str, Any]:
     out = {"code": code, "message": message, "target": target}
     out.update({k: v for k, v in extra.items() if v not in (None, "")})
+    return out
+
+
+def _export_fix_query(tab: str, category_id: str = "", product_id: str = "", parameter: str = "", provider: str = "") -> str:
+    params: Dict[str, str] = {"tab": tab}
+    if category_id:
+        params["category"] = category_id
+    if product_id:
+        params["product"] = product_id
+    if parameter:
+        params["parameter"] = parameter
+    if provider:
+        params["provider"] = provider
+    return urlencode(params)
+
+
+def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, category_id: str) -> Dict[str, Any]:
+    out = dict(detail)
+    code = str(out.get("code") or "").strip()
+    target = str(out.get("target") or "").strip()
+    parameter = str(out.get("parameter") or "").strip()
+    provider = str(out.get("provider") or "").strip()
+    href = ""
+    label = "Открыть место исправления"
+    if code == "parameter_mapping_required" and category_id:
+        href = f"/templates/{category_id}"
+        label = "Собрать инфо-модель"
+    elif target == "competitors" and product_id:
+        href = f"/products/{product_id}?tab=sources"
+        label = "Открыть источники"
+    elif target == "media" and product_id:
+        href = f"/products/{product_id}?tab=media"
+        label = "Проверить медиа" if code == "media_review_required" else "Открыть медиа"
+    elif target == "description" and product_id:
+        href = f"/products/{product_id}?tab=description"
+        label = "Открыть описание"
+    elif target == "import":
+        href = f"/catalog/exchange?{_export_fix_query('import', category_id, product_id)}"
+        label = "Импортировать фото"
+    elif target in {"sources", "params", "values"} and category_id:
+        href = f"/sources?{_export_fix_query(target, category_id, product_id, parameter, provider)}"
+        label = {
+            "sources": "Открыть категории",
+            "params": "Открыть параметры",
+            "values": "Открыть значения",
+        }.get(target, label)
+    elif target == "product" and product_id:
+        href = f"/products/{product_id}"
+        label = "Открыть SKU"
+    if href:
+        out["fix_href"] = href
+        out["fix_label"] = label
     return out
 
 
@@ -1574,18 +1626,23 @@ def _export_batch_from_preview(
         missing = item.get("missing") if isinstance(item.get("missing"), list) else []
         missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
         missing_details = item.get("missing_details") if isinstance(item.get("missing_details"), list) else []
-        missing_details_clean = [x for x in missing_details if isinstance(x, dict)]
         payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
         if not missing_clean:
             continue
         offer_id = str(payload_item.get("offerId") or payload_item.get("offer_id") or "").strip()
         product_id = str(item.get("product_id") or "").strip()
+        category_id = str(item.get("category_id") or "").strip()
+        missing_details_clean = [
+            _export_missing_detail_with_fix(x, product_id=product_id, category_id=category_id)
+            for x in missing_details
+            if isinstance(x, dict)
+        ]
         blockers.append(
             {
                 "product_id": product_id,
                 "offer_id": offer_id,
                 "product_title": str(item.get("product_title") or "").strip(),
-                "category_id": str(item.get("category_id") or "").strip(),
+                "category_id": category_id,
                 "missing": missing_clean,
                 "missing_details": missing_details_clean,
             }

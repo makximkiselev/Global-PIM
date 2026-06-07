@@ -911,76 +911,77 @@ Next fix in the category flow:
    - `GET /api/products/{product_id}/parameter-flow` returns `summary.blockers` and a bounded `blockers[]` list;
    - blockers use stable codes for empty PIM values, missing parameter mappings, and missing value mappings;
    - product screens can show blocker counts without parsing marketplace labels or guessing from text.
-18. Product blocker actions are wired into the active product workspace:
+18. Export readiness blockers now carry backend-provided `fix_href` and `fix_label` in `missing_details`, so the export UI can route to the exact fixing workspace without parsing free-text reasons.
+19. Product blocker actions are wired into the active product workspace:
    - the attributes tab shows the first actionable blockers next to readiness counters;
    - empty PIM values select the affected product parameter in-place;
    - parameter/value blockers open `/sources` with `category`, `product`, `parameter`, and `provider`;
    - params and values workspaces read deep-link parameters and focus/search the affected field after data loads.
-19. Params/values loading failures are now explicit:
+20. Params/values loading failures are now explicit:
    - values mapping catches first-load API/auth errors and shows a red inline diagnostic instead of an empty list;
    - params mapping shows load errors inside the parameter queue instead of falling through to an empty-model message;
    - both paths keep a login/action link visible when the backend returns auth-related failure.
-20. `/admin/status` now shows authenticated smoke readiness without exposing secrets:
+21. `/admin/status` now shows authenticated smoke readiness without exposing secrets:
    - `/api/ops/status` returns `auth_smoke` with only boolean flags for enabled/email/password/ready;
    - the UI renders it beside Release safety;
    - tests assert that smoke email/password values are not serialized.
 
-21. Deploy/auth smoke configuration is now consistent:
+22. Deploy/auth smoke configuration is now consistent:
    - `scripts/deploy_production.sh` loads optional smoke secrets from `~/.config/global-pim/smoke.env` or `SMARTPIM_SMOKE_ENV_FILE`;
    - `SMARTPIM_AUTH_SMOKE=1` enables scenario/browser/require-auth deploy smoke defaults;
    - deploy still fails before upload/restart when authenticated smoke is enabled without email/password.
-22. Params/values load errors now have guided retry actions:
+23. Params/values load errors now have guided retry actions:
    - parameter mapping errors show a retry button next to the diagnostic and inside the queue;
    - value mapping errors show a retry button in both the top diagnostic and empty-error state;
    - login links stay visible only for auth-required failures.
-23. Frontend API errors now format JSON `{detail: ...}` responses before rendering:
+24. Frontend API errors now format JSON `{detail: ...}` responses before rendering:
    - common machine codes such as `CATALOG_CATEGORY_NOT_FOUND` and `CATEGORY_NOT_DIRECTLY_MAPPED` become readable user guidance;
    - raw JSON no longer appears in params/values error panels.
-24. Deploy public smoke requests are now bounded:
+25. Deploy public smoke requests are now bounded:
    - `curl_retry` uses `APP_PUBLIC_SMOKE_TIMEOUT` for each public health/db-grants request;
    - the SPA `HEAD` smoke also uses the same timeout;
    - a transient public network hang can no longer leave deployment stuck after services already restarted;
    - if db-grants public smoke only fails from the deploy machine, deploy verifies local+public db-grants from the server before continuing.
-25. Scenario smoke can now cover the real product route flow once authenticated smoke credentials are present:
+26. Scenario smoke can now cover the real product route flow once authenticated smoke credentials are present:
    - `scripts/scenario_smoke.py --browser --require-auth --product-flow` checks dashboard -> info-model -> params -> values -> product attributes -> export for one SKU;
    - default fixture is category `12547e4d-7713-414e-8aaf-a2fe919e1d3d`, product `product_70`, marker `50001`;
    - deploy can enable it with `APP_SCENARIO_SMOKE_PRODUCT_FLOW=1`;
    - category/product/SKU markers are configurable through `SMARTPIM_SMOKE_FLOW_CATEGORY_ID`, `SMARTPIM_SMOKE_FLOW_PRODUCT_ID`, and `SMARTPIM_SMOKE_FLOW_SKU_MARKER`.
-26. `/admin/status` now surfaces product-flow smoke readiness as booleans:
+27. `/admin/status` now surfaces product-flow smoke readiness as booleans:
    - shows whether `SMARTPIM_SMOKE_PRODUCT_FLOW` / `APP_SCENARIO_SMOKE_PRODUCT_FLOW` is enabled;
    - shows whether flow category/product/SKU markers are configured;
    - does not serialize credentials or exact fixture identifiers.
-27. Product competitor source evidence is more explicit for exact misses:
+28. Product competitor source evidence is more explicit for exact misses:
    - backend scan evidence now includes `scan_steps`, `expected_urls`, category URLs, query terms and `exact_miss_reason`;
    - Store77 summaries explain that category pages, deterministic URL and search terms were checked;
    - re-store summaries distinguish direct URL + search from search-only partial scans;
    - product UI renders this evidence as separate readable rows instead of one compressed string.
-28. Store77 exact seed matching has broader regression coverage:
+29. Store77 exact seed matching has broader regression coverage:
    - checks 256Gb and 1Tb memory slugs;
    - checks eSIM-only and nano SIM+eSIM slug separation;
    - checks Desert Titanium and Cosmic Orange color slugs;
    - keeps generated candidates above the visible review threshold without auto-confirming them.
-29. re-store exact seed matching no longer self-confirms SIM from the PIM title:
+30. re-store exact seed matching no longer self-confirms SIM from the PIM title:
    - direct iPhone URL generation is covered for model, memory and color variants;
    - generated re-store candidate titles intentionally exclude SIM because the re-store URL does not encode it;
    - SIM can only confirm from parsed card specs, otherwise the candidate stays as a manual SIM check;
    - unsupported products fall back to search-only evidence instead of pretending a safe direct URL exists.
-30. Product competitor source diagnostics now include scan results, not only scan plans:
+31. Product competitor source diagnostics now include scan results, not only scan plans:
    - discovery scan evidence stores candidate count and visible candidate URLs;
    - re-store direct URL evidence stores parsed memory/color/SIM specs when the direct card is visible;
    - product UI shows a separate “Результат проверки” block so users can see whether re-store returned a usable direct card or only search misses.
-31. re-store discovery no longer times out after an exact direct match:
+32. re-store discovery no longer times out after an exact direct match:
    - when the calculated re-store URL returns a high-confidence direct SKU candidate, discovery returns it immediately;
    - search still runs for near-miss candidates where SIM or another critical variant signal is missing;
    - this prevents a slow re-store search page from hiding a valid direct card behind a source timeout.
-32. AI competitor fallback now validates suggested URLs before showing them:
+33. AI competitor fallback now validates suggested URLs before showing them:
    - generated/memory-based competitor URLs are checked over HTTP before being appended to discovery results;
    - 404 or otherwise unavailable re-store/store77 URLs are dropped instead of appearing as moderation candidates;
    - this prevents stale learned URL patterns from looking like real competitor matches.
-33. Product source summaries no longer use stale/rejected candidates as current evidence:
+34. Product source summaries no longer use stale/rejected candidates as current evidence:
    - stale or rejected competitor candidates remain in counters/history but do not drive source status;
    - after a clean scan with no valid re-store candidates, the source shows the fresh “no exact match” result instead of an old hidden AI suggestion.
-34. re-store discovery now checks profile category pages and keeps direct SIM conflicts visible:
+35. re-store discovery now checks profile category pages and keeps direct SIM conflicts visible:
    - iPhone discovery scans calculated direct URL, filtered re-store category pages and then search terms;
    - category URLs include model, memory and color filters where they can be derived from the SKU title;
    - a direct card that matches model/memory/color but differs by SIM is shown as a low-confidence review candidate instead of disappearing as “0 candidates”;

@@ -150,6 +150,8 @@ type ExportMissingDetail = {
   target?: "competitors" | "media" | "description" | "sources" | "params" | "values" | "product" | "import" | string;
   parameter?: string;
   count?: number;
+  fix_href?: string;
+  fix_label?: string;
 };
 
 type MetricItem = {
@@ -219,6 +221,7 @@ function exportableProviders(providers: ProviderRow[]): ProviderRow[] {
 }
 
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
+  if (detail?.fix_href) return detail.fix_href;
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
   const target = String(detail?.target || "").trim();
@@ -267,6 +270,7 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
 }
 
 function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
+  if (detail?.fix_label) return detail.fix_label;
   const target = String(detail?.target || "").trim();
   if (detail?.code === "parameter_mapping_required") return "Собрать инфо-модель";
   if (target === "competitors") return "Открыть источники";
