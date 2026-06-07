@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -299,10 +300,8 @@ export default function ProductCompetitorPanel({
   productId: string;
   onEnriched?: () => void | Promise<void>;
 }) {
-  const [context, setContext] = useState<ProductCompetitorResp | null>(null);
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState("");
   const [enrichNotice, setEnrichNotice] = useState("");
@@ -312,6 +311,30 @@ export default function ProductCompetitorPanel({
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestionsResp | null>(null);
+  const productQueryKey = useMemo(() => ["product-competitors", productId] as const, [productId]);
+  const runQueryKey = useMemo(() => ["competitor-discovery-run", lastRun?.id || ""] as const, [lastRun?.id]);
+  const contextQuery = useQuery({
+    queryKey: productQueryKey,
+    queryFn: () => api<ProductCompetitorResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}`),
+    enabled: Boolean(productId),
+  });
+  const context = contextQuery.data || null;
+  const running = Boolean(lastRun?.id && ["queued", "running"].includes(lastRun.status));
+  const runStatusQuery = useQuery({
+    queryKey: runQueryKey,
+    queryFn: () => api<RunStatusResp>(`/competitor-mapping/discovery/runs/${encodeURIComponent(lastRun?.id || "")}`),
+    enabled: Boolean(lastRun?.id && ["queued", "running"].includes(lastRun.status)),
+    refetchInterval: (query) => {
+      const status = query.state.data?.run?.status || lastRun?.status || "";
+      return ["queued", "running"].includes(status) ? 2500 : false;
+    },
+    retry: (failureCount, err) => {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("Run not found") || message.includes("404")) return failureCount < 8;
+      return failureCount < 2;
+    },
+  });
+  const loading = contextQuery.isLoading || contextQuery.isFetching;
 
   const candidates = useMemo(() => (context?.items || []).filter(isReviewCandidate), [context?.items]);
   const candidateGroups = useMemo(() => {
@@ -331,64 +354,40 @@ export default function ProductCompetitorPanel({
     [candidates, selectedId],
   );
 
-  async function load() {
-    if (!productId) return;
+  async function refreshContext() {
     setError("");
-    setLoading(true);
     try {
-      const response = await api<ProductCompetitorResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}`);
-      setContext(response);
-      setSelectedId((prev) => {
-        if (prev && response.items.some((item) => item.id === prev)) return prev;
-        return response.items[0]?.id || "";
-      });
+      await queryClient.invalidateQueries({ queryKey: productQueryKey });
+      await contextQuery.refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить найденные карточки конкурентов");
-    } finally {
-      setLoading(false);
     }
   }
 
-  async function pollRun(runId: string) {
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 2500));
-      try {
-        const status = await api<RunStatusResp>(`/competitor-mapping/discovery/runs/${encodeURIComponent(runId)}`);
-        setLastRun(status.run);
-        if (!["queued", "running"].includes(status.run.status)) {
-          await load();
-          return;
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Не удалось получить статус поиска";
-        if (message.includes("Run not found") || message.includes("404")) {
-          setLastRun((prev) => prev ? { ...prev, status: "running" } : { id: runId, status: "running" });
-          continue;
-        }
-        setError(message);
-        return;
-      }
-    }
-    await load();
-  }
+  const discoveryMutation = useMutation({
+    mutationFn: async () => {
+      const sources = (context?.sources || []).map((source) => source.id);
+      return api<RunResp>("/competitor-mapping/discovery/run", {
+        method: "POST",
+        body: JSON.stringify({ background: true, product_ids: [productId], sources, limit: 1, use_ai: true }),
+      });
+    },
+    onMutate: () => {
+      setError("");
+      setEnrichNotice("");
+    },
+    onSuccess: (response) => {
+      setLastRun(response.run);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Не удалось запустить поиск");
+    },
+  });
 
   async function runDiscovery() {
     setError("");
     setEnrichNotice("");
-    setRunning(true);
-    try {
-      const sources = (context?.sources || []).map((source) => source.id);
-      const response = await api<RunResp>("/competitor-mapping/discovery/run", {
-        method: "POST",
-        body: JSON.stringify({ background: true, product_ids: [productId], sources, limit: 1, use_ai: true }),
-      });
-      setLastRun(response.run);
-      void pollRun(response.run.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось запустить поиск");
-    } finally {
-      setRunning(false);
-    }
+    await discoveryMutation.mutateAsync();
   }
 
   async function moderate(candidate: CompetitorCandidate, action: "approve" | "reject") {
@@ -399,7 +398,7 @@ export default function ProductCompetitorPanel({
         method: "POST",
         body: JSON.stringify(action === "approve" ? { action } : { action, reason: "Отклонено из карточки товара" }),
       });
-      await load();
+      await refreshContext();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось обновить candidate");
     }
@@ -436,7 +435,7 @@ export default function ProductCompetitorPanel({
         `Источники: ${sources}. Медиа: ${response.media_images_count || 0}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsText}`,
       );
       setAiSuggestions(null);
-      await load();
+      await refreshContext();
       await onEnriched?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить данные из подтвержденных ссылок");
@@ -473,7 +472,7 @@ export default function ProductCompetitorPanel({
       });
       setManualUrl("");
       setEnrichNotice("Ссылка добавлена вручную и стала подтвержденной. Неподтвержденные варианты этого источника отклонены.");
-      await load();
+      await refreshContext();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось добавить ссылку вручную");
     } finally {
@@ -482,8 +481,45 @@ export default function ProductCompetitorPanel({
   }
 
   useEffect(() => {
-    void load();
+    setLastRun(null);
+    setAiSuggestions(null);
+    setError("");
+    setEnrichNotice("");
   }, [productId]);
+
+  useEffect(() => {
+    if (!contextQuery.error) return;
+    setError(contextQuery.error instanceof Error ? contextQuery.error.message : "Не удалось загрузить найденные карточки конкурентов");
+  }, [contextQuery.error]);
+
+  useEffect(() => {
+    if (!context) return;
+    setSelectedId((prev) => {
+      if (prev && context.items.some((item) => item.id === prev)) return prev;
+      return context.items[0]?.id || "";
+    });
+  }, [context]);
+
+  useEffect(() => {
+    const run = runStatusQuery.data?.run;
+    if (!run) return;
+    setLastRun(run);
+    if (!["queued", "running"].includes(run.status)) {
+      void queryClient.invalidateQueries({ queryKey: productQueryKey });
+    }
+  }, [productQueryKey, queryClient, runStatusQuery.data?.run]);
+
+  useEffect(() => {
+    if (!runStatusQuery.error) return;
+    const message = runStatusQuery.error instanceof Error ? runStatusQuery.error.message : "Не удалось получить статус поиска";
+    if (message.includes("Run not found") || message.includes("404")) {
+      setLastRun((prev) => prev ? { ...prev, status: "running" } : prev);
+      return;
+    }
+    setError(message);
+  }, [runStatusQuery.error]);
+
+  const actionRunning = running || discoveryMutation.isPending;
 
   return (
     <Card title="Конкурентные карточки">
@@ -494,21 +530,21 @@ export default function ProductCompetitorPanel({
             <p>Найденные карточки re-store/store77 для текущего SKU. Подтверждение сохраняет связь с товаром и открывает загрузку параметров, описания и медиа.</p>
           </div>
           <div className="productCompetitorActions">
-            <Button onClick={() => void load()} disabled={loading || running}>
+            <Button onClick={() => void refreshContext()} disabled={loading || actionRunning}>
               Обновить
             </Button>
             {context?.counts.confirmed_links ? (
-              <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || running || enriching || !productId}>
+              <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || actionRunning || enriching || !productId}>
                 {enriching ? "Загружаю…" : "Загрузить параметры и медиа"}
               </Button>
             ) : null}
             {context?.counts.confirmed_links ? (
-              <Button onClick={() => void loadAiSuggestions()} disabled={loading || running || enriching || aiLoading || !productId}>
+              <Button onClick={() => void loadAiSuggestions()} disabled={loading || actionRunning || enriching || aiLoading || !productId}>
                 {aiLoading ? "Разбираю…" : "AI разобрать остатки"}
               </Button>
             ) : null}
-            <Button variant="primary" onClick={() => void runDiscovery()} disabled={loading || running || !productId}>
-              {running ? "Ищу…" : "Найти карточки"}
+            <Button variant="primary" onClick={() => void runDiscovery()} disabled={loading || actionRunning || !productId}>
+              {actionRunning ? "Ищу…" : "Найти карточки"}
             </Button>
           </div>
         </div>
@@ -697,7 +733,7 @@ export default function ProductCompetitorPanel({
                 title="Кандидатов на выбор нет"
                 description="Для SKU уже есть подтвержденная ссылка. Можно сразу загрузить параметры, описание и медиа из нее."
                 action={
-                  <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || running || enriching || !productId}>
+                  <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || actionRunning || enriching || !productId}>
                     {enriching ? "Загружаю…" : "Загрузить параметры и медиа"}
                   </Button>
                 }
