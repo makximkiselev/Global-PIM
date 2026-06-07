@@ -2562,6 +2562,23 @@
   max-height:calc(100vh - 280px);
 }
 
+.sm-valuesFieldList.is-virtual{
+  display:block;
+}
+
+.sm-valuesVirtualInner{
+  position:relative;
+  width:100%;
+}
+
+.sm-valuesVirtualRow{
+  position:absolute;
+  top:0;
+  left:0;
+  width:100%;
+  padding-bottom:8px;
+}
+
 .sm-valuesFieldItem{
   display:flex;
   flex-direction:column;

@@ -106,7 +106,7 @@ Library adoption sequence:
 3. Frontend table foundation:
    - add TanStack Table/Virtual;
    - migrate product queue/export target tables before dense parameter tables.
-   Status: in progress. TanStack Table and TanStack Virtual are installed. The main product registry table and export queue/payload tables now use TanStack Table column/header/cell rendering while preserving the existing table DOM and CSS. Remaining work: apply table/virtual primitives to dense parameter/value mapping screens.
+   Status: in progress. TanStack Table and TanStack Virtual are installed. The main product registry table and export queue/payload tables now use TanStack Table column/header/cell rendering while preserving the existing table DOM and CSS. The value-mapping field list now uses TanStack Table row identity plus TanStack Virtual rendering so dense categories do not mount every field card at once. Remaining work: apply table/virtual primitives to dense parameter mapping screens.
 4. Frontend form foundation:
    - add React Hook Form and Zod;
    - migrate connector store forms, export target selection, and admin user/role forms.

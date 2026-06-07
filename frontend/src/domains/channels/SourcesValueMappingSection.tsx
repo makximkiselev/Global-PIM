@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import CategorySidebar from "../../components/CategorySidebar";
 import DictionaryEditorFeature from "../data-prep/DictionaryEditorFeature";
@@ -279,6 +281,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
   const [aiValueMessage, setAiValueMessage] = useState("");
   const [valueMapDraft, setValueMapDraft] = useState<Record<string, string>>({});
   const [valueMapSaving, setValueMapSaving] = useState("");
+  const fieldListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,6 +388,25 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
         return String(a.catalog_name || a.title || "").localeCompare(String(b.catalog_name || b.title || ""), "ru");
       });
   }, [data, fieldQuery, scopeFilter, workFilter]);
+  const fieldColumns = useMemo<ColumnDef<ValueItem>[]>(() => [
+    {
+      id: "field",
+      accessorFn: (row) => row.catalog_name || row.title || row.dict_id,
+    },
+  ], []);
+  const fieldTable = useReactTable({
+    data: filteredItems,
+    columns: fieldColumns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => row.dict_id,
+  });
+  const fieldRows = fieldTable.getRowModel().rows;
+  const fieldVirtualizer = useVirtualizer({
+    count: fieldRows.length,
+    getScrollElement: () => fieldListRef.current,
+    estimateSize: () => 158,
+    overscan: 8,
+  });
 
   const rawItemsCount = Array.isArray(data?.items) ? data!.items.length : 0;
   const mappingItemsCount = useMemo(() => {
@@ -666,6 +688,51 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
     );
   }
 
+  function renderValueFieldItem(item: ValueItem) {
+    const providers = usefulProviders(item);
+    const status = valueItemStatus(item);
+    return (
+      <button
+        type="button"
+        className={`sm-valuesFieldItem ${activeDictId === item.dict_id ? "is-active" : ""}`}
+        onClick={() => setActiveDictId(item.dict_id)}
+      >
+        <div className="sm-valuesFieldTop">
+          <strong>{item.catalog_name}</strong>
+          <span className={`sm-valuesState is-${status.tone}`}>{status.label}</span>
+        </div>
+        <div className="sm-valuesFieldMeta">
+          <span>{item.group || "Без группы"}</span>
+          <span>{item.scope_label}</span>
+          {item.source_category?.name ? <span>{item.source_category.name}</span> : null}
+          <span>{valueModeLabel(item)}</span>
+          <span>{item.value_count} PIM-знач.</span>
+        </div>
+        <div className="sm-valuesProviderRow">
+          {providers.length ? providers.map((provider) => (
+            <span
+              key={provider.code}
+              className={`sm-valuesProviderPill ${providerHasGap(provider) ? "is-gap" : "is-ready"}`}
+            >
+              {provider.title}: {providerCoverageLabel(provider, item)}
+            </span>
+          )) : (
+            <span className="sm-valuesProviderPill is-empty">У площадок нет справочника</span>
+          )}
+        </div>
+        {providers.some((provider) => providerSampleText(provider)) ? (
+          <div className="sm-valuesEvidenceRow">
+            {providers.map((provider) => {
+              const sample = providerSampleText(provider);
+              if (!sample) return null;
+              return <span key={`${provider.code}-sample`}>{provider.title}: {sample}</span>;
+            })}
+          </div>
+        ) : null}
+      </button>
+    );
+  }
+
   return (
     <div className="sm-valuesPage">
       <div className="sm-valuesLayout">
@@ -778,7 +845,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                 </button>
               </div>
 
-              <div className="sm-valuesFieldList">
+              <div ref={fieldListRef} className={`sm-valuesFieldList ${fieldRows.length ? "is-virtual" : ""}`}>
                 {!selectedCategoryId ? (
                   <div className="sm-valuesEmpty">Выбери категорию слева.</div>
                 ) : loadingValues ? (
@@ -808,51 +875,21 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                     ) : null}
                   </div>
                 ) : (
-                  filteredItems.map((item) => {
-                    const providers = usefulProviders(item);
-                    const status = valueItemStatus(item);
-                    return (
-                      <button
-                        key={item.dict_id}
-                        type="button"
-                        className={`sm-valuesFieldItem ${activeDictId === item.dict_id ? "is-active" : ""}`}
-                        onClick={() => setActiveDictId(item.dict_id)}
-                      >
-                        <div className="sm-valuesFieldTop">
-                          <strong>{item.catalog_name}</strong>
-                          <span className={`sm-valuesState is-${status.tone}`}>{status.label}</span>
+                  <div className="sm-valuesVirtualInner" style={{ height: `${fieldVirtualizer.getTotalSize()}px` }}>
+                    {fieldVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const row = fieldRows[virtualRow.index];
+                      if (!row) return null;
+                      return (
+                        <div
+                          key={row.id}
+                          className="sm-valuesVirtualRow"
+                          style={{ transform: `translateY(${virtualRow.start}px)` }}
+                        >
+                          {renderValueFieldItem(row.original)}
                         </div>
-                        <div className="sm-valuesFieldMeta">
-                          <span>{item.group || "Без группы"}</span>
-                          <span>{item.scope_label}</span>
-                          {item.source_category?.name ? <span>{item.source_category.name}</span> : null}
-                          <span>{valueModeLabel(item)}</span>
-                          <span>{item.value_count} PIM-знач.</span>
-                        </div>
-                        <div className="sm-valuesProviderRow">
-                          {providers.length ? providers.map((provider) => (
-                            <span
-                              key={provider.code}
-                              className={`sm-valuesProviderPill ${providerHasGap(provider) ? "is-gap" : "is-ready"}`}
-                            >
-                              {provider.title}: {providerCoverageLabel(provider, item)}
-                            </span>
-                          )) : (
-                            <span className="sm-valuesProviderPill is-empty">У площадок нет справочника</span>
-                          )}
-                        </div>
-                        {providers.some((provider) => providerSampleText(provider)) ? (
-                          <div className="sm-valuesEvidenceRow">
-                            {providers.map((provider) => {
-                              const sample = providerSampleText(provider);
-                              if (!sample) return null;
-                              return <span key={`${provider.code}-sample`}>{provider.title}: {sample}</span>;
-                            })}
-                          </div>
-                        ) : null}
-                      </button>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>
