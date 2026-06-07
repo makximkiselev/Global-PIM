@@ -21,6 +21,20 @@ from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.matching import match_tokens, normalize_match_text, token_jaccard, value_pair_similarity
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import normalize_value_key, provider_export_value_details
+from app.core.workflow_jobs import (
+    ATTR_AI_JOB_TTL_SECONDS,
+    ATTR_AI_WORKFLOW,
+    VALUE_AI_JOB_TTL_SECONDS,
+    VALUE_AI_WORKFLOW,
+    claim_attr_ai_job,
+    claim_value_ai_job,
+    get_workflow_job,
+    list_workflow_jobs,
+    prune_attr_ai_jobs,
+    prune_value_ai_jobs,
+    save_attr_ai_job,
+    save_value_ai_job,
+)
 from app.storage.json_store import (
     ensure_global_attribute,
     load_dictionaries_db,
@@ -33,9 +47,6 @@ from app.storage.json_store import (
     slugify_code,
 )
 from app.storage.relational_pim_store import (
-    claim_pim_workflow_run_as_running,
-    get_pim_workflow_run,
-    list_pim_workflow_runs,
     load_attribute_mapping_doc,
     load_attribute_value_refs_doc,
     load_catalog_nodes,
@@ -46,7 +57,6 @@ from app.storage.relational_pim_store import (
     save_attribute_value_refs_doc,
     save_category_mappings,
     save_template_category_doc,
-    upsert_pim_workflow_run,
 )
 from app.core.master_templates import (
     PARAM_GROUPS,
@@ -2547,10 +2557,10 @@ class ValueExportMapPatchReq(BaseModel):
     output_value: Optional[str] = None
 
 
-_ATTR_AI_WORKFLOW = "marketplace_attribute_ai_match"
-_ATTR_AI_JOB_TTL_SECONDS = 300.0
-_VALUE_AI_WORKFLOW = "marketplace_value_ai_match"
-_VALUE_AI_JOB_TTL_SECONDS = 300.0
+_ATTR_AI_WORKFLOW = ATTR_AI_WORKFLOW
+_ATTR_AI_JOB_TTL_SECONDS = ATTR_AI_JOB_TTL_SECONDS
+_VALUE_AI_WORKFLOW = VALUE_AI_WORKFLOW
+_VALUE_AI_JOB_TTL_SECONDS = VALUE_AI_JOB_TTL_SECONDS
 
 
 def _backend_root() -> Path:
@@ -2622,73 +2632,29 @@ def _job_ts(value: Any) -> float:
 
 
 def _save_attr_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
-    upsert_pim_workflow_run(job, workflow=_ATTR_AI_WORKFLOW)
-    return job
+    return save_attr_ai_job(job)
 
 
 def _claim_attr_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
-    return claim_pim_workflow_run_as_running(
-        job_id,
-        workflow=_ATTR_AI_WORKFLOW,
-        payload_updates={
-            "phase": "matching",
-            "message": "AI подбирает спорные связки. Уверенные rule/memory-связки применяются автоматически.",
-            "started_at": _now_iso(),
-            "updated_ts": time.time(),
-        },
-    )
+    return claim_attr_ai_job(job_id)
 
 
 def _save_value_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
-    upsert_pim_workflow_run(job, workflow=_VALUE_AI_WORKFLOW)
-    return job
+    return save_value_ai_job(job)
 
 
 def _claim_value_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
-    return claim_pim_workflow_run_as_running(
-        job_id,
-        workflow=_VALUE_AI_WORKFLOW,
-        payload_updates={
-            "phase": "matching",
-            "message": "AI сопоставляет значения PIM со справочником площадки.",
-            "started_at": _now_iso(),
-            "updated_ts": time.time(),
-        },
-    )
+    return claim_value_ai_job(job_id)
 
 
 def _prune_attr_ai_jobs() -> None:
-    now = time.time()
     stale_after = max(_ATTR_AI_JOB_TTL_SECONDS, _ai_match_timeout_seconds() * 2.5)
-    for job in list_pim_workflow_runs(workflow=_ATTR_AI_WORKFLOW, statuses=["queued", "running"], limit=200):
-        updated = _job_ts(job.get("updated_ts") or job.get("created_ts"))
-        if updated and now - updated > stale_after:
-            job.update({
-                "status": "failed",
-                "phase": "stale",
-                "message": "AI-подбор был прерван. Запустите подбор заново.",
-                "finished_at": _now_iso(),
-                "updated_ts": now,
-                "error": "STALE_AI_MATCH_JOB",
-            })
-            _save_attr_ai_job(job)
+    prune_attr_ai_jobs(stale_after_seconds=stale_after)
 
 
 def _prune_value_ai_jobs() -> None:
-    now = time.time()
     stale_after = max(_VALUE_AI_JOB_TTL_SECONDS, _ai_match_timeout_seconds() * 2.5)
-    for job in list_pim_workflow_runs(workflow=_VALUE_AI_WORKFLOW, statuses=["queued", "running"], limit=200):
-        updated = _job_ts(job.get("updated_ts") or job.get("created_ts"))
-        if updated and now - updated > stale_after:
-            job.update({
-                "status": "failed",
-                "phase": "stale",
-                "message": "AI-сопоставление значений было прервано. Запустите подбор заново.",
-                "finished_at": _now_iso(),
-                "updated_ts": now,
-                "error": "STALE_VALUE_AI_MATCH_JOB",
-            })
-            _save_value_ai_job(job)
+    prune_value_ai_jobs(stale_after_seconds=stale_after)
 
 
 def _public_attr_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -2732,7 +2698,7 @@ def _public_value_ai_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiMatchReq) -> None:
-    job = get_pim_workflow_run(job_id, workflow=_ATTR_AI_WORKFLOW)
+    job = get_workflow_job(job_id, workflow=_ATTR_AI_WORKFLOW)
     if not job:
         return
     job.update({
@@ -2770,7 +2736,7 @@ async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiM
 
 
 async def _run_value_ai_match_job(job_id: str, catalog_category_id: str, dict_id: str, req: ValueAiSuggestReq) -> None:
-    job = get_pim_workflow_run(job_id, workflow=_VALUE_AI_WORKFLOW)
+    job = get_workflow_job(job_id, workflow=_VALUE_AI_WORKFLOW)
     if not job:
         return
     job.update({
@@ -4733,7 +4699,7 @@ async def mapping_value_ai_suggest_job_start(catalog_category_id: str, dict_id: 
         raise HTTPException(status_code=400, detail="PROVIDER_INVALID")
 
     _prune_value_ai_jobs()
-    for job in list_pim_workflow_runs(workflow=_VALUE_AI_WORKFLOW, statuses=["queued", "running"], limit=100):
+    for job in list_workflow_jobs(workflow=_VALUE_AI_WORKFLOW, statuses=["queued", "running"], limit=100):
         if (
             str(job.get("catalog_category_id") or "") == cid
             and str(job.get("dict_id") or "") == did
@@ -4768,7 +4734,7 @@ async def mapping_value_ai_suggest_job_start(catalog_category_id: str, dict_id: 
 async def mapping_value_ai_suggest_job_status(job_id: str) -> Dict[str, Any]:
     _prune_value_ai_jobs()
     jid = str(job_id or "").strip()
-    job = get_pim_workflow_run(jid, workflow=_VALUE_AI_WORKFLOW)
+    job = get_workflow_job(jid, workflow=_VALUE_AI_WORKFLOW)
     if not job:
         raise HTTPException(status_code=404, detail="VALUE_AI_MATCH_JOB_NOT_FOUND")
     return _public_value_ai_job(job)
@@ -5038,7 +5004,7 @@ async def mapping_attribute_ai_match_job_start(catalog_category_id: str, req: Ai
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
 
     _prune_attr_ai_jobs()
-    for job in list_pim_workflow_runs(workflow=_ATTR_AI_WORKFLOW, statuses=["queued", "running"], limit=100):
+    for job in list_workflow_jobs(workflow=_ATTR_AI_WORKFLOW, statuses=["queued", "running"], limit=100):
         if (
             str(job.get("catalog_category_id") or "") == cid
             and str(job.get("status") or "") in {"queued", "running"}
@@ -5069,7 +5035,7 @@ async def mapping_attribute_ai_match_job_start(catalog_category_id: str, req: Ai
 async def mapping_attribute_ai_match_job_status(job_id: str) -> Dict[str, Any]:
     _prune_attr_ai_jobs()
     jid = str(job_id or "").strip()
-    job = get_pim_workflow_run(jid, workflow=_ATTR_AI_WORKFLOW)
+    job = get_workflow_job(jid, workflow=_ATTR_AI_WORKFLOW)
     if not job:
         raise HTTPException(status_code=404, detail="AI_MATCH_JOB_NOT_FOUND")
     return _public_attr_ai_job(job)

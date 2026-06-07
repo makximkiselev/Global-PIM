@@ -5,13 +5,14 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from app.api.routes import catalog_exchange
+from app.core import workflow_jobs
 from app.workers.workflow_runner import run_pending_workflow_jobs, run_workflow_loop, tenant_organization_scope
 
 
 async def run_once(job_id: str, organization_id: Optional[str] = None) -> Dict[str, Any]:
     with tenant_organization_scope(organization_id):
-        catalog_exchange._prune_export_jobs()
-        job = catalog_exchange._claim_export_job(job_id)
+        workflow_jobs.prune_export_jobs()
+        job = workflow_jobs.claim_export_job(job_id)
         if not isinstance(job, dict):
             return {
                 "ok": False,
@@ -26,10 +27,10 @@ async def run_once(job_id: str, organization_id: Optional[str] = None) -> Dict[s
 async def run_pending_once(organization_id: Optional[str] = None, *, limit: int = 5) -> Dict[str, Any]:
     return await run_pending_workflow_jobs(
         organization_id=organization_id,
-        workflow=catalog_exchange._EXPORT_WORKFLOW,
-        list_runs=catalog_exchange.list_pim_workflow_runs,
+        workflow=workflow_jobs.EXPORT_WORKFLOW,
+        list_runs=workflow_jobs.list_workflow_jobs,
         run_one=lambda job_id: run_once(job_id),
-        prune=catalog_exchange._prune_export_jobs,
+        prune=workflow_jobs.prune_export_jobs,
         limit=limit,
         max_limit=50,
         default_error="EXPORT_JOB_FAILED",

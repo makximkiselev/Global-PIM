@@ -61,10 +61,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             executed.append((catalog_category_id, bool(req.apply)))
 
         with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
+            patch.object(marketplace_attribute_ai_match.workflow_jobs, "prune_attr_ai_jobs"),
             patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "_claim_attr_ai_job",
+                marketplace_attribute_ai_match.workflow_jobs,
+                "claim_attr_ai_job",
                 return_value=deepcopy(saved_job),
             ),
             patch.object(
@@ -86,8 +86,8 @@ class OperatingWorkflowTests(unittest.TestCase):
             executed.append(job_id)
 
         with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_claim_attr_ai_job", return_value=None),
+            patch.object(marketplace_attribute_ai_match.workflow_jobs, "prune_attr_ai_jobs"),
+            patch.object(marketplace_attribute_ai_match.workflow_jobs, "claim_attr_ai_job", return_value=None),
             patch.object(
                 marketplace_attribute_ai_match.marketplace_mapping,
                 "_run_attr_ai_match_job",
@@ -124,10 +124,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             return {"ok": True, "job_id": job_id, "catalog_category_id": "cat"}
 
         with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
+            patch.object(marketplace_attribute_ai_match.workflow_jobs, "prune_attr_ai_jobs"),
             patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "list_pim_workflow_runs",
+                marketplace_attribute_ai_match.workflow_jobs,
+                "list_workflow_jobs",
                 return_value=deepcopy(queued_jobs),
             ),
             patch.object(marketplace_attribute_ai_match, "run_once", side_effect=execute),
@@ -153,10 +153,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             return {"ok": False, "skipped": True, "job_id": job_id}
 
         with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
+            patch.object(marketplace_attribute_ai_match.workflow_jobs, "prune_attr_ai_jobs"),
             patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "list_pim_workflow_runs",
+                marketplace_attribute_ai_match.workflow_jobs,
+                "list_workflow_jobs",
                 return_value=deepcopy(queued_jobs),
             ),
             patch.object(marketplace_attribute_ai_match, "run_once", side_effect=execute),
@@ -184,10 +184,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             executed.append((catalog_category_id, dict_id, req.provider, bool(req.apply)))
 
         with (
-            patch.object(marketplace_value_ai_match.marketplace_mapping, "_prune_value_ai_jobs"),
+            patch.object(marketplace_value_ai_match.workflow_jobs, "prune_value_ai_jobs"),
             patch.object(
-                marketplace_value_ai_match.marketplace_mapping,
-                "_claim_value_ai_job",
+                marketplace_value_ai_match.workflow_jobs,
+                "claim_value_ai_job",
                 return_value=deepcopy(saved_job),
             ),
             patch.object(
@@ -221,10 +221,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             return {"ok": True, "job_id": job_id, "catalog_category_id": "cat_phone", "dict_id": "dict_version"}
 
         with (
-            patch.object(marketplace_value_ai_match.marketplace_mapping, "_prune_value_ai_jobs"),
+            patch.object(marketplace_value_ai_match.workflow_jobs, "prune_value_ai_jobs"),
             patch.object(
-                marketplace_value_ai_match.marketplace_mapping,
-                "list_pim_workflow_runs",
+                marketplace_value_ai_match.workflow_jobs,
+                "list_workflow_jobs",
                 return_value=deepcopy(queued_jobs),
             ),
             patch.object(marketplace_value_ai_match, "run_once", side_effect=execute),

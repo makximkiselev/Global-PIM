@@ -118,7 +118,7 @@ Library adoption sequence:
 6. Worker foundation:
    - standardize workflow claim/save/status helpers;
    - move remaining long-running web background tasks to worker modules.
-   Status: in progress. Attribute AI, value AI and export preparation use persisted `pim_workflow_runs` and worker entrypoints. Shared worker runner helpers now own tenant scoping, queued-job polling, counters and loop polling for these workers; remaining work is to move route-owned job claim/run internals into domain services and remove remaining route-owned process spawning where practical.
+   Status: in progress. Attribute AI, value AI and export preparation use persisted `pim_workflow_runs` and worker entrypoints. Shared worker runner helpers now own tenant scoping, queued-job polling, counters and loop polling for these workers. `app.core.workflow_jobs` now owns workflow constants, save/claim/list/get helpers, and stale queued/running job pruning for attribute AI, value AI and export jobs; worker modules no longer import route-private claim/prune/list functions. Remaining work is to move route-owned business run internals and route-owned process spawning into domain services where practical.
 7. AI foundation:
    - move LLM prompts/output validation into a typed AI service;
    - reuse it for competitor candidate suggestions, parameter matching, value matching, and export semantic audit.

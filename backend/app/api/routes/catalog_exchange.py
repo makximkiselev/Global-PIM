@@ -22,16 +22,21 @@ from app.core.media import dedupe_media_items, media_identity_keys
 from app.core.products.parameter_flow import dict_id_for_product_feature
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import provider_export_value_details
+from app.core.workflow_jobs import (
+    EXPORT_JOB_TTL_SECONDS,
+    EXPORT_WORKFLOW,
+    claim_export_job,
+    get_workflow_job,
+    list_workflow_jobs,
+    prune_export_jobs,
+    save_export_job,
+)
 from app.storage.json_store import load_templates_db, load_competitor_mapping_db
 from app.storage.relational_pim_store import (
     bulk_upsert_product_items,
-    claim_pim_workflow_run_as_running,
-    get_pim_workflow_run,
     list_pim_channel_links,
-    list_pim_workflow_runs,
     load_catalog_nodes,
     query_products_full,
-    upsert_pim_workflow_run,
 )
 from app.api.routes.yandex_market import (
     OfferCardsSyncReq,
@@ -71,8 +76,8 @@ IMPORT_RUNS_PATH = DATA_DIR / "catalog_import_runs.json"
 EXPORT_RUNS_PATH = DATA_DIR / "catalog_export_runs.json"
 OZON_CATEGORIES_TREE_PATH = DATA_DIR / "marketplaces" / "ozon" / "categories_tree.json"
 
-_EXPORT_WORKFLOW = "catalog_export_prepare"
-_EXPORT_JOB_TTL_SECONDS = 900.0
+_EXPORT_WORKFLOW = EXPORT_WORKFLOW
+_EXPORT_JOB_TTL_SECONDS = EXPORT_JOB_TTL_SECONDS
 OZON_TECHNICAL_EXPORT_PRICE = "1000000"
 COMPETITOR_MEDIA_PER_SOURCE_LIMIT = 12
 
@@ -1779,37 +1784,15 @@ def _repo_root() -> Path:
 
 
 def _save_export_job(job: Dict[str, Any]) -> Dict[str, Any]:
-    upsert_pim_workflow_run(job, workflow=_EXPORT_WORKFLOW)
-    return job
+    return save_export_job(job)
 
 
 def _claim_export_job(job_id: str) -> Optional[Dict[str, Any]]:
-    return claim_pim_workflow_run_as_running(
-        job_id,
-        workflow=_EXPORT_WORKFLOW,
-        payload_updates={
-            "phase": "preparing",
-            "message": "Готовлю export batch: проверяю медиа, описание, категории, параметры и значения.",
-            "started_at": _now_iso(),
-            "updated_ts": time.time(),
-        },
-    )
+    return claim_export_job(job_id)
 
 
 def _prune_export_jobs() -> None:
-    now = time.time()
-    for job in list_pim_workflow_runs(workflow=_EXPORT_WORKFLOW, statuses=["queued", "running"], limit=200):
-        updated = float(job.get("updated_ts") or job.get("created_ts") or 0.0)
-        if updated and now - updated > _EXPORT_JOB_TTL_SECONDS:
-            job.update({
-                "status": "failed",
-                "phase": "stale",
-                "message": "Подготовка экспорта была прервана. Запустите проверку заново.",
-                "finished_at": _now_iso(),
-                "updated_ts": now,
-                "error": "STALE_EXPORT_JOB",
-            })
-            _save_export_job(job)
+    prune_export_jobs()
 
 
 def _public_export_job(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -2235,7 +2218,7 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
 
 
 def _run_catalog_export_job(job_id: str) -> None:
-    job = get_pim_workflow_run(job_id, workflow=_EXPORT_WORKFLOW)
+    job = get_workflow_job(job_id, workflow=_EXPORT_WORKFLOW)
     if not isinstance(job, dict):
         return
     request_payload = job.get("request") if isinstance(job.get("request"), dict) else {}
@@ -2290,7 +2273,7 @@ def _run_catalog_export_job(job_id: str) -> None:
 def start_catalog_export_job(req: CatalogExportRunReq) -> Dict[str, Any]:
     _prune_export_jobs()
     request_key = _export_request_key(req)
-    for job in list_pim_workflow_runs(workflow=_EXPORT_WORKFLOW, statuses=["queued", "running"], limit=100):
+    for job in list_workflow_jobs(workflow=_EXPORT_WORKFLOW, statuses=["queued", "running"], limit=100):
         if str(job.get("request_key") or "") == request_key:
             return _public_export_job(job)
 
@@ -2319,7 +2302,7 @@ def start_catalog_export_job(req: CatalogExportRunReq) -> Dict[str, Any]:
 def get_catalog_export_job(job_id: str) -> Dict[str, Any]:
     _prune_export_jobs()
     jid = str(job_id or "").strip()
-    job = get_pim_workflow_run(jid, workflow=_EXPORT_WORKFLOW)
+    job = get_workflow_job(jid, workflow=_EXPORT_WORKFLOW)
     if not isinstance(job, dict):
         raise HTTPException(status_code=404, detail="EXPORT_JOB_NOT_FOUND")
     return _public_export_job(job)
