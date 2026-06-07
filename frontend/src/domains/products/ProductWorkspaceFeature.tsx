@@ -893,9 +893,9 @@ function ProductAttributeWorkbench({
           <Badge tone={conflictCount ? "danger" : "active"}>{conflictCount ? `${conflictCount} конфликтов` : "без конфликтов"}</Badge>
         </div>
         <div className="productParamExportSummary">
-          <span><b>{exportReadyCount}</b>готовы с источником</span>
-          <span><b>{withSourceCount}</b>с источником</span>
-          <span><b>{blockerCount || attentionCount || noValueCount}</b>{blockerCount || attentionCount ? "блокеры" : "без значения"}</span>
+          <span><b>{exportReadyCount}</b> готовы с источником</span>
+          <span><b>{withSourceCount}</b> с источником</span>
+          <span><b>{blockerCount || attentionCount || noValueCount}</b> {blockerCount || attentionCount ? "блокеры" : "без значения"}</span>
         </div>
         {blockerItems.length ? (
           <div className="productParamBlockerList" aria-label="Блокеры параметров">
