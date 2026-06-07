@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.storage.relational_pim_store import (
     claim_pim_workflow_run_as_running,
@@ -221,3 +221,74 @@ def prune_export_jobs() -> int:
         message="Подготовка экспорта была прервана. Запустите проверку заново.",
         error="STALE_EXPORT_JOB",
     )
+
+
+def run_persisted_workflow_job(
+    job_id: str,
+    *,
+    workflow: str,
+    parse_request: Callable[[Dict[str, Any]], Any],
+    execute: Callable[[Any], Dict[str, Any]],
+    running_phase: str,
+    running_message: str,
+    completed_message: str,
+    invalid_request_message: str,
+    failed_message: str,
+) -> None:
+    job = get_workflow_job(job_id, workflow=workflow)
+    if not isinstance(job, dict):
+        return
+    request_payload = job.get("request") if isinstance(job.get("request"), dict) else {}
+    try:
+        request = parse_request(request_payload)
+    except Exception as exc:
+        job.update(
+            {
+                "status": "failed",
+                "phase": "failed",
+                "message": invalid_request_message,
+                "finished_at": now_iso(),
+                "updated_ts": time.time(),
+                "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+            }
+        )
+        save_workflow_job(job, workflow=workflow)
+        return
+
+    job.update(
+        {
+            "status": "running",
+            "phase": running_phase,
+            "message": running_message,
+            "started_at": job.get("started_at") or now_iso(),
+            "updated_ts": time.time(),
+        }
+    )
+    save_workflow_job(job, workflow=workflow)
+    try:
+        result = execute(request)
+        job.update(
+            {
+                "status": "completed",
+                "phase": "completed",
+                "message": completed_message,
+                "run_id": result.get("run_id"),
+                "run": result,
+                "summary": result.get("summary"),
+                "finished_at": now_iso(),
+                "updated_ts": time.time(),
+            }
+        )
+        save_workflow_job(job, workflow=workflow)
+    except Exception as exc:
+        job.update(
+            {
+                "status": "failed",
+                "phase": "failed",
+                "message": failed_message,
+                "finished_at": now_iso(),
+                "updated_ts": time.time(),
+                "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+            }
+        )
+        save_workflow_job(job, workflow=workflow)

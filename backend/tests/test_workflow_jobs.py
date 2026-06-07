@@ -76,3 +76,62 @@ def test_prune_stale_workflow_jobs_marks_only_expired_jobs(monkeypatch):
             "error": "STALE_TEST_JOB",
         }
     ]
+
+
+def test_run_persisted_workflow_job_marks_completed(monkeypatch):
+    saved: list[dict] = []
+    job = {"id": "job_1", "job_id": "job_1", "status": "queued", "request": {"limit": 1}}
+
+    monkeypatch.setattr(workflow_jobs, "get_workflow_job", lambda job_id, *, workflow: dict(job))
+    monkeypatch.setattr(workflow_jobs, "now_iso", lambda: "2026-06-07T10:00:00+00:00")
+
+    def save_job(payload, *, workflow):
+        saved.append(dict(payload))
+        return payload
+
+    monkeypatch.setattr(workflow_jobs, "save_workflow_job", save_job)
+
+    workflow_jobs.run_persisted_workflow_job(
+        "job_1",
+        workflow="test_workflow",
+        parse_request=lambda payload: payload,
+        execute=lambda request: {"run_id": "run_1", "summary": {"limit": request["limit"]}},
+        running_phase="preparing",
+        running_message="running",
+        completed_message="done",
+        invalid_request_message="bad request",
+        failed_message="failed",
+    )
+
+    assert [item["status"] for item in saved] == ["running", "completed"]
+    assert saved[-1]["run_id"] == "run_1"
+    assert saved[-1]["summary"] == {"limit": 1}
+
+
+def test_run_persisted_workflow_job_marks_invalid_request_failed(monkeypatch):
+    saved: list[dict] = []
+    job = {"id": "job_1", "job_id": "job_1", "status": "queued", "request": {"bad": True}}
+
+    monkeypatch.setattr(workflow_jobs, "get_workflow_job", lambda job_id, *, workflow: dict(job))
+    monkeypatch.setattr(workflow_jobs, "now_iso", lambda: "2026-06-07T10:00:00+00:00")
+    monkeypatch.setattr(workflow_jobs, "save_workflow_job", lambda payload, *, workflow: saved.append(dict(payload)) or payload)
+
+    def parse_request(payload):
+        raise ValueError("invalid")
+
+    workflow_jobs.run_persisted_workflow_job(
+        "job_1",
+        workflow="test_workflow",
+        parse_request=parse_request,
+        execute=lambda request: {"run_id": "run_1"},
+        running_phase="preparing",
+        running_message="running",
+        completed_message="done",
+        invalid_request_message="bad request",
+        failed_message="failed",
+    )
+
+    assert len(saved) == 1
+    assert saved[0]["status"] == "failed"
+    assert saved[0]["message"] == "bad request"
+    assert saved[0]["error"].startswith("ValueError:")

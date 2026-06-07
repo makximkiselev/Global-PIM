@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.connectors_state import ConnectorsStateReadAdapter
+from app.core.export_contracts import export_payload_audit
 from app.core.json_store import read_doc, write_doc
 from app.core.media import dedupe_media_items, media_identity_keys
 from app.core.products.parameter_flow import dict_id_for_product_feature
@@ -27,6 +28,7 @@ from app.core.workflow_jobs import (
     get_workflow_job,
     list_workflow_jobs,
     prune_export_jobs,
+    run_persisted_workflow_job,
     save_export_job,
     start_export_worker_process,
 )
@@ -1666,14 +1668,14 @@ def _export_payload_audit(provider: str, payload: Dict[str, Any]) -> Dict[str, A
                 attributes_with_source += 1
             else:
                 missing_source.append(param_name)
-    return {
+    return export_payload_audit({
         "price_source": str(payload.get("price_source") or "").strip() or "unknown",
         "media_count": media_count,
         "attributes_total": attributes_total,
         "attributes_with_source": attributes_with_source,
         "attributes_without_source": max(0, attributes_total - attributes_with_source),
         "missing_source": missing_source[:12],
-    }
+    })
 
 
 def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
@@ -2187,55 +2189,17 @@ def run_catalog_export(req: CatalogExportRunReq) -> Dict[str, Any]:
 
 
 def _run_catalog_export_job(job_id: str) -> None:
-    job = get_workflow_job(job_id, workflow=_EXPORT_WORKFLOW)
-    if not isinstance(job, dict):
-        return
-    request_payload = job.get("request") if isinstance(job.get("request"), dict) else {}
-    try:
-        req = CatalogExportRunReq.model_validate(request_payload)
-    except Exception as exc:
-        job.update({
-            "status": "failed",
-            "phase": "failed",
-            "message": "Не удалось прочитать параметры export batch.",
-            "finished_at": _now_iso(),
-            "updated_ts": time.time(),
-            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
-        })
-        _save_export_job(job)
-        return
-
-    job.update({
-        "status": "running",
-        "phase": "preparing",
-        "message": "Готовлю export batch: проверяю медиа, описание, категории, параметры и значения.",
-        "started_at": job.get("started_at") or _now_iso(),
-        "updated_ts": time.time(),
-    })
-    _save_export_job(job)
-    try:
-        result = _build_catalog_export_run(req)
-        job.update({
-            "status": "completed",
-            "phase": "completed",
-            "message": "Export batch подготовлен. Проверьте готовые строки и блокеры.",
-            "run_id": result.get("run_id"),
-            "run": result,
-            "summary": result.get("summary"),
-            "finished_at": _now_iso(),
-            "updated_ts": time.time(),
-        })
-        _save_export_job(job)
-    except Exception as exc:
-        job.update({
-            "status": "failed",
-            "phase": "failed",
-            "message": "Подготовка export batch не завершилась. Можно запустить проверку заново.",
-            "finished_at": _now_iso(),
-            "updated_ts": time.time(),
-            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
-        })
-        _save_export_job(job)
+    run_persisted_workflow_job(
+        job_id,
+        workflow=_EXPORT_WORKFLOW,
+        parse_request=CatalogExportRunReq.model_validate,
+        execute=_build_catalog_export_run,
+        running_phase="preparing",
+        running_message="Готовлю export batch: проверяю медиа, описание, категории, параметры и значения.",
+        completed_message="Export batch подготовлен. Проверьте готовые строки и блокеры.",
+        invalid_request_message="Не удалось прочитать параметры export batch.",
+        failed_message="Подготовка export batch не завершилась. Можно запустить проверку заново.",
+    )
 
 
 @router.post("/export/jobs")
