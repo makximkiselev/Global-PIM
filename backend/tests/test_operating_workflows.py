@@ -3864,6 +3864,56 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["dry_run"], True)
         self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["batches"][0]["provider"], "yandex_market")
 
+    def test_submit_payload_uses_marketplace_api_shape_not_audit_shape(self) -> None:
+        yandex_payload = catalog_exchange._prepare_submit_payload_item(
+            "yandex_market",
+            {
+                "offerId": "GT-1",
+                "name": "Ready item",
+                "price": "1000000",
+                "price_source": "technical_placeholder",
+                "parameterValues": [
+                    {
+                        "parameterId": "123",
+                        "parameterName": "Цвет",
+                        "value": "Black",
+                        "sourceCatalogName": "Цвет",
+                    }
+                ],
+            },
+        )
+        self.assertNotIn("price_source", yandex_payload)
+        self.assertEqual(yandex_payload["parameterValues"][0]["parameterId"], 123)
+        self.assertNotIn("sourceCatalogName", yandex_payload["parameterValues"][0])
+
+        ozon_payload = catalog_exchange._prepare_submit_payload_item(
+            "ozon",
+            {
+                "offer_id": "GT-1",
+                "description_category_id": "type:15621050:95139",
+                "price": "1000000",
+                "price_source": "technical_placeholder",
+                "attributes": [
+                    {
+                        "id": "85",
+                        "name": "Бренд",
+                        "sourceCatalogName": "Бренд",
+                        "values": [{"value": "Apple"}],
+                    },
+                    {
+                        "id": "8229",
+                        "name": "Тип",
+                        "values": [{"dictionary_value_id": "123", "value": "Смартфон"}],
+                    },
+                ],
+            },
+        )
+        self.assertEqual(ozon_payload["description_category_id"], 15621050)
+        self.assertEqual(ozon_payload["type_id"], 95139)
+        self.assertNotIn("price_source", ozon_payload)
+        self.assertEqual(ozon_payload["attributes"][0], {"id": 85, "values": [{"value": "Apple"}]})
+        self.assertEqual(ozon_payload["attributes"][1]["values"][0]["dictionary_value_id"], 123)
+
     def test_info_model_draft_from_products_creates_candidates_with_provenance(self) -> None:
         from app.core.info_models import draft_service
 

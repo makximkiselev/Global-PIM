@@ -1721,6 +1721,105 @@ def _clean_export_payload_item(provider: str, payload_item: Dict[str, Any]) -> D
     return payload
 
 
+def _int_or_original(value: Any) -> Any:
+    if isinstance(value, int):
+        return value
+    raw = str(value or "").strip()
+    if raw.isdigit():
+        return int(raw)
+    return value
+
+
+def _strip_submit_meta(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _strip_submit_meta(item)
+            for key, item in value.items()
+            if str(key) not in {"price_source", "sourceCatalogName", "source_catalog_name"}
+        }
+    if isinstance(value, list):
+        return [_strip_submit_meta(item) for item in value]
+    return value
+
+
+def _prepare_yandex_submit_payload(payload_item: Dict[str, Any]) -> Dict[str, Any]:
+    payload = _strip_submit_meta(deepcopy(payload_item))
+    params = payload.get("parameterValues") if isinstance(payload.get("parameterValues"), list) else []
+    cleaned_params: List[Dict[str, Any]] = []
+    for param in params:
+        if not isinstance(param, dict):
+            continue
+        cleaned = dict(param)
+        if "parameterId" in cleaned:
+            cleaned["parameterId"] = _int_or_original(cleaned.get("parameterId"))
+        if "valueId" in cleaned:
+            cleaned["valueId"] = _int_or_original(cleaned.get("valueId"))
+        cleaned_params.append(cleaned)
+    if cleaned_params:
+        payload["parameterValues"] = cleaned_params
+    else:
+        payload.pop("parameterValues", None)
+    for field in ("barcodes", "manuals", "videos", "deleteParameters"):
+        if isinstance(payload.get(field), list) and not payload.get(field):
+            payload.pop(field, None)
+    return payload
+
+
+def _prepare_ozon_submit_payload(payload_item: Dict[str, Any]) -> Dict[str, Any]:
+    payload = _strip_submit_meta(deepcopy(payload_item))
+    category_ref = str(payload.get("description_category_id") or "").strip()
+    if category_ref.startswith("type:"):
+        parts = category_ref.split(":")
+        if len(parts) >= 3:
+            category_id = str(parts[1] or "").strip()
+            type_id = str(parts[2] or "").strip()
+            if category_id:
+                payload["description_category_id"] = _int_or_original(category_id)
+            if type_id:
+                payload["type_id"] = _int_or_original(type_id)
+    elif "description_category_id" in payload:
+        payload["description_category_id"] = _int_or_original(payload.get("description_category_id"))
+    if "type_id" in payload:
+        payload["type_id"] = _int_or_original(payload.get("type_id"))
+
+    attrs = payload.get("attributes") if isinstance(payload.get("attributes"), list) else []
+    cleaned_attrs: List[Dict[str, Any]] = []
+    for attr in attrs:
+        if not isinstance(attr, dict):
+            continue
+        cleaned: Dict[str, Any] = {}
+        if "id" in attr:
+            cleaned["id"] = _int_or_original(attr.get("id"))
+        if "complex_id" in attr:
+            cleaned["complex_id"] = _int_or_original(attr.get("complex_id"))
+        values = attr.get("values") if isinstance(attr.get("values"), list) else []
+        cleaned_values: List[Dict[str, Any]] = []
+        for val in values:
+            if not isinstance(val, dict):
+                continue
+            cleaned_val = {
+                str(key): _int_or_original(item) if str(key) in {"dictionary_value_id", "value_id"} else item
+                for key, item in val.items()
+                if str(key) not in {"sourceCatalogName", "source_catalog_name"}
+            }
+            if cleaned_val:
+                cleaned_values.append(cleaned_val)
+        cleaned["values"] = cleaned_values
+        if cleaned.get("id") and cleaned_values:
+            cleaned_attrs.append(cleaned)
+    payload["attributes"] = cleaned_attrs
+    return payload
+
+
+def _prepare_submit_payload_item(provider: str, payload_item: Dict[str, Any]) -> Dict[str, Any]:
+    provider_code = str(provider or "").strip()
+    if provider_code == "yandex_market":
+        return _prepare_yandex_submit_payload(payload_item)
+    if provider_code == "ozon":
+        return _prepare_ozon_submit_payload(payload_item)
+    return _strip_submit_meta(deepcopy(payload_item))
+
+
 def _export_payload_audit(provider: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     provider_code = str(provider or "").strip()
     media_count = 0
@@ -1862,11 +1961,13 @@ def _safe_submit_response(body: Any) -> Any:
 async def _submit_yandex_export_batch(batch: Dict[str, Any], *, dry_run: bool = False) -> Dict[str, Any]:
     items = batch.get("items") if isinstance(batch.get("items"), list) else []
     payload_items = [
-        deepcopy(item.get("payload")) if isinstance(item, dict) and isinstance(item.get("payload"), dict) else {}
+        _prepare_submit_payload_item("yandex_market", item.get("payload"))
+        if isinstance(item, dict) and isinstance(item.get("payload"), dict)
+        else {}
         for item in items
     ]
     payload_items = [item for item in payload_items if item]
-    body = {"offerMappingEntries": [{"offer": item} for item in payload_items]}
+    body = {"offerMappings": [{"offer": item} for item in payload_items]}
     if dry_run:
         return {"ok": True, "dry_run": True, "request": {"items": len(payload_items)}, "response": {}}
     store = _connector_store_by_id("yandex_market", str(batch.get("store_id") or ""))
@@ -1919,7 +2020,9 @@ async def _submit_yandex_export_batch(batch: Dict[str, Any], *, dry_run: bool = 
 async def _submit_ozon_export_batch(batch: Dict[str, Any], *, dry_run: bool = False) -> Dict[str, Any]:
     items = batch.get("items") if isinstance(batch.get("items"), list) else []
     payload_items = [
-        deepcopy(item.get("payload")) if isinstance(item, dict) and isinstance(item.get("payload"), dict) else {}
+        _prepare_submit_payload_item("ozon", item.get("payload"))
+        if isinstance(item, dict) and isinstance(item.get("payload"), dict)
+        else {}
         for item in items
     ]
     payload_items = [item for item in payload_items if item]
