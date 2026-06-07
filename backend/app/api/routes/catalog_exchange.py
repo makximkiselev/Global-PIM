@@ -1691,10 +1691,10 @@ def _ozon_attribute_value_payload(
     if _ozon_attribute_is_dictionary(meta, allowed_rows):
         if not allowed_rows:
             return None, f"{attr_name}: справочник Ozon не импортирован"
-        match = _match_ozon_allowed_value(value, allowed_rows)
-        if not match:
+        parts = _split_ozon_dictionary_value(value)
+        if parts:
             payloads: List[Dict[str, Any]] = []
-            for part in _split_ozon_dictionary_value(value):
+            for part in parts:
                 part_match = _match_ozon_allowed_value(part, allowed_rows)
                 if not part_match:
                     payloads = []
@@ -1706,6 +1706,8 @@ def _ozon_attribute_value_payload(
                 payloads.append(payload)
             if payloads:
                 return payloads, None
+        match = _match_ozon_allowed_value(value, allowed_rows)
+        if not match:
             return None, f"{attr_name}: значение не найдено в справочнике Ozon"
         dictionary_value_id = _ozon_dictionary_value_id(match)
         matched_value = _ozon_value_text(match)
