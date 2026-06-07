@@ -719,9 +719,30 @@ function fieldLayerLabel(value?: string) {
   return "Характеристика";
 }
 
+function isReadonlySystemFeature(feature: ProductFeatureValue | null | undefined) {
+  if (!feature) return false;
+  const declaredSystem = Boolean(feature.locked || normalizeText(feature.field_layer) === "system" || normalizeText(feature.fill_source) === "system");
+  if (!declaredSystem) return false;
+  const key = `${normalizeText(feature.code)} ${normalizeText(feature.name)}`.toLowerCase();
+  return [
+    "sku_gt",
+    "sku_pim",
+    "sku pim",
+    "sku gt",
+    "наименование",
+    "название товара",
+    "title",
+    "offer_id",
+    "seller_code",
+    "код продавца",
+    "артикул продавца",
+  ].some((token) => key.includes(token));
+}
+
 function featureFillSourceLabel(feature: ProductFeatureValue) {
   const fillSource = normalizeText(feature.fill_source);
-  if (fillSource === "system" || feature.locked) return "Заполнено системой";
+  if (isReadonlySystemFeature(feature)) return "Заполнено системой";
+  if (fillSource === "system" || feature.locked) return "Заполняет контент-менеджер";
   if (fillSource === "product_documents") return "Берется из документов товара";
   if (fillSource === "rich_content_editor") return "Берется из rich-content";
   if (fillSource === "product_media") return "Берется из медиа товара";
@@ -730,12 +751,11 @@ function featureFillSourceLabel(feature: ProductFeatureValue) {
 }
 
 function systemFeatureValue(feature: ProductFeatureValue, product: ProductData | null) {
-  if (!product || !(feature.locked || normalizeText(feature.field_layer) === "system")) return "";
+  if (!product || !isReadonlySystemFeature(feature)) return "";
   const key = `${normalizeText(feature.code)} ${normalizeText(feature.name)}`.toLowerCase();
   if (key.includes("sku_gt")) return normalizeText(product.sku_gt);
   if (key.includes("sku_pim")) return normalizeText(product.sku_pim);
   if (key.includes("наименование") || key.includes("title")) return normalizeText(product.title);
-  if (key.includes("бренд") || key.includes("brand")) return inferBrand(product.title, product.content?.features || []);
   return "";
 }
 
@@ -904,7 +924,7 @@ function ProductAttributeWorkbench({
   }, [features, selectedKey]);
   const selectedValue = selectedFeature ? featureValue(selectedFeature) : "";
   const selectedFeatureKey = selectedFeature ? featureKey(selectedFeature, features.indexOf(selectedFeature)) : "";
-  const selectedIsSystem = Boolean(selectedFeature?.locked || normalizeText(selectedFeature?.field_layer) === "system" || normalizeText(selectedFeature?.fill_source) === "system");
+  const selectedIsSystem = isReadonlySystemFeature(selectedFeature);
   const [draftValue, setDraftValue] = useState(selectedValue);
   const sourceEntries = selectedFeature ? sourceEntriesForFeature(selectedFeature) : [];
   const selectedFlowRow = flowRowForFeature(parameterFlow, selectedFeature);
@@ -1026,7 +1046,7 @@ function ProductAttributeWorkbench({
                   <strong>{normalizeText(feature.name) || normalizeText(feature.code) || "Параметр"}</strong>
                   <em title={value || undefined}>{value ? compactText(value, 78) : "Не заполнено"}</em>
                 </span>
-                <Badge tone={feature.locked ? "neutral" : qualityTone(!!value)}>{feature.locked ? "системн." : sourceCount ? `${sourceCount} источн.` : "ручн."}</Badge>
+                <Badge tone={isReadonlySystemFeature(feature) ? "neutral" : qualityTone(!!value)}>{isReadonlySystemFeature(feature) ? "системн." : sourceCount ? `${sourceCount} источн.` : "ручн."}</Badge>
               </button>
             );
           })}
@@ -1831,7 +1851,7 @@ function ProductWorkspaceFeature() {
 
   async function saveFeatureValue(feature: ProductFeatureValue, value: string) {
     if (!product) return;
-    if (feature.locked || normalizeText(feature.field_layer) === "system" || normalizeText(feature.fill_source) === "system") return;
+    if (isReadonlySystemFeature(feature)) return;
     const normalizedValue = normalizeText(value);
     const targetCode = featureIdentity(feature.code);
     const targetName = featureIdentity(feature.name);
