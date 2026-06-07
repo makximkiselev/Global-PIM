@@ -20,7 +20,11 @@ import httpx
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from app.core.ai_contracts import json_object_from_text, parse_competitor_candidate_suggestions
+from app.core.ai_contracts import (
+    json_object_from_text,
+    parse_competitor_candidate_suggestions,
+    parse_competitor_spec_mapping_suggestions,
+)
 from app.core.llm import LlmError, llm_chat_text
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
 from app.core.products.parameter_flow import dict_id_for_product_feature
@@ -3191,8 +3195,8 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
             timeout_seconds=_AI_PRODUCT_MAPPING_TIMEOUT_SECONDS,
             max_tokens=700,
         )
-        parsed = _json_object_from_text(llm_response["content"])
-        items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
+        raw_items = parse_competitor_spec_mapping_suggestions(llm_response["content"])
+        items = _validate_llm_suggestions(raw_items=raw_items, rule_items=rule_items, targets=targets)
         items = _apply_ai_mapping_memory(items, memory_examples, targets)
         return {"mode": "llm", "model": llm_response.get("model"), "items": items, "warnings": warnings}
     except LlmError as exc:
@@ -3276,8 +3280,8 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
             timeout_seconds=_AI_TEMPLATE_MAPPING_TIMEOUT_SECONDS,
             max_tokens=700,
         )
-        parsed = _json_object_from_text(llm_response["content"])
-        items = _validate_llm_suggestions(raw_items=parsed.get("items"), rule_items=rule_items, targets=targets)
+        raw_items = parse_competitor_spec_mapping_suggestions(llm_response["content"])
+        items = _validate_llm_suggestions(raw_items=raw_items, rule_items=rule_items, targets=targets)
         items = _apply_ai_mapping_memory(items, memory_examples, targets)
         mapped.update(_mapped_specs_from_ai_items(items, specs, targets))
     except Exception:

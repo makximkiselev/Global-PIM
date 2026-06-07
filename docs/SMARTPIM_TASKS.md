@@ -122,7 +122,7 @@ Library adoption sequence:
 7. AI foundation:
    - move LLM prompts/output validation into a typed AI service;
    - reuse it for competitor candidate suggestions, parameter matching, value matching, and export semantic audit.
-   Status: in progress. `app.core.llm` centralizes LLM transport and now supports bounded `max_tokens` for OpenAI-compatible and Ollama-native calls. `app.core.ai_contracts` adds shared JSON extraction plus typed Pydantic value-pair suggestions used by value AI matching, typed attribute-row suggestions used by marketplace parameter matching, and typed competitor candidate URL suggestions used by AI competitor discovery. Attribute AI now accepts the list-format response requested in its own prompt instead of silently dropping non-dict rows. Remaining work is to reuse typed contracts across competitor spec-to-field mapping and export semantic audit.
+   Status: in progress. `app.core.llm` centralizes LLM transport and now supports bounded `max_tokens` for OpenAI-compatible and Ollama-native calls. `app.core.ai_contracts` adds shared JSON extraction plus typed Pydantic value-pair suggestions used by value AI matching, typed attribute-row suggestions used by marketplace parameter matching, typed competitor candidate URL suggestions used by AI competitor discovery, and typed competitor spec-to-field mapping suggestions used by product/template competitor enrichment. Attribute AI now accepts the list-format response requested in its own prompt instead of silently dropping non-dict rows. Remaining work is to reuse typed contracts for export semantic audit.
 
 Initial success criteria:
 

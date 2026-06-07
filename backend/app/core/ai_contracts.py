@@ -132,3 +132,70 @@ def parse_competitor_candidate_suggestions(text: str) -> List[Dict[str, Any]]:
         return []
     parsed = AiCompetitorCandidatesResponse.model_validate({"candidates": raw_items})
     return [item.model_dump() for item in parsed.candidates if item.url]
+
+
+class AiCompetitorSpecMappingSuggestion(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    source_id: str = ""
+    source_name: str = ""
+    raw_value: str = ""
+    action: str = ""
+    target_code: str = ""
+    target_name: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reason: str = ""
+
+    @field_validator(
+        "source_id",
+        "source_name",
+        "raw_value",
+        "action",
+        "target_code",
+        "target_name",
+        "reason",
+        mode="before",
+    )
+    @classmethod
+    def _text(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _confidence(cls, value: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(value or 0.0)))
+        except (TypeError, ValueError):
+            return 0.0
+
+
+class AiCompetitorSpecMappingsResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    items: List[AiCompetitorSpecMappingSuggestion] = Field(default_factory=list)
+
+
+def _coerce_competitor_spec_mapping(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        "source_id": raw.get("source_id") or raw.get("sid") or "",
+        "source_name": raw.get("source_name") or raw.get("n") or "",
+        "raw_value": raw.get("raw_value") or raw.get("v") or "",
+        "action": raw.get("action") or "",
+        "target_code": raw.get("target_code") or raw.get("c") or "",
+        "target_name": raw.get("target_name") or raw.get("tn") or "",
+        "confidence": raw.get("confidence") or 0.0,
+        "reason": raw.get("reason") or "",
+    }
+
+
+def parse_competitor_spec_mapping_suggestions(text: str) -> List[Dict[str, Any]]:
+    obj = json_object_from_text(text)
+    raw_items = obj.get("items")
+    if not isinstance(raw_items, list):
+        return []
+    parsed = AiCompetitorSpecMappingsResponse.model_validate(
+        {"items": [_coerce_competitor_spec_mapping(item) for item in raw_items]}
+    )
+    return [item.model_dump() for item in parsed.items if item.source_id and item.source_name]
