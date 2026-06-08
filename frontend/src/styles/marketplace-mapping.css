@@ -452,6 +452,13 @@
   font-size:13px;
 }
 
+.mm-emptyActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+}
+
 .mm-parentCategoryHelp{
   margin-top:16px;
   display:grid;

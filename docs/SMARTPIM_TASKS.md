@@ -1198,6 +1198,10 @@ Next fix in the category flow:
    - empty model/value states now route to `/sources?tab=params&category=...` instead of `/templates/{category_id}`;
    - template links use a real `template_id` when one exists, including the saved-template toast after mapping saves;
    - product source empty states now keep the user in the source/model workflow instead of opening a template route with the wrong identifier.
+82. Parameter mapping no longer dead-ends on parent/unmapped categories:
+   - `CATEGORY_NOT_DIRECTLY_MAPPED` with no mapped descendants now shows a direct action to `/sources?tab=sources&category=...`;
+   - the user can fix marketplace category bindings without guessing that they need to leave the parameter tab;
+   - this uses the same category id context and keeps the source/model workflow consistent.
 
 Current smoke status:
 

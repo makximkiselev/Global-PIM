@@ -97,11 +97,15 @@ function invalidateSourcesReadCaches(categoryId?: string) {
   clearPersistentAttrDetailsCache(categoryId);
 }
 
-function sourcesParamsHref(categoryId?: string) {
-  const params = new URLSearchParams({ tab: "params" });
+function sourcesWorkflowHref(tab: "sources" | "params", categoryId?: string) {
+  const params = new URLSearchParams({ tab });
   const category = String(categoryId || "").trim();
   if (category) params.set("category", category);
   return `/sources?${params.toString()}`;
+}
+
+function sourcesParamsHref(categoryId?: string) {
+  return sourcesWorkflowHref("params", categoryId);
 }
 
 async function readCategoriesMappingBootstrap(): Promise<CategoriesResp> {
@@ -3661,6 +3665,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               </button>
                             ))}
                           </div>
+                        </div>
+                      ) : null}
+                      {attrDetailsErrorCode === "CATEGORY_NOT_DIRECTLY_MAPPED" && !selectedCatalogMappedDescendants.length ? (
+                        <div className="mm-emptyActions">
+                          <Link className="btn btn-primary" to={sourcesWorkflowHref("sources", activeAttrCategoryId)}>
+                            Открыть привязку категорий
+                          </Link>
                         </div>
                       ) : null}
                     </div>
