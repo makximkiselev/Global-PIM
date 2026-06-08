@@ -4,6 +4,7 @@ import importlib.util
 import asyncio
 import sys
 from pathlib import Path
+from urllib.error import URLError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +41,58 @@ def test_result_status_fails_when_any_check_failed():
     assert scenario_smoke.result_status(
         [scenario_smoke.CheckResult("ok", True), scenario_smoke.CheckResult("bad", False)]
     ) == 1
+
+
+def test_http_client_retries_transient_url_errors(monkeypatch):
+    class Response:
+        status = 200
+        headers = {"content-type": "text/plain"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b"ok"
+
+    class Opener:
+        def __init__(self):
+            self.calls = 0
+
+        def open(self, _request, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                raise URLError("handshake timed out")
+            return Response()
+
+    sleeps: list[float] = []
+    client = scenario_smoke.HttpClient("https://pim.example.test", 1)
+    opener = Opener()
+    client.opener = opener
+    monkeypatch.setattr(scenario_smoke.time, "sleep", lambda value: sleeps.append(value))
+
+    assert client.get("/login") == (200, "ok", "text/plain")
+    assert opener.calls == 2
+    assert sleeps
+
+
+def test_browser_console_filter_only_ignores_transient_connection_closed():
+    assert scenario_smoke.is_ignorable_browser_console_error(
+        "Failed to load resource: net::ERR_CONNECTION_CLOSED"
+    )
+    assert not scenario_smoke.is_ignorable_browser_console_error("Uncaught TypeError: cannot read properties of undefined")
+    assert not scenario_smoke.is_ignorable_browser_console_error("Failed to load resource: the server responded with a status of 500")
+
+
+def test_parse_positive_int_env_uses_default_for_invalid_values(monkeypatch):
+    monkeypatch.setenv("SMARTPIM_TEST_INT", "bad")
+    assert scenario_smoke.parse_positive_int_env("SMARTPIM_TEST_INT", 7) == 7
+    monkeypatch.setenv("SMARTPIM_TEST_INT", "0")
+    assert scenario_smoke.parse_positive_int_env("SMARTPIM_TEST_INT", 7) == 1
+    monkeypatch.setenv("SMARTPIM_TEST_INT", "12")
+    assert scenario_smoke.parse_positive_int_env("SMARTPIM_TEST_INT", 7) == 12
 
 
 def test_browser_smoke_require_auth_fails_without_credentials(monkeypatch):

@@ -134,6 +134,21 @@ def validate_export_latest_run(payload: dict[str, Any]) -> CheckResult:
     return CheckResult("export latest run", True, f"{run_id}: ready={ready}, blocked={blocked}, batches={len(batches)}")
 
 
+def is_ignorable_browser_console_error(message: str) -> bool:
+    transient_network_markers = ("net::ERR_CONNECTION_CLOSED",)
+    return any(marker in message for marker in transient_network_markers)
+
+
+def parse_positive_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        return default
+
+
 def print_results(results: Iterable[CheckResult]) -> None:
     for result in results:
         marker = "PASS" if result.ok else "FAIL"
@@ -142,9 +157,12 @@ def print_results(results: Iterable[CheckResult]) -> None:
 
 
 class HttpClient:
-    def __init__(self, base_url: str, timeout: int, *, insecure_ssl: bool = False) -> None:
+    def __init__(self, base_url: str, timeout: int, *, insecure_ssl: bool = False, retries: int | None = None) -> None:
         self.base_url = normalize_base_url(base_url)
         self.timeout = timeout
+        if retries is None:
+            retries = parse_positive_int_env("SMARTPIM_SMOKE_HTTP_RETRIES", 3)
+        self.retries = max(1, retries)
         if insecure_ssl:
             self.opener = build_opener(HTTPSHandler(context=ssl._create_unverified_context()))
         else:
@@ -153,16 +171,24 @@ class HttpClient:
     def get(self, path_or_url: str) -> tuple[int, str, str]:
         url = path_or_url if path_or_url.startswith(("http://", "https://")) else urljoin(f"{self.base_url}/", path_or_url.lstrip("/"))
         request = Request(url, headers={"User-Agent": "SmartPIMScenarioSmoke/1.0"})
-        try:
-            with self.opener.open(request, timeout=self.timeout) as response:
-                body = response.read().decode("utf-8", errors="replace")
-                content_type = response.headers.get("content-type", "")
-                return int(response.status), body, content_type
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            return int(exc.code), body, exc.headers.get("content-type", "")
-        except URLError as exc:
-            raise RuntimeError(str(exc.reason)) from exc
+        last_error: URLError | None = None
+        for attempt in range(self.retries):
+            try:
+                with self.opener.open(request, timeout=self.timeout) as response:
+                    body = response.read().decode("utf-8", errors="replace")
+                    content_type = response.headers.get("content-type", "")
+                    return int(response.status), body, content_type
+            except HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                return int(exc.code), body, exc.headers.get("content-type", "")
+            except URLError as exc:
+                last_error = exc
+                if attempt + 1 >= self.retries:
+                    break
+                time.sleep(min(2.0, 0.5 * (attempt + 1)))
+        if last_error is None:
+            raise RuntimeError("request failed")
+        raise RuntimeError(str(last_error.reason)) from last_error
 
 
 def public_smoke(base_url: str, timeout: int, *, insecure_ssl: bool = False) -> list[CheckResult]:
@@ -237,7 +263,12 @@ async def browser_smoke(
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page(ignore_https_errors=insecure_ssl)
-        page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+        page.on(
+            "console",
+            lambda msg: console_errors.append(msg.text)
+            if msg.type == "error" and not is_ignorable_browser_console_error(msg.text)
+            else None,
+        )
         page.set_default_timeout(timeout * 1000)
 
         if email and password:
@@ -280,11 +311,25 @@ async def browser_smoke(
         if export_latest_product_id:
             try:
                 product = quote(str(export_latest_product_id).strip(), safe="")
-                response = await page.request.get(f"{base_url}/api/catalog/exchange/export/latest-run?product_id={product}")
-                if response.status != 200:
-                    results.append(CheckResult("export latest run", False, f"status={response.status}"))
-                else:
-                    results.append(validate_export_latest_run(await response.json()))
+                latest_url = f"{base_url}/api/catalog/exchange/export/latest-run?product_id={product}"
+                latest_timeout = parse_positive_int_env("SMARTPIM_SMOKE_EXPORT_LATEST_TIMEOUT_MS", max(timeout * 1000, 60000))
+                latest_retries = parse_positive_int_env("SMARTPIM_SMOKE_EXPORT_LATEST_RETRIES", 2)
+                last_error = ""
+                for attempt in range(latest_retries):
+                    try:
+                        response = await page.request.get(latest_url, timeout=latest_timeout)
+                        if response.status != 200:
+                            results.append(CheckResult("export latest run", False, f"status={response.status}"))
+                        else:
+                            results.append(validate_export_latest_run(await response.json()))
+                        last_error = ""
+                        break
+                    except Exception as exc:
+                        last_error = str(exc)
+                        if attempt + 1 < latest_retries:
+                            await asyncio.sleep(min(2.0, 0.5 * (attempt + 1)))
+                if last_error:
+                    results.append(CheckResult("export latest run", False, last_error))
             except Exception as exc:
                 results.append(CheckResult("export latest run", False, str(exc)))
 

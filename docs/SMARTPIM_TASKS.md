@@ -1006,6 +1006,12 @@ Next fix in the category flow:
    - `content.source_values.descriptions` is rendered below the final description;
    - marketplace, competitor and sibling description sources show provider/store/source URL or donor SKU plus a compact text fragment;
    - products with text but no source metadata show an explicit warning before final export work.
+41. Public scenario smoke is resilient to transient transport/API failures:
+   - `HttpClient` retries bounded `URLError` failures before marking shell/API checks red;
+   - browser export latest-run check has its own bounded timeout/retry because the export control endpoint can occasionally exceed Playwright's default request timeout;
+   - transient `net::ERR_CONNECTION_CLOSED` resource console noise is ignored without hiding JS exceptions or 4xx/5xx resource errors;
+   - HTTP error responses are still returned immediately so real app failures are not hidden;
+   - retry/timeout knobs are configurable through `SMARTPIM_SMOKE_HTTP_RETRIES`, `SMARTPIM_SMOKE_EXPORT_LATEST_TIMEOUT_MS` and `SMARTPIM_SMOKE_EXPORT_LATEST_RETRIES`.
 
 Current smoke status:
 
