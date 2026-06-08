@@ -9,6 +9,7 @@ import InspectorPanel from "../../components/data/InspectorPanel";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import { api } from "../../lib/api";
 import { toRenderableMediaUrl } from "../../lib/media";
+import { writeProductFlowContext } from "../../lib/productFlowContext";
 import ProductCompetitorPanel from "./ProductCompetitorPanel";
 
 type ProductFeatureValue = {
@@ -261,7 +262,6 @@ const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
 ];
 
 const SECTION_IDS = new Set<SectionId>(SECTION_LABELS.map((section) => section.id));
-const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 
 const PRODUCT_NAV_ITEMS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "overview", label: "Описание", meta: "контекст SKU" },
@@ -2122,18 +2122,13 @@ function ProductWorkspaceFeature() {
 
   useEffect(() => {
     if (!product?.id) return;
-    try {
-      window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
-        productId: product.id,
-        categoryId: normalizeText(product.category_id),
-        categoryName: categoryPath || normalizeText(product.category_id),
-        title: normalizeText(product.title),
-        skuGt: normalizeText(product.sku_gt),
-        updatedAt: new Date().toISOString(),
-      }));
-    } catch {
-      // URL params still carry context when localStorage is unavailable.
-    }
+    writeProductFlowContext({
+      productId: product.id,
+      categoryId: normalizeText(product.category_id),
+      categoryName: categoryPath || normalizeText(product.category_id),
+      title: normalizeText(product.title),
+      skuGt: normalizeText(product.sku_gt),
+    });
   }, [categoryPath, product?.category_id, product?.id, product?.sku_gt, product?.title]);
 
   async function saveMediaImages(nextMedia: ProductMedia[]) {

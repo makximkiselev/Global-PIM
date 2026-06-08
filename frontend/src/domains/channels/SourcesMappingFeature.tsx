@@ -6,6 +6,7 @@ import SourcesValueMappingSection from "./SourcesValueMappingSection";
 import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
 import WorkspaceTaskQueue from "../../components/layout/WorkspaceTaskQueue";
 import { api } from "../../lib/api";
+import { readProductFlowContext, writeProductFlowContext } from "../../lib/productFlowContext";
 import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
 import "../../styles/sources-mapping-modern.css";
@@ -18,7 +19,6 @@ type MappingBootstrapResp = {
   mappings?: Record<string, Record<string, string>>;
 };
 const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v2";
-const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
 const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
@@ -26,20 +26,6 @@ const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
   { key: "params", label: "Черновик параметров", hint: "Источники -> поля PIM" },
   { key: "values", label: "Значения", hint: "Написания для выгрузки" },
 ];
-
-function readStoredProductContext(): { productId: string; categoryId: string; categoryName: string } {
-  if (typeof window === "undefined") return { productId: "", categoryId: "", categoryName: "" };
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PRODUCT_CONTEXT_CACHE_KEY) || "{}");
-    return {
-      productId: String(parsed?.productId || "").trim(),
-      categoryId: String(parsed?.categoryId || "").trim(),
-      categoryName: String(parsed?.categoryName || "").trim(),
-    };
-  } catch {
-    return { productId: "", categoryId: "", categoryName: "" };
-  }
-}
 
 function sourcesHref(tab: SourcesTab, categoryId: string, productId: string) {
   const params = new URLSearchParams();
@@ -132,7 +118,7 @@ export default function SourcesMappingFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
-  const storedContext = useMemo(() => readStoredProductContext(), []);
+  const storedContext = useMemo(() => readProductFlowContext(), []);
   const categoryParam = String(searchParams.get("category") || "").trim();
   const explicitProductParam = String(searchParams.get("product") || "").trim();
   const storedMatchesExplicitProduct = !!explicitProductParam && storedContext.productId === explicitProductParam;
@@ -174,16 +160,11 @@ export default function SourcesMappingFeature() {
 
   useEffect(() => {
     if (!productParam && !activeCategoryId) return;
-    try {
-      window.localStorage.setItem(PRODUCT_CONTEXT_CACHE_KEY, JSON.stringify({
-        productId: productParam,
-        categoryId: activeCategoryId,
-        categoryName: selectedCategoryName,
-        updatedAt: new Date().toISOString(),
-      }));
-    } catch {
-      // Context persistence is optional; explicit URL params remain authoritative.
-    }
+    writeProductFlowContext({
+      productId: productParam,
+      categoryId: activeCategoryId,
+      categoryName: selectedCategoryName,
+    });
   }, [productParam, activeCategoryId, selectedCategoryName]);
 
   useEffect(() => {
