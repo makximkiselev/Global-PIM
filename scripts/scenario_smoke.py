@@ -103,7 +103,7 @@ def build_product_flow_routes(
     routes: list[tuple[str, tuple[str, ...]]] = [
         ("/", ("Рабочая сводка", "Открыть товары")),
         (f"/templates/{category}", ("Инфо-модели", "К сопоставлениям")),
-        (f"/sources?tab=params&category={category}&product={product}", ("Сопоставления", "Черновик PIM-параметров")),
+        (f"/sources?tab=params&category={category}&product={product}", ("Сопоставления", "Черновик характеристик PIM")),
         (f"/sources?tab=values&category={category}&product={product}", ("Сопоставления", "Значения")),
         (f"/products/{product}?tab=attributes", product_markers),
         (f"/catalog/exchange?tab=export&product={product}", export_markers),

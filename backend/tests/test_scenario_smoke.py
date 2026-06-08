@@ -116,7 +116,7 @@ def test_build_product_flow_routes_are_parameterized_and_escaped():
     assert routes == (
         ("/", ("Рабочая сводка", "Открыть товары")),
         ("/templates/cat%2Fid", ("Инфо-модели", "К сопоставлениям")),
-        ("/sources?tab=params&category=cat%2Fid&product=product%2070", ("Сопоставления", "Черновик PIM-параметров")),
+        ("/sources?tab=params&category=cat%2Fid&product=product%2070", ("Сопоставления", "Черновик характеристик PIM")),
         ("/sources?tab=values&category=cat%2Fid&product=product%2070", ("Сопоставления", "Значения")),
         ("/products/product%2070?tab=attributes", ("ПАРАМЕТРЫ PIM", "Параметры и значения", "Медиа", "50001")),
         ("/catalog/exchange?tab=export&product=product%2070", ("Экспорт товаров", "Я.Маркет", "OZON", "50001")),

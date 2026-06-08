@@ -62,7 +62,7 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: strin
   if (tab === "sources") {
     return {
       title: "Собрать параметры",
-      detail: "Когда категория площадки и конкурентные карточки выбраны, переходите к черновику PIM-параметров.",
+      detail: "Когда категория площадки и конкурентные карточки выбраны, переходите к черновику характеристик PIM.",
       label: "К параметрам",
       href: sourcesHref("params", categoryId, productId),
       tone: "pending",
@@ -147,7 +147,7 @@ export default function SourcesMappingFeature() {
       tab === "sources"
         ? "Выберите PIM-категорию, сопоставьте площадки и подтвердите конкурентные карточки для насыщения товаров."
         : tab === "params"
-          ? "Соберите черновик PIM-параметров из площадок, конкурентов и товарных данных, затем утверждайте модель."
+          ? "Соберите черновик характеристик PIM из площадок, конкурентов и товарных данных, затем утверждайте модель."
           : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
@@ -332,7 +332,7 @@ export default function SourcesMappingFeature() {
           },
           {
             key: "params",
-            label: "Черновик PIM-параметров",
+            label: "Черновик характеристик PIM",
             description: "Создается из данных площадок, конкурентов и товаров. Одни только площадки не являются финальной моделью.",
             href: activeCategoryId ? sourcesHref("params", activeCategoryId, productParam) : undefined,
             actionLabel: "Черновик",

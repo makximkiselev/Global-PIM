@@ -481,8 +481,8 @@ function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds
   }
 
   return [
-    { key: "selected", title: "Связано сейчас", hint: "Рекомендация или ручной выбор уже применены к этому PIM-полю.", items: selected },
-    { key: "suggested", title: "Близко по названию", hint: "Поля площадки, похожие на выбранный PIM-параметр. Проверьте тип и значения.", items: suggested },
+    { key: "selected", title: "Связано сейчас", hint: "Рекомендация или ручной выбор уже применены к этой характеристике PIM.", items: selected },
+    { key: "suggested", title: "Близко по названию", hint: "Поля площадки, похожие на выбранную характеристику PIM. Проверьте тип и значения.", items: suggested },
     { key: "manual", title: isSearch ? "Ручной поиск" : "Все остальные поля", hint: "Полный ручной выбор из параметров выбранной категории площадки.", items: manual },
   ].filter((group) => group.items.length > 0);
 }
@@ -1134,7 +1134,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
               <span>Следующий шаг</span>
               <h3>Соберите инфо-модель категории</h3>
               <p>
-                Категории площадок уже связаны{mappingInherited ? " через родительскую ветку" : ""}, но PIM-полей для сопоставления еще нет.
+                Категории площадок уже связаны{mappingInherited ? " через родительскую ветку" : ""}, но характеристик PIM для сопоставления еще нет.
                 Сначала соберите черновик модели из товаров, площадок и конкурентов, затем возвращайтесь сюда для сопоставления полей.
               </p>
             </div>
@@ -1148,7 +1148,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
           <div className="paramsQueueBlock">
             <div className="paramsSectionHead">
               <div>
-                <h3>Черновик PIM-параметров</h3>
+                <h3>Черновик характеристик PIM</h3>
                 <p>
                   Это не финальная инфо-модель: строки собираются из площадок, конкурентов и товарных данных. Утверждайте только проверенные параметры.
                 </p>

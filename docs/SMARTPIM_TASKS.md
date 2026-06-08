@@ -1124,6 +1124,11 @@ Next fix in the category flow:
    - draft recommendations say `Связать с существующей характеристикой` or `Добавить новую характеристику`;
    - weak matches ask to verify the characteristic link, not “reuse PIM”;
    - the row badges distinguish an existing characteristic from a new characteristic, and the override action says `Создать отдельную характеристику`.
+64. Product/source/value empty states now use one vocabulary:
+   - key flow screens say `характеристики PIM` instead of mixing `PIM-поля`, `PIM-параметры`, and internal reuse wording;
+   - product attribute empty states, params setup guidance, sources route guidance, and values prerequisites now describe the same user object;
+   - a frontend search over product/channel/data-prep domains has no remaining `PIM-поле`, `PIM-параметр`, or `Переиспольз...` strings;
+   - product-flow scenario smoke now expects `Черновик характеристик PIM`, and production smoke passed after the marker update.
 
 Current smoke status:
 

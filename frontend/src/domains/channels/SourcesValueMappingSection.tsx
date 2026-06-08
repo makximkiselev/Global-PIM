@@ -557,7 +557,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
   const branchSourcesCount = Array.isArray(data?.branch_sources) ? data!.branch_sources.length : 0;
   const emptyValuesMessage = useMemo(() => {
     if (!mappingItemsCount && !rawItemsCount) {
-      return "В этой категории еще нет PIM-параметров. Сначала соберите и подтвердите черновик модели, затем здесь появятся значения для Я.Маркета и Ozon.";
+      return "В этой категории еще нет характеристик PIM. Сначала соберите и подтвердите черновик модели, затем здесь появятся значения для Я.Маркета и Ozon.";
     }
     if (!mappingItemsCount) return "В модели нет полей со справочниками, контролируемыми значениями или проверкой единиц. Можно перейти к проверке экспорта.";
     if (workFilter === "blockers") return "Блокеров по значениям нет. Открой «Все», чтобы проверить поля со справочниками.";
@@ -848,12 +848,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
               <div>
                 <strong>Значения появятся после параметров</strong>
                   <span>
-                  Сейчас у категории нет подтвержденных PIM-полей со справочниками, контролируемыми значениями или числовыми unit-check. Это нормальное состояние после reset модели: сначала соберите/подтвердите параметры, затем этот шаг покажет словари и value mapping.
+                  Сейчас у категории нет подтвержденных характеристик PIM со справочниками, контролируемыми значениями или числовыми unit-check. Это нормальное состояние после reset модели: сначала соберите/подтвердите параметры, затем этот шаг покажет словари и value mapping.
                 </span>
               </div>
               <div className="sm-valuesPrereqSteps">
                 <span>1. Собрать или открыть модель</span>
-                <span>2. Связать PIM-поля с Я.Маркет/Ozon</span>
+                <span>2. Связать характеристики PIM с Я.Маркет/Ozon</span>
                 <span>3. Вернуться сюда для значений</span>
               </div>
               <div className="sm-valuesPrereqActions">
@@ -1086,7 +1086,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
               ) : (
                 <div className="sm-valuesEmpty">
                   {!mappingItemsCount && !rawItemsCount
-                    ? "Здесь появятся значения после сборки и подтверждения PIM-параметров."
+                    ? "Здесь появятся значения после сборки и подтверждения характеристик PIM."
                     : "Выбери поле слева, чтобы открыть сопоставление значений."}
                 </div>
               )}
