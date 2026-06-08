@@ -1170,6 +1170,10 @@ Next fix in the category flow:
    - unconfirmed fields with no marketplace bindings appear first;
    - unconfirmed suggested bindings, one-PIM-to-many-marketplace bindings, and fields that require value mapping sort above ordinary ready rows;
    - rows with lower provider coverage sort earlier inside the same risk group.
+75. Value dictionary QA is more explicit in the active value panel:
+   - provider cards show covered PIM values, marketplace dictionary size, and missing value count;
+   - dictionary-quality warnings now include the human-readable reason text, not only a short label;
+   - first missing PIM values are shown as chips next to the provider, so content managers can see what AI/manual mapping must cover.
 
 Current smoke status:
 

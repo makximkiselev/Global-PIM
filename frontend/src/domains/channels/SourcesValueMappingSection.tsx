@@ -1028,11 +1028,27 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                         <strong>{provider.title}</strong>
                         <span>{provider.param_name || "Поле площадки не указано"}</span>
                         <small>{providerSampleText(provider) || "Образцов значений пока нет."}</small>
+                        {!isNumericProvider(provider) && Number(activeItem.value_count || 0) > 0 ? (
+                          <div className="sm-valuesCoverageMini">
+                            <span>PIM {provider.covered_count || 0}/{activeItem.value_count}</span>
+                            <span>Справочник {provider.allowed_count || 0}</span>
+                            {provider.missing_count ? <b>Не покрыто {provider.missing_count}</b> : <b className="is-ok">Покрыто</b>}
+                          </div>
+                        ) : null}
                         {provider.dictionary_quality?.issues?.length ? (
                           <div className="sm-valuesQualityWarnings">
                             {provider.dictionary_quality.issues.slice(0, 2).map((issue) => (
-                              <em key={issue.code || issue.label}>{issue.label || "проверь справочник"}</em>
+                              <em key={issue.code || issue.label} title={issue.text || issue.label}>
+                                <strong>{issue.label || "проверь справочник"}</strong>
+                                {issue.text ? <span>{issue.text}</span> : null}
+                              </em>
                             ))}
+                          </div>
+                        ) : null}
+                        {provider.missing_values?.length ? (
+                          <div className="sm-valuesMissingChips">
+                            {provider.missing_values.slice(0, 6).map((value) => <em key={`${provider.code}:${value}`}>{value}</em>)}
+                            {provider.missing_values.length > 6 ? <span>+{provider.missing_values.length - 6}</span> : null}
                           </div>
                         ) : null}
                         {String(provider.mode || "").toLowerCase() !== "number" && Number(activeItem.value_count || 0) > 0 && Number(provider.allowed_count || 0) > 0 ? (
