@@ -725,6 +725,17 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return Array.from(byKey.values()).slice(0, 12);
   }, [run]);
+  const exportBlockerRawTotal = useMemo(() => {
+    if (!run) return 0;
+    const batchTotal = (run.batches || []).reduce((sum, batch) => {
+      if (typeof batch.blockers_count === "number") return sum + batch.blockers_count;
+      return sum + (batch.blockers || []).length;
+    }, 0);
+    return run.summary?.blockers_count ?? batchTotal;
+  }, [run]);
+  const exportBlockerTotal = Math.max(exportBlockerRawTotal, exportBlockers.length);
+  const exportBlockersLimited = exportBlockerTotal > exportBlockers.length;
+  const blockedTargetItems = run?.summary?.blocked_target_items ?? totalBlocked;
   const exportBlockerActionSummary = useMemo(() => {
     const summary = new Map<string, { key: string; title: string; count: number }>();
     for (const blocker of exportBlockers) {
@@ -1438,7 +1449,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     { label: "SKU", value: run.summary?.product_count ?? run.count },
                     { label: "Целей выгрузки", value: run.summary?.target_count ?? run.batches.length },
                     { label: "Готовых строк", value: run.summary?.ready_target_items ?? 0 },
-                    { label: "Блокеров", value: run.summary?.blocked_target_items ?? totalBlocked, accent: (run.summary?.blocked_target_items ?? totalBlocked) > 0 },
+                    { label: "Блокеров", value: blockedTargetItems, accent: blockedTargetItems > 0 },
                   ]}
                 />
 
@@ -1631,9 +1642,34 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     <div className="cx-paneHead">
                       <div>
                         <div className="cx-paneTitle">Что мешает выгрузке</div>
-                        <div className="cx-paneSub">Уникальные SKU сгруппированы по действию: что заполнить в товаре, что сопоставить в модели, где нужны значения или медиа.</div>
+                        <div className="cx-paneSub">
+                          Показано {exportBlockers.length} из {exportBlockerTotal} причин batch. SKU сгруппированы по действию: что заполнить в товаре, что сопоставить в модели, где нужны значения или медиа.
+                        </div>
                       </div>
                     </div>
+                    <div className={`cx-exportBlockerCoverage ${exportBlockersLimited ? "isLimited" : ""}`}>
+                      <div>
+                        <span>Показано в списке</span>
+                        <strong>{exportBlockers.length}</strong>
+                      </div>
+                      <div>
+                        <span>Всего причин batch</span>
+                        <strong>{exportBlockerTotal}</strong>
+                      </div>
+                      <div>
+                        <span>Заблокировано строк</span>
+                        <strong>{blockedTargetItems}</strong>
+                      </div>
+                      <div>
+                        <span>Следующее действие</span>
+                        <strong>{exportBlockersLimited ? "Сузить область" : "Исправить ниже"}</strong>
+                      </div>
+                    </div>
+                    {exportBlockersLimited ? (
+                      <div className="cx-exportBlockerLimitNote">
+                        Для массовой проверки список показывает первый диагностический срез, а не все строки. Чтобы увидеть точные причины по каждому товару, выберите конкретные SKU или узкую категорию и подготовьте экспорт заново.
+                      </div>
+                    ) : null}
                     {exportBlockerActionSummary.length ? (
                       <div className="cx-exportBlockerSummary">
                         {exportBlockerActionSummary.map((item) => (

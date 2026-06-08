@@ -1055,6 +1055,10 @@ Next fix in the category flow:
    - `/sources?tab=params&parameter=...` selects and scrolls the matching PIM field in the virtualized params queue;
    - `/sources?tab=values&parameter=...` selects and scrolls the matching value dictionary row in the virtualized values queue;
    - Ozon export blockers now preserve `provider=ozon`, and saved/legacy blocker details inherit provider from their batch, so params/values screens also highlight the relevant marketplace block.
+52. Export blocker lists now show coverage of the diagnostic slice:
+   - the blocker panel shows how many blocker cards are visible, how many total reasons the batch reported, and how many target rows are blocked;
+   - when a mass run is clipped to the first diagnostic rows, the UI says to narrow the scope or choose concrete SKU instead of implying the 12 visible cards are the full error set;
+   - action grouping still runs on the visible diagnostic slice, while the total counters come from backend batch summary/blocker counts.
 
 Current smoke status:
 
