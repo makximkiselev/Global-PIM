@@ -1063,6 +1063,11 @@ Next fix in the category flow:
    - raw source values are split into source/SKU, original raw spelling, normalized value and final PIM value instead of one compressed line;
    - the panel shows whether the evidence list is truncated, so the user knows when they are seeing the first examples only;
    - this makes it clearer how marketplace/competitor values become dictionary values before export-specific value mapping.
+54. Scenario smoke now checks focused blocker/deep-link routes:
+   - product-flow smoke opens params and product attributes with `parameter=...` and `provider=ozon`;
+   - the default focus parameter is `Процессор` for the current smartphone fixture and can be changed with `SMARTPIM_SMOKE_FLOW_PARAMETER`;
+   - focused values deep-link smoke is opt-in through `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER`, because the current smoke fixture can legitimately have `0` value-mapping rows after the model reset;
+   - this protects exact blocker links from regressing back to generic pages that load but do not focus the affected parameter.
 
 Current smoke status:
 

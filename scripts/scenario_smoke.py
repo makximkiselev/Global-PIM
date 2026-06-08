@@ -28,6 +28,8 @@ DEFAULT_ROUTES = (
 DEFAULT_PRODUCT_FLOW_CATEGORY_ID = "12547e4d-7713-414e-8aaf-a2fe919e1d3d"
 DEFAULT_PRODUCT_FLOW_PRODUCT_ID = "product_70"
 DEFAULT_PRODUCT_FLOW_SKU_MARKER = "50001"
+DEFAULT_PRODUCT_FLOW_PARAMETER = "Процессор"
+DEFAULT_PRODUCT_FLOW_VALUE_PARAMETER = ""
 
 
 @dataclass(frozen=True)
@@ -78,22 +80,53 @@ def result_status(results: Iterable[CheckResult]) -> int:
     return 0 if all(item.ok for item in results) else 1
 
 
-def build_product_flow_routes(category_id: str, product_id: str, sku_marker: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+def build_product_flow_routes(
+    category_id: str,
+    product_id: str,
+    sku_marker: str,
+    focus_parameter: str = "",
+    focus_value_parameter: str = "",
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
     category = quote(str(category_id or "").strip(), safe="")
     product = quote(str(product_id or "").strip(), safe="")
     sku = str(sku_marker or "").strip()
+    parameter = str(focus_parameter or "").strip()
+    parameter_q = quote(parameter, safe="") if parameter else ""
+    value_parameter = str(focus_value_parameter or "").strip()
+    value_parameter_q = quote(value_parameter, safe="") if value_parameter else ""
     if not category or not product:
         return ()
     product_markers = ("ПАРАМЕТРЫ PIM", "Параметры и значения", "Медиа", sku) if sku else ("ПАРАМЕТРЫ PIM", "Параметры и значения", "Медиа")
     export_markers = ("Экспорт товаров", "Я.Маркет", "OZON", sku) if sku else ("Экспорт товаров", "Я.Маркет", "OZON")
-    return (
+    routes: list[tuple[str, tuple[str, ...]]] = [
         ("/", ("Рабочая сводка", "Открыть товары")),
         (f"/templates/{category}", ("Инфо-модели", "К сопоставлениям")),
         (f"/sources?tab=params&category={category}&product={product}", ("Сопоставления", "Черновик PIM-параметров")),
         (f"/sources?tab=values&category={category}&product={product}", ("Сопоставления", "Значения")),
         (f"/products/{product}?tab=attributes", product_markers),
         (f"/catalog/exchange?tab=export&product={product}", export_markers),
-    )
+    ]
+    if parameter_q:
+        routes.extend(
+            [
+                (
+                    f"/sources?tab=params&category={category}&product={product}&parameter={parameter_q}&provider=ozon",
+                    ("Сопоставления", parameter),
+                ),
+                (
+                    f"/products/{product}?tab=attributes&parameter={parameter_q}",
+                    (*product_markers, parameter),
+                ),
+            ]
+        )
+    if value_parameter_q:
+        routes.append(
+            (
+                f"/sources?tab=values&category={category}&product={product}&parameter={value_parameter_q}&provider=ozon",
+                ("Сопоставления", "Значения", value_parameter),
+            )
+        )
+    return tuple(routes)
 
 
 def validate_export_latest_run(payload: dict[str, Any]) -> CheckResult:
@@ -365,6 +398,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--flow-category-id", default=os.environ.get("SMARTPIM_SMOKE_FLOW_CATEGORY_ID", DEFAULT_PRODUCT_FLOW_CATEGORY_ID))
     parser.add_argument("--flow-product-id", default=os.environ.get("SMARTPIM_SMOKE_FLOW_PRODUCT_ID", DEFAULT_PRODUCT_FLOW_PRODUCT_ID))
     parser.add_argument("--flow-sku-marker", default=os.environ.get("SMARTPIM_SMOKE_FLOW_SKU_MARKER", DEFAULT_PRODUCT_FLOW_SKU_MARKER))
+    parser.add_argument("--flow-parameter", default=os.environ.get("SMARTPIM_SMOKE_FLOW_PARAMETER", DEFAULT_PRODUCT_FLOW_PARAMETER), help="Known PIM parameter used to verify focused product/params deep links.")
+    parser.add_argument("--flow-value-parameter", default=os.environ.get("SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER", DEFAULT_PRODUCT_FLOW_VALUE_PARAMETER), help="Known value-mapping field used to verify focused values deep links when the fixture has value rows.")
     return parser
 
 
@@ -373,7 +408,13 @@ async def async_main(argv: list[str]) -> int:
     start = time.monotonic()
     results = public_smoke(args.base_url, args.timeout, insecure_ssl=args.insecure_ssl)
     if args.browser and not args.public_only:
-        product_flow_routes = build_product_flow_routes(args.flow_category_id, args.flow_product_id, args.flow_sku_marker) if args.product_flow else ()
+        product_flow_routes = build_product_flow_routes(
+            args.flow_category_id,
+            args.flow_product_id,
+            args.flow_sku_marker,
+            args.flow_parameter,
+            args.flow_value_parameter,
+        ) if args.product_flow else ()
         results.extend(
             await browser_smoke(
                 args.base_url,
