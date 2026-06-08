@@ -568,6 +568,29 @@ class OperatingWorkflowTests(unittest.TestCase):
             self.assertEqual(details["value"], expected)
             self.assertIn(details["reason"], {"semantic_allowed", "allowed_exact"})
 
+    def test_provider_export_value_does_not_fallback_for_unmapped_controlled_values(self) -> None:
+        controlled = {
+            "id": "dict_region",
+            "items": [{"value": "Global"}],
+            "aliases": {},
+            "meta": {
+                "source_reference": {"yandex_market": {"allowed_values": ["EU", "RU"]}},
+                "export_map": {},
+            },
+        }
+        free_text = {
+            "id": "dict_model",
+            "items": [{"value": "iPhone 16 Pro Max"}],
+            "aliases": {},
+            "meta": {"source_reference": {"yandex_market": {"allowed_values": []}}, "export_map": {}},
+        }
+
+        with patch.object(value_mapping, "load_dict", return_value=deepcopy(controlled)):
+            self.assertEqual(value_mapping.provider_export_value("dict_region", "yandex_market", "Global"), "")
+
+        with patch.object(value_mapping, "load_dict", return_value=deepcopy(free_text)):
+            self.assertEqual(value_mapping.provider_export_value("dict_model", "yandex_market", "iPhone 16 Pro Max"), "iPhone 16 Pro Max")
+
     def test_value_details_blocks_only_uncovered_pim_values(self) -> None:
         dictionaries = {
             "items": [

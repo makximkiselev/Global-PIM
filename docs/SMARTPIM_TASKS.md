@@ -1129,6 +1129,10 @@ Next fix in the category flow:
    - product attribute empty states, params setup guidance, sources route guidance, and values prerequisites now describe the same user object;
    - a frontend search over product/channel/data-prep domains has no remaining `PIM-поле`, `PIM-параметр`, or `Переиспольз...` strings;
    - product-flow scenario smoke now expects `Черновик характеристик PIM`, and production smoke passed after the marker update.
+65. Provider export value helper no longer falls back to raw PIM text for controlled dictionaries:
+   - `provider_export_value_details()` already marks unmapped allowed-value fields as `mapped=false`;
+   - `provider_export_value()` now returns empty for that state instead of returning the original canonical value;
+   - this prevents future export code from accidentally bypassing value readiness by using the shorter helper.
 
 Current smoke status:
 

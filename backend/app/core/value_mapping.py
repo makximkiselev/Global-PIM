@@ -316,6 +316,8 @@ def provider_export_value_details(dict_id: Optional[str], provider: str, canonic
 
 def provider_export_value(dict_id: Optional[str], provider: str, canonical_value: Any) -> str:
     details = provider_export_value_details(dict_id, provider, canonical_value)
+    if not bool(details.get("mapped", True)):
+        return ""
     return str(details.get("value") or "").strip() or _coerce_text(canonical_value)
 
 
