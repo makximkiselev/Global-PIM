@@ -1009,13 +1009,19 @@ Next fix in the category flow:
 41. Public scenario smoke is resilient to transient transport/API failures:
    - `HttpClient` retries bounded `URLError` failures before marking shell/API checks red;
    - browser export latest-run check has its own bounded timeout/retry because the export control endpoint can occasionally exceed Playwright's default request timeout;
+   - browser route navigation retries transient `page.goto` timeouts before failing the deploy smoke;
    - transient `net::ERR_CONNECTION_CLOSED` resource console noise is ignored without hiding JS exceptions or 4xx/5xx resource errors;
    - HTTP error responses are still returned immediately so real app failures are not hidden;
-   - retry/timeout knobs are configurable through `SMARTPIM_SMOKE_HTTP_RETRIES`, `SMARTPIM_SMOKE_EXPORT_LATEST_TIMEOUT_MS` and `SMARTPIM_SMOKE_EXPORT_LATEST_RETRIES`.
+   - retry/timeout knobs are configurable through `SMARTPIM_SMOKE_HTTP_RETRIES`, `SMARTPIM_SMOKE_BROWSER_NAV_RETRIES`, `SMARTPIM_SMOKE_EXPORT_LATEST_TIMEOUT_MS` and `SMARTPIM_SMOKE_EXPORT_LATEST_RETRIES`.
 42. Product parameter workspace now separates blocker types instead of showing one opaque count:
    - top next-action uses `/parameter-flow` blockers and tells the user whether to fill PIM values or map marketplace fields/values;
    - the left parameter queue shows separate counters for empty PIM values, marketplace field mappings and marketplace value mappings;
-   - blocker actions keep their exact deep links to product fields, params mapping, values mapping or export readiness.
+   - blocker actions keep their exact deep links to product fields, params mapping, values mapping or export readiness;
+   - the “full check” link separates hidden quick-queue items from blockers that exist only in the export readiness check.
+43. Export blocker actions now protect product-attribute fixes from stale saved run links:
+   - `target=attributes` always opens `/products/{id}?tab=attributes&parameter=...`;
+   - old export runs that saved a generic `/sources?tab=params` fix link or target for package dimensions no longer send package dimensions into the mapping workspace;
+   - action labels show `Заполнить в SKU` for product-value fixes.
 
 Current smoke status:
 

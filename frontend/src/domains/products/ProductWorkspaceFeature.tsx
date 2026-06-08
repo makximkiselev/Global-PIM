@@ -1109,6 +1109,8 @@ function ProductAttributeWorkbench({
     ...blockerGroups.values,
     ...blockerGroups.other,
   ].slice(0, 6);
+  const hiddenQuickBlockers = Math.max(0, blockerGroups.total - blockerItems.length);
+  const exportOnlyBlockers = Math.max(0, blockerCount - blockerGroups.total);
   const dimensionBlockers = (parameterFlow?.blockers || []).filter((blocker) =>
     normalizeText(blocker.provider).toLowerCase() === "ozon"
       && normalizeText(blocker.code) === "required_parameter_missing"
@@ -1195,8 +1197,8 @@ function ProductAttributeWorkbench({
             <span><b>{blockerGroups.pim.length}</b> PIM пустые</span>
             <span><b>{blockerGroups.fields.length}</b> поля площадок</span>
             <span><b>{blockerGroups.values.length}</b> значения</span>
-            {blockerCount > blockerGroups.total ? (
-              <span><b>{blockerCount - blockerGroups.total}</b> только в полной проверке</span>
+            {exportOnlyBlockers ? (
+              <span><b>{exportOnlyBlockers}</b> только в полной проверке</span>
             ) : null}
           </div>
         ) : null}
@@ -1239,11 +1241,16 @@ function ProductAttributeWorkbench({
                 </Link>
               );
             })}
-            {blockerCount > blockerItems.length ? (
+            {hiddenQuickBlockers || exportOnlyBlockers ? (
               <Link className="productParamBlocker isMore" to={`/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`}>
                 <span>
-                  <strong>Еще {blockerCount - blockerItems.length}</strong>
-                  <em>Полный список в проверке экспорта</em>
+                  <strong>Открыть полную проверку</strong>
+                  <em>
+                    {[
+                      hiddenQuickBlockers ? `${hiddenQuickBlockers} еще в быстрой очереди` : "",
+                      exportOnlyBlockers ? `${exportOnlyBlockers} только в export-check` : "",
+                    ].filter(Boolean).join(" · ")}
+                  </em>
                 </span>
                 <b>Открыть</b>
               </Link>

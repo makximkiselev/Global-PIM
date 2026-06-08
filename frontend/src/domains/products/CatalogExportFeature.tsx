@@ -294,10 +294,17 @@ function exportableProviders(providers: ProviderRow[]): ProviderRow[] {
 }
 
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
-  if (detail?.fix_href) return detail.fix_href;
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
   const target = String(detail?.target || "").trim();
+  const parameter = String(detail?.parameter || "").trim();
+  const isProductAttributeFix = target === "attributes" || /упаковки\/товара/i.test(parameter) || /упаковки\/товара/i.test(reason);
+  if (product && isProductAttributeFix) {
+    const params = new URLSearchParams({ tab: "attributes" });
+    if (parameter) params.set("parameter", parameter);
+    return `/products/${encodeURIComponent(product)}?${params.toString()}`;
+  }
+  if (detail?.fix_href) return detail.fix_href;
   const sourcesHref = (tab: "sources" | "params" | "values") => {
     const params = new URLSearchParams();
     params.set("tab", tab);
@@ -343,8 +350,10 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
 }
 
 function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
-  if (detail?.fix_label) return detail.fix_label;
   const target = String(detail?.target || "").trim();
+  const parameter = String(detail?.parameter || "").trim();
+  if (target === "attributes" || /упаковки\/товара/i.test(parameter) || /упаковки\/товара/i.test(reason)) return "Заполнить в SKU";
+  if (detail?.fix_label) return detail.fix_label;
   if (detail?.code === "parameter_mapping_required") return "Собрать инфо-модель";
   if (target === "competitors") return "Открыть источники";
   if (target === "media") return detail?.code === "media_review_required" ? "Проверить медиа" : "Открыть медиа";

@@ -254,7 +254,19 @@ async def browser_smoke(
         return [CheckResult("browser credentials", False, "set SMARTPIM_SMOKE_EMAIL and SMARTPIM_SMOKE_PASSWORD")]
 
     async def goto_app_page(page: Any, url: str) -> None:
-        await page.goto(url, wait_until="domcontentloaded")
+        nav_retries = parse_positive_int_env("SMARTPIM_SMOKE_BROWSER_NAV_RETRIES", 2)
+        last_error: Exception | None = None
+        for attempt in range(nav_retries):
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt + 1 < nav_retries:
+                    await asyncio.sleep(min(2.0, 0.5 * (attempt + 1)))
+        if last_error is not None:
+            raise last_error
         try:
             await page.wait_for_load_state("networkidle", timeout=min(timeout * 1000, 5000))
         except Exception:
