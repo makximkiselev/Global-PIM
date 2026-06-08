@@ -720,10 +720,11 @@ Current state:
 9. Variant-family creation now opens the created product group directly, so the next step is group-level SKU review and enrichment instead of a single product card.
 10. Created product groups show a next-step guide with direct actions to competitor matching for the first SKU and export preparation for the selected SKU group.
 11. Variant creation now previews the generated SKU group title, selected variant axes, enabled/excluded SKU count, and a sample of SKU rows before final creation.
+12. Variant creation now classifies selected axes as color/memory/SIM/size/variant, explains why the axis changes SKU behavior, estimates SKU count before generation, and blocks overly broad matrices above 120 SKU so users do not accidentally create an unreviewable family.
 
 Known problems:
 
-1. Variant generation still needs more realistic UX around first/base product and variant axes.
+1. Variant generation still needs browser QA with a fresh real family, but the base product, axis meanings, SKU count estimate, and matrix guardrail are now visible before creation.
 2. Need clearer transition from created group to group-level competitor matching.
 3. Product creation must not expose technical fields too early.
 

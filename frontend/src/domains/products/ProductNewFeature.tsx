@@ -173,8 +173,19 @@ const VARIANT_AXIS_DENY_PATTERNS = [
   /разрешени.*съём/,
 ];
 
+const MAX_VARIANT_SKU_MATRIX = 120;
+
 function variantAxisLabelKey(value: string) {
   return _normKey(value).replace(/ё/g, "е");
+}
+
+function variantAxisKind(title: string, code = "") {
+  const text = variantAxisLabelKey(`${title} ${code}`);
+  if (/название цвета|^цвет$|color/.test(text)) return { label: "цвет", tone: "visual", reason: "обычно меняет фото и название SKU" };
+  if (/встроенн.*пам|оперативн.*пам|конфигурац.*пам|memory|ram|rom/.test(text)) return { label: "память", tone: "storage", reason: "часто меняет SKU, цену и карточку" };
+  if (/sim|сим|сим-карт/.test(text)) return { label: "SIM", tone: "connectivity", reason: "критичное отличие варианта для подбора конкурентов" };
+  if (/(?:^|\s)размер(?:\s|$)|диагонал|size|screen/.test(text)) return { label: "размер", tone: "size", reason: "обычно отделяет SKU внутри одной линейки" };
+  return { label: "вариант", tone: "default", reason: "помечено как вариантное поле в модели" };
 }
 
 function isVariantAxisCandidate(title: string, code: string, scope?: string | null) {
@@ -525,6 +536,8 @@ function ParamPickerModal(props: {
     onClose();
   }
 
+  const estimatedSkuCount = estimateVariantCount(order, values);
+
   if (!open) return null;
 
   return createPortal(
@@ -554,6 +567,7 @@ function ParamPickerModal(props: {
               {filteredParams.map((p) => {
                 const sel = isSelected(p.attr_id);
                 const act = activeAttrId === p.attr_id;
+                const axisKind = variantAxisKind(p.title, p.code);
                 return (
                   <button
                     key={p.attr_id}
@@ -571,6 +585,7 @@ function ParamPickerModal(props: {
                         onClick={(e) => e.stopPropagation()}
                       />
                       {p.title}
+                      <span className={`pnAxisKind is-${axisKind.tone}`}>{axisKind.label}</span>
                     </span>
                     <span className="pn-catMeta">
                       {(optionsByAttr[p.attr_id] || []).length} знач.
@@ -641,7 +656,13 @@ function ParamPickerModal(props: {
 
               <div className="pn-hint" style={{ marginTop: 10 }}>
                 Выберите значения из словаря. Каждая комбинация станет отдельным SKU.
+                {estimatedSkuCount ? ` Сейчас получится ${estimatedSkuCount} SKU.` : ""}
               </div>
+              {estimatedSkuCount > MAX_VARIANT_SKU_MATRIX ? (
+                <div className="pn-hint pn-hintWarn" style={{ marginTop: 8 }}>
+                  Матрица слишком широкая для ручной проверки. Сократите значения или создавайте линейку частями.
+                </div>
+              ) : null}
             </div>
 
             <div className="pn-variantsActions" style={{ marginTop: 12, justifyContent: "flex-end" }}>
@@ -739,6 +760,11 @@ function buildCombinations(order: string[], valuesByAttr: Record<string, string[
     acc = next;
   }
   return acc;
+}
+
+function estimateVariantCount(order: string[], valuesByAttr: Record<string, string[]>) {
+  if (!order.length) return 0;
+  return order.reduce((total, attrId) => total * Math.max(0, (valuesByAttr[attrId] || []).length), 1);
 }
 
 function buildVariantTitle(baseTitle: string, order: string[], params: Record<string, string>) {
@@ -1163,6 +1189,10 @@ export default function ProductNewFeature() {
       setVariantErr("Для параметров не выбраны значения.");
       return;
     }
+    if (combos.length > MAX_VARIANT_SKU_MATRIX) {
+      setVariantErr(`Получается ${combos.length} SKU. Сократите значения до ${MAX_VARIANT_SKU_MATRIX} SKU или создавайте линейку частями.`);
+      return;
+    }
 
     const existingByKey = new Map<string, Variant>();
     for (const v of variants) existingByKey.set(v.key, v);
@@ -1342,10 +1372,12 @@ export default function ProductNewFeature() {
   const selectedParamLabels = selectedOrder.map((id) => {
     const param = paramDefs.find((item) => item.attr_id === id);
     const values = selectedValues[id] || [];
+    const kind = variantAxisKind(param?.title || id, param?.code || "");
     return {
       id,
       label: param?.title || id,
       values,
+      kind,
     };
   });
   const enabledVariantCount = variants.filter((variant) => variant.enabled !== false).length;
@@ -1357,6 +1389,7 @@ export default function ProductNewFeature() {
     .filter((axis) => axis.values.length)
     .map((axis) => `${axis.label}: ${axis.values.length}`)
     .join(" · ");
+  const estimatedVariantCount = estimateVariantCount(selectedOrder, selectedValues);
   const generatedGroupTitle = productType === "multi"
     ? normStr(title) || enabledVariants[0]?.title || "Группа SKU"
     : normStr(title) || "SKU";
@@ -1514,8 +1547,22 @@ export default function ProductNewFeature() {
                   <div className="pnVariantRecipe">
                     {selectedParamLabels.map((param) => (
                       <div key={param.id}>
-                        <span>{param.label}</span>
+                        <span>
+                          {param.label}
+                          <em className={`pnAxisKind is-${param.kind.tone}`}>{param.kind.label}</em>
+                        </span>
                         <strong>{param.values.length ? param.values.join(" / ") : "значения не выбраны"}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {productType === "multi" && selectedParamLabels.length ? (
+                  <div className="pnVariantAxisGuide">
+                    {selectedParamLabels.map((param) => (
+                      <div key={`${param.id}-guide`}>
+                        <span className={`pnAxisKind is-${param.kind.tone}`}>{param.kind.label}</span>
+                        <strong>{param.label}</strong>
+                        <em>{param.kind.reason}</em>
                       </div>
                     ))}
                   </div>
@@ -1529,9 +1576,22 @@ export default function ProductNewFeature() {
                     </div>
                     <div>
                       <span>SKU к созданию</span>
-                      <strong>{enabledVariantCount || "—"}</strong>
-                      <em>{disabledVariantCount ? `${disabledVariantCount} исключено` : variants.length ? "все комбинации включены" : "сначала соберите SKU"}</em>
+                      <strong>{enabledVariantCount || estimatedVariantCount || "—"}</strong>
+                      <em>
+                        {disabledVariantCount
+                          ? `${disabledVariantCount} исключено`
+                          : variants.length
+                          ? "все комбинации включены"
+                          : estimatedVariantCount
+                          ? "оценка до сборки"
+                          : "сначала соберите SKU"}
+                      </em>
                     </div>
+                  </div>
+                ) : null}
+                {productType === "multi" && estimatedVariantCount > MAX_VARIANT_SKU_MATRIX ? (
+                  <div className="pnWizardNotice isWarn">
+                    Получается {estimatedVariantCount} SKU до исключений. Для надежной проверки создавайте не больше {MAX_VARIANT_SKU_MATRIX} SKU за раз.
                   </div>
                 ) : null}
                 {variantErr ? <div className="pn-hint pn-hintWarn">{variantErr}</div> : null}

@@ -940,6 +940,12 @@
   font-weight:850;
 }
 
+.pnWizardNotice.isWarn{
+  border-color:rgba(239,68,68,.22);
+  background:rgba(239,68,68,.07);
+  color:#9f1239;
+}
+
 .pnPostCreatePlan{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -999,7 +1005,10 @@
 }
 
 .pnVariantRecipe span{
-  display:block;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
   color:rgba(var(--brand-rgb), .92);
   font-size:11px;
   font-weight:950;
@@ -1017,6 +1026,67 @@
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+
+.pnAxisKind{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  min-height:22px;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(var(--card-rgb), .72);
+  color:var(--text-soft);
+  font-size:10px;
+  line-height:1;
+  font-style:normal;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+.pnAxisKind.is-visual{ border-color:rgba(236,72,153,.22); background:rgba(236,72,153,.08); color:#9d174d; }
+.pnAxisKind.is-storage{ border-color:rgba(59,130,246,.22); background:rgba(59,130,246,.08); color:#1d4ed8; }
+.pnAxisKind.is-connectivity{ border-color:rgba(20,184,166,.24); background:rgba(20,184,166,.08); color:#0f766e; }
+.pnAxisKind.is-size{ border-color:rgba(124,58,237,.22); background:rgba(124,58,237,.08); color:#6d28d9; }
+
+.pnVariantAxisGuide{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  gap:10px;
+}
+
+.pnVariantAxisGuide > div{
+  min-width:0;
+  padding:12px;
+  border:1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius:16px;
+  background:rgba(var(--surface-rgb), .5);
+}
+
+.pnVariantAxisGuide strong,
+.pnVariantAxisGuide em{
+  display:block;
+  min-width:0;
+}
+
+.pnVariantAxisGuide strong{
+  margin-top:8px;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.pnVariantAxisGuide em{
+  margin-top:5px;
+  color:var(--text-soft);
+  font-size:12px;
+  line-height:1.35;
+  font-style:normal;
+  font-weight:800;
 }
 
 .pnVariantGroupPreview{
