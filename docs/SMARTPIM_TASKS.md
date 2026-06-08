@@ -1059,6 +1059,10 @@ Next fix in the category flow:
    - the blocker panel shows how many blocker cards are visible, how many total reasons the batch reported, and how many target rows are blocked;
    - when a mass run is clipped to the first diagnostic rows, the UI says to narrow the scope or choose concrete SKU instead of implying the 12 visible cards are the full error set;
    - action grouping still runs on the visible diagnostic slice, while the total counters come from backend batch summary/blocker counts.
+53. Value mapping source evidence is now readable in the active value panel:
+   - raw source values are split into source/SKU, original raw spelling, normalized value and final PIM value instead of one compressed line;
+   - the panel shows whether the evidence list is truncated, so the user knows when they are seeing the first examples only;
+   - this makes it clearer how marketplace/competitor values become dictionary values before export-specific value mapping.
 
 Current smoke status:
 

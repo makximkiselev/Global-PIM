@@ -174,12 +174,21 @@ function providerSampleText(provider: ValueItemProvider) {
   return "";
 }
 
-function sourceEvidenceText(evidence: ValueSourceEvidence) {
+function sameValue(left?: string, right?: string) {
+  return normValueKey(String(left || "")) === normValueKey(String(right || ""));
+}
+
+function sourceEvidenceParts(evidence: ValueSourceEvidence) {
   const source = evidence.source_label || evidence.source_id || evidence.source_group || "источник";
-  const sku = evidence.sku_gt ? `SKU ${evidence.sku_gt}` : evidence.product_title || evidence.product_id || "";
-  const raw = evidence.raw_value || evidence.resolved_value || evidence.canonical_value || "";
-  const resolved = evidence.resolved_value && evidence.resolved_value !== raw ? ` -> ${evidence.resolved_value}` : "";
-  return `${source}${sku ? ` · ${sku}` : ""}: ${raw}${resolved}`;
+  const sku = evidence.sku_gt ? `SKU ${evidence.sku_gt}` : evidence.product_id || "";
+  const product = evidence.product_title && evidence.product_title !== sku ? evidence.product_title : "";
+  const raw = String(evidence.raw_value || "").trim();
+  const resolved = String(evidence.resolved_value || "").trim();
+  const canonical = String(evidence.canonical_value || "").trim();
+  const visibleRaw = raw || resolved || canonical || "—";
+  const visibleResolved = resolved && !sameValue(resolved, visibleRaw) ? resolved : "";
+  const visibleCanonical = canonical && !sameValue(canonical, resolved || visibleRaw) ? canonical : "";
+  return { source, sku, product, raw: visibleRaw, resolved: visibleResolved, canonical: visibleCanonical };
 }
 
 function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
@@ -987,17 +996,43 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                   {activeItem.source_evidence?.length ? (
                     <div className="sm-valuesSourceEvidence">
                       <div className="sm-valuesSourceEvidenceHead">
-                        <strong>Raw values из источников</strong>
-                        <span>что пришло с конкурентов и площадок до нормализации</span>
+                        <div>
+                          <strong>Как значение собрано из источников</strong>
+                          <span>исходное написание, нормализация и итоговое PIM-значение</span>
+                        </div>
+                        <em>{activeItem.source_evidence.length > 8 ? `первые 8 из ${activeItem.source_evidence.length}` : `${activeItem.source_evidence.length} прим.`}</em>
                       </div>
                       <div className="sm-valuesSourceEvidenceList">
-                        {activeItem.source_evidence.slice(0, 8).map((evidence, index) => (
-                          <div key={`${evidence.product_id || index}:${evidence.source_id || evidence.source_group}:${evidence.raw_value || evidence.resolved_value}`} className="sm-valuesSourceEvidenceItem">
-                            <span>{evidence.source_label || evidence.source_id || evidence.source_group || "источник"}</span>
-                            <strong>{evidence.raw_value || evidence.resolved_value || evidence.canonical_value}</strong>
-                            <small>{sourceEvidenceText(evidence)}</small>
-                          </div>
-                        ))}
+                        {activeItem.source_evidence.slice(0, 8).map((evidence, index) => {
+                          const parts = sourceEvidenceParts(evidence);
+                          return (
+                            <div key={`${evidence.product_id || index}:${evidence.source_id || evidence.source_group}:${evidence.raw_value || evidence.resolved_value}`} className="sm-valuesSourceEvidenceItem">
+                              <div className="sm-valuesSourceEvidenceMeta">
+                                <span>{parts.source}</span>
+                                {parts.sku ? <em>{parts.sku}</em> : null}
+                              </div>
+                              {parts.product ? <small className="sm-valuesSourceEvidenceProduct">{parts.product}</small> : null}
+                              <div className="sm-valuesSourceEvidenceFlow">
+                                <div>
+                                  <span>Raw</span>
+                                  <strong>{parts.raw}</strong>
+                                </div>
+                                {parts.resolved ? (
+                                  <div>
+                                    <span>Нормализация</span>
+                                    <strong>{parts.resolved}</strong>
+                                  </div>
+                                ) : null}
+                                {parts.canonical ? (
+                                  <div>
+                                    <span>PIM</span>
+                                    <strong>{parts.canonical}</strong>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}

@@ -3060,8 +3060,16 @@
 }
 
 .sm-valuesSourceEvidenceHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.sm-valuesSourceEvidenceHead div{
   display:grid;
   gap:3px;
+  min-width:0;
 }
 
 .sm-valuesSourceEvidenceHead strong{
@@ -3075,9 +3083,21 @@
   font-weight:800;
 }
 
+.sm-valuesSourceEvidenceHead em{
+  flex:0 0 auto;
+  padding:5px 8px;
+  border:1px solid rgba(var(--line-rgb),.14);
+  border-radius:999px;
+  background:rgba(var(--card-rgb),.76);
+  color:var(--text-soft);
+  font-size:11px;
+  font-style:normal;
+  font-weight:900;
+}
+
 .sm-valuesSourceEvidenceList{
   display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
   gap:8px;
 }
 
@@ -3091,28 +3111,69 @@
   background:rgba(var(--card-rgb),.72);
 }
 
-.sm-valuesSourceEvidenceItem span{
+.sm-valuesSourceEvidenceMeta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.sm-valuesSourceEvidenceMeta span{
   color:var(--brand-strong);
   font-size:10px;
   font-weight:900;
   text-transform:uppercase;
 }
 
-.sm-valuesSourceEvidenceItem strong{
+.sm-valuesSourceEvidenceMeta em{
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
-  color:var(--text);
-  font-size:13px;
+  color:var(--text-soft);
+  font-size:10px;
+  font-style:normal;
+  font-weight:900;
 }
 
-.sm-valuesSourceEvidenceItem small{
+.sm-valuesSourceEvidenceProduct{
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
   color:var(--text-soft);
   font-size:11px;
   font-weight:800;
+}
+
+.sm-valuesSourceEvidenceFlow{
+  display:grid;
+  gap:5px;
+}
+
+.sm-valuesSourceEvidenceFlow div{
+  display:grid;
+  grid-template-columns:92px minmax(0,1fr);
+  align-items:start;
+  gap:8px;
+  padding:6px 8px;
+  border:1px solid rgba(var(--line-rgb),.08);
+  border-radius:10px;
+  background:rgba(var(--bg-rgb),.14);
+}
+
+.sm-valuesSourceEvidenceFlow span{
+  color:var(--text-soft);
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.sm-valuesSourceEvidenceFlow strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  color:var(--text);
+  font-size:12px;
+  font-weight:900;
 }
 
 .sm-valuesQualityWarnings{
