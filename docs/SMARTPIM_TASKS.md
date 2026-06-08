@@ -1149,6 +1149,10 @@ Next fix in the category flow:
    - run summary now counts batch warnings, not only blockers;
    - the export queue table shows warning counts per marketplace/store batch;
    - ready batches render a warning panel before submission, and the broad-submit confirmation repeats the warning count so optional omitted values are not hidden behind `Показать payload`.
+70. Export submission status carries warning context:
+   - final submission summary now preserves package warning counts;
+   - submitted marketplace/store rows keep `warnings_count` and warning rows from the package batch;
+   - the post-submit status panel shows warning counts next to sent/error/processing counters, so omitted optional values remain visible after the send.
 
 Current smoke status:
 

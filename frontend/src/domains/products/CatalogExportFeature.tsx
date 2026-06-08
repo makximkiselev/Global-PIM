@@ -153,6 +153,7 @@ type ExportSubmission = {
     batch_count?: number;
     submitted_batches?: number;
     failed_batches?: number;
+    warnings_count?: number;
   };
   processing_summary?: {
     accepted_batches?: number;
@@ -166,6 +167,8 @@ type ExportSubmission = {
     store_title: string;
     status: "submitted" | "failed" | string;
     ready_items?: number;
+    warnings_count?: number;
+    warnings?: NonNullable<ExportPackageResp["package"]["warnings"]>;
     processing?: {
       status?: "accepted" | "processing" | "failed" | "unknown" | string;
       checked_at?: string;
@@ -1649,6 +1652,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <div><span>Run</span><strong>{submission.run_id}</strong></div>
                       <div><span>Batch</span><strong>{submission.summary?.batch_count ?? 0}</strong></div>
                       <div><span>Отправлено</span><strong>{submission.summary?.submitted_batches ?? 0}</strong></div>
+                      <div><span>Предупреждения</span><strong>{submission.summary?.warnings_count ?? 0}</strong></div>
                       <div><span>В обработке</span><strong>{submission.processing_summary?.processing_batches ?? 0}</strong></div>
                       <div><span>Обработано</span><strong>{submission.processing_summary?.accepted_batches ?? 0}</strong></div>
                       <div><span>Ошибки</span><strong>{submission.processing_summary?.failed_batches ?? submission.summary?.failed_batches ?? 0}</strong></div>
@@ -1664,6 +1668,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           </div>
                           <div className="cx-submissionBatchMeta">
                             SKU в запросе: <b>{batch.result?.request?.items ?? batch.ready_items ?? 0}</b>
+                            {batch.warnings_count ? <> · предупреждений: <b>{batch.warnings_count}</b></> : null}
                             {batch.result?.status_code ? <> · HTTP <b>{batch.result.status_code}</b></> : null}
                             {batch.processing?.task_id ? <> · task <b>{batch.processing.task_id}</b></> : null}
                           </div>

@@ -2787,6 +2787,8 @@ async def _submit_export_package(package: Dict[str, Any], *, dry_run: bool = Fal
                 "store_title": str(batch.get("store_title") or "").strip(),
                 "status": "submitted" if bool(result.get("ok")) else "failed",
                 "ready_items": len(batch.get("items") if isinstance(batch.get("items"), list) else []),
+                "warnings_count": int(batch.get("warnings_count") or 0),
+                "warnings": batch.get("warnings") if isinstance(batch.get("warnings"), list) else [],
                 "offer_ids": _batch_payload_offer_ids(batch),
                 "processing": {
                     "status": _submission_batch_processing_status(provider, result),
@@ -2797,6 +2799,7 @@ async def _submit_export_package(package: Dict[str, Any], *, dry_run: bool = Fal
             }
         )
     ok_count = sum(1 for item in submitted_batches if item.get("status") == "submitted")
+    warnings_count = sum(int(item.get("warnings_count") or 0) for item in submitted_batches)
     return {
         "ok": ok_count == len(submitted_batches) and bool(submitted_batches),
         "status": "submitted" if ok_count == len(submitted_batches) and submitted_batches else "failed",
@@ -2807,6 +2810,7 @@ async def _submit_export_package(package: Dict[str, Any], *, dry_run: bool = Fal
             "batch_count": len(submitted_batches),
             "submitted_batches": ok_count,
             "failed_batches": max(0, len(submitted_batches) - ok_count),
+            "warnings_count": warnings_count,
         },
         "batches": submitted_batches,
     }

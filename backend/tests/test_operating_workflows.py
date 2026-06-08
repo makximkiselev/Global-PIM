@@ -4843,6 +4843,8 @@ class OperatingWorkflowTests(unittest.TestCase):
                     "provider": "yandex_market",
                     "store_id": "ym-1",
                     "store_title": "GT USD",
+                    "warnings_count": 1,
+                    "warnings": [{"code": "optional_value_omitted", "parameter": "Особенности"}],
                     "items": [
                         {
                             "product_id": "product_1",
@@ -4869,6 +4871,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         submission = response["submission"]
         self.assertEqual(submission["status"], "submitted")
         self.assertEqual(submission["summary"]["submitted_batches"], 1)
+        self.assertEqual(submission["summary"]["warnings_count"], 1)
+        self.assertEqual(submission["batches"][0]["warnings_count"], 1)
+        self.assertEqual(submission["batches"][0]["warnings"][0]["parameter"], "Особенности")
         self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["dry_run"], True)
         self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["batches"][0]["provider"], "yandex_market")
 
