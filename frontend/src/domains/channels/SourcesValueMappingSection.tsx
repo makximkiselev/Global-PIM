@@ -170,6 +170,15 @@ function providerHasGap(provider: ValueItemProvider) {
   return Boolean(provider.needs_mapping);
 }
 
+function valueItemSortRank(item: ValueItem) {
+  const providers = usefulProviders(item);
+  if (providers.some(providerHasGap)) return 0;
+  if (item.needs_unit_check || providers.some((provider) => provider.needs_unit_check)) return 1;
+  if (Number(item.value_count || 0) === 0 && providers.some(providerHasDictionary)) return 2;
+  if (providers.some(providerHasDictionary)) return 3;
+  return 4;
+}
+
 function providerSampleText(provider: ValueItemProvider) {
   if (isNumericProvider(provider)) {
     return provider.needs_unit_check ? "проверь единицы измерения перед экспортом" : "";
@@ -413,9 +422,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
         return hay.includes(q);
       })
       .sort((a, b) => {
-        const aReady = a.providers.some(providerHasDictionary);
-        const bReady = b.providers.some(providerHasDictionary);
-        if (aReady !== bReady) return aReady ? -1 : 1;
+        const aRank = valueItemSortRank(a);
+        const bRank = valueItemSortRank(b);
+        if (aRank !== bRank) return aRank - bRank;
+        const aMissing = usefulProviders(a).reduce((sum, provider) => sum + Number(provider.missing_count || 0), 0);
+        const bMissing = usefulProviders(b).reduce((sum, provider) => sum + Number(provider.missing_count || 0), 0);
+        if (aMissing !== bMissing) return bMissing - aMissing;
         return String(a.catalog_name || a.title || "").localeCompare(String(b.catalog_name || b.title || ""), "ru");
       });
   }, [data, fieldQuery, scopeFilter, workFilter]);

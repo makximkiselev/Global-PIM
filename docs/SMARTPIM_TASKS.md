@@ -1162,6 +1162,10 @@ Next fix in the category flow:
    - omitted optional values link to `/sources?tab=values` with category/product/provider/parameter focus;
    - payload source warnings link to the product attributes tab with the exact parameter selected;
    - export warning cards render the action directly instead of leaving the user to guess where to repair the data.
+73. Value mapping queue ordering now prioritizes real work:
+   - fields with missing provider value mappings appear before ready dictionary fields;
+   - numeric unit checks and empty-PIM-value dictionary fields stay above fully covered rows;
+   - within the same priority, fields with more missing values sort first, making duplicate/near-duplicate value problems easier to notice during review.
 
 Current smoke status:
 
