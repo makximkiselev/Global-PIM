@@ -1054,7 +1054,7 @@ Next fix in the category flow:
    - `/products/{id}?tab=attributes&parameter=...` scrolls the product parameter queue to the matching row and highlights it;
    - `/sources?tab=params&parameter=...` selects and scrolls the matching PIM field in the virtualized params queue;
    - `/sources?tab=values&parameter=...` selects and scrolls the matching value dictionary row in the virtualized values queue;
-   - Ozon export blockers now preserve `provider=ozon`, so params/values screens also highlight the relevant marketplace block.
+   - Ozon export blockers now preserve `provider=ozon`, and saved/legacy blocker details inherit provider from their batch, so params/values screens also highlight the relevant marketplace block.
 
 Current smoke status:
 

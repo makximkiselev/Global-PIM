@@ -164,12 +164,14 @@ def _export_fix_query(tab: str, category_id: str = "", product_id: str = "", par
     return urlencode(params)
 
 
-def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, category_id: str) -> Dict[str, Any]:
+def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, category_id: str, provider: str = "") -> Dict[str, Any]:
     out = dict(detail)
     code = str(out.get("code") or "").strip()
     target = str(out.get("target") or "").strip()
     parameter = str(out.get("parameter") or "").strip()
-    provider = str(out.get("provider") or "").strip()
+    provider_code = str(out.get("provider") or provider or "").strip()
+    if provider_code and target in {"sources", "params", "values"} and not str(out.get("provider") or "").strip():
+        out["provider"] = provider_code
     href = ""
     label = "Открыть место исправления"
     if code == "parameter_mapping_required" and category_id:
@@ -192,7 +194,7 @@ def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, cat
         href = f"/catalog/exchange?{_export_fix_query('import', category_id, product_id)}"
         label = "Импортировать фото"
     elif target in {"sources", "params", "values"} and category_id:
-        href = f"/sources?{_export_fix_query(target, category_id, product_id, parameter, provider)}"
+        href = f"/sources?{_export_fix_query(target, category_id, product_id, parameter, provider_code)}"
         label = {
             "sources": "Открыть категории",
             "params": "Открыть параметры",
@@ -2257,7 +2259,7 @@ def _export_batch_from_preview(
         product_id = str(item.get("product_id") or "").strip()
         category_id = str(item.get("category_id") or "").strip()
         missing_details_clean = [
-            _export_missing_detail_with_fix(x, product_id=product_id, category_id=category_id)
+            _export_missing_detail_with_fix(x, product_id=product_id, category_id=category_id, provider=provider)
             for x in missing_details
             if isinstance(x, dict)
         ]
@@ -2301,7 +2303,12 @@ def _export_run_with_fix_links(run: Dict[str, Any]) -> Dict[str, Any]:
             category_id = str(blocker.get("category_id") or "").strip()
             details = blocker.get("missing_details") if isinstance(blocker.get("missing_details"), list) else []
             blocker["missing_details"] = [
-                _export_missing_detail_with_fix(detail, product_id=product_id, category_id=category_id)
+                _export_missing_detail_with_fix(
+                    detail,
+                    product_id=product_id,
+                    category_id=category_id,
+                    provider=str(batch.get("provider") or "").strip(),
+                )
                 for detail in details
                 if isinstance(detail, dict)
             ]

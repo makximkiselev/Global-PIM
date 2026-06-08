@@ -4401,7 +4401,6 @@ class OperatingWorkflowTests(unittest.TestCase):
                             "message": "Цвет: значение не сопоставлено с Ozon",
                             "target": "values",
                             "parameter": "Цвет",
-                            "provider": "ozon",
                         }
                     ],
                     "payload_item": {"offer_id": "GT-1"},
