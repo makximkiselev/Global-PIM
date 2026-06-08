@@ -1101,6 +1101,10 @@ Next fix in the category flow:
    - when selected store checkboxes differ from the latest prepared run, the metric says `Целей прошлого batch` instead of `Целей выгрузки`;
    - the batch table title changes to `Последний batch` and explains that it is diagnostic only until the export is rebuilt;
    - production browser check on `product_70` confirmed the ambiguous `ЦЕЛЕЙ ВЫГРУЗКИ 2` text is gone while the stale-run warning remains visible.
+59. Product attribute queue no longer duplicates Ozon package dimensions when the dedicated logistics blocker panel is open:
+   - `Длина/Ширина/Высота/Вес упаковки` are edited through the system `Габариты для Ozon` panel;
+   - the general PIM parameter queue hides only package-dimension duplicates while keeping separate device dimensions visible;
+   - production browser check on `product_70` confirmed `packageRowsCount=0` in `.productParamList` and `deviceRowsCount=4`.
 
 Current smoke status:
 

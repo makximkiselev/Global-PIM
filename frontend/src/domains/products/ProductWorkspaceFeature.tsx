@@ -461,6 +461,16 @@ const OZON_PACKAGE_DIMENSION_FIELDS: Array<{ key: string; label: string; paramet
   { key: "weight", label: "Вес, г", parameter: "Вес упаковки/товара", placeholder: "например 320" },
 ];
 
+function isPackageDimensionFeature(feature: ProductFeatureValue): boolean {
+  const text = `${parameterLookupText(feature.name)} ${parameterLookupText(feature.code)}`.trim();
+  return text.includes("упаков") && (
+    text.includes("длин")
+    || text.includes("шир")
+    || text.includes("выс")
+    || text.includes("вес")
+  );
+}
+
 function isProductFeatureCode(codeOrName: unknown): boolean {
   const raw = featureIdentity(codeOrName);
   if (!raw) return true;
@@ -1129,6 +1139,12 @@ function ProductAttributeWorkbench({
   const packageSibling = siblingPackageSuggestion(variants, packageDimensionTargets);
   const selectedIsPackageDimension = Boolean(selectedFeature && packageDimensionTargets.some((target) => target.feature === selectedFeature));
   const showPackageDimensionPanel = Boolean(packageDimensionTargets.length && (dimensionBlockers.length || selectedIsPackageDimension));
+  const queueFeatures = useMemo(
+    () => features
+      .map((feature, index) => ({ feature, index }))
+      .filter((item) => !showPackageDimensionPanel || !isPackageDimensionFeature(item.feature)),
+    [features, showPackageDimensionPanel],
+  );
   const marketplaceEvidenceInProduct = features.some((feature) =>
     sourceEntriesForFeature(feature).some((entry) => isMarketplaceSource(entry.provider) && hasSourceEntryValue(entry)),
   );
@@ -1337,7 +1353,7 @@ function ProductAttributeWorkbench({
         ) : null}
         <div className="productParamSearchHint">Выберите параметр, чтобы увидеть как он собрался и как уйдет на площадки.</div>
         <div className="productParamList">
-          {features.map((feature, index) => {
+          {queueFeatures.map(({ feature, index }) => {
             const key = featureKey(feature, index);
             const value = featureValue(feature);
             const sourceCount = sourceEntriesForFeature(feature).length;
