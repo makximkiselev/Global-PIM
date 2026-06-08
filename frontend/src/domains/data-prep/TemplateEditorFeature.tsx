@@ -374,16 +374,16 @@ function draftRecommendation(candidate: InfoModelCandidate) {
   if (candidate.status === "accepted") return "В модели";
   if (candidate.status === "rejected") return "Не использовать";
   if (isSemanticDuplicateCandidate(candidate)) return "Проверить повтор";
-  if (isWeakGlobalCandidate(candidate)) return "Проверить связь PIM";
-  if (candidate.global_match) return "Связать с параметром PIM";
+  if (isWeakGlobalCandidate(candidate)) return "Проверить связь с характеристикой";
+  if (candidate.global_match) return "Связать с существующей характеристикой";
   if (isMarketplaceOnlyCandidate(candidate)) return "Проверить необходимость";
   if (isCompetitorOnlyCandidate(candidate)) return "Проверить источник";
   return "Проверить";
 }
 
 function draftPrimaryActionLabel(candidate: InfoModelCandidate) {
-  if (candidate.global_match) return "Связать с этим PIM-параметром";
-  return "Добавить новый PIM-параметр";
+  if (candidate.global_match) return "Связать с этой характеристикой";
+  return "Добавить новую характеристику";
 }
 
 function draftSourceSummaryText(candidate: InfoModelCandidate) {
@@ -1324,7 +1324,7 @@ export default function TemplateEditor() {
               <Card className="tplCanvasCard">
                 <EmptyState
                   title="Инфо-модель еще не собрана"
-                  description="Сейчас у категории нет PIM-полей. Нажмите «Собрать предложения», чтобы система подготовила draft из товаров, площадок и конкурентных карточек. Затем проверьте список и утвердите модель."
+                  description="Сейчас у категории нет характеристик для PIM. Нажмите «Собрать предложения», чтобы система подготовила draft из товаров, площадок и конкурентных карточек. Затем проверьте список и утвердите модель."
                   action={
                     <div className="tplEmptyActions">
                       <Button variant="primary" onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
@@ -1522,9 +1522,9 @@ export default function TemplateEditor() {
                       <details className="tplDraftHelp">
                         <summary>Как читать предложения</summary>
                         <p>
-                          Совпадение показывает, насколько уверенно система считает найденное поле тем же смыслом, что уже существующий PIM-параметр.
-                          Если связь верная, используйте существующий параметр, чтобы не плодить дубли вроде «Кол-во SIM» и «Количество SIM-карт».
-                          Если смысл отличается, создайте новый PIM-параметр.
+                          Совпадение показывает, насколько уверенно система считает найденное поле тем же смыслом, что уже существующая характеристика PIM.
+                          Если связь верная, используйте существующую характеристику, чтобы не плодить дубли вроде «Кол-во SIM» и «Количество SIM-карт».
+                          Если смысл отличается, создайте новую характеристику.
                         </p>
                       </details>
                     </div>
@@ -1561,7 +1561,7 @@ export default function TemplateEditor() {
                               </div>
                               {candidate.global_match ? (
                                 <div className={`tplDraftReuse ${isWeakGlobalCandidate(candidate) ? "is-weak" : ""}`}>
-                                  <b>Уже есть в PIM</b>
+                                  <b>Найдена существующая характеристика</b>
                                   <span>
                                     {candidate.global_match.title || candidate.global_match.code} · {globalMatchReasonLabel(candidate.global_match.reason)}
                                     {typeof candidate.global_match.score === "number" ? ` ${Math.round(candidate.global_match.score * 100)}%` : ""}
@@ -1569,8 +1569,8 @@ export default function TemplateEditor() {
                                 </div>
                               ) : (
                                 <div className="tplDraftReuse is-new">
-                                  <b>Новое поле</b>
-                                  <span>Глобального параметра пока нет</span>
+                                  <b>Новая характеристика</b>
+                                  <span>Подходящей существующей характеристики не найдено</span>
                                 </div>
                               )}
                               <div className="tplDraftEvidence">
@@ -1620,7 +1620,7 @@ export default function TemplateEditor() {
                                   }
                                   disabled={draftBusy}
                                 >
-                                  Создать новое
+                                  Создать отдельную характеристику
                                 </Button>
                               ) : null}
                               {candidate.status !== "rejected" ? (

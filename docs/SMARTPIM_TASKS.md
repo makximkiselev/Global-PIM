@@ -1120,6 +1120,10 @@ Next fix in the category flow:
    - payload preview still shows the candidate picture URL for inspection, but the row stays `ready=false` until media is approved/imported;
    - shared export batch adaptation links `media_review_required` blockers to `/products/{id}?tab=media` with `Проверить медиа`;
    - Ozon already had this guard; targeted tests now cover both marketplaces, and production deploy/health passed after the backend change.
+63. Info-model draft wording now uses product-language instead of internal reuse terms:
+   - draft recommendations say `Связать с существующей характеристикой` or `Добавить новую характеристику`;
+   - weak matches ask to verify the characteristic link, not “reuse PIM”;
+   - the row badges distinguish an existing characteristic from a new characteristic, and the override action says `Создать отдельную характеристику`.
 
 Current smoke status:
 
