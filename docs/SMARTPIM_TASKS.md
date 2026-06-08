@@ -829,7 +829,7 @@ Rules:
 22. Marketplace product imports hydrate canonical product media too: Yandex offer-card pictures and Ozon product images are merged into `content.media_images` so export readiness sees photos collected from marketplaces, not only competitors.
 23. Export preparation now runs bounded marketplace hydration for the selected SKU/store set before readiness checks, so first-party marketplace photos/descriptions/brand data are pulled into PIM before batch blockers are calculated.
 24. Marketplace product imports hydrate package logistics too: Yandex `weightDimensions` is converted from cm/kg into PIM mm/g fields, and Ozon product info dimensions/weight are merged into the same package fields with marketplace source lineage.
-25. Export preparation also fills missing media/description/brand from sibling variants with the same category, iPhone model, storage, and color. This covers line variants such as `eSIM`, `Sim+eSIM`, and `2Sim` where only the SIM axis differs.
+25. Export preparation also fills missing media/description/brand/package logistics from sibling variants with the same category, model line, and color. This covers line variants such as `eSIM`, `Sim+eSIM`, and `2Sim` where only the SIM axis differs; package fields are copied only into empty PIM fields and keep `variant_sibling` lineage.
 26. After the manual reset, one clean SKU proof is ready again: `product_1065 / GT 52433` produced export run `export_4a7603c091` for safe targets `Я.Маркет GT USD` and `OZON Global Trade AE`; result is 2 ready target rows, 0 blockers.
 27. Ozon category/type linking now treats `description-category/tree` and `description-category/attribute` as two separate signals:
    - tree presence means the category is visible in the store's category tree;
@@ -987,6 +987,9 @@ Next fix in the category flow:
    - category URLs include model, memory and color filters where they can be derived from the SKU title;
    - a direct card that matches model/memory/color but differs by SIM is shown as a low-confidence review candidate instead of disappearing as “0 candidates”;
    - source evidence lists these category URLs and the UI labels them as generic source category checks, not Store77-only.
+36. Export blockers for missing Ozon package dimensions now include sibling SKU evidence when another product in the same variant group has the missing package value:
+   - backend adds `missing_details[].sibling_suggestion` with source SKU, value, feature code and current-SKU fix link;
+   - export UI shows the concrete sibling value and labels the action as `Взять из <SKU>` instead of leaving the user at a generic package blocker.
 
 Next block:
 

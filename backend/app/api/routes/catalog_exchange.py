@@ -514,6 +514,22 @@ def _ensure_feature(features: List[Dict[str, Any]], code: str, name: str, value:
     return True
 
 
+_SIBLING_PACKAGE_FEATURES: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
+    ("package_length", "Длина упаковки, мм", ("Длина упаковки", "Длина устройства", "Толщина")),
+    ("package_width", "Ширина упаковки, мм", ("Ширина упаковки", "Ширина устройства")),
+    ("package_height", "Высота упаковки, мм", ("Высота упаковки", "Высота устройства")),
+    ("package_weight", "Вес упаковки, г", ("Вес упаковки", "Вес устройства")),
+)
+
+
+def _first_product_value(product: Dict[str, Any], names: Tuple[str, ...]) -> str:
+    for name in names:
+        value = str(_extract_product_value(product, name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _hydrate_missing_content_from_variant_siblings(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     by_key: Dict[str, List[Dict[str, Any]]] = {}
     for product in products:
@@ -566,6 +582,20 @@ def _hydrate_missing_content_from_variant_siblings(products: List[Dict[str, Any]
                 if _ensure_feature(features, "brand", "Бренд", brand, str(sibling.get("id") or "")):
                     product_changed = True
                     break
+
+        package_sources = source_meta.get("package_dimensions") if isinstance(source_meta.get("package_dimensions"), dict) else {}
+        for code, name, source_names in _SIBLING_PACKAGE_FEATURES:
+            if _first_product_value(product, source_names):
+                continue
+            for sibling in siblings:
+                sibling_id = str(sibling.get("id") or "")
+                value = _first_product_value(sibling, source_names)
+                if _ensure_feature(features, code, name, value, sibling_id):
+                    package_sources[code] = {"source_product_id": sibling_id, "updated_at": _now_iso()}
+                    product_changed = True
+                    break
+        if package_sources:
+            source_meta["package_dimensions"] = package_sources
 
         if product_changed:
             content["features"] = features
@@ -1413,11 +1443,7 @@ _OZON_PACKAGE_REQUIREMENTS: Dict[str, Tuple[str, str, Tuple[str, ...]]] = {
 
 
 def _package_value_from_product(product: Dict[str, Any], names: Tuple[str, ...]) -> str:
-    for name in names:
-        value = str(_extract_product_value(product, name) or "").strip()
-        if value:
-            return value
-    return ""
+    return _first_product_value(product, names)
 
 
 def _package_sibling_suggestion(

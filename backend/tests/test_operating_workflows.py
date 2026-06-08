@@ -2983,7 +2983,13 @@ class OperatingWorkflowTests(unittest.TestCase):
             "content": {
                 "description": "iPad Air donor description",
                 "media_images": [{"url": "https://cdn.example.test/ipad-purple.jpg", "selected": True}],
-                "features": [{"code": "brand", "name": "Бренд", "value": "Apple"}],
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "package_length", "name": "Длина упаковки, мм", "value": "248"},
+                    {"code": "package_width", "name": "Ширина упаковки, мм", "value": "180"},
+                    {"code": "package_height", "name": "Высота упаковки, мм", "value": "40"},
+                    {"code": "package_weight", "name": "Вес упаковки, г", "value": "780"},
+                ],
             },
         }
         target = {
@@ -3000,7 +3006,12 @@ class OperatingWorkflowTests(unittest.TestCase):
         content = changed[0]["content"]
         self.assertEqual(content["description"], "iPad Air donor description")
         self.assertEqual(content["media_images"][0]["url"], "https://cdn.example.test/ipad-purple.jpg")
-        self.assertEqual(content["features"][0]["value"], "Apple")
+        feature_values = {str(item.get("code") or ""): str(item.get("value") or "") for item in content["features"]}
+        self.assertEqual(feature_values["brand"], "Apple")
+        self.assertEqual(feature_values["package_length"], "248")
+        self.assertEqual(feature_values["package_width"], "180")
+        self.assertEqual(feature_values["package_height"], "40")
+        self.assertEqual(feature_values["package_weight"], "780")
         self.assertEqual(content["source_values"]["media_images"]["variant_sibling"]["source_product_id"], "product_ipad_donor")
 
     def test_yandex_export_preview_filters_products_in_sql_by_selected_ids(self) -> None:
