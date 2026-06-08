@@ -1029,6 +1029,10 @@ Next fix in the category flow:
 45. Export target loading state no longer flashes a false “no stores” empty state:
    - while connector/bootstrap data is loading, the export empty panel says stores/channels are being checked;
    - connector repair links appear only after loading finishes and no exportable stores actually exist.
+46. Export page now shows an explicit batch target plan before preparation:
+   - selected marketplace stores are listed as the only stores that will enter the run;
+   - available but unselected stores are shown separately so the UI does not look like hidden defaults are being used;
+   - disabled stores are visible as disabled, not silently mixed into selected targets.
 
 Current smoke status:
 

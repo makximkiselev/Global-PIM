@@ -521,6 +521,19 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return out;
   }, [activeTargets, providers]);
+  const targetPlanRows = useMemo(() => providers.map((provider) => {
+    const stores = provider.import_stores || [];
+    const selected = new Set(selectedStores[provider.code] || []);
+    const selectedStoresList = stores.filter((store) => selectedProviders[provider.code] && selected.has(store.id) && store.enabled !== false);
+    const availableNotSelected = stores.filter((store) => store.enabled !== false && !selectedStoresList.some((item) => item.id === store.id));
+    const disabledStores = stores.filter((store) => store.enabled === false);
+    return {
+      provider,
+      selectedStores: selectedStoresList,
+      availableNotSelected,
+      disabledStores,
+    };
+  }), [providers, selectedProviders, selectedStores]);
   const selectedSkuEstimate = useMemo(() => {
     if (selectedProductIds.length) return String(selectedProductIds.length);
     if (selectedNodeIds.length) {
@@ -1136,6 +1149,47 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 { label: "Целей", value: selectedTargetsCount },
               ]}
             />
+
+            {!initialLoading && providers.length ? (
+              <section className="card cx-targetPlan">
+                <div className="cx-paneHead">
+                  <div>
+                    <div className="cx-paneTitle">Куда пойдет batch</div>
+                    <div className="cx-paneSub">
+                      В подготовку попадут только отмеченные магазины. Доступные, но не выбранные магазины ниже не участвуют в этом run.
+                    </div>
+                  </div>
+                  <Badge tone={activeTargets.length ? "active" : "neutral"}>
+                    {selectedTargetsCount ? `${selectedTargetsCount} ${selectedTargetWord}` : "ничего не выбрано"}
+                  </Badge>
+                </div>
+                <div className="cx-targetPlanGrid">
+                  {targetPlanRows.map(({ provider, selectedStores: targetStores, availableNotSelected, disabledStores }) => (
+                    <div key={provider.code} className="cx-targetPlanCard">
+                      <div className="cx-targetPlanHead">
+                        <strong>{provider.title}</strong>
+                        <Badge tone={targetStores.length ? "active" : "neutral"}>
+                          {targetStores.length ? `${targetStores.length} выбрано` : "не участвует"}
+                        </Badge>
+                      </div>
+                      {targetStores.length ? (
+                        <div className="cx-targetPlanChips">
+                          {targetStores.map((store) => <span className="isSelected" key={store.id}>{store.title}</span>)}
+                        </div>
+                      ) : (
+                        <p>Площадка не попадет в batch, пока не выбран хотя бы один магазин.</p>
+                      )}
+                      {availableNotSelected.length ? (
+                        <small>Доступны, но не выбраны: {availableNotSelected.map((store) => store.title).join(", ")}</small>
+                      ) : null}
+                      {disabledStores.length ? (
+                        <small>Выключены: {disabledStores.map((store) => store.title).join(", ")}</small>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             {broadExportScope ? (
               <section className="card cx-exportScopeGuard">
