@@ -1012,6 +1012,10 @@ Next fix in the category flow:
    - transient `net::ERR_CONNECTION_CLOSED` resource console noise is ignored without hiding JS exceptions or 4xx/5xx resource errors;
    - HTTP error responses are still returned immediately so real app failures are not hidden;
    - retry/timeout knobs are configurable through `SMARTPIM_SMOKE_HTTP_RETRIES`, `SMARTPIM_SMOKE_EXPORT_LATEST_TIMEOUT_MS` and `SMARTPIM_SMOKE_EXPORT_LATEST_RETRIES`.
+42. Product parameter workspace now separates blocker types instead of showing one opaque count:
+   - top next-action uses `/parameter-flow` blockers and tells the user whether to fill PIM values or map marketplace fields/values;
+   - the left parameter queue shows separate counters for empty PIM values, marketplace field mappings and marketplace value mappings;
+   - blocker actions keep their exact deep links to product fields, params mapping, values mapping or export readiness.
 
 Current smoke status:
 

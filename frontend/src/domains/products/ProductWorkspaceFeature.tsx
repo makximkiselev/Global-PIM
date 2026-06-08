@@ -290,6 +290,14 @@ function productExportHref(productId: string) {
   return `/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`;
 }
 
+type ProductParameterBlockerGroups = {
+  pim: ProductParameterFlowBlocker[];
+  fields: ProductParameterFlowBlocker[];
+  values: ProductParameterFlowBlocker[];
+  other: ProductParameterFlowBlocker[];
+  total: number;
+};
+
 type ProductNextAction = {
   title: string;
   detail: string;
@@ -309,17 +317,22 @@ function buildProductNextAction({
   features,
   media,
   channels,
+  parameterFlow,
 }: {
   product: ProductData;
   infoModel: ProductInfoModel | null;
   features: ProductFeatureValue[];
   media: ProductMedia[];
   channels: ChannelsSummary | null;
+  parameterFlow: ProductParameterFlow | null;
 }): ProductNextAction {
   const categoryId = normalizeText(product.category_id);
   const hasInfoModel = Boolean(infoModel?.has_template || infoModel?.template_id || infoModel?.attributes_count || features.length);
   const description = normalizeText(product.content?.description);
   const competitorReady = hasActiveCompetitorLink(channels);
+  const blockerGroups = buildProductParameterBlockerGroups(parameterFlow?.blockers || []);
+  const flowBlockerTotal = Number(parameterFlow?.summary?.blockers || blockerGroups.total || 0);
+  const mappingBlockerCount = blockerGroups.fields.length + blockerGroups.values.length;
 
   if (!description) {
     return {
@@ -344,6 +357,22 @@ function buildProductNextAction({
   }
 
   const requiredMissing = features.filter((feature) => feature.required && !featureValue(feature)).length;
+  if (flowBlockerTotal > 0) {
+    const pimTasks = Math.max(requiredMissing, blockerGroups.pim.length);
+    return {
+      title: pimTasks ? "Заполнить PIM и маппинг" : "Сопоставить площадки",
+      detail: [
+        `${flowBlockerTotal} экспортных блокеров всего`,
+        pimTasks ? `быстрая очередь: ${pimTasks} пустых PIM-полей` : "",
+        mappingBlockerCount ? `${mappingBlockerCount} связей с площадками` : "",
+      ].filter(Boolean).join(". "),
+      cta: pimTasks ? "Открыть параметры" : "Открыть сопоставления",
+      tab: pimTasks ? "attributes" : undefined,
+      href: pimTasks ? undefined : `/sources?tab=params&category=${encodeURIComponent(categoryId)}&product=${encodeURIComponent(product.id)}`,
+      tone: "danger",
+    };
+  }
+
   if (requiredMissing > 0) {
     return {
       title: "Заполнить обязательные параметры",
@@ -729,6 +758,27 @@ function productBlockerTitle(blocker: ProductParameterFlowBlocker) {
   return "Блокер параметра";
 }
 
+function productBlockerGroup(blocker: ProductParameterFlowBlocker): keyof Omit<ProductParameterBlockerGroups, "total"> {
+  if (blocker.code === "empty_value") return "pim";
+  if (blocker.code === "parameter_mapping_required" || blocker.code === "required_parameter_missing") return "fields";
+  if (blocker.code === "value_mapping_required") return "values";
+  return "other";
+}
+
+function buildProductParameterBlockerGroups(blockers: ProductParameterFlowBlocker[]): ProductParameterBlockerGroups {
+  const groups: ProductParameterBlockerGroups = {
+    pim: [],
+    fields: [],
+    values: [],
+    other: [],
+    total: blockers.length,
+  };
+  for (const blocker of blockers) {
+    groups[productBlockerGroup(blocker)].push(blocker);
+  }
+  return groups;
+}
+
 function mediaSourceLabel(url: string): string {
   const normalized = normalizeText(url).toLowerCase();
   if (normalized.includes("/competitors/restore/")) return "re-store";
@@ -1051,8 +1101,14 @@ function ProductAttributeWorkbench({
   const noValueCount = features.filter((feature) => !featureValue(feature)).length;
   const exportReadyCount = Number(parameterFlow?.summary?.features_ready || 0) || features.filter((feature) => featureValue(feature) && sourceEntriesForFeature(feature).length).length;
   const attentionCount = Number(parameterFlow?.summary?.features_attention || 0);
-  const blockerCount = Number(parameterFlow?.summary?.blockers || parameterFlow?.blockers?.length || 0);
-  const blockerItems = (parameterFlow?.blockers || []).slice(0, 6);
+  const blockerGroups = buildProductParameterBlockerGroups(parameterFlow?.blockers || []);
+  const blockerCount = Number(parameterFlow?.summary?.blockers || blockerGroups.total || 0);
+  const blockerItems = [
+    ...blockerGroups.pim,
+    ...blockerGroups.fields,
+    ...blockerGroups.values,
+    ...blockerGroups.other,
+  ].slice(0, 6);
   const dimensionBlockers = (parameterFlow?.blockers || []).filter((blocker) =>
     normalizeText(blocker.provider).toLowerCase() === "ozon"
       && normalizeText(blocker.code) === "required_parameter_missing"
@@ -1131,8 +1187,19 @@ function ProductAttributeWorkbench({
         <div className="productParamExportSummary">
           <span><b>{exportReadyCount}</b> готовы с источником</span>
           <span><b>{withSourceCount}</b> с источником</span>
-          <span><b>{blockerCount || attentionCount || noValueCount}</b> {blockerCount || attentionCount ? "блокеры" : "без значения"}</span>
+          <span><b>{blockerCount || attentionCount || noValueCount}</b> {blockerCount || attentionCount ? "задач перед экспортом" : "без значения"}</span>
         </div>
+        {blockerCount ? (
+          <div className="productParamBlockerSummary" aria-label="Типы блокеров параметров">
+            <strong>Быстрая очередь</strong>
+            <span><b>{blockerGroups.pim.length}</b> PIM пустые</span>
+            <span><b>{blockerGroups.fields.length}</b> поля площадок</span>
+            <span><b>{blockerGroups.values.length}</b> значения</span>
+            {blockerCount > blockerGroups.total ? (
+              <span><b>{blockerCount - blockerGroups.total}</b> только в полной проверке</span>
+            ) : null}
+          </div>
+        ) : null}
         {blockerItems.length ? (
           <div className="productParamBlockerList" aria-label="Блокеры параметров">
             {blockerItems.map((blocker, index) => {
@@ -2014,9 +2081,9 @@ function ProductWorkspaceFeature() {
   }, [filteredCompetitorIds, selectedCompetitorSet]);
   const justCreated = searchParams.get("created") === "1";
   const nextAction = useMemo(() => product
-    ? buildProductNextAction({ product, infoModel, features, media, channels })
+    ? buildProductNextAction({ product, infoModel, features, media, channels, parameterFlow })
     : null,
-    [channels, features, infoModel, media, product],
+    [channels, features, infoModel, media, parameterFlow, product],
   );
   const lineageSummary = useMemo(() => buildProductLineageSummary({ features, media, channels }), [channels, features, media]);
 

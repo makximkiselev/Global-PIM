@@ -1993,6 +1993,38 @@
   font-weight:950;
 }
 
+.productParamBlockerSummary{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:5px;
+  padding:8px;
+  border:1px solid rgba(var(--line-rgb), .72);
+  border-radius:12px;
+  background:rgba(var(--surface-rgb), .46);
+}
+
+.productParamBlockerSummary > strong{
+  color:var(--text);
+  font-size:11px;
+  font-weight:950;
+}
+
+.productParamBlockerSummary span{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+}
+
+.productParamBlockerSummary b{
+  color:var(--text);
+  font-size:12px;
+  font-weight:950;
+}
+
 .productParamBlockerList{
   display:flex;
   flex-direction:column;
