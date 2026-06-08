@@ -1022,6 +1022,10 @@ Next fix in the category flow:
    - `target=attributes` always opens `/products/{id}?tab=attributes&parameter=...`;
    - old export runs that saved a generic `/sources?tab=params` fix link or target for package dimensions no longer send package dimensions into the mapping workspace;
    - action labels show `Заполнить в SKU` for product-value fixes.
+44. Info-model draft wording no longer says “reuse in PIM”:
+   - global attribute matches are labelled as linking a found field to an existing PIM parameter;
+   - primary action says `Связать с этим PIM-параметром`;
+   - help text explains that this prevents duplicate parameters with the same meaning.
 
 Current smoke status:
 

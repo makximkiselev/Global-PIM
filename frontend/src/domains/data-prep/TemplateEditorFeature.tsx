@@ -375,15 +375,15 @@ function draftRecommendation(candidate: InfoModelCandidate) {
   if (candidate.status === "rejected") return "Не использовать";
   if (isSemanticDuplicateCandidate(candidate)) return "Проверить повтор";
   if (isWeakGlobalCandidate(candidate)) return "Проверить связь PIM";
-  if (candidate.global_match) return "Можно переиспользовать";
+  if (candidate.global_match) return "Связать с параметром PIM";
   if (isMarketplaceOnlyCandidate(candidate)) return "Проверить необходимость";
   if (isCompetitorOnlyCandidate(candidate)) return "Проверить источник";
   return "Проверить";
 }
 
 function draftPrimaryActionLabel(candidate: InfoModelCandidate) {
-  if (candidate.global_match) return "Переиспользовать PIM-поле";
-  return "Добавить поле";
+  if (candidate.global_match) return "Связать с этим PIM-параметром";
+  return "Добавить новый PIM-параметр";
 }
 
 function draftSourceSummaryText(candidate: InfoModelCandidate) {
@@ -1522,7 +1522,9 @@ export default function TemplateEditor() {
                       <details className="tplDraftHelp">
                         <summary>Как читать предложения</summary>
                         <p>
-                          Совпадение показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
+                          Совпадение показывает, насколько уверенно система считает найденное поле тем же смыслом, что уже существующий PIM-параметр.
+                          Если связь верная, используйте существующий параметр, чтобы не плодить дубли вроде «Кол-во SIM» и «Количество SIM-карт».
+                          Если смысл отличается, создайте новый PIM-параметр.
                         </p>
                       </details>
                     </div>
