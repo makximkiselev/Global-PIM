@@ -103,9 +103,15 @@ type ExportPackageResp = {
       warnings_count?: number;
     };
     warnings?: Array<{
+      code?: string;
+      message?: string;
       provider?: string;
       store_id?: string;
       store_title?: string;
+      product_id?: string;
+      category_id?: string;
+      parameter?: string;
+      target?: string;
       blocked_items?: number;
     }>;
     batches?: Array<{
@@ -115,6 +121,8 @@ type ExportPackageResp = {
       status: string;
       ready_count: number;
       blocked_count: number;
+      warnings_count?: number;
+      warnings?: NonNullable<ExportPackageResp["package"]["warnings"]>;
       items: Array<{
         product_id: string;
         offer_id?: string;
@@ -1225,6 +1233,15 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       priceSources,
     };
   }), [exportPackage]);
+  const packageWarningRows = useMemo(() => (exportPackage?.warnings || []).map((warning, idx) => ({
+    key: `${warning.provider || "provider"}:${warning.store_id || "store"}:${warning.product_id || "product"}:${warning.parameter || idx}`,
+    code: warning.code || "warning",
+    message: warning.message || (warning.blocked_items ? `${warning.blocked_items} строк заблокировано` : "Предупреждение выгрузки"),
+    provider: warning.provider || "",
+    storeTitle: warning.store_title || warning.store_id || "",
+    productId: warning.product_id || "",
+    parameter: warning.parameter || "",
+  })), [exportPackage]);
 
   const inspector = (
     <div className="cx-workspaceInspector">
@@ -1637,6 +1654,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <div><span>Batch</span><strong>{exportPackage.summary?.batch_count ?? 0}</strong></div>
                       <div><span>Payload rows</span><strong>{exportPackage.summary?.ready_items ?? 0}</strong></div>
                       <div><span>Блокеры</span><strong>{exportPackage.summary?.blocked_items ?? 0}</strong></div>
+                      <div><span>Предупреждения</span><strong>{exportPackage.summary?.warnings_count ?? 0}</strong></div>
                     </div>
                     <div className="cx-payloadAuditGrid">
                       {packageAuditRows.map((row) => (
@@ -1663,6 +1681,26 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                         </div>
                       ))}
                     </div>
+                    {packageWarningRows.length ? (
+                      <div className="cx-payloadWarnings">
+                        <div className="cx-payloadWarningsHead">
+                          <strong>Предупреждения готового payload</strong>
+                          <span>Не блокируют отправку, но показывают, какие необязательные значения не попали в payload.</span>
+                        </div>
+                        <div className="cx-payloadWarningsList">
+                          {packageWarningRows.slice(0, 12).map((warning) => (
+                            <div className="cx-payloadWarningItem" key={warning.key}>
+                              <Badge tone="pending">{providerTitle(warning.provider) || warning.code}</Badge>
+                              <div>
+                                <strong>{warning.parameter || warning.code}</strong>
+                                <span>{warning.message}</span>
+                                <em>{[warning.storeTitle, warning.productId].filter(Boolean).join(" · ")}</em>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <ResultsTable table={packageBatchTable} />
                     <ResultsTable table={packageItemTable} />
                   </section>

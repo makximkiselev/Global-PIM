@@ -1141,6 +1141,10 @@ Next fix in the category flow:
    - final package `summary.warnings_count` now includes ready-batch diagnostics such as `optional_value_omitted`;
    - each package batch carries `warnings_count` and warning rows with provider/store context;
    - ready export packages can therefore be `status=ready` while still showing non-blocking omissions for review.
+68. Export package UI now renders ready-batch warnings:
+   - payload summary shows a `Предупреждения` count;
+   - non-blocking package warnings render above payload tables with provider, store, product and parameter context;
+   - this makes ready-but-omitted optional values visible before the user submits the package.
 
 Current smoke status:
 
