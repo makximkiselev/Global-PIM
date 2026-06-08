@@ -100,6 +100,7 @@ type ValueAiJobResp = {
 
 type Props = {
   selectedCategoryId?: string;
+  productId?: string;
   focusParameter?: string;
   focusProvider?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
@@ -280,7 +281,19 @@ function searchMatch(node: CatalogNode, q: string) {
   return String(node.name || "").toLowerCase().includes(q);
 }
 
-export default function SourcesValueMappingSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", focusProvider = "", onSelectedCategoryChange }: Props) {
+function exportTargetHref(selectedCategoryId: string, productId = "") {
+  if (productId) return `/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`;
+  return `/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`;
+}
+
+function sourcesTargetHref(tab: "sources" | "params" | "values", selectedCategoryId: string, productId = "") {
+  const params = new URLSearchParams({ tab });
+  if (selectedCategoryId) params.set("category", selectedCategoryId);
+  if (productId) params.set("product", productId);
+  return `/sources?${params.toString()}`;
+}
+
+export default function SourcesValueMappingSection({ selectedCategoryId: selectedCategoryIdProp = "", productId = "", focusParameter = "", focusProvider = "", onSelectedCategoryChange }: Props) {
   const selectedCategoryId = selectedCategoryIdProp || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("category") || "" : "");
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(true);
@@ -807,8 +820,10 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
             </div>
             <div className="sm-valuesActions">
               <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
-              <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
-              <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+              <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>К параметрам</Link>
+              <Link className="btn btn-primary" to={exportTargetHref(selectedCategoryId, productId)}>
+                {productId ? "Проверить SKU" : "Проверить выгрузку"}
+              </Link>
             </div>
           </div>
 
@@ -842,7 +857,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                 <span>3. Вернуться сюда для значений</span>
               </div>
               <div className="sm-valuesPrereqActions">
-                <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+                <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>К параметрам</Link>
                 <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
               </div>
             </div>
@@ -909,7 +924,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                     <p>{valuesError === "AUTH_REQUIRED" ? "Нужно войти заново, чтобы загрузить значения категории." : valuesError}</p>
                     <div className="sm-valuesEmptyActions">
                       <button className="btn" type="button" onClick={retryValuesLoad} disabled={loadingValues}>Повторить загрузку</button>
-                      <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+                      <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>К параметрам</Link>
                       {valuesError === "AUTH_REQUIRED" ? <Link className="btn btn-primary" to="/login">Войти</Link> : null}
                     </div>
                   </div>
@@ -918,13 +933,15 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                     <p>{emptyValuesMessage}</p>
                     {!mappingItemsCount && !rawItemsCount ? (
                       <div className="sm-valuesEmptyActions">
-                        <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+                        <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>К параметрам</Link>
                         <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
                       </div>
                     ) : !mappingItemsCount ? (
                       <div className="sm-valuesEmptyActions">
-                        <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить параметры</Link>
-                        <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить экспорт</Link>
+                        <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>Проверить параметры</Link>
+                        <Link className="btn btn-primary" to={exportTargetHref(selectedCategoryId, productId)}>
+                          {productId ? "Проверить SKU" : "Проверить экспорт"}
+                        </Link>
                       </div>
                     ) : null}
                   </div>

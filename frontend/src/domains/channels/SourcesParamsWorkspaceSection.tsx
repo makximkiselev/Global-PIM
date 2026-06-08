@@ -108,6 +108,7 @@ type CompetitorCategoryResp = {
 
 type Props = {
   selectedCategoryId?: string;
+  productId?: string;
   focusParameter?: string;
   focusProvider?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
@@ -486,7 +487,19 @@ function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds
   ].filter((group) => group.items.length > 0);
 }
 
-export default function SourcesParamsWorkspaceSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", focusProvider = "", onSelectedCategoryChange }: Props) {
+function exportTargetHref(selectedCategoryId: string, productId = "") {
+  if (productId) return `/catalog/exchange?tab=export&product=${encodeURIComponent(productId)}`;
+  return `/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`;
+}
+
+function sourcesTargetHref(tab: "sources" | "params" | "values", selectedCategoryId: string, productId = "") {
+  const params = new URLSearchParams({ tab });
+  if (selectedCategoryId) params.set("category", selectedCategoryId);
+  if (productId) params.set("product", productId);
+  return `/sources?${params.toString()}`;
+}
+
+export default function SourcesParamsWorkspaceSection({ selectedCategoryId: selectedCategoryIdProp = "", productId = "", focusParameter = "", focusProvider = "", onSelectedCategoryChange }: Props) {
   const selectedCategoryId = selectedCategoryIdProp || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("category") || "" : "");
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -1049,7 +1062,9 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                 <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
                   {aiMatching ? "Собираю..." : "Собрать черновик"}
                 </button>
-                <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+                <Link className="btn btn-primary" to={exportTargetHref(selectedCategoryId, productId)}>
+                  {productId ? "Проверить SKU" : "Проверить выгрузку"}
+                </Link>
               </>
             ) : null}
           </div>
@@ -1102,7 +1117,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
           <div className="paramsAlert isInfo">
             Площадки уже дают список обязательных и полезных полей, но финальная инфо-модель строится после конкурентных карточек и товарных данных.
             Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к черновику параметров.
-            <Link className="btn sm" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть источники</Link>
+            <Link className="btn sm" to={sourcesTargetHref("sources", selectedCategoryId, productId)}>Открыть источники</Link>
           </div>
         ) : null}
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
@@ -1125,7 +1140,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
             </div>
             <div className="paramsInfoModelSetupActions">
               <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
-              <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить источники</Link>
+              <Link className="btn" to={sourcesTargetHref("sources", selectedCategoryId, productId)}>Проверить источники</Link>
             </div>
           </div>
         ) : (
@@ -1439,7 +1454,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                       <em>отдельная очередь</em>
                     </div>
                   </div>
-                  <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть источники</Link>
+                  <Link className="btn" to={sourcesTargetHref("sources", selectedCategoryId, productId)}>Открыть источники</Link>
                 </div>
 
                 <div className="paramsInspectorSection">
@@ -1478,7 +1493,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                     >
                       Сбросить решение
                     </button>
-                    <Link className="btn" to={`/sources?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Настроить значения</Link>
+                    <Link className="btn" to={sourcesTargetHref("values", selectedCategoryId, productId)}>Настроить значения</Link>
                   </div>
                 </div>
 

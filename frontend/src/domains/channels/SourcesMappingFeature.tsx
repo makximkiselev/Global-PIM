@@ -395,6 +395,7 @@ export default function SourcesMappingFeature() {
         {tab === "params" && !categoryResolving && (
           <SourcesParamsWorkspaceSection
             selectedCategoryId={activeCategoryId}
+            productId={productParam}
             focusParameter={parameterParam}
             focusProvider={providerParam}
             onSelectedCategoryChange={(categoryId, categoryName) => {
@@ -406,6 +407,7 @@ export default function SourcesMappingFeature() {
         {tab === "values" && (
           <SourcesValueMappingSection
             selectedCategoryId={activeCategoryId}
+            productId={productParam}
             focusParameter={parameterParam}
             focusProvider={providerParam}
             onSelectedCategoryChange={(categoryId, categoryName) => {
