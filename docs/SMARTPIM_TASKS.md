@@ -1041,6 +1041,10 @@ Next fix in the category flow:
    - the UI shows a per-store audit of selected stores vs batch rows with ready/blocked counters;
    - if store checkboxes changed after preparation, the latest batch is marked stale and payload/final send actions require a new preparation;
    - the inspector shows current target count, batch row count and whether the batch still matches the current selection.
+49. Export payload review now has a readable per-store audit:
+   - after building JSON, each marketplace/store card shows media count, parameter source coverage and price source;
+   - parameters without source are surfaced as chips before the detailed payload tables;
+   - technical placeholder prices are labelled explicitly instead of looking like a hidden PIM price.
 
 Current smoke status:
 

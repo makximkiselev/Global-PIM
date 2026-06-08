@@ -283,6 +283,14 @@ function processingTone(status?: string): "active" | "pending" | "danger" | "neu
   return "neutral";
 }
 
+function priceSourceLabel(source?: string): string {
+  if (source === "marketplace") return "цена площадки";
+  if (source === "technical_placeholder") return "заглушка";
+  if (source === "pim") return "PIM";
+  if (source === "unknown" || !source) return "не указано";
+  return source;
+}
+
 function exportableProviders(providers: ProviderRow[]): ProviderRow[] {
   return providers
     .filter((provider) => ["yandex_market", "ozon"].includes(provider.code))
@@ -1038,6 +1046,27 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => `${row.batch.provider}:${row.batch.store_id}:${row.item.product_id}:${row.item.offer_id || ""}`,
   });
+  const packageAuditRows = useMemo(() => (exportPackage?.batches || []).map((batch) => {
+    const items = batch.items || [];
+    const mediaCount = items.reduce((sum, item) => sum + Number(item.audit?.media_count || 0), 0);
+    const attributesTotal = items.reduce((sum, item) => sum + Number(item.audit?.attributes_total || 0), 0);
+    const attributesWithSource = items.reduce((sum, item) => sum + Number(item.audit?.attributes_with_source || 0), 0);
+    const missing = Array.from(new Set(items.flatMap((item) => item.audit?.missing_source || []).filter(Boolean))).slice(0, 6);
+    const priceSources = Array.from(new Set(items.map((item) => priceSourceLabel(item.audit?.price_source)).filter(Boolean)));
+    return {
+      key: `${batch.provider}:${batch.store_id}`,
+      provider: batch.provider,
+      storeTitle: batch.store_title || batch.store_id,
+      readyCount: batch.ready_count,
+      blockedCount: batch.blocked_count,
+      mediaCount,
+      attributesTotal,
+      attributesWithSource,
+      attributesWithoutSource: Math.max(0, attributesTotal - attributesWithSource),
+      missing,
+      priceSources,
+    };
+  }), [exportPackage]);
 
   const inspector = (
     <div className="cx-workspaceInspector">
@@ -1450,6 +1479,31 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <div><span>Batch</span><strong>{exportPackage.summary?.batch_count ?? 0}</strong></div>
                       <div><span>Payload rows</span><strong>{exportPackage.summary?.ready_items ?? 0}</strong></div>
                       <div><span>Блокеры</span><strong>{exportPackage.summary?.blocked_items ?? 0}</strong></div>
+                    </div>
+                    <div className="cx-payloadAuditGrid">
+                      {packageAuditRows.map((row) => (
+                        <div key={row.key} className={`cx-payloadAuditCard ${row.attributesWithoutSource > 0 ? "hasMissing" : ""}`}>
+                          <div className="cx-payloadAuditHead">
+                            <strong>{providerTitle(row.provider)} · {row.storeTitle}</strong>
+                            <Badge tone={row.blockedCount > 0 || row.attributesWithoutSource > 0 ? "pending" : "active"}>
+                              {row.readyCount} payload
+                            </Badge>
+                          </div>
+                          <div className="cx-payloadAuditStats">
+                            <span>Медиа <b>{row.mediaCount}</b></span>
+                            <span>Параметры <b>{row.attributesWithSource}/{row.attributesTotal}</b></span>
+                            <span>Цена <b>{row.priceSources.join(", ") || "не указано"}</b></span>
+                          </div>
+                          {row.missing.length ? (
+                            <div className="cx-payloadAuditMissing">
+                              <span>Без источника:</span>
+                              {row.missing.map((item) => <em key={item}>{item}</em>)}
+                            </div>
+                          ) : (
+                            <div className="cx-payloadAuditOk">Все параметры в payload имеют источник.</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                     <ResultsTable table={packageBatchTable} />
                     <ResultsTable table={packageItemTable} />

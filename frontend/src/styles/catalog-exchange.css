@@ -668,6 +668,92 @@
   color:var(--muted);
 }
 
+.cx-payloadAuditGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:12px;
+}
+
+.cx-payloadAuditCard{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid rgba(185,199,227,.55);
+  border-radius:14px;
+  background:#fff;
+}
+
+.cx-payloadAuditCard.hasMissing{
+  border-color:rgba(255,122,69,.38);
+  background:#fffaf6;
+}
+
+.cx-payloadAuditHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.cx-payloadAuditHead strong{
+  color:#0f172a;
+  font-size:13px;
+  font-weight:900;
+}
+
+.cx-payloadAuditStats{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+
+.cx-payloadAuditStats span{
+  display:grid;
+  gap:3px;
+  color:#667085;
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.cx-payloadAuditStats b{
+  color:#0f172a;
+  font-size:13px;
+  font-weight:900;
+  text-transform:none;
+  letter-spacing:0;
+}
+
+.cx-payloadAuditMissing{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+  color:#b42318;
+  font-size:12px;
+  font-weight:800;
+}
+
+.cx-payloadAuditMissing span{
+  margin-right:2px;
+}
+
+.cx-payloadAuditMissing em{
+  padding:5px 8px;
+  border:1px solid rgba(180,35,24,.18);
+  border-radius:999px;
+  background:#fff1f0;
+  color:#9f1f16;
+  font-style:normal;
+}
+
+.cx-payloadAuditOk{
+  color:#146b3a;
+  font-size:12px;
+  font-weight:800;
+}
+
 .cx-count{
   min-width:42px;
   height:42px;
