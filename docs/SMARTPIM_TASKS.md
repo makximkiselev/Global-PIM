@@ -1118,6 +1118,7 @@ Next fix in the category flow:
 62. Я.Маркет export readiness now blocks review-only media:
    - selected media with `status=needs_review`, `needs_review=true`, or `source_type=external_hotlink` creates `media_review_required` instead of marking the target ready;
    - payload preview still shows the candidate picture URL for inspection, but the row stays `ready=false` until media is approved/imported;
+   - shared export batch adaptation links `media_review_required` blockers to `/products/{id}?tab=media` with `Проверить медиа`;
    - Ozon already had this guard; targeted tests now cover both marketplaces, and production deploy/health passed after the backend change.
 
 Current smoke status:

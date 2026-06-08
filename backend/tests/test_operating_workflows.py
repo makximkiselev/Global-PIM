@@ -4499,6 +4499,44 @@ class OperatingWorkflowTests(unittest.TestCase):
             "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82&provider=ozon",
         )
 
+    def test_export_batch_blockers_link_media_review_to_product_media_tab(self) -> None:
+        preview = {
+            "count": 1,
+            "ready_count": 0,
+            "not_ready_count": 1,
+            "items": [
+                {
+                    "product_id": "product_1",
+                    "product_title": "iPhone",
+                    "category_id": "cat-phone",
+                    "ready": False,
+                    "missing": ["Медиа найдено, но часть изображений требует проверки перед выгрузкой"],
+                    "missing_details": [
+                        {
+                            "code": "media_review_required",
+                            "message": "Медиа найдено, но часть изображений требует проверки перед выгрузкой",
+                            "target": "media",
+                            "count": 1,
+                        }
+                    ],
+                    "payload_item": {"offerId": "GT-1"},
+                }
+            ],
+        }
+
+        batch = catalog_exchange._export_batch_from_preview(
+            provider="yandex_market",
+            store={"id": "ym-store", "title": "Я.Маркет"},
+            preview=preview,
+        )
+
+        detail = batch["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["product_id"], "product_1")
+        self.assertEqual(detail["category_id"], "cat-phone")
+        self.assertNotIn("provider", detail)
+        self.assertEqual(detail["fix_label"], "Проверить медиа")
+        self.assertEqual(detail["fix_href"], "/products/product_1?tab=media")
+
     def test_export_batch_blockers_link_product_attribute_fixes_to_sku(self) -> None:
         preview = {
             "count": 1,
