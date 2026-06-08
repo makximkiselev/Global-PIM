@@ -41,6 +41,14 @@ function exportHref(categoryId: string, productId: string) {
   return "/catalog/exchange?tab=export";
 }
 
+export function legacyCompetitorRedirectHref(categoryId: string, productId: string) {
+  const params = new URLSearchParams();
+  params.set("tab", "sources");
+  if (categoryId) params.set("category", categoryId);
+  if (productId) params.set("product", productId);
+  return `/sources?${params.toString()}`;
+}
+
 function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: string) {
   if (!categoryId) {
     return {
@@ -296,8 +304,7 @@ export default function SourcesMappingFeature() {
   }
 
   if (rawTab === "competitors" || rawTab === "competitor" || rawTab === "competitor_links" || rawTab === "discovery") {
-    const categoryParam = activeCategoryId ? `?category=${encodeURIComponent(activeCategoryId)}` : "";
-    return <Navigate to={`/data-prep/competitors${categoryParam}`} replace />;
+    return <Navigate to={legacyCompetitorRedirectHref(activeCategoryId, productParam)} replace />;
   }
 
   return (

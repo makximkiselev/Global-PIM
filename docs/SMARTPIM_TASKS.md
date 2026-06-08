@@ -187,6 +187,7 @@ Done:
     - modal shows exact added, removed and changed fields;
     - rollback action is only available from the preview.
 21. Legacy product card surfaces already reuse `/products/{product_id}/parameter-flow` for lineage, parameter summary and marketplace output diffs.
+22. Legacy `/sources?tab=competitors|discovery` redirects preserve both category and product context, so SKU-origin flows land in competitor matching without becoming category-only.
 
 Next:
 
