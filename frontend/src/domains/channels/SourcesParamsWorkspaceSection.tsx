@@ -242,6 +242,16 @@ function rowStatusReason(row: AttrRow, codes: string[]) {
   return "Поле подтверждено. Дальше проверьте значения, если у площадки есть справочник или альтернативные написания.";
 }
 
+function rowQueueRank(row: AttrRow, codes: string[]) {
+  const coverage = rowProviderCoverage(row, codes);
+  if (!row.confirmed && coverage === 0) return 0;
+  if (!row.confirmed) return 1;
+  if (rowHasComplexBindings(row, codes)) return 2;
+  if (rowHasValues(row, codes)) return 3;
+  if (coverage === 0) return 4;
+  return 5;
+}
+
 function mappingOriginLabel(source?: string) {
   const value = qnorm(source || "");
   if (value === "ai" || value === "ollama" || value === "llm") return "AI";
@@ -689,9 +699,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
         return hay.includes(q);
       })
       .sort((a, b) => {
-        const aa = rowNeedsAttention(a, codes) ? 0 : 1;
-        const bb = rowNeedsAttention(b, codes) ? 0 : 1;
+        const aa = rowQueueRank(a, codes);
+        const bb = rowQueueRank(b, codes);
         if (aa !== bb) return aa - bb;
+        const ac = rowProviderCoverage(a, codes);
+        const bc = rowProviderCoverage(b, codes);
+        if (ac !== bc) return ac - bc;
         return String(a.catalog_name || "").localeCompare(String(b.catalog_name || ""), "ru");
       });
   }, [paramRows, codes, queueFilter, groupFilter, fieldQuery]);

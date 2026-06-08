@@ -1166,6 +1166,10 @@ Next fix in the category flow:
    - fields with missing provider value mappings appear before ready dictionary fields;
    - numeric unit checks and empty-PIM-value dictionary fields stay above fully covered rows;
    - within the same priority, fields with more missing values sort first, making duplicate/near-duplicate value problems easier to notice during review.
+74. Parameter mapping queue ordering now prioritizes review risk:
+   - unconfirmed fields with no marketplace bindings appear first;
+   - unconfirmed suggested bindings, one-PIM-to-many-marketplace bindings, and fields that require value mapping sort above ordinary ready rows;
+   - rows with lower provider coverage sort earlier inside the same risk group.
 
 Current smoke status:
 
