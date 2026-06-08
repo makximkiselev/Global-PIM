@@ -51,6 +51,7 @@ type ProductMedia = {
 type ProductContent = {
   description?: string;
   features?: ProductFeatureValue[];
+  source_values?: Record<string, unknown>;
   media?: ProductMedia[];
   media_images?: ProductMedia[];
   media_videos?: ProductMedia[];
@@ -596,6 +597,48 @@ function isMarketplaceSource(provider: string) {
 
 function hasSourceEntryValue(entry: { raw: string; resolved: string; canonical: string }) {
   return Boolean(normalizeText(entry.raw) || normalizeText(entry.resolved) || normalizeText(entry.canonical));
+}
+
+function descriptionSourceEntries(content?: ProductContent) {
+  const sourceValues = content?.source_values && typeof content.source_values === "object" ? content.source_values : {};
+  const descriptions = sourceValues.descriptions && typeof sourceValues.descriptions === "object"
+    ? sourceValues.descriptions as Record<string, unknown>
+    : {};
+  return Object.entries(descriptions)
+    .map(([provider, raw]) => {
+      if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
+        const value = normalizeText(raw);
+        return {
+          provider,
+          label: provider,
+          detail: "value",
+          value,
+          updatedAt: "",
+        };
+      }
+      if (!raw || typeof raw !== "object") return null;
+      const item = raw as {
+        site?: string;
+        url?: string;
+        store_id?: string;
+        store_title?: string;
+        source_product_id?: string;
+        value?: string;
+        count?: number;
+        updated_at?: string;
+      };
+      const label = normalizeText(item.store_title) || normalizeText(item.site) || provider;
+      const detail = normalizeText(item.url) || normalizeText(item.source_product_id) || normalizeText(item.store_id) || "source";
+      return {
+        provider,
+        label,
+        detail,
+        value: normalizeText(item.value),
+        updatedAt: normalizeText(item.updated_at),
+      };
+    })
+    .filter((item): item is { provider: string; label: string; detail: string; value: string; updatedAt: string } => Boolean(item))
+    .sort((left, right) => left.provider.localeCompare(right.provider, "ru"));
 }
 
 function packageFieldEvidence(targets: Array<{ key: string; label: string; feature: ProductFeatureValue }>) {
@@ -1934,6 +1977,7 @@ function ProductWorkspaceFeature() {
     return merged;
   }, [hasInfoModel, product, rawFeatures, templateFeatureCodes, templateFeatureByIdentity]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
+  const descriptionSources = useMemo(() => descriptionSourceEntries(product?.content), [product]);
   const selectedMediaCount = useMemo(() => media.filter((item) => item.selected !== false).length, [media]);
   const selectedReviewMediaCount = useMemo(
     () => media.filter((item) => item.selected !== false && isMediaWaitingForReview(item)).length,
@@ -2537,13 +2581,39 @@ function ProductWorkspaceFeature() {
                   accessories={accessories}
                 />
                 <div className="productWorkspaceTextBlock productCockpitDescription">
-                  <div className="productWorkspaceTextLabel">Описание товара</div>
+                  <div className="productWorkspaceTextHead">
+                    <div className="productWorkspaceTextLabel">Описание товара</div>
+                    <Badge tone={descriptionSources.length ? "active" : "pending"}>
+                      {descriptionSources.length ? `${descriptionSources.length} источ.` : "нет источника"}
+                    </Badge>
+                  </div>
                   <div
                     className="productWorkspaceRichText"
                     dangerouslySetInnerHTML={{
                       __html: normalizeText(product.content?.description) || "<p>Описание пока не заполнено.</p>",
                     }}
                   />
+                  {descriptionSources.length ? (
+                    <div className="productDescriptionEvidence">
+                      {descriptionSources.slice(0, 3).map((entry) => (
+                        <article key={`${entry.provider}:${entry.detail}`} className="productSourceEvidence">
+                          <div>
+                            <strong>{entry.label}</strong>
+                            <span>{entry.provider}</span>
+                          </div>
+                          <dl>
+                            <div><dt>Источник</dt><dd title={entry.detail}>{compactText(entry.detail, 120)}</dd></div>
+                            <div><dt>Фрагмент</dt><dd title={entry.value || undefined}>{entry.value ? compactText(entry.value, 160) : "описание сохранено без фрагмента"}</dd></div>
+                            <div><dt>Обновлено</dt><dd>{entry.updatedAt ? new Date(entry.updatedAt).toLocaleString("ru-RU") : "—"}</dd></div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="productDescriptionEvidenceEmpty">
+                      Источник описания не зафиксирован. Проверьте импорт площадки или подтвержденные карточки конкурентов перед финальной отправкой.
+                    </div>
+                  )}
                 </div>
               </>
             ) : null}

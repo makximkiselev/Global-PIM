@@ -769,7 +769,7 @@ Known problems:
 1. Catalog/source/tree components are still not fully unified.
 2. Some screens still have local layout implementations.
 3. Export readiness now has server-side and UI protection against accidental broad final submissions after the readiness batch.
-4. Product card description/source evidence must be rechecked after deploy to confirm the compact UI is enough for real content work.
+4. Product card description/source evidence is now visible in the active product workspace overview.
 5. iPhone 17 Pro Max single-SKU export blocker was closed for `product_1052`; keep media import/enrichment reliable for the rest of the line.
 
 Next tasks:
@@ -1002,6 +1002,10 @@ Next fix in the category flow:
    - backend rejects non-dry-run submit for broad scopes with `BROAD_EXPORT_SUBMIT_REQUIRES_CONFIRMATION` unless `confirm_broad_scope=true`;
    - frontend shows a second final-submit modal for broad runs, separate from the preparation confirmation;
    - single-SKU and narrow-category submissions remain one-click after readiness is green.
+40. Product workspace overview now shows description source evidence:
+   - `content.source_values.descriptions` is rendered below the final description;
+   - marketplace, competitor and sibling description sources show provider/store/source URL or donor SKU plus a compact text fragment;
+   - products with text but no source metadata show an explicit warning before final export work.
 
 Current smoke status:
 

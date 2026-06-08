@@ -1880,6 +1880,32 @@
   background:rgba(var(--card-rgb), .84);
 }
 
+.productWorkspaceTextHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.productDescriptionEvidence{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+  gap:10px;
+  margin-top:14px;
+}
+
+.productDescriptionEvidenceEmpty{
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px dashed rgba(var(--line-rgb), .86);
+  border-radius:14px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:800;
+  line-height:1.45;
+}
+
 .productCockpitGrid{
   display:grid;
   grid-template-columns:minmax(260px, 340px) minmax(0, 1fr);
