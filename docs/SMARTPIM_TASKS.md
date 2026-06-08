@@ -1145,6 +1145,10 @@ Next fix in the category flow:
    - payload summary shows a `Предупреждения` count;
    - non-blocking package warnings render above payload tables with provider, store, product and parameter context;
    - this makes ready-but-omitted optional values visible before the user submits the package.
+69. Export run warnings are visible before payload review:
+   - run summary now counts batch warnings, not only blockers;
+   - the export queue table shows warning counts per marketplace/store batch;
+   - ready batches render a warning panel before submission, and the broad-submit confirmation repeats the warning count so optional omitted values are not hidden behind `Показать payload`.
 
 Current smoke status:
 

@@ -2953,6 +2953,31 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(batch["warnings_count"], 1)
         self.assertEqual(batch["warnings"][0]["parameter"], "Особенности")
 
+    def test_export_run_summary_counts_batch_warnings(self) -> None:
+        summary = catalog_exchange._summarize_export_batches(
+            ["product_1", "product_2"],
+            [
+                {
+                    "status": "ready",
+                    "ready_count": 2,
+                    "not_ready_count": 0,
+                    "blockers_count": 0,
+                    "warnings_count": 3,
+                },
+                {
+                    "status": "blocked",
+                    "ready_count": 1,
+                    "not_ready_count": 1,
+                    "blockers_count": 1,
+                    "warnings_count": 2,
+                },
+            ],
+        )
+
+        self.assertEqual(summary["warnings_count"], 5)
+        self.assertEqual(summary["blockers_count"], 1)
+        self.assertEqual(summary["status"], "blocked")
+
     def test_ozon_export_preview_derives_required_type_and_model_name(self) -> None:
         product = {
             "id": "product_iphone",

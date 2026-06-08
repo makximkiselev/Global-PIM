@@ -965,6 +965,17 @@
   gap:8px;
 }
 
+.cx-runWarnings{
+  border-color:rgba(245,158,11,.28);
+  background:linear-gradient(180deg, #fffaf0, rgba(var(--card-rgb), .96));
+}
+
+.cx-runWarningsMore{
+  color:#667085;
+  font-size:12px;
+  font-weight:800;
+}
+
 .cx-payloadWarningItem{
   display:grid;
   grid-template-columns:auto minmax(0,1fr);
@@ -1924,7 +1935,7 @@
 
 .cx-confirmGrid{
   display:grid;
-  grid-template-columns:1.4fr .7fr .7fr;
+  grid-template-columns:1.4fr .7fr .7fr .8fr;
   gap:10px;
 }
 
@@ -2000,6 +2011,12 @@
   font-weight:800;
 }
 
+.cx-confirmWarning.isSoft{
+  border-color:rgba(245,158,11,.28);
+  background:#fffaf0;
+  color:#6b4f0b;
+}
+
 .cx-confirmGuard{
   display:flex;
   align-items:center;
@@ -2039,5 +2056,21 @@
 @media (max-width: 1280px){
   .cx-pageModern .cx-workspaceFrame.workspaceFrameThree{
     grid-template-columns:280px minmax(520px,1fr) 260px;
+  }
+}
+
+@media (max-width: 720px){
+  .cx-confirmOverlay{
+    padding:16px;
+  }
+
+  .cx-confirmGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .cx-confirmGuard,
+  .cx-confirmActions{
+    flex-direction:column;
+    align-items:stretch;
   }
 }

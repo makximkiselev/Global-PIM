@@ -2380,6 +2380,7 @@ def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, An
     ready_target_items = sum(int(batch.get("ready_count") or 0) for batch in batches)
     blocked_target_items = sum(int(batch.get("not_ready_count") or 0) for batch in batches)
     blockers_count = sum(int(batch.get("blockers_count") or 0) for batch in batches)
+    warnings_count = sum(int(batch.get("warnings_count") or 0) for batch in batches)
     return {
         "product_count": product_count,
         "target_count": target_count,
@@ -2389,6 +2390,7 @@ def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, An
         "ready_target_items": ready_target_items,
         "blocked_target_items": blocked_target_items,
         "blockers_count": blockers_count,
+        "warnings_count": warnings_count,
         "status": "ready" if target_count > 0 and blocked_batches == 0 else "blocked",
     }
 

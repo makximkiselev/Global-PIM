@@ -43,6 +43,7 @@ type ExportRunResp = {
     ready_target_items?: number;
     blocked_target_items?: number;
     blockers_count?: number;
+    warnings_count?: number;
     status?: "ready" | "blocked" | string;
   };
   batches: Array<{
@@ -53,6 +54,7 @@ type ExportRunResp = {
     ready_count: number;
     not_ready_count?: number;
     blockers_count?: number;
+    warnings_count?: number;
     count: number;
     blockers?: Array<{
       product_id: string;
@@ -62,6 +64,7 @@ type ExportRunResp = {
       missing: string[];
       missing_details?: ExportMissingDetail[];
     }>;
+    warnings?: NonNullable<ExportPackageResp["package"]["warnings"]>;
   }>;
 };
 type LatestExportRunResp = { ok: boolean; run: ExportRunResp };
@@ -1117,6 +1120,11 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       cell: ({ row }) => row.original.not_ready_count ?? Math.max(0, row.original.count - row.original.ready_count),
     },
     {
+      id: "warnings",
+      header: () => "Предупр.",
+      cell: ({ row }) => row.original.warnings_count ?? 0,
+    },
+    {
       id: "total",
       header: () => "Всего",
       cell: ({ row }) => row.original.count,
@@ -1242,6 +1250,17 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     productId: warning.product_id || "",
     parameter: warning.parameter || "",
   })), [exportPackage]);
+  const runWarningRows = useMemo(() => (run?.batches || []).flatMap((batch) =>
+    (batch.warnings || []).map((warning, idx) => ({
+      key: `${batch.provider}:${batch.store_id}:${warning.product_id || "product"}:${warning.parameter || idx}`,
+      code: warning.code || "warning",
+      message: warning.message || "Предупреждение выгрузки",
+      provider: batch.provider,
+      storeTitle: batch.store_title || batch.store_id,
+      productId: warning.product_id || "",
+      parameter: warning.parameter || "",
+    })),
+  ), [run]);
 
   const inspector = (
     <div className="cx-workspaceInspector">
@@ -1508,6 +1527,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     { label: runTargetsStale ? "Целей прошлого batch" : "Целей выгрузки", value: run.summary?.target_count ?? run.batches.length },
                     { label: "Готовых строк", value: run.summary?.ready_target_items ?? 0 },
                     { label: "Блокеров", value: blockedTargetItems, accent: blockedTargetItems > 0 },
+                    { label: "Предупреждений", value: run.summary?.warnings_count ?? runWarningRows.length, accent: runWarningRows.length > 0 },
                   ]}
                 />
 
@@ -1576,6 +1596,35 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     })}
                   </div>
                 </section>
+
+                {runWarningRows.length ? (
+                  <section className="card cx-pane cx-runWarnings">
+                    <div className="cx-paneHead">
+                      <div>
+                        <div className="cx-paneTitle">Предупреждения batch</div>
+                        <div className="cx-paneSub">
+                          Эти строки не блокируют отправку, но показывают, какие необязательные значения не попадут в payload без настройки значений.
+                        </div>
+                      </div>
+                      <Badge tone="pending">{runWarningRows.length}</Badge>
+                    </div>
+                    <div className="cx-payloadWarningsList">
+                      {runWarningRows.slice(0, 8).map((warning) => (
+                        <div className="cx-payloadWarningItem" key={warning.key}>
+                          <Badge tone="pending">{providerTitle(warning.provider) || warning.code}</Badge>
+                          <div>
+                            <strong>{warning.parameter || warning.code}</strong>
+                            <span>{warning.message}</span>
+                            <em>{[warning.storeTitle, warning.productId].filter(Boolean).join(" · ")}</em>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {runWarningRows.length > 8 ? (
+                      <div className="cx-runWarningsMore">Еще {runWarningRows.length - 8} предупреждений будут видны в payload.</div>
+                    ) : null}
+                  </section>
+                ) : null}
 
                 {submission ? (
                   <section className="card cx-pane">
@@ -1932,7 +1981,16 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 <span>Целей</span>
                 <strong>{run?.summary?.target_count ?? run?.batches?.length ?? "—"}</strong>
               </div>
+              <div>
+                <span>Предупреждений</span>
+                <strong>{run?.summary?.warnings_count ?? runWarningRows.length}</strong>
+              </div>
             </div>
+            {runWarningRows.length ? (
+              <div className="cx-confirmWarning isSoft">
+                В batch есть {runWarningRows.length} предупреждений: часть необязательных значений будет пропущена в payload. Это не блокирует отправку, но лучше проверить их в очереди или payload перед финальной отправкой.
+              </div>
+            ) : null}
             <div className="cx-confirmWarning">
               Это не проверка, а реальная отправка уже подготовленного broad batch на выбранные магазины. Для безопасной финальной отправки лучше использовать отдельные SKU или узкую категорию.
             </div>
