@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath("backend"))
 from app.api.routes import catalog_exchange, competitor_mapping, marketplace_mapping, ozon_market, product_groups, products, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
+from app.core.master_templates import base_field_by_code, base_field_runtime_meta
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
 from app.core import value_mapping
@@ -46,6 +47,13 @@ class OperatingWorkflowTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(score, 0.75)
+
+    def test_base_template_logistics_are_editable_not_system_locked(self) -> None:
+        sku_meta = base_field_runtime_meta(base_field_by_code("sku_gt") or {})
+        package_meta = base_field_runtime_meta(base_field_by_code("package_weight") or {})
+
+        self.assertEqual(sku_meta, {"field_layer": "system", "fill_source": "system", "locked": True})
+        self.assertEqual(package_meta, {"field_layer": "features", "fill_source": "manual", "locked": False})
 
     def test_marketplace_attribute_ai_match_worker_executes_saved_job(self) -> None:
         saved_job = {

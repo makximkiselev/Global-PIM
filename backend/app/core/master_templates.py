@@ -221,10 +221,28 @@ BASE_FIELD_NAME_ALIASES: Dict[str, str] = {
 }
 DEPRECATED_TEMPLATE_CODES = {"product_type", "country", "sku_pim"}
 DEPRECATED_TEMPLATE_NAMES = {"тип товара", "sku pim"}
+READONLY_SYSTEM_BASE_KEYS = {"sku_gt", "title", "group"}
+
+
+def base_field_runtime_meta(field: Dict[str, Any]) -> Dict[str, Any]:
+    key = str((field or {}).get("key") or "").strip()
+    group = str((field or {}).get("param_group") or "").strip()
+    if key in READONLY_SYSTEM_BASE_KEYS:
+        return {"field_layer": "system", "fill_source": "system", "locked": True}
+    if group == "Описание":
+        return {"field_layer": "content", "fill_source": "content_manager", "locked": False}
+    if group == "Медиа":
+        return {"field_layer": "media", "fill_source": "product_media", "locked": False}
+    return {"field_layer": "features", "fill_source": "manual", "locked": False}
 
 
 def base_template_fields() -> List[Dict[str, Any]]:
-    return [dict(item) for item in BASE_TEMPLATE_FIELDS]
+    out: List[Dict[str, Any]] = []
+    for item in BASE_TEMPLATE_FIELDS:
+        field = dict(item)
+        field.update(base_field_runtime_meta(field))
+        out.append(field)
+    return out
 
 
 def base_field_by_key(key: Any) -> Optional[Dict[str, Any]]:

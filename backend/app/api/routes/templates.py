@@ -31,6 +31,7 @@ from app.storage.relational_pim_store import (
 from app.core.master_templates import (
     base_field_by_code,
     base_field_by_name,
+    base_field_runtime_meta,
     base_template_fields,
     is_deprecated_template_code,
     is_deprecated_template_name,
@@ -124,8 +125,8 @@ def _build_default_attrs() -> List[Dict[str, Any]]:
             "attribute_id": str(global_attr.get("id") or "").strip() or None,
             "param_group": str(a.get("param_group") or "").strip() or None,
             "layer": "base",
-            "field_layer": "system",
-            "fill_source": "system",
+            "field_layer": str(a.get("field_layer") or "features").strip() or "features",
+            "fill_source": str(a.get("fill_source") or "manual").strip() or "manual",
             "system_key": str(a.get("key") or "").strip() or None,
         }
         out.append(
@@ -139,7 +140,7 @@ def _build_default_attrs() -> List[Dict[str, Any]]:
                 "attribute_id": str(global_attr.get("id") or "").strip() or None,
                 "options": options,
                 "position": idx,
-                "locked": True,
+                "locked": bool(a.get("locked")),
             }
         )
     _DEFAULT_ATTRS_CACHE = out
@@ -303,13 +304,13 @@ def _ensure_default_attrs(attrs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "attribute_id": str(global_attr.get("id") or "").strip() or None,
             "param_group": str(d.get("param_group") or "").strip() or None,
             "layer": "base",
-            "field_layer": "system",
-            "fill_source": "system",
+            "field_layer": str(d.get("field_layer") or "features").strip() or "features",
+            "fill_source": str(d.get("fill_source") or "manual").strip() or "manual",
             "system_key": str(d.get("key") or "").strip() or None,
         }
         existing = by_code.get(code) or by_name.get(name)
         if existing:
-            existing["locked"] = True
+            existing["locked"] = bool(d.get("locked"))
             existing["code"] = d["code"]
             existing["name"] = d["name"]
             existing["required"] = required
@@ -330,7 +331,7 @@ def _ensure_default_attrs(attrs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "attribute_id": str(global_attr.get("id") or "").strip() or None,
                 "options": base_options,
                 "position": len(attrs),
-                "locked": True,
+                "locked": bool(d.get("locked")),
             }
         )
 
@@ -407,12 +408,17 @@ def _normalize_attributes(attrs_in: Any) -> List[Dict[str, Any]]:
         options = a.get("options") or {}
         if not isinstance(options, dict):
             options = {}
+        locked_value = bool(a.get("locked"))
         if base_def:
+            base_meta = base_field_runtime_meta(base_def)
+            locked_value = bool(base_meta["locked"])
             options = {
                 **options,
                 "layer": "base",
                 "system_key": base_def.get("key"),
                 "param_group": options.get("param_group") or base_def.get("param_group"),
+                "field_layer": options.get("field_layer") or base_meta["field_layer"],
+                "fill_source": options.get("fill_source") or base_meta["fill_source"],
             }
         else:
             options = {
@@ -430,7 +436,7 @@ def _normalize_attributes(attrs_in: Any) -> List[Dict[str, Any]]:
                 "scope": _norm_scope(a.get("scope")),
                 "options": options,
                 "position": int(a.get("position") or idx),
-                "locked": bool(a.get("locked") or bool(base_def)),
+                "locked": locked_value,
                 "attribute_id": a.get("attribute_id") or options.get("attribute_id"),
             }
         )

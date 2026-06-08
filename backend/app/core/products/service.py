@@ -22,6 +22,7 @@ from app.storage.relational_pim_store import (
     upsert_product_item,
 )
 from app.core.tenant_context import current_tenant_organization_id
+from app.core.master_templates import base_field_by_code, base_field_by_name, base_field_runtime_meta
 from app.core.products.variants_repo import (
     bulk_create_variants as repo_bulk_create_variants,
     generate_preview as repo_generate_variants_preview,
@@ -190,6 +191,29 @@ def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _template_attr_runtime_meta(attr: Dict[str, Any]) -> Dict[str, Any]:
+    options = attr.get("options") if isinstance(attr.get("options"), dict) else {}
+    base_def = base_field_by_code(attr.get("code")) or base_field_by_name(attr.get("name"))
+    if base_def:
+        base_meta = base_field_runtime_meta(base_def)
+        if base_meta["locked"]:
+            return {
+                "field_layer": _norm(options.get("field_layer")) or base_meta["field_layer"],
+                "fill_source": _norm(options.get("fill_source")) or base_meta["fill_source"],
+                "locked": True,
+            }
+        return {
+            "field_layer": base_meta["field_layer"],
+            "fill_source": base_meta["fill_source"],
+            "locked": False,
+        }
+    return {
+        "field_layer": _norm(options.get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
+        "fill_source": _norm(options.get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
+        "locked": bool(attr.get("locked", False)),
+    }
+
+
 def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
     cid = _norm(category_id)
     empty = {
@@ -230,6 +254,23 @@ def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
     attrs = [dict(attr) for attr in (attrs_by_template.get(template_id) or []) if isinstance(attr, dict)]
     meta = template.get("meta") if isinstance(template.get("meta"), dict) else {}
     info_model = meta.get("info_model") if isinstance(meta.get("info_model"), dict) else {}
+    normalized_attrs: List[Dict[str, Any]] = []
+    for attr in attrs:
+        options = attr.get("options") if isinstance(attr.get("options"), dict) else {}
+        runtime_meta = _template_attr_runtime_meta(attr)
+        normalized_attrs.append(
+            {
+                "code": _norm(attr.get("code") or attr.get("name")),
+                "name": _norm(attr.get("name") or attr.get("code")),
+                "required": bool(attr.get("required", False)),
+                "type": _norm(attr.get("type")) or "text",
+                "scope": _norm(attr.get("scope")),
+                "param_group": _norm(options.get("param_group")),
+                "field_layer": runtime_meta["field_layer"],
+                "fill_source": runtime_meta["fill_source"],
+                "locked": runtime_meta["locked"],
+            }
+        )
 
     return {
         "has_template": True,
@@ -238,20 +279,7 @@ def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
         "template_name": _norm(template.get("name")) or template_id,
         "status": _norm(info_model.get("status")) or _norm(template.get("status")),
         "attributes_count": len(attrs),
-        "attributes": [
-            {
-                "code": _norm(attr.get("code") or attr.get("name")),
-                "name": _norm(attr.get("name") or attr.get("code")),
-                "required": bool(attr.get("required", False)),
-                "type": _norm(attr.get("type")) or "text",
-                "scope": _norm(attr.get("scope")),
-                "param_group": _norm((attr.get("options") if isinstance(attr.get("options"), dict) else {}).get("param_group")),
-                "field_layer": _norm((attr.get("options") if isinstance(attr.get("options"), dict) else {}).get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
-                "fill_source": _norm((attr.get("options") if isinstance(attr.get("options"), dict) else {}).get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
-                "locked": bool(attr.get("locked", False)),
-            }
-            for attr in attrs
-        ],
+        "attributes": normalized_attrs,
     }
 
 
@@ -272,7 +300,13 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
             elif code_key in {"наименование_товара", "title"}:
                 feature["value"] = _norm(product.get("title"))
             feature_options = feature.get("options") if isinstance(feature.get("options"), dict) else {}
-            if bool(feature.get("locked")) or _norm(feature.get("field_layer")) == "system" or _norm(feature_options.get("field_layer")) == "system":
+            base_def = base_field_by_code(feature.get("code")) or base_field_by_name(feature.get("name"))
+            if base_def:
+                runtime_meta = base_field_runtime_meta(base_def)
+                feature["field_layer"] = runtime_meta["field_layer"]
+                feature["fill_source"] = runtime_meta["fill_source"]
+                feature["locked"] = bool(runtime_meta["locked"])
+            elif bool(feature.get("locked")) or _norm(feature.get("field_layer")) == "system" or _norm(feature_options.get("field_layer")) == "system":
                 feature["locked"] = True
         product["content"] = content
         return product
@@ -297,6 +331,7 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
             value = _infer_brand_from_title(product.get("title"))
         elif system_key == "description":
             value = _norm(content.get("description"))
+        runtime_meta = _template_attr_runtime_meta(attr)
 
         features.append(
             {
@@ -307,9 +342,9 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
                 "required": bool(attr.get("required", False)),
                 "scope": _norm(attr.get("scope")),
                 "param_group": _norm(options.get("param_group")),
-                "field_layer": _norm(options.get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
-                "fill_source": _norm(options.get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
-                "locked": bool(attr.get("locked")),
+                "field_layer": runtime_meta["field_layer"],
+                "fill_source": runtime_meta["fill_source"],
+                "locked": runtime_meta["locked"],
                 "source_values": {},
             }
         )
