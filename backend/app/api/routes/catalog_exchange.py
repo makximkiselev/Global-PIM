@@ -170,6 +170,10 @@ def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, cat
     target = str(out.get("target") or "").strip()
     parameter = str(out.get("parameter") or "").strip()
     provider_code = str(out.get("provider") or provider or "").strip()
+    if product_id and not str(out.get("product_id") or "").strip():
+        out["product_id"] = product_id
+    if category_id and not str(out.get("category_id") or "").strip():
+        out["category_id"] = category_id
     if provider_code and target in {"sources", "params", "values"} and not str(out.get("provider") or "").strip():
         out["provider"] = provider_code
     href = ""

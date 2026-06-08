@@ -1718,6 +1718,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         hydrated = catalog_exchange._export_run_with_fix_links(run)
 
         detail = hydrated["batches"][0]["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["product_id"], "product_1")
+        self.assertEqual(detail["category_id"], "cat-phone")
+        self.assertEqual(detail["provider"], "yandex_market")
         self.assertEqual(detail["fix_href"], "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82&provider=yandex_market")
         self.assertEqual(detail["fix_label"], "Открыть значения")
         self.assertNotIn("fix_href", run["batches"][0]["blockers"][0]["missing_details"][0])
@@ -4446,6 +4449,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         )
 
         detail = batch["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["product_id"], "product_1")
+        self.assertEqual(detail["category_id"], "cat-phone")
+        self.assertEqual(detail["provider"], "ozon")
         self.assertEqual(detail["fix_label"], "Открыть значения")
         self.assertEqual(
             detail["fix_href"],
@@ -4484,6 +4490,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         )
 
         detail = batch["blockers"][0]["missing_details"][0]
+        self.assertEqual(detail["product_id"], "product_1")
+        self.assertEqual(detail["category_id"], "cat-phone")
         self.assertEqual(detail["fix_label"], "Заполнить в SKU")
         self.assertEqual(
             detail["fix_href"],
