@@ -1352,6 +1352,7 @@ export default function ProductNewFeature() {
   const disabledVariantCount = Math.max(0, variants.length - enabledVariantCount);
   const variantAxisColumns = selectedParamLabels.length ? selectedParamLabels : [{ id: "__variant", label: "Вариант", values: [] }];
   const enabledVariants = variants.filter((variant) => variant.enabled !== false);
+  const baseVariantKey = enabledVariants[0]?.key || "";
   const variantAxesSummary = selectedParamLabels
     .filter((axis) => axis.values.length)
     .map((axis) => `${axis.label}: ${axis.values.length}`)
@@ -1572,7 +1573,7 @@ export default function ProductNewFeature() {
                           }}
                         >
                           <span className={`pnVariantStatus${variant.enabled === false ? " isMuted" : ""}`}>
-                            {variant.enabled === false ? "исключен" : "создать"}
+                            {variant.enabled === false ? "исключен" : variant.key === baseVariantKey ? "базовый SKU" : "создать"}
                           </span>
                           {variantAxisColumns.map((axis) => (
                             <span key={axis.id}>
@@ -1638,6 +1639,23 @@ export default function ProductNewFeature() {
                   Ручные ссылки не являются основным сценарием. После создания перейдите к источникам: там для каждого SKU будет подбор карточек,
                   подтверждение кандидата и насыщение параметрами/медиа только из подтвержденных ссылок.
                 </div>
+                <div className="pnPostCreatePlan">
+                  <div>
+                    <span>1</span>
+                    <strong>Проверить состав группы</strong>
+                    <em>после создания откроется группа SKU, где видно базовый SKU и остальные варианты</em>
+                  </div>
+                  <div>
+                    <span>2</span>
+                    <strong>Подобрать конкурентов</strong>
+                    <em>начать с базового SKU, затем применить подтвержденные источники к похожим вариантам</em>
+                  </div>
+                  <div>
+                    <span>3</span>
+                    <strong>Проверить выгрузку</strong>
+                    <em>экспорт можно запускать для одного SKU, выбранных SKU или узкой категории</em>
+                  </div>
+                </div>
                 <div className="pnVariantMatrix">
                   <div className="pnVariantMatrixHead">
                     <span>SKU</span>
@@ -1650,7 +1668,7 @@ export default function ProductNewFeature() {
                       <strong>{variant.title}</strong>
                       <span>{Object.values(variant.params).filter(Boolean).join(" / ") || "один SKU"}</span>
                       <span>re-store / store77</span>
-                      <span>Найти карточки</span>
+                      <span>{variant.key === baseVariantKey ? "Начать с него" : "После базового"}</span>
                     </div>
                   ))}
                   {!enabledVariantCount ? (
@@ -1680,7 +1698,7 @@ export default function ProductNewFeature() {
                     <span>Первые SKU в группе</span>
                     {variantPreviewSample.map((variant) => (
                       <div key={variant.key}>
-                        <strong>{variant.title}</strong>
+                        <strong>{variant.key === baseVariantKey ? `${variant.title} · базовый` : variant.title}</strong>
                         <em>{Object.values(variant.params).filter(Boolean).join(" / ") || "один SKU"}</em>
                       </div>
                     ))}

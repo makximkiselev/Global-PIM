@@ -1072,6 +1072,10 @@ Next fix in the category flow:
    - when a category has `0` value rows, the values workspace shows a prerequisite block above the workbench;
    - the block explains that values appear only after PIM parameters/provider fields with dictionaries or controlled values exist;
    - direct actions open parameter mapping or model building, so the user is not left in a dead-end empty list.
+56. Variant-family creation now marks the base SKU and next group workflow:
+   - the first enabled generated SKU is labelled `базовый SKU` in the matrix and review sample;
+   - the sources step now shows the post-create plan: check group composition, match competitors from the base SKU, then prepare export for selected SKU;
+   - this makes the first/base product and variant-axis review explicit before creating a large SKU family.
 
 Current smoke status:
 

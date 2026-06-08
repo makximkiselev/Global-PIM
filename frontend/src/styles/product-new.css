@@ -940,6 +940,50 @@
   font-weight:850;
 }
 
+.pnPostCreatePlan{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+
+.pnPostCreatePlan > div{
+  min-width:0;
+  display:grid;
+  gap:6px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(var(--surface-rgb), .64);
+}
+
+.pnPostCreatePlan span{
+  display:inline-flex;
+  width:26px;
+  height:26px;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(var(--brand-rgb), .24);
+  border-radius:999px;
+  background:rgba(var(--brand-rgb), .09);
+  color:rgba(var(--brand-rgb), .95);
+  font-size:11px;
+  font-weight:950;
+}
+
+.pnPostCreatePlan strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:950;
+}
+
+.pnPostCreatePlan em{
+  color:var(--text-soft);
+  font-size:12px;
+  line-height:1.35;
+  font-style:normal;
+  font-weight:800;
+}
+
 .pnVariantRecipe{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
@@ -1185,6 +1229,10 @@
   color:var(--muted) !important;
 }
 
+.pnVariantStatus:not(.isMuted){
+  white-space:nowrap;
+}
+
 .pnVariantToggle{
   width:max-content;
   max-width:100%;
@@ -1207,6 +1255,7 @@
 @media(max-width:1200px){
   .pnWizardShell,
   .pnWizardTwoCol,
+  .pnPostCreatePlan,
   .pnWizardRelationsGrid{
     grid-template-columns:1fr;
   }
