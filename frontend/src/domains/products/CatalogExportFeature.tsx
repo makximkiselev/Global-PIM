@@ -212,6 +212,23 @@ type ExportMissingDetail = {
   };
 };
 
+type ExportBlockerActionGroup = {
+  key: string;
+  title: string;
+  description: string;
+  tone: "product" | "mapping" | "values" | "media";
+  items: Array<{
+    key: string;
+    message: string;
+    href: string;
+    label: string;
+    parameter?: string;
+    siblingLabel?: string;
+    siblingValue?: string;
+    siblingHref?: string;
+  }>;
+};
+
 type MetricItem = {
   label: string;
   value: number | string;
@@ -387,6 +404,83 @@ function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   if (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа")) return "Открыть медиа";
   if (lower.includes("описание")) return "Открыть описание";
   return "Открыть место исправления";
+}
+
+function blockerActionGroupMeta(reason: string, detail?: ExportMissingDetail): Omit<ExportBlockerActionGroup, "items"> {
+  const target = String(detail?.target || "").trim();
+  const code = String(detail?.code || "").trim();
+  const parameter = String(detail?.parameter || "").trim();
+  if (target === "attributes" || /упаковки\/товара/i.test(parameter) || /упаковки\/товара/i.test(reason)) {
+    return {
+      key: "product",
+      title: "Заполнить в товаре",
+      description: "SKU-значения, которые не берутся из инфо-модели: упаковка, вес, описание или служебные поля.",
+      tone: "product",
+    };
+  }
+  if (target === "media" || target === "import" || code.includes("media")) {
+    return {
+      key: "media",
+      title: "Проверить медиа и импорт",
+      description: "Фото нужно подтянуть из площадок/источников или подтвердить выбранные файлы перед отправкой.",
+      tone: "media",
+    };
+  }
+  if (target === "values" || code === "value_mapping_required") {
+    return {
+      key: "values",
+      title: "Сопоставить значения",
+      description: "Значение есть в PIM, но площадке нужен словарь или другое написание для выгрузки.",
+      tone: "values",
+    };
+  }
+  if (target === "params" || target === "sources" || code === "parameter_mapping_required" || code === "category_mapping_required" || code === "required_parameter_missing") {
+    return {
+      key: "mapping",
+      title: "Сопоставить модель и поля",
+      description: "Нужно связать категорию/параметр PIM с обязательным полем площадки.",
+      tone: "mapping",
+    };
+  }
+  if (target === "description" || target === "product") {
+    return {
+      key: "product",
+      title: "Заполнить в товаре",
+      description: "Недостающие поля карточки SKU перед выгрузкой.",
+      tone: "product",
+    };
+  }
+  return {
+    key: "mapping",
+    title: "Разобрать сопоставление",
+    description: "Причина требует проверки источника или параметров экспорта.",
+    tone: "mapping",
+  };
+}
+
+function blockerActionGroups(blocker: ExportBlocker): ExportBlockerActionGroup[] {
+  const groups = new Map<string, ExportBlockerActionGroup>();
+  blocker.missing.forEach((reason, index) => {
+    const detail = blocker.missing_details[index];
+    const meta = blockerActionGroupMeta(reason, detail);
+    const existing = groups.get(meta.key) || { ...meta, items: [] };
+    const suggestion = detail?.sibling_suggestion;
+    const siblingLabel = suggestion?.sku_gt || suggestion?.sku_pim || suggestion?.product_id || "";
+    const siblingHref = suggestion?.product_id ? `/products/${encodeURIComponent(suggestion.product_id)}` : "";
+    existing.items.push({
+      key: `${meta.key}:${reason}:${index}`,
+      message: detail?.message || reason,
+      href: suggestion?.fix_href || blockerFixHref(blocker, reason, detail),
+      label: suggestion?.value && siblingLabel ? `Взять из ${siblingLabel}` : blockerFixLabel(reason, detail),
+      parameter: detail?.parameter,
+      siblingLabel,
+      siblingValue: suggestion?.value,
+      siblingHref,
+    });
+    groups.set(meta.key, existing);
+  });
+  const order = ["product", "mapping", "values", "media"];
+  return Array.from(groups.values()).sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
 }
 
 export default function CatalogExportFeature({ embedded = false }: { embedded?: boolean } = {}) {
@@ -1525,65 +1619,59 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     <div className="cx-paneHead">
                       <div>
                         <div className="cx-paneTitle">Что мешает выгрузке</div>
-                        <div className="cx-paneSub">Уникальные SKU с причинами и прямыми переходами к месту исправления.</div>
+                        <div className="cx-paneSub">Уникальные SKU сгруппированы по действию: что заполнить в товаре, что сопоставить в модели, где нужны значения или медиа.</div>
                       </div>
                     </div>
                     <div className="cx-exportBlockers">
-                      {exportBlockers.map((blocker) => (
+                      {exportBlockers.map((blocker) => {
+                        const actionGroups = blockerActionGroups(blocker);
+                        return (
                           <div key={`${blocker.provider}:${blocker.product_id}:${blocker.offer_id || ""}:${blocker.missing.join("|")}`} className="cx-exportBlocker">
                             <div className="cx-exportBlockerHead">
                               <strong>{blocker.providerTitle}</strong>
-                              <span>{blocker.offer_id ? `SKU GT ${blocker.offer_id}` : blocker.product_id}</span>
+                              <Badge tone="pending">{blocker.missing.length} задач</Badge>
                             </div>
                             <div className="cx-exportBlockerProduct">
                               <Link to={`/products/${encodeURIComponent(blocker.product_id)}`}>{blocker.product_title || blocker.product_id}</Link>
+                              <span>{blocker.offer_id ? `SKU GT ${blocker.offer_id}` : blocker.product_id}</span>
                             </div>
-                            <ul>
-                              {blocker.missing.slice(0, 4).map((reason, index) => {
-                                const detail = blocker.missing_details[index];
-                                return <li key={reason}>{detail?.message || reason}</li>;
-                              })}
-                            </ul>
-                            {blocker.missing_details.some((detail) => detail?.sibling_suggestion?.value) ? (
-                              <div className="cx-exportSiblingHints">
-                                {blocker.missing_details.map((detail) => {
-                                  const suggestion = detail?.sibling_suggestion;
-                                  if (!suggestion?.value) return null;
-                                  const siblingLabel = suggestion.sku_gt || suggestion.sku_pim || suggestion.product_id || "sibling SKU";
-                                  return (
-                                    <div key={`${detail.parameter || detail.message}:${siblingLabel}`} className="cx-exportSiblingHint">
-                                      <span>{detail.parameter || "Параметр"}</span>
-                                      <strong>{suggestion.value}</strong>
-                                      {suggestion.product_id ? (
-                                        <Link to={`/products/${encodeURIComponent(suggestion.product_id)}`}>{siblingLabel}</Link>
-                                      ) : (
-                                        <em>{siblingLabel}</em>
-                                      )}
+                            <div className="cx-exportActionGroups">
+                              {actionGroups.map((group) => (
+                                <div key={group.key} className={`cx-exportActionGroup is-${group.tone}`}>
+                                  <div className="cx-exportActionGroupHead">
+                                    <div>
+                                      <strong>{group.title}</strong>
+                                      <span>{group.description}</span>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                            <div className="cx-exportBlockerActions">
+                                    <Badge tone={group.tone === "product" ? "danger" : "pending"}>{group.items.length}</Badge>
+                                  </div>
+                                  <div className="cx-exportActionItems">
+                                    {group.items.slice(0, 5).map((item, index) => (
+                                      <div key={item.key} className="cx-exportActionItem">
+                                        <div>
+                                          {item.parameter ? <em>{item.parameter}</em> : null}
+                                          <span>{item.message}</span>
+                                          {item.siblingValue ? (
+                                            <small>
+                                              Можно взять из {item.siblingHref ? <Link to={item.siblingHref}>{item.siblingLabel}</Link> : item.siblingLabel}: <b>{item.siblingValue}</b>
+                                            </small>
+                                          ) : null}
+                                        </div>
+                                        <Link className={`btn ${index === 0 ? "btn-primary" : ""}`} to={item.href} title={item.message}>
+                                          {item.label}
+                                        </Link>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="cx-exportBlockerFooter">
                               <Link className="btn" to={`/products/${encodeURIComponent(blocker.product_id)}`}>Открыть SKU</Link>
-                              {blocker.missing.slice(0, 4).map((reason, index) => {
-                                const detail = blocker.missing_details[index];
-                                const suggestion = detail?.sibling_suggestion;
-                                const siblingLabel = suggestion?.sku_gt || suggestion?.sku_pim || suggestion?.product_id || "";
-                                return (
-                                <Link
-                                  key={`${reason}:${index}`}
-                                  className={`btn ${index === 0 ? "btn-primary" : ""}`}
-                                  to={suggestion?.fix_href || blockerFixHref(blocker, reason, detail)}
-                                  title={reason}
-                                >
-                                  {suggestion?.value && siblingLabel ? `Взять из ${siblingLabel}` : blockerFixLabel(reason, detail)}
-                                </Link>
-                                );
-                              })}
                             </div>
                           </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </section>
                 ) : null}

@@ -1045,6 +1045,10 @@ Next fix in the category flow:
    - after building JSON, each marketplace/store card shows media count, parameter source coverage and price source;
    - parameters without source are surfaced as chips before the detailed payload tables;
    - technical placeholder prices are labelled explicitly instead of looking like a hidden PIM price.
+50. Export blockers are now grouped by action instead of raw reason strings:
+   - each blocked SKU separates tasks into product fields, model/field mapping, value mapping and media/import checks;
+   - sibling suggestions stay inline with the exact blocker and keep direct “take from sibling” actions;
+   - mobile layout stacks blocker actions so fix buttons do not collide with long parameter text.
 
 Current smoke status:
 
