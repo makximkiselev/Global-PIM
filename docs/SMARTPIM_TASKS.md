@@ -1174,6 +1174,10 @@ Next fix in the category flow:
    - provider cards show covered PIM values, marketplace dictionary size, and missing value count;
    - dictionary-quality warnings now include the human-readable reason text, not only a short label;
    - first missing PIM values are shown as chips next to the provider, so content managers can see what AI/manual mapping must cover.
+76. Competitor source cards no longer dead-end on partial/no-match states:
+   - every non-confirmed re-store/store77 source card has a source-specific retry action;
+   - retry runs discovery only for that source and current SKU instead of rescanning all sources;
+   - the same card can preselect the source in the manual-link form, so a user can paste a known product URL immediately after reviewing the scan evidence.
 
 Current smoke status:
 

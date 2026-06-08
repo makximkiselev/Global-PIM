@@ -365,8 +365,8 @@ export default function ProductCompetitorPanel({
   }
 
   const discoveryMutation = useMutation({
-    mutationFn: async () => {
-      const sources = (context?.sources || []).map((source) => source.id);
+    mutationFn: async (sourceIds?: Array<"restore" | "store77">) => {
+      const sources = sourceIds?.length ? sourceIds : (context?.sources || []).map((source) => source.id);
       return api<RunResp>("/competitor-mapping/discovery/run", {
         method: "POST",
         body: JSON.stringify({ background: true, product_ids: [productId], sources, limit: 1, use_ai: true }),
@@ -387,7 +387,18 @@ export default function ProductCompetitorPanel({
   async function runDiscovery() {
     setError("");
     setEnrichNotice("");
-    await discoveryMutation.mutateAsync();
+    await discoveryMutation.mutateAsync(undefined);
+  }
+
+  async function runDiscoveryForSource(sourceId: "restore" | "store77") {
+    setError("");
+    setEnrichNotice("");
+    await discoveryMutation.mutateAsync([sourceId]);
+  }
+
+  function chooseManualSource(sourceId: "restore" | "store77") {
+    setManualSource(sourceId);
+    setManualUrl("");
   }
 
   async function moderate(candidate: CompetitorCandidate, action: "approve" | "reject") {
@@ -635,6 +646,16 @@ export default function ProductCompetitorPanel({
                     <span>Что будет загружаться</span>
                     <strong>Параметры, описание и медиа</strong>
                     <em>{summary.confirmed_count} подтвержденная ссылка</em>
+                  </div>
+                ) : null}
+                {summary.status !== "confirmed" ? (
+                  <div className="productCompetitorSourceActions">
+                    <Button className="sm" onClick={() => void runDiscoveryForSource(summary.source_id)} disabled={running || discoveryMutation.isPending}>
+                      {running || discoveryMutation.isPending ? "Ищу…" : `Повторить ${sourceLabel(summary.source_id)}`}
+                    </Button>
+                    <Button className="sm" onClick={() => chooseManualSource(summary.source_id)}>
+                      Добавить ссылку
+                    </Button>
                   </div>
                 ) : null}
               </div>
