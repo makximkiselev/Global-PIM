@@ -1172,15 +1172,29 @@ class CatalogExportSubmitReq(BaseModel):
 
 
 def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selected_store_ids: Set[str]) -> List[Dict[str, Any]]:
-    enabled_stores = [s for s in stores if bool(s.get("enabled", True))]
-    if selected_store_ids:
-        selected = [s for s in enabled_stores if str(s.get("id") or "").strip() in selected_store_ids]
-        if not selected:
-            raise HTTPException(status_code=400, detail=f"No matching stores selected for {provider}")
-        return selected
-    exportable_stores = [s for s in enabled_stores if s.get("export_enabled", s.get("enabled", True)) is not False]
-    enabled = [s for s in exportable_stores if bool(s.get("enabled", True))]
-    return enabled or [{"id": "default", "title": "Все магазины"}]
+    if not selected_store_ids:
+        raise HTTPException(status_code=400, detail=f"No stores selected for {provider}")
+    exportable_stores = [
+        s
+        for s in stores
+        if bool(s.get("enabled", True)) and s.get("export_enabled", s.get("enabled", True)) is not False
+    ]
+    selected = [s for s in exportable_stores if str(s.get("id") or "").strip() in selected_store_ids]
+    if not selected:
+        raise HTTPException(status_code=400, detail=f"No matching export-enabled stores selected for {provider}")
+    return selected
+
+
+def _validate_export_targets(req: CatalogExportRunReq) -> None:
+    if not req.targets:
+        raise HTTPException(status_code=400, detail="Select at least one export target")
+    for target in req.targets:
+        provider = str(target.provider or "").strip()
+        store_ids = [str(item or "").strip() for item in target.store_ids if str(item or "").strip()]
+        if not provider:
+            raise HTTPException(status_code=400, detail="Export target provider is required")
+        if not store_ids:
+            raise HTTPException(status_code=400, detail=f"No stores selected for {provider}")
 
 
 def _effective_provider_category_id(
@@ -3312,6 +3326,7 @@ def resolve_catalog_import(req: CatalogImportResolveReq) -> Dict[str, Any]:
 
 
 def _build_catalog_export_run(req: CatalogExportRunReq) -> Dict[str, Any]:
+    _validate_export_targets(req)
     deps = CatalogExportRunDeps(
         resolve_products=lambda node_ids, product_ids, include_descendants, limit: _resolve_products(
             node_ids,

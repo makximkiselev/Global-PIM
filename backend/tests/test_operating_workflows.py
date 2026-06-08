@@ -2748,8 +2748,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["batches"][1]["blockers"][0]["missing"], ["description"])
         self.assertEqual(response["batches"][1]["blockers"][0]["product_title"], "Meta Quest 3 128GB")
         self.assertEqual(response["batches"][1]["blockers"][0]["category_id"], "cat-vr")
-        self.assertIn("export_abcdef1234", saved_runs["runs"])
-        self.assertEqual(saved_runs["runs"]["export_abcdef1234"]["summary"]["blocked_target_items"], 1)
+        self.assertEqual(len(saved_runs["runs"]), 1)
+        saved_run = next(iter(saved_runs["runs"].values()))
+        self.assertEqual(saved_run["summary"]["blocked_target_items"], 1)
 
     def test_export_run_rejects_unknown_selected_store_id(self) -> None:
         req = CatalogExportRunReq.model_validate(
@@ -2777,9 +2778,9 @@ class OperatingWorkflowTests(unittest.TestCase):
                 catalog_exchange.run_catalog_export(req)
 
         self.assertEqual(ctx.exception.status_code, 400)
-        self.assertIn("No matching stores selected", str(ctx.exception.detail))
+        self.assertIn("No matching export-enabled stores selected", str(ctx.exception.detail))
 
-    def test_export_run_accepts_explicit_store_not_preselected_for_export(self) -> None:
+    def test_export_run_rejects_store_not_enabled_for_export(self) -> None:
         req = CatalogExportRunReq.model_validate(
             {
                 "selection": {"node_ids": [], "product_ids": ["product_1"], "include_descendants": False},
@@ -2807,11 +2808,41 @@ class OperatingWorkflowTests(unittest.TestCase):
             patch.object(catalog_exchange, "_load_runs", return_value={"runs": {}}),
             patch.object(catalog_exchange, "_save_runs", return_value=None),
         ):
-            response = catalog_exchange.run_catalog_export(req)
+            with self.assertRaises(HTTPException) as ctx:
+                catalog_exchange.run_catalog_export(req)
 
-        self.assertEqual(response["ok"], True)
-        self.assertEqual(response["summary"]["target_count"], 1)
-        self.assertEqual(response["batches"][0]["store_id"], "ozon-ae")
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("No matching export-enabled stores selected", str(ctx.exception.detail))
+
+    def test_export_run_rejects_empty_store_selection(self) -> None:
+        req = CatalogExportRunReq.model_validate(
+            {
+                "selection": {"node_ids": [], "product_ids": ["product_1"], "include_descendants": False},
+                "targets": [{"provider": "ozon", "store_ids": []}],
+                "limit": 20,
+            }
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            catalog_exchange.run_catalog_export(req)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("No stores selected for ozon", str(ctx.exception.detail))
+
+    def test_export_run_rejects_empty_targets(self) -> None:
+        req = CatalogExportRunReq.model_validate(
+            {
+                "selection": {"node_ids": [], "product_ids": ["product_1"], "include_descendants": False},
+                "targets": [],
+                "limit": 20,
+            }
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            catalog_exchange.run_catalog_export(req)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("Select at least one export target", str(ctx.exception.detail))
 
     def test_export_package_contains_only_ready_payload_items(self) -> None:
         run = {
