@@ -134,6 +134,7 @@ type AiSuggestion = {
   target_source?: string;
   confidence?: number;
   reason?: string;
+  source?: "llm" | "memory" | "rule" | string;
   status?: string;
 };
 
@@ -149,6 +150,16 @@ type AiSuggestionsResp = {
   };
   items: AiSuggestion[];
   warnings?: string[];
+  evidence?: {
+    contract?: string;
+    unmatched_specs?: number;
+    target_fields?: number;
+    memory_examples?: number;
+    prompt_specs?: number;
+    prompt_target_fields?: number;
+    prompt_memory_examples?: number;
+    source_counts?: Record<string, number>;
+  };
 };
 
 const MIN_REVIEW_COMPETITOR_SCORE = 0.45;
@@ -209,6 +220,20 @@ function sourceLabel(value?: string): string {
   if (value === "restore") return "re-store";
   if (value === "store77") return "store77";
   return value || "источник";
+}
+
+function aiModeLabel(mode?: string): string {
+  if (mode === "llm") return "LLM";
+  if (mode === "rules") return "Правила";
+  if (mode === "empty") return "Нет данных";
+  return mode || "—";
+}
+
+function aiSuggestionSourceLabel(source?: string, mode?: string): string {
+  if (source === "memory") return "Подтвержденная память";
+  if (source === "llm") return "LLM";
+  if (source === "rule") return "Правила";
+  return mode === "llm" ? "LLM + проверка" : "Правила";
 }
 
 function sourceSummaryTone(status: string): "active" | "pending" | "danger" | "neutral" {
@@ -679,14 +704,31 @@ export default function ProductCompetitorPanel({
                 <p>Это черновик для контент-менеджера: AI предлагает связать поле, создать глобальный атрибут или игнорировать мусор. Автоматически ничего не применяется.</p>
               </div>
               <div className="productCompetitorAiStats">
+                <span><b>{aiModeLabel(aiSuggestions.mode)}</b> режим</span>
+                <span><b>{aiSuggestions.model || "без LLM"}</b> модель</span>
                 <span><b>{aiSuggestions.summary.map_existing}</b> связать</span>
                 <span><b>{aiSuggestions.summary.create_attribute}</b> создать</span>
                 <span><b>{aiSuggestions.summary.ignore}</b> игнор</span>
               </div>
             </div>
+            <div className="productCompetitorAiEvidence" aria-label="Основание AI-разбора">
+              <span><b>{aiSuggestions.evidence?.contract || "competitor_spec_mapping.v1"}</b> контракт</span>
+              <span><b>{aiSuggestions.evidence?.unmatched_specs ?? aiSuggestions.summary.total}</b> характеристик</span>
+              <span><b>{aiSuggestions.evidence?.target_fields ?? 0}</b> PIM-полей</span>
+              <span><b>{aiSuggestions.evidence?.memory_examples ?? 0}</b> подтвержденной памяти</span>
+              {aiSuggestions.evidence?.prompt_specs !== undefined ? (
+                <span><b>{aiSuggestions.evidence.prompt_specs}</b> ушло в prompt</span>
+              ) : null}
+              {Object.entries(aiSuggestions.evidence?.source_counts || {}).map(([sourceId, count]) => (
+                <span key={sourceId}><b>{count}</b> {sourceLabel(sourceId)}</span>
+              ))}
+            </div>
             {aiSuggestions.warnings?.length ? (
               <div className="productCompetitorAiWarning">
-                AI сейчас недоступен. Показаны безопасные предложения по правилам; их можно использовать как черновик для модели.
+                <strong>LLM не дал надежный ответ, показан безопасный fallback.</strong>
+                {aiSuggestions.warnings.slice(0, 3).map((warning) => (
+                  <span key={warning}>{warning}</span>
+                ))}
               </div>
             ) : null}
             {aiSuggestions.items.length ? (
@@ -702,7 +744,7 @@ export default function ProductCompetitorPanel({
                     <div className="productCompetitorAiTarget">
                       <span>{item.action === "ignore" ? "Решение" : "Цель"}</span>
                       <strong>{item.action === "ignore" ? "Не переносить в модель" : item.target_name || "Новое поле"}</strong>
-                      <em>{item.reason || "—"} · уверенность {aiConfidenceLabel(item.confidence)}</em>
+                      <em>{aiSuggestionSourceLabel(item.source, aiSuggestions.mode)} · {item.reason || "—"} · уверенность {aiConfidenceLabel(item.confidence)}</em>
                     </div>
                   </div>
                 ))}

@@ -2847,6 +2847,7 @@ def _rule_ai_suggestion(spec: Dict[str, str], targets: List[Dict[str, Any]]) -> 
         "action": action,
         "confidence": round(float(score or 0.0), 2),
         "reason": reason,
+        "source": "rule",
         "status": "draft",
     }
     if action == "map_existing" and best:
@@ -2931,12 +2932,15 @@ def _load_ai_mapping_memory_examples(
     limit: int = 30,
 ) -> List[Dict[str, Any]]:
     target_by_code = _target_by_code(targets)
-    rows = list_pim_channel_links(
-        scope=_AI_MAPPING_MEMORY_SCOPE,
-        entity_type="template",
-        provider=str(source_id or "").strip() or None,
-        status="confirmed",
-    )
+    try:
+        rows = list_pim_channel_links(
+            scope=_AI_MAPPING_MEMORY_SCOPE,
+            entity_type="template",
+            provider=str(source_id or "").strip() or None,
+            status="confirmed",
+        )
+    except Exception:
+        rows = []
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
     for row in rows:
@@ -3079,6 +3083,7 @@ def _validate_llm_suggestions(
             action = str(base.get("action") or "create_attribute")
         next_item = dict(base)
         next_item["action"] = action
+        next_item["source"] = "llm"
         next_item["reason"] = _compact_ai_text(raw.get("reason") or base.get("reason"), 180)
         try:
             next_item["confidence"] = max(0.0, min(1.0, float(raw.get("confidence"))))
@@ -3129,8 +3134,20 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
     memory_examples = _load_ai_mapping_memory_examples(source_id=None, targets=targets)
     rule_items = _apply_ai_mapping_memory(rule_items, memory_examples, targets)
     warnings: List[str] = []
+    source_counts: Dict[str, int] = {}
+    for spec in specs:
+        source_id = str(spec.get("source_id") or "").strip()
+        if source_id:
+            source_counts[source_id] = source_counts.get(source_id, 0) + 1
+    evidence = {
+        "contract": "competitor_spec_mapping.v1",
+        "unmatched_specs": len(specs),
+        "target_fields": len(targets),
+        "memory_examples": len(memory_examples),
+        "source_counts": source_counts,
+    }
     if not specs:
-        return {"mode": "empty", "items": [], "warnings": warnings}
+        return {"mode": "empty", "items": [], "warnings": warnings, "evidence": evidence}
 
     product_title = _compact_ai_text(product.get("title") or product.get("name") or product.get("sku_gt") or product.get("id"), 100)
     spec_payload = specs[:_AI_PRODUCT_MAPPING_SPEC_LIMIT]
@@ -3138,6 +3155,13 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
     target_payload = _compact_targets_for_prompt(llm_targets)
     prompt_specs = _compact_specs_for_prompt(spec_payload)
     prompt_memory = _compact_memory_for_prompt(memory_examples)
+    evidence.update(
+        {
+            "prompt_specs": len(prompt_specs),
+            "prompt_target_fields": len(target_payload),
+            "prompt_memory_examples": len(prompt_memory),
+        }
+    )
     system_prompt = (
         "Map competitor product specs to PIM fields. Return only minified JSON."
     )
@@ -3164,12 +3188,12 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
         raw_items = parse_competitor_spec_mapping_suggestions(llm_response["content"])
         items = _validate_llm_suggestions(raw_items=raw_items, rule_items=rule_items, targets=targets)
         items = _apply_ai_mapping_memory(items, memory_examples, targets)
-        return {"mode": "llm", "model": llm_response.get("model"), "items": items, "warnings": warnings}
+        return {"mode": "llm", "model": llm_response.get("model"), "items": items, "warnings": warnings, "evidence": evidence}
     except LlmError as exc:
         warnings.append(str(exc))
     except Exception as exc:
         warnings.append(f"AI_PARSE_ERROR:{exc.__class__.__name__}")
-    return {"mode": "rules", "items": rule_items, "warnings": warnings}
+    return {"mode": "rules", "items": rule_items, "warnings": warnings, "evidence": evidence}
 
 
 def _mapped_specs_from_ai_items(items: List[Dict[str, Any]], specs: Dict[str, Any], targets: List[Dict[str, Any]]) -> Dict[str, str]:
@@ -5898,6 +5922,7 @@ async def competitor_product_ai_suggestions(product_id: str) -> Dict[str, Any]:
         "summary": summary,
         "items": items,
         "warnings": result.get("warnings") or [],
+        "evidence": result.get("evidence") if isinstance(result.get("evidence"), dict) else {},
     }
 
 

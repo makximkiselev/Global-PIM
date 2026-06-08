@@ -1178,6 +1178,10 @@ Next fix in the category flow:
    - every non-confirmed re-store/store77 source card has a source-specific retry action;
    - retry runs discovery only for that source and current SKU instead of rescanning all sources;
    - the same card can preselect the source in the manual-link form, so a user can paste a known product URL immediately after reviewing the scan evidence.
+77. Competitor AI suggestions now expose their operating evidence:
+   - product-level competitor spec suggestions return a `competitor_spec_mapping.v1` contract marker with unmatched spec count, target field count, memory count and source breakdown;
+   - suggestion rows carry their origin (`llm`, `memory`, or `rule`) so the UI can distinguish model output from confirmed learning and fallback heuristics;
+   - the product competitor UI shows mode, model, contract and evidence counters before the suggestion list, while keeping all suggestions as manual-review drafts.
 
 Current smoke status:
 
