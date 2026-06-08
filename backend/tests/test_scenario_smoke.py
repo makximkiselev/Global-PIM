@@ -154,6 +154,37 @@ def test_validate_export_latest_run_requires_fix_links_for_blockers():
     assert "fix links missing" in result.detail
 
 
+def test_validate_export_latest_run_requires_fix_context_for_source_links():
+    result = scenario_smoke.validate_export_latest_run(
+        {
+            "ok": True,
+            "run": {
+                "id": "export_1",
+                "summary": {"ready_target_items": 1, "blocked_target_items": 1},
+                "batches": [
+                    {
+                        "blockers": [
+                            {
+                                "missing_details": [
+                                    {
+                                        "code": "value_mapping_required",
+                                        "message": "Цвет не сопоставлен",
+                                        "fix_label": "Открыть значения",
+                                        "fix_href": "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82&provider=ozon",
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            },
+        }
+    )
+
+    assert result.ok is False
+    assert "fix context missing" in result.detail
+
+
 def test_validate_export_latest_run_accepts_ready_rows_without_blockers():
     result = scenario_smoke.validate_export_latest_run(
         {
@@ -167,6 +198,39 @@ def test_validate_export_latest_run_accepts_ready_rows_without_blockers():
     )
 
     assert result == scenario_smoke.CheckResult("export latest run", True, "export_2: ready=2, blocked=0, batches=1")
+
+
+def test_validate_export_latest_run_accepts_blocker_fix_context():
+    result = scenario_smoke.validate_export_latest_run(
+        {
+            "ok": True,
+            "run": {
+                "id": "export_3",
+                "summary": {"ready_target_items": 1, "blocked_target_items": 1},
+                "batches": [
+                    {
+                        "blockers": [
+                            {
+                                "missing_details": [
+                                    {
+                                        "code": "value_mapping_required",
+                                        "message": "Цвет не сопоставлен",
+                                        "fix_label": "Открыть значения",
+                                        "fix_href": "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82&provider=ozon",
+                                        "category_id": "cat-phone",
+                                        "product_id": "product_1",
+                                        "provider": "ozon",
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            },
+        }
+    )
+
+    assert result == scenario_smoke.CheckResult("export latest run", True, "export_3: ready=1, blocked=1, batches=1")
 
 
 def test_validate_product_queue_labels_rejects_technical_template_names():

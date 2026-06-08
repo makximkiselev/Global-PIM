@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urljoin
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 from urllib.request import Request, build_opener
 from urllib.request import HTTPSHandler
 
@@ -164,6 +164,23 @@ def validate_export_latest_run(payload: dict[str, Any]) -> CheckResult:
         ]
         if missing_fix:
             return CheckResult("export latest run", False, f"{run_id}: blocker fix links missing for {', '.join(missing_fix[:5])}")
+        missing_context: list[str] = []
+        for detail in details:
+            fix_href = str(detail.get("fix_href") or "").strip()
+            if not fix_href:
+                continue
+            parsed = urlparse(fix_href)
+            params = parse_qs(parsed.query)
+            expected_fields = {
+                "category_id": str((params.get("category") or [""])[0] or "").strip(),
+                "product_id": str((params.get("product") or [""])[0] or "").strip(),
+                "provider": str((params.get("provider") or [""])[0] or "").strip(),
+            }
+            for field, expected in expected_fields.items():
+                if expected and str(detail.get(field) or "").strip() != expected:
+                    missing_context.append(f"{detail.get('code') or 'unknown'}:{field}")
+        if missing_context:
+            return CheckResult("export latest run", False, f"{run_id}: blocker fix context missing for {', '.join(missing_context[:5])}")
     elif ready <= 0:
         return CheckResult("export latest run", False, f"{run_id}: no ready or blocked target rows")
     return CheckResult("export latest run", True, f"{run_id}: ready={ready}, blocked={blocked}, batches={len(batches)}")

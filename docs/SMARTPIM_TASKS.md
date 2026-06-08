@@ -1093,6 +1093,10 @@ Next fix in the category flow:
    - the first enabled generated SKU is labelled `базовый SKU` in the matrix and review sample;
    - the sources step now shows the post-create plan: check group composition, match competitors from the base SKU, then prepare export for selected SKU;
    - this makes the first/base product and variant-axis review explicit before creating a large SKU family.
+57. Export latest-run smoke now validates blocker deep-link context:
+   - blocked export details must include the same `category_id`, `product_id` and `provider` that appear in `/sources` fix links;
+   - the scenario smoke catches cases where UI links still work but machine-readable blocker context regresses to empty/null fields;
+   - backend regression tests cover both missing context and valid blocked-run context.
 
 Current smoke status:
 
