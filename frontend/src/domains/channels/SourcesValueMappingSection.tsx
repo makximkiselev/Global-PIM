@@ -820,6 +820,25 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
               {valuesError === "AUTH_REQUIRED" ? <Link className="btn sm" to="/login">Войти</Link> : null}
             </div>
           ) : null}
+          {!loadingValues && !valuesError && selectedCategoryId && rawItemsCount === 0 ? (
+            <div className="sm-valuesPrereq">
+              <div>
+                <strong>Значения появятся после параметров</strong>
+                <span>
+                  Сейчас у категории нет подтвержденных PIM-полей со справочниками или контролируемыми значениями площадок. Это нормальное состояние после reset модели: сначала соберите/подтвердите параметры, затем этот шаг покажет словари и value mapping.
+                </span>
+              </div>
+              <div className="sm-valuesPrereqSteps">
+                <span>1. Собрать или открыть модель</span>
+                <span>2. Связать PIM-поля с Я.Маркет/Ozon</span>
+                <span>3. Вернуться сюда для значений</span>
+              </div>
+              <div className="sm-valuesPrereqActions">
+                <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
+                <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
+              </div>
+            </div>
+          ) : null}
 
           <div className="sm-valuesWorkbench">
             <div className="sm-valuesFields">

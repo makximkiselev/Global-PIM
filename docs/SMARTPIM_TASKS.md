@@ -1068,6 +1068,10 @@ Next fix in the category flow:
    - the default focus parameter is `Процессор` for the current smartphone fixture and can be changed with `SMARTPIM_SMOKE_FLOW_PARAMETER`;
    - focused values deep-link smoke is opt-in through `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER`, because the current smoke fixture can legitimately have `0` value-mapping rows after the model reset;
    - this protects exact blocker links from regressing back to generic pages that load but do not focus the affected parameter.
+55. Empty value-mapping step no longer looks like a broken page:
+   - when a category has `0` value rows, the values workspace shows a prerequisite block above the workbench;
+   - the block explains that values appear only after PIM parameters/provider fields with dictionaries or controlled values exist;
+   - direct actions open parameter mapping or model building, so the user is not left in a dead-end empty list.
 
 Current smoke status:
 

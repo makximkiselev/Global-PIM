@@ -2803,6 +2803,58 @@
   font-weight:750;
 }
 
+.sm-valuesPrereq{
+  display:grid;
+  grid-template-columns:minmax(0,1.4fr) minmax(260px,.9fr) auto;
+  align-items:center;
+  gap:14px;
+  margin:12px 18px 0;
+  padding:14px 16px;
+  border:1px solid rgba(255,107,61,.28);
+  border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,107,61,.08),rgba(var(--card-rgb),.82));
+}
+
+.sm-valuesPrereq > div:first-child{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+
+.sm-valuesPrereq strong{
+  color:var(--text);
+  font-size:15px;
+  font-weight:950;
+}
+
+.sm-valuesPrereq span{
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:800;
+  line-height:1.4;
+}
+
+.sm-valuesPrereqSteps{
+  display:grid;
+  gap:5px;
+  min-width:0;
+}
+
+.sm-valuesPrereqSteps span{
+  padding:6px 8px;
+  border:1px solid rgba(var(--line-rgb),.12);
+  border-radius:10px;
+  background:rgba(var(--card-rgb),.74);
+  color:var(--text);
+}
+
+.sm-valuesPrereqActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
 .sourcesMappingCanvas .sm-valuesMeta span,
 .sourcesMappingCanvas .sm-valuesSummary span{
   min-height:28px;
@@ -3545,6 +3597,15 @@
   .sm-valuesLayout,
   .sm-valuesWorkbench{
     grid-template-columns:minmax(0,1fr);
+  }
+
+  .sm-valuesPrereq{
+    grid-template-columns:1fr;
+    align-items:stretch;
+  }
+
+  .sm-valuesPrereqActions{
+    justify-content:flex-start;
   }
 
   .sm-valuesFields{
