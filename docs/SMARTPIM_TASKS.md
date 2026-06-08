@@ -721,17 +721,18 @@ Current state:
 10. Created product groups show a next-step guide with direct actions to competitor matching for the first SKU and export preparation for the selected SKU group.
 11. Variant creation now previews the generated SKU group title, selected variant axes, enabled/excluded SKU count, and a sample of SKU rows before final creation.
 12. Variant creation now classifies selected axes as color/memory/SIM/size/variant, explains why the axis changes SKU behavior, estimates SKU count before generation, and blocks overly broad matrices above 120 SKU so users do not accidentally create an unreviewable family.
+13. The `created=1` product group landing state now shows an ordered post-create route: open the base SKU for sources, verify group facts/variant axes, then prepare export for the selected SKU list.
 
 Known problems:
 
 1. Variant generation still needs browser QA with a fresh real family, but the base product, axis meanings, SKU count estimate, and matrix guardrail are now visible before creation.
-2. Need clearer transition from created group to group-level competitor matching.
+2. Need browser QA with a freshly created real family for the new group landing route and selected-SKU guidance.
 3. Product creation must not expose technical fields too early.
 
 Next tasks:
 
 1. Re-test full path for a real product family: base data -> axes -> matrix -> create -> group competitor scan -> enrichment -> validation.
-2. Browser-check group workspace after creation with a real newly created family and refine selected-SKU guidance if it is still unclear.
+2. Browser-check group workspace after creation with a real newly created family and refine selected-SKU guidance if it is still unclear. The `created=1` guide now has the intended ordered route, but a fresh creation pass is still needed.
 3. Add stronger preview of generated group title and variant axes before final create. Done in the wizard SKU/review steps; still needs a browser pass with a fresh real family.
 
 ### P0.6 Catalog / Products / Export UX

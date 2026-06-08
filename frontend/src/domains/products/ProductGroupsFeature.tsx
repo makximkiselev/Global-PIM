@@ -501,6 +501,7 @@ export default function ProductGroupsFeature() {
     () => (groupDetails?.items || []).map((item) => String(item.id || "").trim()).filter(Boolean),
     [groupDetails?.items],
   );
+  const firstSelectedGroupProduct = groupDetails?.items?.[0] || null;
   const firstSelectedGroupProductId = selectedGroupProductIds[0] || "";
   const selectedGroupExportHref = selectedGroupProductIds.length
     ? `/catalog/exchange?tab=export&products=${encodeURIComponent(selectedGroupProductIds.join(","))}`
@@ -1000,20 +1001,45 @@ export default function ProductGroupsFeature() {
               <>
                 {isNewlyCreatedGroup ? (
                   <div className="card pg-createdGuide">
-                    <div>
+                    <div className="pg-createdGuideMain">
+                      <div className="pg-createdGuideKicker">Следующий маршрут</div>
                       <div className="pg-createdGuideTitle">Группа SKU создана</div>
                       <div className="muted">
                         Проверьте состав линейки, общие факты и отличия. После этого переходите к источникам по SKU группы и готовьте выгрузку выбранных товаров.
+                      </div>
+                      <div className="pg-createdGuideMeta">
+                        <span>{groupDetails?.items.length || 0} SKU</span>
+                        {selectedVariantNames.length ? <span>{selectedVariantNames.join(" / ")}</span> : <span>оси не выбраны</span>}
+                        {firstSelectedGroupProduct ? (
+                          <span>базовый: {productSkuIds(firstSelectedGroupProduct)}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="pg-createdGuideSteps">
+                      <div>
+                        <span>01</span>
+                        <strong>Открыть базовый SKU</strong>
+                        <em>с него начинается подбор источников и проверка похожих вариантов</em>
+                      </div>
+                      <div>
+                        <span>02</span>
+                        <strong>Проверить состав группы</strong>
+                        <em>общие факты идут в линейку, отличия остаются на SKU</em>
+                      </div>
+                      <div>
+                        <span>03</span>
+                        <strong>Готовить выгрузку</strong>
+                        <em>экспорт запускается по выбранным SKU, не по всей категории</em>
                       </div>
                     </div>
                     <div className="pg-createdGuideActions">
                       {firstSelectedGroupProductId ? (
                         <Link className="btn primary" to={`/products/${encodeURIComponent(firstSelectedGroupProductId)}?tab=sources&created=1`}>
-                          Открыть источники
+                          Открыть базовый SKU
                         </Link>
                       ) : null}
                       <Link className="btn" to={selectedGroupExportHref}>
-                        Подготовить выгрузку SKU
+                        Выгрузка выбранных SKU
                       </Link>
                     </div>
                   </div>
