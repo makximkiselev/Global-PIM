@@ -200,6 +200,16 @@ type ExportMissingDetail = {
   count?: number;
   fix_href?: string;
   fix_label?: string;
+  sibling_suggestion?: {
+    product_id?: string;
+    sku_gt?: string;
+    sku_pim?: string;
+    title?: string;
+    feature_code?: string;
+    parameter?: string;
+    value?: string;
+    fix_href?: string;
+  };
 };
 
 type MetricItem = {
@@ -1276,18 +1286,40 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                                 return <li key={reason}>{detail?.message || reason}</li>;
                               })}
                             </ul>
+                            {blocker.missing_details.some((detail) => detail?.sibling_suggestion?.value) ? (
+                              <div className="cx-exportSiblingHints">
+                                {blocker.missing_details.map((detail) => {
+                                  const suggestion = detail?.sibling_suggestion;
+                                  if (!suggestion?.value) return null;
+                                  const siblingLabel = suggestion.sku_gt || suggestion.sku_pim || suggestion.product_id || "sibling SKU";
+                                  return (
+                                    <div key={`${detail.parameter || detail.message}:${siblingLabel}`} className="cx-exportSiblingHint">
+                                      <span>{detail.parameter || "Параметр"}</span>
+                                      <strong>{suggestion.value}</strong>
+                                      {suggestion.product_id ? (
+                                        <Link to={`/products/${encodeURIComponent(suggestion.product_id)}`}>{siblingLabel}</Link>
+                                      ) : (
+                                        <em>{siblingLabel}</em>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
                             <div className="cx-exportBlockerActions">
                               <Link className="btn" to={`/products/${encodeURIComponent(blocker.product_id)}`}>Открыть SKU</Link>
                               {blocker.missing.slice(0, 4).map((reason, index) => {
                                 const detail = blocker.missing_details[index];
+                                const suggestion = detail?.sibling_suggestion;
+                                const siblingLabel = suggestion?.sku_gt || suggestion?.sku_pim || suggestion?.product_id || "";
                                 return (
                                 <Link
                                   key={`${reason}:${index}`}
                                   className={`btn ${index === 0 ? "btn-primary" : ""}`}
-                                  to={blockerFixHref(blocker, reason, detail)}
+                                  to={suggestion?.fix_href || blockerFixHref(blocker, reason, detail)}
                                   title={reason}
                                 >
-                                  {blockerFixLabel(reason, detail)}
+                                  {suggestion?.value && siblingLabel ? `Взять из ${siblingLabel}` : blockerFixLabel(reason, detail)}
                                 </Link>
                                 );
                               })}

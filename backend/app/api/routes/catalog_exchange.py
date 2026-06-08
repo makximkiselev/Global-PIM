@@ -1404,6 +1404,65 @@ def _ozon_package_measurements(product: Dict[str, Any]) -> Dict[str, int]:
     return out
 
 
+_OZON_PACKAGE_REQUIREMENTS: Dict[str, Tuple[str, str, Tuple[str, ...]]] = {
+    "depth": ("Длина упаковки/товара", "package_length", ("Длина упаковки", "Длина устройства", "Толщина")),
+    "width": ("Ширина упаковки/товара", "package_width", ("Ширина упаковки", "Ширина устройства")),
+    "height": ("Высота упаковки/товара", "package_height", ("Высота упаковки", "Высота устройства")),
+    "weight": ("Вес упаковки/товара", "package_weight", ("Вес упаковки", "Вес устройства")),
+}
+
+
+def _package_value_from_product(product: Dict[str, Any], names: Tuple[str, ...]) -> str:
+    for name in names:
+        value = str(_extract_product_value(product, name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _package_sibling_suggestion(
+    product: Dict[str, Any],
+    measurement_key: str,
+    siblings_by_group: Dict[str, List[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    requirement = _OZON_PACKAGE_REQUIREMENTS.get(str(measurement_key or "").strip())
+    if not requirement:
+        return None
+    parameter, feature_code, source_names = requirement
+    product_id = str(product.get("id") or "").strip()
+    group_id = str(product.get("group_id") or "").strip()
+    if not product_id or not group_id:
+        return None
+    if group_id not in siblings_by_group:
+        siblings_by_group[group_id] = query_products_full(group_ids=[group_id])
+    siblings = [
+        item
+        for item in siblings_by_group.get(group_id, [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip() != product_id
+    ]
+    category_id = str(product.get("category_id") or "").strip()
+    siblings.sort(
+        key=lambda item: (
+            0 if str(item.get("category_id") or "").strip() == category_id else 1,
+            str(item.get("sku_gt") or item.get("sku_pim") or item.get("title") or item.get("id") or "").strip().lower(),
+        )
+    )
+    for sibling in siblings:
+        value = _package_value_from_product(sibling, source_names)
+        if not value:
+            continue
+        return {
+            "product_id": str(sibling.get("id") or "").strip(),
+            "sku_gt": str(sibling.get("sku_gt") or "").strip(),
+            "title": str(sibling.get("title") or "").strip(),
+            "feature_code": feature_code,
+            "parameter": parameter,
+            "value": value,
+            "fix_href": f"/products/{product_id}?{urlencode({'tab': 'attributes', 'parameter': parameter})}",
+        }
+    return None
+
+
 def _upsert_ozon_attribute(
     attributes: List[Dict[str, Any]],
     attr_id: str,
@@ -1853,6 +1912,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
     attr_rows_by_cid = _load_attr_mapping_rows()
     competitor_db = load_competitor_mapping_db()
     discovery = competitor_db.get("discovery") if isinstance(competitor_db.get("discovery"), dict) else {}
+    package_siblings_by_group: Dict[str, List[Dict[str, Any]]] = {}
 
     items: List[Dict[str, Any]] = []
     ready_count = 0
@@ -2040,16 +2100,19 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         if not tnved:
             missing.append("Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен")
             missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен", "params", parameter="ТН ВЭД коды ЕАЭС"))
-        for key, label in {
-            "depth": "Длина упаковки/товара",
-            "width": "Ширина упаковки/товара",
-            "height": "Высота упаковки/товара",
-            "weight": "Вес упаковки/товара",
-        }.items():
+        for key, (label, _feature_code, _source_names) in _OZON_PACKAGE_REQUIREMENTS.items():
             if key not in measurements:
                 message = f"Ozon: заполните {label} для отправки карточки"
                 missing.append(message)
-                missing_details.append(_missing_detail("required_parameter_missing", message, "attributes", parameter=label))
+                missing_details.append(
+                    _missing_detail(
+                        "required_parameter_missing",
+                        message,
+                        "attributes",
+                        parameter=label,
+                        sibling_suggestion=_package_sibling_suggestion(product, key, package_siblings_by_group),
+                    )
+                )
         seen_value_mapping_messages: Set[Tuple[str, str]] = set()
         for pname, message in value_mapping_missing:
             key = (str(pname or "").strip(), str(message or "").strip())

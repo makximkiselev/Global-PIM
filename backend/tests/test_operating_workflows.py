@@ -4448,6 +4448,68 @@ class OperatingWorkflowTests(unittest.TestCase):
             "/products/product_1?tab=attributes&parameter=%D0%92%D0%B5%D1%81+%D1%83%D0%BF%D0%B0%D0%BA%D0%BE%D0%B2%D0%BA%D0%B8%2F%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D0%B0",
         )
 
+    def test_ozon_export_blocker_suggests_sibling_package_value(self) -> None:
+        current = {
+            "id": "product_1",
+            "title": "iPhone 16 Pro Max Desert Titanium",
+            "category_id": "cat-phone",
+            "sku_gt": "GT-1",
+            "group_id": "group-phone",
+            "content": {
+                "features": [
+                    {"code": "brand", "name": "Бренд", "value": "Apple"},
+                    {"code": "model", "name": "Название модели", "value": "iPhone 16 Pro Max"},
+                    {"code": "type", "name": "Тип", "value": "Смартфон"},
+                ],
+                "media_images": [{"url": "https://cdn.test/1.jpg", "status": "approved"}],
+            },
+        }
+        sibling = {
+            "id": "product_2",
+            "title": "iPhone 16 Pro Max Black Titanium",
+            "category_id": "cat-phone",
+            "sku_gt": "GT-2",
+            "group_id": "group-phone",
+            "content": {
+                "features": [
+                    {"code": "package_weight", "name": "Вес упаковки, г", "value": "320"},
+                ]
+            },
+        }
+
+        def query_products(**kwargs):
+            if kwargs.get("ids"):
+                return [current]
+            if kwargs.get("group_ids"):
+                return [current, sibling]
+            return []
+
+        with (
+            patch.object(catalog_exchange, "query_products_full", side_effect=query_products),
+            patch.object(catalog_exchange, "_load_nodes", return_value=[]),
+            patch.object(catalog_exchange, "_load_category_mapping", return_value={"providers": {"ozon": {"cat-phone": "17028924"}}}),
+            patch.object(catalog_exchange, "_load_attr_mapping_rows", return_value={}),
+            patch.object(catalog_exchange, "load_competitor_mapping_db", return_value={}),
+            patch.object(catalog_exchange, "_ozon_attribute_meta", return_value={}),
+            patch.object(catalog_exchange, "_ozon_allowed_values_by_attr", return_value={}),
+        ):
+            preview = catalog_exchange._ozon_export_preview(["product_1"], 10)
+
+        details = preview["items"][0]["missing_details"]
+        weight_detail = next(item for item in details if item.get("parameter") == "Вес упаковки/товара")
+        self.assertEqual(
+            weight_detail["sibling_suggestion"],
+            {
+                "product_id": "product_2",
+                "sku_gt": "GT-2",
+                "title": "iPhone 16 Pro Max Black Titanium",
+                "feature_code": "package_weight",
+                "parameter": "Вес упаковки/товара",
+                "value": "320",
+                "fix_href": "/products/product_1?tab=attributes&parameter=%D0%92%D0%B5%D1%81+%D1%83%D0%BF%D0%B0%D0%BA%D0%BE%D0%B2%D0%BA%D0%B8%2F%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D0%B0",
+            },
+        )
+
     def test_export_extracts_first_non_empty_duplicate_feature_value(self) -> None:
         product = {
             "content": {
