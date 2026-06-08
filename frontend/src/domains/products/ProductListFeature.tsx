@@ -348,14 +348,18 @@ function withProductExportHref(productIds: string[]) {
   return `/catalog/exchange?${params.toString()}`;
 }
 
-function sourcesMappingHref(categoryId?: string | null, tab = "params") {
+function sourcesMappingHref(categoryId?: string | null, tab = "params", productId?: string | null) {
   const id = String(categoryId || "").trim();
-  return id ? `/sources?tab=${encodeURIComponent(tab)}&category=${encodeURIComponent(id)}` : `/sources?tab=${encodeURIComponent(tab)}`;
+  const pid = String(productId || "").trim();
+  const params = new URLSearchParams({ tab });
+  if (id) params.set("category", id);
+  if (pid) params.set("product", pid);
+  return `/sources?${params.toString()}`;
 }
 
 function templateHref(product: ProductItem) {
   const sourceCategoryId = String(product.effective_template_source_category_id || product.category_id || "").trim();
-  return sourcesMappingHref(sourceCategoryId, "params");
+  return sourcesMappingHref(sourceCategoryId, "params", product.id);
 }
 
 function getProductNextStep(product: ProductItem): {
@@ -388,7 +392,7 @@ function getProductNextStep(product: ProductItem): {
       title: "Проверить площадки",
       detail: missing ? `Не готово: ${missing}` : "Есть незакрытые связи",
       tone: "pending",
-      href: sourcesMappingHref(product.category_id, "params"),
+      href: sourcesMappingHref(product.category_id, "params", product.id),
       cta: "Сопоставить",
     };
   }
@@ -618,7 +622,7 @@ function ProductListInspector({
           <Link className="btn primary" to={`/products/${encodeURIComponent(product.id)}`}>
             Открыть SKU
           </Link>
-          <Link className="btn" to={sourcesMappingHref(product.category_id, "sources")}>
+          <Link className="btn" to={sourcesMappingHref(product.category_id, "sources", product.id)}>
             Открыть сопоставления
           </Link>
           <Link className="btn" to={withProductExportHref([product.id])}>
