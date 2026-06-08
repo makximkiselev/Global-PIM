@@ -293,6 +293,10 @@ function exportableProviders(providers: ProviderRow[]): ProviderRow[] {
     .filter((provider) => (provider.import_stores || []).length > 0);
 }
 
+function isStoreExportable(store: Store): boolean {
+  return store.enabled !== false && store.export_enabled !== false;
+}
+
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
@@ -431,11 +435,11 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     if (!bootstrapInitialized) {
       setSelectedProviders(Object.fromEntries(data.providers.map((provider) => [
         provider.code,
-        (provider.import_stores || []).some((store) => store.export_enabled !== false),
+        (provider.import_stores || []).some(isStoreExportable),
       ])));
       setSelectedStores(Object.fromEntries(data.providers.map((provider) => [
         provider.code,
-        (provider.import_stores || []).filter((store) => store.export_enabled !== false).map((store) => store.id),
+        (provider.import_stores || []).filter(isStoreExportable).map((store) => store.id),
       ])));
       setBootstrapInitialized(true);
     }
@@ -524,9 +528,9 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const targetPlanRows = useMemo(() => providers.map((provider) => {
     const stores = provider.import_stores || [];
     const selected = new Set(selectedStores[provider.code] || []);
-    const selectedStoresList = stores.filter((store) => selectedProviders[provider.code] && selected.has(store.id) && store.enabled !== false);
-    const availableNotSelected = stores.filter((store) => store.enabled !== false && !selectedStoresList.some((item) => item.id === store.id));
-    const disabledStores = stores.filter((store) => store.enabled === false);
+    const selectedStoresList = stores.filter((store) => selectedProviders[provider.code] && selected.has(store.id) && isStoreExportable(store));
+    const availableNotSelected = stores.filter((store) => isStoreExportable(store) && !selectedStoresList.some((item) => item.id === store.id));
+    const disabledStores = stores.filter((store) => !isStoreExportable(store));
     return {
       provider,
       selectedStores: selectedStoresList,
@@ -1002,17 +1006,23 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
 
       <InspectorPanel title="Каналы" subtitle="Что сейчас выбрано для batch run">
         <div className="cx-inspectorStack">
-          {providers.map((provider) => {
-            const stores = provider.import_stores || [];
-            const current = selectedStores[provider.code] || [];
+          {targetPlanRows.map(({ provider, selectedStores: targetStores, availableNotSelected, disabledStores }) => {
             return (
               <div key={provider.code} className="cx-sourceInspectorCard">
                 <div>
                   <strong>{provider.title}</strong>
-                  <p>{current.length ? `${current.length} магазинов выбрано` : `${stores.length} магазинов доступно`}</p>
+                  <p>
+                    {targetStores.length
+                      ? `${targetStores.length} попадет в batch`
+                      : availableNotSelected.length
+                        ? `${availableNotSelected.length} доступно, но не выбрано`
+                        : disabledStores.length
+                          ? `${disabledStores.length} выключено`
+                          : "магазинов нет"}
+                  </p>
                 </div>
-                <Badge tone={selectedProviders[provider.code] ? "active" : "neutral"}>
-                  {selectedProviders[provider.code] ? "Включен" : "Выключен"}
+                <Badge tone={targetStores.length ? "active" : "neutral"}>
+                  {targetStores.length ? "В batch" : "Не участвует"}
                 </Badge>
               </div>
             );
@@ -1098,25 +1108,33 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   const checked = !!selectedProviders[provider.code];
                   const stores = provider.import_stores || [];
                   const current = new Set(selectedStores[provider.code] || []);
+                  const exportableStores = stores.filter(isStoreExportable);
+                  const disabledStores = stores.filter((store) => !isStoreExportable(store));
                   return (
                     <div key={provider.code} className="cx-targetCard">
                       <label className={`cx-inlineCheck ${stores.length ? "" : "isDisabled"}`}>
                         <input
                           type="checkbox"
-                          checked={stores.length > 0 && checked}
-                          disabled={!stores.length}
+                          checked={exportableStores.length > 0 && checked}
+                          disabled={!exportableStores.length}
                           onChange={(e) => {
                             setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
                             if (!e.target.checked) {
                               setSelectedStores((prev) => ({ ...prev, [provider.code]: [] }));
+                            } else {
+                              setSelectedStores((prev) => ({ ...prev, [provider.code]: exportableStores.map((store) => store.id) }));
                             }
                           }}
                         />
                         <span>{provider.title}</span>
                       </label>
+                      <div className="cx-targetCardMeta">
+                        <span>{exportableStores.length} доступно для экспорта</span>
+                        {disabledStores.length ? <span>{disabledStores.length} выключено</span> : null}
+                      </div>
                       <div className="cx-storeChips">
                         {stores.map((store) => {
-                          const storeDisabled = store.enabled === false;
+                          const storeDisabled = !isStoreExportable(store);
                           return (
                             <label key={store.id} className={`cx-storeChip ${current.has(store.id) && !storeDisabled ? "isActive" : ""} ${storeDisabled ? "isDisabled" : ""}`}>
                               <input
@@ -1463,6 +1481,19 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             </div>
             <div className="cx-confirmTargets">
               {selectedTargetLabels.map((label) => <span key={label}>{label}</span>)}
+            </div>
+            <div className="cx-confirmTargetPlan">
+              {targetPlanRows.map(({ provider, selectedStores: targetStores, availableNotSelected }) => (
+                <div key={provider.code}>
+                  <strong>{provider.title}</strong>
+                  <span>
+                    {targetStores.length
+                      ? `В run: ${targetStores.map((store) => store.title).join(", ")}`
+                      : "Не участвует в этом run"}
+                  </span>
+                  {availableNotSelected.length ? <em>Не выбрано: {availableNotSelected.map((store) => store.title).join(", ")}</em> : null}
+                </div>
+              ))}
             </div>
             <div className="cx-confirmWarning">
               {broadExportScope

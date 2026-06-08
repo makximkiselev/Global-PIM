@@ -1033,6 +1033,10 @@ Next fix in the category flow:
    - selected marketplace stores are listed as the only stores that will enter the run;
    - available but unselected stores are shown separately so the UI does not look like hidden defaults are being used;
    - disabled stores are visible as disabled, not silently mixed into selected targets.
+47. Export target selection now uses one store eligibility rule across picker, plan, inspector and confirmation:
+   - a store enters export only when both `enabled` and `export_enabled` are not false;
+   - toggling a provider on selects only exportable stores, not disabled stores;
+   - the right inspector and confirmation modal now reuse the same target plan and no longer count stale selected store ids as active batch targets.
 
 Current smoke status:
 

@@ -994,6 +994,15 @@
   gap:12px;
 }
 
+.cx-targetCardMeta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  color:#667085;
+  font-size:12px;
+  font-weight:750;
+}
+
 .cx-pickerGrid.isEmbedded .cx-paneSidebar,
 .cx-pickerGrid.isEmbedded > .cx-pane{
   padding:16px;
@@ -1553,6 +1562,34 @@
   color:var(--text);
   font-size:12px;
   font-weight:900;
+}
+
+.cx-confirmTargetPlan{
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(var(--bg-rgb),.28);
+}
+
+.cx-confirmTargetPlan div{
+  display:grid;
+  gap:2px;
+}
+
+.cx-confirmTargetPlan strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+}
+
+.cx-confirmTargetPlan span,
+.cx-confirmTargetPlan em{
+  color:var(--text-soft);
+  font-size:12px;
+  font-style:normal;
+  font-weight:750;
 }
 
 .cx-confirmWarning{
