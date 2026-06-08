@@ -1186,6 +1186,10 @@ Next fix in the category flow:
    - AI mapping memory and template attribute lookups degrade to empty context when Postgres/templates are unavailable, so import and AI suggestion flows do not fail from optional evidence reads;
    - operating workflow tests now expect export `warnings_count` as part of the run summary contract;
    - product channel summary tests use current product `content.links` competitor evidence instead of the removed direct relational-link dependency.
+79. Product creation no longer hard-fails when info-model seed data is unavailable:
+   - category template attributes are treated as optional seed context during SKU creation;
+   - if template DB or category-template resolution cannot be read, the product is still created with its skeleton/variant group and without seeded features;
+   - the full `backend/tests/test_operating_workflows.py` suite is green again locally (`132 passed`).
 
 Current smoke status:
 

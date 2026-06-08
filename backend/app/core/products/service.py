@@ -164,14 +164,20 @@ def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
     if not cid:
         return []
     organization_id = current_tenant_organization_id()
-    db = load_templates_db_doc(organization_id)
+    try:
+        db = load_templates_db_doc(organization_id)
+    except Exception:
+        return []
     template_ids = []
     category_to_templates = db.get("category_to_templates") if isinstance(db.get("category_to_templates"), dict) else {}
     direct_ids = category_to_templates.get(cid) if isinstance(category_to_templates.get(cid), list) else []
     template_ids.extend([_norm(tid) for tid in direct_ids if _norm(tid)])
 
     if not template_ids:
-        resolution = load_category_template_resolution_map(organization_id).get(cid) or {}
+        try:
+            resolution = load_category_template_resolution_map(organization_id).get(cid) or {}
+        except Exception:
+            resolution = {}
         resolved_id = _norm(resolution.get("template_id"))
         if resolved_id:
             template_ids.append(resolved_id)
