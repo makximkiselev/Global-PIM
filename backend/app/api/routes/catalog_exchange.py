@@ -213,6 +213,22 @@ def _export_missing_detail_with_fix(detail: Dict[str, Any], product_id: str, cat
     return out
 
 
+def _export_warning_with_fix(warning: Dict[str, Any], product_id: str = "", category_id: str = "", provider: str = "") -> Dict[str, Any]:
+    out = dict(warning)
+    target = str(out.get("target") or "").strip()
+    if not target:
+        return out
+    detail = _export_missing_detail_with_fix(out, product_id=product_id, category_id=category_id, provider=provider)
+    for key in ("fix_href", "fix_label", "product_id", "category_id", "provider"):
+        if key in detail and not str(out.get(key) or "").strip():
+            out[key] = detail[key]
+    if "fix_href" in detail:
+        out["fix_href"] = detail["fix_href"]
+    if "fix_label" in detail:
+        out["fix_label"] = detail["fix_label"]
+    return out
+
+
 def _load_runs(path: Path) -> Dict[str, Any]:
     doc = read_doc(path, default={"runs": {}})
     runs = doc.get("runs") if isinstance(doc, dict) else {}
@@ -2266,7 +2282,14 @@ def _export_batch_from_preview(
             row["product_id"] = str(item.get("product_id") or "").strip()
             row["product_title"] = str(item.get("product_title") or "").strip()
             row["category_id"] = str(item.get("category_id") or "").strip()
-            warnings.append(row)
+            warnings.append(
+                _export_warning_with_fix(
+                    row,
+                    product_id=str(item.get("product_id") or "").strip(),
+                    category_id=str(item.get("category_id") or "").strip(),
+                    provider=provider,
+                )
+            )
         missing = item.get("missing") if isinstance(item.get("missing"), list) else []
         missing_clean = [str(x or "").strip() for x in missing if str(x or "").strip()]
         missing_details = item.get("missing_details") if isinstance(item.get("missing_details"), list) else []
@@ -2581,32 +2604,45 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
                 if int(audit.get("attributes_without_source") or 0) > 0 and missing_source:
                     examples = [str(x or "").strip() for x in missing_source[:3] if str(x or "").strip()]
                     payload_warning_rows.append(
-                        {
-                            "code": "payload_source_missing",
-                            "message": f"В payload есть {int(audit.get('attributes_without_source') or 0)} параметров без источника: {', '.join(examples)}",
-                            "provider": str(batch.get("provider") or "").strip(),
-                            "store_id": str(batch.get("store_id") or "").strip(),
-                            "store_title": str(batch.get("store_title") or "").strip(),
-                            "product_id": str(item.get("product_id") or "").strip(),
-                            "category_id": str(item.get("category_id") or "").strip(),
-                            "parameter": examples[0] if examples else "",
-                            "target": "attributes",
-                        }
+                        _export_warning_with_fix(
+                            {
+                                "code": "payload_source_missing",
+                                "message": f"В payload есть {int(audit.get('attributes_without_source') or 0)} параметров без источника: {', '.join(examples)}",
+                                "provider": str(batch.get("provider") or "").strip(),
+                                "store_id": str(batch.get("store_id") or "").strip(),
+                                "store_title": str(batch.get("store_title") or "").strip(),
+                                "product_id": str(item.get("product_id") or "").strip(),
+                                "category_id": str(item.get("category_id") or "").strip(),
+                                "parameter": examples[0] if examples else "",
+                                "target": "attributes",
+                            },
+                            product_id=str(item.get("product_id") or "").strip(),
+                            category_id=str(item.get("category_id") or "").strip(),
+                            provider=str(batch.get("provider") or "").strip(),
+                        )
                     )
             else:
                 blocked_items += 1
         ready_items_total += len(ready_items)
         blocked_items_total += blocked_items
-        batch_warning_rows = [
-            {
+        batch_warning_rows = []
+        for warning in (batch.get("warnings") if isinstance(batch.get("warnings"), list) else []):
+            if not isinstance(warning, dict):
+                continue
+            warning_row = {
                 **warning,
                 "provider": str(warning.get("provider") or batch.get("provider") or "").strip(),
                 "store_id": str(warning.get("store_id") or batch.get("store_id") or "").strip(),
                 "store_title": str(warning.get("store_title") or batch.get("store_title") or "").strip(),
             }
-            for warning in (batch.get("warnings") if isinstance(batch.get("warnings"), list) else [])
-            if isinstance(warning, dict)
-        ]
+            batch_warning_rows.append(
+                _export_warning_with_fix(
+                    warning_row,
+                    product_id=str(warning_row.get("product_id") or "").strip(),
+                    category_id=str(warning_row.get("category_id") or "").strip(),
+                    provider=str(batch.get("provider") or "").strip(),
+                )
+            )
         batch_warning_rows.extend(payload_warning_rows)
         if blocked_items:
             warnings.append(

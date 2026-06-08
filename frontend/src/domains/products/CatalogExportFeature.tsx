@@ -116,6 +116,8 @@ type ExportPackageResp = {
       parameter?: string;
       target?: string;
       blocked_items?: number;
+      fix_href?: string;
+      fix_label?: string;
     }>;
     batches?: Array<{
       provider: string;
@@ -1252,6 +1254,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     storeTitle: warning.store_title || warning.store_id || "",
     productId: warning.product_id || "",
     parameter: warning.parameter || "",
+    fixHref: warning.fix_href || "",
+    fixLabel: warning.fix_label || "Открыть место",
   })), [exportPackage]);
   const runWarningRows = useMemo(() => (run?.batches || []).flatMap((batch) =>
     (batch.warnings || []).map((warning, idx) => ({
@@ -1262,6 +1266,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       storeTitle: batch.store_title || batch.store_id,
       productId: warning.product_id || "",
       parameter: warning.parameter || "",
+      fixHref: warning.fix_href || "",
+      fixLabel: warning.fix_label || "Открыть место",
     })),
   ), [run]);
 
@@ -1620,6 +1626,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                             <span>{warning.message}</span>
                             <em>{[warning.storeTitle, warning.productId].filter(Boolean).join(" · ")}</em>
                           </div>
+                          {warning.fixHref ? <Link className="btn sm" to={warning.fixHref}>{warning.fixLabel}</Link> : null}
                         </div>
                       ))}
                     </div>
@@ -1750,6 +1757,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                                 <span>{warning.message}</span>
                                 <em>{[warning.storeTitle, warning.productId].filter(Boolean).join(" · ")}</em>
                               </div>
+                              {warning.fixHref ? <Link className="btn sm" to={warning.fixHref}>{warning.fixLabel}</Link> : null}
                             </div>
                           ))}
                         </div>

@@ -978,7 +978,7 @@
 
 .cx-payloadWarningItem{
   display:grid;
-  grid-template-columns:auto minmax(0,1fr);
+  grid-template-columns:auto minmax(0,1fr) auto;
   gap:10px;
   align-items:flex-start;
   padding:10px;
@@ -1005,6 +1005,10 @@
   font-size:12px;
   font-style:normal;
   font-weight:700;
+}
+
+.cx-payloadWarningItem .btn{
+  white-space:nowrap;
 }
 
 .cx-count{
@@ -1552,6 +1556,12 @@
     grid-template-columns:minmax(0,1fr);
   }
 
+  .cx-payloadWarningItem,
+  .cx-exportActionItem{
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .cx-payloadWarningItem .btn,
   .cx-exportActionItem .btn{
     width:100%;
   }

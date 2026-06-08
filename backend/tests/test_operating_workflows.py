@@ -3876,6 +3876,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(batch["warnings_count"], 1)
         self.assertEqual(batch["warnings"][0]["parameter"], "Особенности")
         self.assertEqual(batch["warnings"][0]["product_id"], "product_1")
+        self.assertEqual(batch["warnings"][0]["fix_label"], "Открыть значения")
+        self.assertIn("/sources?tab=values", batch["warnings"][0]["fix_href"])
+        self.assertIn("parameter=%D0%9E%D1%81%D0%BE%D0%B1%D0%B5%D0%BD%D0%BD%D0%BE%D1%81%D1%82%D0%B8", batch["warnings"][0]["fix_href"])
 
     def test_yandex_export_preview_uses_provider_specific_output_value(self) -> None:
         product = {
@@ -4838,6 +4841,8 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(package["warnings"][0]["store_id"], "ozon-store")
         self.assertEqual(package["warnings"][0]["product_id"], "product_1")
         self.assertEqual(package["warnings"][0]["parameter"], "Тип")
+        self.assertEqual(package["warnings"][0]["fix_label"], "Заполнить в SKU")
+        self.assertEqual(package["warnings"][0]["fix_href"], "/products/product_1?tab=attributes&parameter=%D0%A2%D0%B8%D0%BF")
         self.assertEqual(package["batches"][0]["warnings_count"], 1)
 
     def test_submit_catalog_export_run_persists_dry_run_submission(self) -> None:

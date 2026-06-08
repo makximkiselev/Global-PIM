@@ -1157,6 +1157,11 @@ Next fix in the category flow:
    - ready payload rows with marketplace parameters that have no `sourceCatalogName` now emit `payload_source_missing`;
    - the warning carries provider/store/product/parameter context and remains non-blocking;
    - package and submission warning counts now cover both omitted optional values and source-less payload parameters.
+72. Export warnings now have fix actions:
+   - warning rows reuse the same backend deep-link builder as blockers;
+   - omitted optional values link to `/sources?tab=values` with category/product/provider/parameter focus;
+   - payload source warnings link to the product attributes tab with the exact parameter selected;
+   - export warning cards render the action directly instead of leaving the user to guess where to repair the data.
 
 Current smoke status:
 
