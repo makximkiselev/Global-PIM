@@ -137,7 +137,7 @@ export default function SourcesMappingFeature() {
   const explicitProductParam = String(searchParams.get("product") || "").trim();
   const storedMatchesExplicitProduct = !!explicitProductParam && storedContext.productId === explicitProductParam;
   const initialCategoryId = categoryParam || (!explicitProductParam || storedMatchesExplicitProduct ? storedContext.categoryId : "") || "";
-  const providerParam = String(searchParams.get("provider") || "").trim();
+  const providerParam = String(searchParams.get("provider") || "").trim().toLowerCase();
   const providerCategoryParam = String(searchParams.get("provider_category") || "").trim();
   const parameterParam = String(searchParams.get("parameter") || "").trim();
   const productParam = explicitProductParam || (!categoryParam ? storedContext.productId : "");
@@ -415,6 +415,7 @@ export default function SourcesMappingFeature() {
           <SourcesParamsWorkspaceSection
             selectedCategoryId={activeCategoryId}
             focusParameter={parameterParam}
+            focusProvider={providerParam}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}
@@ -425,6 +426,7 @@ export default function SourcesMappingFeature() {
           <SourcesValueMappingSection
             selectedCategoryId={activeCategoryId}
             focusParameter={parameterParam}
+            focusProvider={providerParam}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
             }}

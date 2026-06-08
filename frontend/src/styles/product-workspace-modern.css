@@ -2279,6 +2279,27 @@
   background:rgba(var(--brand-rgb), .1);
 }
 
+.productParamItem.isFocused{
+  border-color:rgba(var(--brand-rgb), .72);
+  background:linear-gradient(180deg, rgba(var(--brand-rgb), .16), rgba(var(--surface-rgb), .82));
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb), .12);
+}
+
+.productParamDeepLinkNotice{
+  padding:10px 12px;
+  border:1px solid rgba(var(--brand-rgb), .24);
+  border-radius:14px;
+  background:rgba(var(--brand-rgb), .08);
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:850;
+  line-height:1.35;
+}
+
+.productParamDeepLinkNotice b{
+  color:var(--text);
+}
+
 .productParamItem strong,
 .productParamItem em{
   display:block;

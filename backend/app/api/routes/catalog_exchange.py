@@ -2117,7 +2117,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
             missing_details.append(_missing_detail("missing_offer_id", "SKU GT (offer_id) не заполнен", "description"))
         if not ozon_category_id:
             missing.append("Нет сопоставления категории с Ozon")
-            missing_details.append(_missing_detail("category_mapping_required", "Нет сопоставления категории с Ozon", "sources"))
+            missing_details.append(_missing_detail("category_mapping_required", "Нет сопоставления категории с Ozon", "sources", provider="ozon"))
         if not name:
             missing.append("Название товара не заполнено")
             missing_details.append(_missing_detail("missing_title", "Название товара не заполнено", "description"))
@@ -2138,23 +2138,23 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
         if _provider_export_binding_count(rows, "ozon") <= 0:
             message = "Нет сопоставленных PIM-параметров для Ozon: соберите инфо-модель и свяжите параметры площадки"
             missing.append(message)
-            missing_details.append(_missing_detail("parameter_mapping_required", message, "params"))
+            missing_details.append(_missing_detail("parameter_mapping_required", message, "params", provider="ozon"))
         elif mapped_attribute_values_count <= 0:
             message = "Параметры для Ozon сопоставлены, но у товара нет заполненных значений для выгрузки"
             missing.append(message)
-            missing_details.append(_missing_detail("parameter_values_missing", message, "params"))
+            missing_details.append(_missing_detail("parameter_values_missing", message, "params", provider="ozon"))
         if not type_value:
             missing.append("Ozon: обязательный параметр 'Тип' не сопоставлен/пуст")
-            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Тип' не сопоставлен/пуст", "params", parameter="Тип"))
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Тип' не сопоставлен/пуст", "params", parameter="Тип", provider="ozon"))
         if not vendor:
             missing.append("Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст")
-            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст", "params", parameter="Бренд"))
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Бренд' не сопоставлен/пуст", "params", parameter="Бренд", provider="ozon"))
         if not model_group:
             missing.append("Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст")
-            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст", "params", parameter="Название модели"))
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'Название модели' не сопоставлен/пуст", "params", parameter="Название модели", provider="ozon"))
         if not tnved:
             missing.append("Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен")
-            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен", "params", parameter="ТН ВЭД коды ЕАЭС"))
+            missing_details.append(_missing_detail("required_parameter_missing", "Ozon: обязательный параметр 'ТН ВЭД коды ЕАЭС' не определен", "params", parameter="ТН ВЭД коды ЕАЭС", provider="ozon"))
         for key, (label, _feature_code, _source_names) in _OZON_PACKAGE_REQUIREMENTS.items():
             if key not in measurements:
                 message = f"Ozon: заполните {label} для отправки карточки"
@@ -2175,7 +2175,7 @@ def _ozon_export_preview(product_ids: List[str], limit: int) -> Dict[str, Any]:
                 continue
             seen_value_mapping_messages.add(key)
             missing.append(message)
-            missing_details.append(_missing_detail("value_mapping_required", message, "values", parameter=key[0]))
+            missing_details.append(_missing_detail("value_mapping_required", message, "values", parameter=key[0], provider="ozon"))
 
         ready = len(missing) == 0
         if ready:

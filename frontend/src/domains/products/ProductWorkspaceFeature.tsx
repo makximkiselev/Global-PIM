@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
@@ -1065,6 +1065,8 @@ function ProductAttributeWorkbench({
   productId,
   categoryId,
   selectedKey,
+  focusedKey,
+  focusParameter,
   onSelect,
   onSaveFeatureValue,
   onSaveFeatureValues,
@@ -1080,12 +1082,15 @@ function ProductAttributeWorkbench({
   productId: string;
   categoryId: string;
   selectedKey: string;
+  focusedKey?: string;
+  focusParameter?: string;
   onSelect: (key: string) => void;
   onSaveFeatureValue: (feature: ProductFeatureValue, value: string) => Promise<void>;
   onSaveFeatureValues: (updates: FeatureValueUpdate[]) => Promise<void>;
   savingFeatureKey: string;
   saveNotice: string;
 }) {
+  const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const selectedFeature = useMemo(() => {
     return features.find((feature, index) => featureKey(feature, index) === selectedKey) || features[0] || null;
   }, [features, selectedKey]);
@@ -1146,6 +1151,11 @@ function ProductAttributeWorkbench({
   }, [selectedFeatureKey, selectedValue]);
 
   useEffect(() => {
+    if (!focusedKey) return;
+    itemRefs.current[focusedKey]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedKey]);
+
+  useEffect(() => {
     setDimensionDrafts(Object.fromEntries(
       packageDimensionTargets.map((target) => [target.key, featureValue(target.feature)]),
     ));
@@ -1186,6 +1196,11 @@ function ProductAttributeWorkbench({
           </div>
           <Badge tone={conflictCount ? "danger" : "active"}>{conflictCount ? `${conflictCount} конфликтов` : "без конфликтов"}</Badge>
         </div>
+        {focusedKey && focusParameter ? (
+          <div className="productParamDeepLinkNotice">
+            Открыт блокер: <b>{focusParameter}</b>
+          </div>
+        ) : null}
         <div className="productParamExportSummary">
           <span><b>{exportReadyCount}</b> готовы с источником</span>
           <span><b>{withSourceCount}</b> с источником</span>
@@ -1329,8 +1344,11 @@ function ProductAttributeWorkbench({
             return (
               <button
                 key={key}
+                ref={(node) => {
+                  itemRefs.current[key] = node;
+                }}
                 type="button"
-                className={`productParamItem${selectedFeature && key === featureKey(selectedFeature, features.indexOf(selectedFeature)) ? " isActive" : ""}`}
+                className={`productParamItem${selectedFeature && key === featureKey(selectedFeature, features.indexOf(selectedFeature)) ? " isActive" : ""}${focusedKey && key === focusedKey ? " isFocused" : ""}`}
                 onClick={() => onSelect(key)}
               >
                 <span>
@@ -2050,6 +2068,14 @@ function ProductWorkspaceFeature() {
     }
     return merged;
   }, [hasInfoModel, product, rawFeatures, templateFeatureCodes, templateFeatureByIdentity]);
+  const focusedParameter = normalizeText(searchParams.get("parameter"));
+  const focusedFeatureKey = useMemo(() => {
+    if (!focusedParameter) return "";
+    const feature = findFeatureByParameter(features, focusedParameter);
+    if (!feature) return "";
+    const index = features.indexOf(feature);
+    return featureKey(feature, index >= 0 ? index : 0);
+  }, [features, focusedParameter]);
   const media = useMemo(() => flattenMedia(product?.content), [product]);
   const descriptionSources = useMemo(() => descriptionSourceEntries(product?.content), [product]);
   const selectedMediaCount = useMemo(() => media.filter((item) => item.selected !== false).length, [media]);
@@ -2704,6 +2730,8 @@ function ProductWorkspaceFeature() {
                   productId={product.id}
                   categoryId={product.category_id}
                   selectedKey={selectedFeatureKey}
+                  focusedKey={focusedFeatureKey}
+                  focusParameter={focusedParameter}
                   onSelect={setSelectedFeatureKey}
                   onSaveFeatureValue={saveFeatureValue}
                   onSaveFeatureValues={saveFeatureValues}

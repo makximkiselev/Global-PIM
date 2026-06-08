@@ -109,6 +109,7 @@ type CompetitorCategoryResp = {
 type Props = {
   selectedCategoryId?: string;
   focusParameter?: string;
+  focusProvider?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
 };
 
@@ -485,7 +486,7 @@ function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds
   ].filter((group) => group.items.length > 0);
 }
 
-export default function SourcesParamsWorkspaceSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", onSelectedCategoryChange }: Props) {
+export default function SourcesParamsWorkspaceSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", focusProvider = "", onSelectedCategoryChange }: Props) {
   const selectedCategoryId = selectedCategoryIdProp || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("category") || "" : "");
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -700,6 +701,15 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
     estimateSize: () => 152,
     overscan: 8,
   });
+  const focusedRowId = useMemo(() => {
+    const focus = qnorm(focusParameter);
+    if (!focus || !paramRows.length) return "";
+    const match = paramRows.find((row) => {
+      const hay = qnorm([row.catalog_name, row.group, row.id].join(" "));
+      return hay.includes(focus) || focus.includes(qnorm(row.catalog_name || ""));
+    });
+    return String(match?.id || "");
+  }, [focusParameter, paramRows]);
 
   const selectedRow = useMemo(() => {
     const fromSelected = queueRows.find((row) => String(row.id) === selectedRowId);
@@ -755,6 +765,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
   }, [focusParameter, paramRows]);
 
   useEffect(() => {
+    if (!focusedRowId) return;
+    const index = tableQueueRows.findIndex((row) => String(row.original.id || "") === focusedRowId);
+    if (index >= 0) queueVirtualizer.scrollToIndex(index, { align: "center" });
+  }, [focusedRowId, queueVirtualizer, tableQueueRows]);
+
+  useEffect(() => {
     if (!paramRows.length || !queueRows.length) {
       setSelectedRowId("");
       return;
@@ -797,9 +813,10 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
     const coverage = rowProviderCoverage(row, codes);
     const needsAttention = rowNeedsAttention(row, codes);
     const active = String(selectedRow?.id || "") === String(row.id || "");
+    const focused = focusedRowId && String(row.id || "") === focusedRowId;
     return (
       <button
-        className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${active ? "isSelected" : ""}`}
+        className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${active ? "isSelected" : ""} ${focused ? "isFocused" : ""}`}
         type="button"
         onClick={() => setSelectedRowId(String(row.id || ""))}
       >
@@ -1298,7 +1315,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
                     const currentIds = new Set(bindings.map((item) => String(item.id || "").trim()).filter(Boolean));
                     const optionGroups = providerOptionGroups(selectedRow, options.visible, currentIds, providerSearch[code] || "");
                     return (
-                      <div className="paramsFieldSelect" key={code}>
+                      <div className={`paramsFieldSelect ${focusProvider === code ? "isFocused" : ""}`} key={code}>
                         <div className="paramsProviderBindHead">
                           <span>{PROVIDER_LABEL[code] || code}</span>
                           <b className={bindings.length ? "isOk" : "isWarn"}>{bindings.length ? `${bindings.length} полей` : "не связано"}</b>

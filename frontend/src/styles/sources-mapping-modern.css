@@ -2574,6 +2574,12 @@
   transform: none;
 }
 
+.paramsParamCard.isFocused {
+  border-color: color-mix(in srgb, var(--brand) 76%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 16%, var(--panel)), color-mix(in srgb, var(--surface) 78%, var(--panel)));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
+}
+
 .paramsParamHead {
   display: flex;
   align-items: flex-start;
@@ -2953,6 +2959,14 @@
 .paramsFieldSelect {
   display: grid;
   gap: 8px;
+}
+
+.paramsFieldSelect.isFocused {
+  margin: -6px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--brand) 32%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--brand) 7%, transparent);
 }
 
 .paramsFieldSelect span {

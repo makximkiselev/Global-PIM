@@ -220,6 +220,55 @@
   gap:12px;
 }
 
+.cx-exportBlockerSummary{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+  gap:10px;
+}
+
+.cx-exportBlockerSummary div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border:1px solid rgba(185,199,227,.55);
+  border-radius:14px;
+  background:#fff;
+}
+
+.cx-exportBlockerSummary div.is-product{
+  border-color:rgba(180,35,24,.24);
+  background:#fff7f6;
+}
+
+.cx-exportBlockerSummary div.is-mapping{
+  border-color:rgba(56,106,214,.22);
+  background:#f7f9ff;
+}
+
+.cx-exportBlockerSummary div.is-values{
+  border-color:rgba(219,132,37,.24);
+  background:#fffaf2;
+}
+
+.cx-exportBlockerSummary div.is-media{
+  border-color:rgba(22,163,74,.22);
+  background:#f4fbf6;
+}
+
+.cx-exportBlockerSummary span{
+  color:#667085;
+  font-size:12px;
+  font-weight:850;
+}
+
+.cx-exportBlockerSummary strong{
+  color:#0f172a;
+  font-size:18px;
+  font-weight:950;
+}
+
 .cx-exportBlocker{
   padding:14px 16px;
   border:1px solid rgba(255,107,61,.24);

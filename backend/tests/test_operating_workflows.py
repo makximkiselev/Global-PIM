@@ -4401,6 +4401,7 @@ class OperatingWorkflowTests(unittest.TestCase):
                             "message": "Цвет: значение не сопоставлено с Ozon",
                             "target": "values",
                             "parameter": "Цвет",
+                            "provider": "ozon",
                         }
                     ],
                     "payload_item": {"offer_id": "GT-1"},
@@ -4418,7 +4419,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(detail["fix_label"], "Открыть значения")
         self.assertEqual(
             detail["fix_href"],
-            "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82",
+            "/sources?tab=values&category=cat-phone&product=product_1&parameter=%D0%A6%D0%B2%D0%B5%D1%82&provider=ozon",
         )
 
     def test_export_batch_blockers_link_product_attribute_fixes_to_sku(self) -> None:

@@ -1047,8 +1047,14 @@ Next fix in the category flow:
    - technical placeholder prices are labelled explicitly instead of looking like a hidden PIM price.
 50. Export blockers are now grouped by action instead of raw reason strings:
    - each blocked SKU separates tasks into product fields, model/field mapping, value mapping and media/import checks;
+   - the blocker panel starts with an action summary, so the user sees where the queue is concentrated before opening individual SKU;
    - sibling suggestions stay inline with the exact blocker and keep direct “take from sibling” actions;
    - mobile layout stacks blocker actions so fix buttons do not collide with long parameter text.
+51. Deep links from export/product blockers now focus the exact parameter:
+   - `/products/{id}?tab=attributes&parameter=...` scrolls the product parameter queue to the matching row and highlights it;
+   - `/sources?tab=params&parameter=...` selects and scrolls the matching PIM field in the virtualized params queue;
+   - `/sources?tab=values&parameter=...` selects and scrolls the matching value dictionary row in the virtualized values queue;
+   - Ozon export blockers now preserve `provider=ozon`, so params/values screens also highlight the relevant marketplace block.
 
 Current smoke status:
 

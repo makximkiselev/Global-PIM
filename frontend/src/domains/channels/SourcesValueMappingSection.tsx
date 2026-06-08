@@ -101,6 +101,7 @@ type ValueAiJobResp = {
 type Props = {
   selectedCategoryId?: string;
   focusParameter?: string;
+  focusProvider?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
 };
 
@@ -262,7 +263,7 @@ function searchMatch(node: CatalogNode, q: string) {
   return String(node.name || "").toLowerCase().includes(q);
 }
 
-export default function SourcesValueMappingSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", onSelectedCategoryChange }: Props) {
+export default function SourcesValueMappingSection({ selectedCategoryId: selectedCategoryIdProp = "", focusParameter = "", focusProvider = "", onSelectedCategoryChange }: Props) {
   const selectedCategoryId = selectedCategoryIdProp || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("category") || "" : "");
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(true);
@@ -407,6 +408,16 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
     estimateSize: () => 158,
     overscan: 8,
   });
+  const focusedDictId = useMemo(() => {
+    const focus = String(focusParameter || "").trim().toLowerCase();
+    const list = Array.isArray(data?.items) ? data!.items : [];
+    if (!focus || !list.length) return "";
+    const match = list.find((item) => {
+      const hay = `${item.catalog_name || ""} ${item.title || ""} ${item.group || ""}`.toLowerCase();
+      return hay.includes(focus) || focus.includes(String(item.catalog_name || item.title || "").trim().toLowerCase());
+    });
+    return String(match?.dict_id || "");
+  }, [focusParameter, data]);
 
   const rawItemsCount = Array.isArray(data?.items) ? data!.items.length : 0;
   const mappingItemsCount = useMemo(() => {
@@ -427,6 +438,12 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
     setWorkFilter("all");
     if (match) setActiveDictId(match.dict_id);
   }, [focusParameter, data]);
+
+  useEffect(() => {
+    if (!focusedDictId) return;
+    const index = fieldRows.findIndex((row) => String(row.original.dict_id || "") === focusedDictId);
+    if (index >= 0) fieldVirtualizer.scrollToIndex(index, { align: "center" });
+  }, [focusedDictId, fieldRows, fieldVirtualizer]);
 
   useEffect(() => {
     if (!filteredItems.length) {
@@ -691,10 +708,11 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
   function renderValueFieldItem(item: ValueItem) {
     const providers = usefulProviders(item);
     const status = valueItemStatus(item);
+    const focused = focusedDictId && item.dict_id === focusedDictId;
     return (
       <button
         type="button"
-        className={`sm-valuesFieldItem ${activeDictId === item.dict_id ? "is-active" : ""}`}
+        className={`sm-valuesFieldItem ${activeDictId === item.dict_id ? "is-active" : ""} ${focused ? "is-focused" : ""}`}
         onClick={() => setActiveDictId(item.dict_id)}
       >
         <div className="sm-valuesFieldTop">
@@ -919,7 +937,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                       const provider = activeItem.providers.find((item) => item.code === providerCode);
                       const gap = provider ? providerHasGap(provider) : false;
                       return (
-                        <div className={`sm-valuesRouteStep ${gap ? "is-gap" : provider ? "is-ready" : "is-muted"}`} key={providerCode}>
+                        <div className={`sm-valuesRouteStep ${gap ? "is-gap" : provider ? "is-ready" : "is-muted"} ${focusProvider === providerCode ? "is-focused" : ""}`} key={providerCode}>
                           <span>{provider?.title || (providerCode === "yandex_market" ? "Я.Маркет" : "Ozon")}</span>
                           <strong>{provider ? providerCoverageLabel(provider, activeItem) : "нет поля"}</strong>
                           <small>{provider?.param_name || "справочник не подключен"}</small>

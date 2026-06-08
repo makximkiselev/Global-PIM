@@ -725,6 +725,18 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return Array.from(byKey.values()).slice(0, 12);
   }, [run]);
+  const exportBlockerActionSummary = useMemo(() => {
+    const summary = new Map<string, { key: string; title: string; count: number }>();
+    for (const blocker of exportBlockers) {
+      for (const group of blockerActionGroups(blocker)) {
+        const current = summary.get(group.key) || { key: group.key, title: group.title, count: 0 };
+        current.count += group.items.length;
+        summary.set(group.key, current);
+      }
+    }
+    const order = ["product", "mapping", "values", "media"];
+    return Array.from(summary.values()).sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  }, [exportBlockers]);
 
   function latestRunPath() {
     const params = new URLSearchParams();
@@ -1622,6 +1634,16 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                         <div className="cx-paneSub">Уникальные SKU сгруппированы по действию: что заполнить в товаре, что сопоставить в модели, где нужны значения или медиа.</div>
                       </div>
                     </div>
+                    {exportBlockerActionSummary.length ? (
+                      <div className="cx-exportBlockerSummary">
+                        {exportBlockerActionSummary.map((item) => (
+                          <div key={item.key} className={`is-${item.key}`}>
+                            <span>{item.title}</span>
+                            <strong>{item.count}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="cx-exportBlockers">
                       {exportBlockers.map((blocker) => {
                         const actionGroups = blockerActionGroups(blocker);
