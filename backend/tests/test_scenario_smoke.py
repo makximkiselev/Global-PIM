@@ -203,3 +203,28 @@ def test_validate_product_queue_labels_accepts_missing_model_cta():
         True,
         "technical template labels hidden; missing model CTA visible",
     )
+
+
+def test_validate_legacy_competitor_redirect_url_requires_product_context():
+    result = scenario_smoke.validate_legacy_competitor_redirect_url(
+        "https://pim.example.test/sources?tab=sources&category=cat-phone",
+        "cat-phone",
+        "product_70",
+    )
+
+    assert result.ok is False
+    assert "product context" in result.detail
+
+
+def test_validate_legacy_competitor_redirect_url_accepts_canonical_source_target():
+    result = scenario_smoke.validate_legacy_competitor_redirect_url(
+        "https://pim.example.test/sources?tab=sources&category=cat-phone&product=product_70",
+        "cat-phone",
+        "product_70",
+    )
+
+    assert result == scenario_smoke.CheckResult(
+        "legacy competitor redirect",
+        True,
+        "category and product context preserved",
+    )

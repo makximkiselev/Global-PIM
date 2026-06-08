@@ -182,6 +182,17 @@ def validate_product_queue_labels(body: str, sku_marker: str = "") -> CheckResul
     return CheckResult("product queue labels", False, "neither readable model label nor missing-model CTA is visible")
 
 
+def validate_legacy_competitor_redirect_url(url: str, category_id: str, product_id: str) -> CheckResult:
+    text = str(url or "")
+    if "/sources?" not in text or "tab=sources" not in text:
+        return CheckResult("legacy competitor redirect", False, f"unexpected target: {text}")
+    if category_id and f"category={quote(category_id, safe='')}" not in text:
+        return CheckResult("legacy competitor redirect", False, "category context is missing")
+    if product_id and f"product={quote(product_id, safe='')}" not in text:
+        return CheckResult("legacy competitor redirect", False, "product context is missing")
+    return CheckResult("legacy competitor redirect", True, "category and product context preserved")
+
+
 def is_ignorable_browser_console_error(message: str) -> bool:
     transient_network_markers = ("net::ERR_CONNECTION_CLOSED",)
     return any(marker in message for marker in transient_network_markers)
@@ -288,6 +299,8 @@ async def browser_smoke(
     extra_routes: Iterable[tuple[str, tuple[str, ...]]] = (),
     export_latest_product_id: str = "",
     product_queue_sku_marker: str = "",
+    legacy_redirect_category_id: str = "",
+    legacy_redirect_product_id: str = "",
 ) -> list[CheckResult]:
     try:
         from playwright.async_api import async_playwright
@@ -382,6 +395,21 @@ async def browser_smoke(
             except Exception as exc:
                 results.append(CheckResult("product queue labels", False, str(exc)))
 
+        if legacy_redirect_category_id or legacy_redirect_product_id:
+            try:
+                category = quote(str(legacy_redirect_category_id or "").strip(), safe="")
+                product = quote(str(legacy_redirect_product_id or "").strip(), safe="")
+                await goto_app_page(page, f"{base_url}/data-prep/competitors?category={category}&product={product}")
+                results.append(
+                    validate_legacy_competitor_redirect_url(
+                        page.url,
+                        str(legacy_redirect_category_id or "").strip(),
+                        str(legacy_redirect_product_id or "").strip(),
+                    )
+                )
+            except Exception as exc:
+                results.append(CheckResult("legacy competitor redirect", False, str(exc)))
+
         if export_latest_product_id:
             try:
                 product = quote(str(export_latest_product_id).strip(), safe="")
@@ -454,6 +482,8 @@ async def async_main(argv: list[str]) -> int:
                 extra_routes=product_flow_routes,
                 export_latest_product_id=args.flow_product_id if args.export_latest else "",
                 product_queue_sku_marker=args.flow_sku_marker if args.product_flow else "",
+                legacy_redirect_category_id=args.flow_category_id if args.product_flow else "",
+                legacy_redirect_product_id=args.flow_product_id if args.product_flow else "",
             )
         )
     print_results(results)
