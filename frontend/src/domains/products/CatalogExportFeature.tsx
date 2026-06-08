@@ -18,6 +18,10 @@ import "../../styles/catalog-exchange.css";
 type Store = { id: string; title: string; enabled?: boolean; export_enabled?: boolean };
 type ProviderRow = { code: string; title: string; import_stores?: Store[] };
 type ConnectorsResp = { providers?: ProviderRow[] };
+type StoredExportTargets = {
+  selectedProviders?: Record<string, boolean>;
+  selectedStores?: Record<string, string[]>;
+};
 type ExportBootstrapResp = {
   nodes: ExchangeNode[];
   counts: Record<string, number>;
@@ -326,6 +330,43 @@ function exportTargetKey(provider: string, storeId: string): string {
   return `${provider}:${storeId}`;
 }
 
+const EXPORT_TARGET_SELECTION_STORAGE_KEY = "smartpim_export_target_selection_v1";
+
+function emptyExportTargetSelection(providers: ProviderRow[]) {
+  return {
+    selectedProviders: Object.fromEntries(providers.map((provider) => [provider.code, false])),
+    selectedStores: Object.fromEntries(providers.map((provider) => [provider.code, [] as string[]])),
+  };
+}
+
+function readStoredExportTargetSelection(providers: ProviderRow[]) {
+  const empty = emptyExportTargetSelection(providers);
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = window.localStorage.getItem(EXPORT_TARGET_SELECTION_STORAGE_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as StoredExportTargets;
+    const selectedProvidersRaw = parsed.selectedProviders || {};
+    const selectedStoresRaw = parsed.selectedStores || {};
+    const selectedProviders: Record<string, boolean> = {};
+    const selectedStores: Record<string, string[]> = {};
+    providers.forEach((provider) => {
+      const exportableStoreIds = new Set((provider.import_stores || []).filter(isStoreExportable).map((store) => store.id));
+      const storeIds = (selectedStoresRaw[provider.code] || []).filter((storeId) => exportableStoreIds.has(storeId));
+      selectedStores[provider.code] = storeIds;
+      selectedProviders[provider.code] = Boolean(selectedProvidersRaw[provider.code] && storeIds.length > 0);
+    });
+    return { selectedProviders, selectedStores };
+  } catch {
+    return empty;
+  }
+}
+
+function writeStoredExportTargetSelection(selectedProviders: Record<string, boolean>, selectedStores: Record<string, string[]>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(EXPORT_TARGET_SELECTION_STORAGE_KEY, JSON.stringify({ selectedProviders, selectedStores }));
+}
+
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
@@ -539,17 +580,17 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     setProductCountsByCategory(data.counts);
     setProviders(data.providers);
     if (!bootstrapInitialized) {
-      setSelectedProviders(Object.fromEntries(data.providers.map((provider) => [
-        provider.code,
-        (provider.import_stores || []).some(isStoreExportable),
-      ])));
-      setSelectedStores(Object.fromEntries(data.providers.map((provider) => [
-        provider.code,
-        (provider.import_stores || []).filter(isStoreExportable).map((store) => store.id),
-      ])));
+      const restoredSelection = readStoredExportTargetSelection(data.providers);
+      setSelectedProviders(restoredSelection.selectedProviders);
+      setSelectedStores(restoredSelection.selectedStores);
       setBootstrapInitialized(true);
     }
   }, [bootstrapInitialized, exportBootstrapQuery.data]);
+
+  useEffect(() => {
+    if (!bootstrapInitialized) return;
+    writeStoredExportTargetSelection(selectedProviders, selectedStores);
+  }, [bootstrapInitialized, selectedProviders, selectedStores]);
 
   useEffect(() => {
     if (!exportBootstrapQuery.error) return;
