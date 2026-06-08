@@ -1097,6 +1097,10 @@ Next fix in the category flow:
    - blocked export details must include the same `category_id`, `product_id` and `provider` that appear in `/sources` fix links;
    - the scenario smoke catches cases where UI links still work but machine-readable blocker context regresses to empty/null fields;
    - backend regression tests cover both missing context and valid blocked-run context.
+58. Stale export batches no longer look like the current store selection:
+   - when selected store checkboxes differ from the latest prepared run, the metric says `Целей прошлого batch` instead of `Целей выгрузки`;
+   - the batch table title changes to `Последний batch` and explains that it is diagnostic only until the export is rebuilt;
+   - production browser check on `product_70` confirmed the ambiguous `ЦЕЛЕЙ ВЫГРУЗКИ 2` text is gone while the stale-run warning remains visible.
 
 Current smoke status:
 

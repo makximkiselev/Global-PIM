@@ -1488,7 +1488,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 <SummaryMetricRow
                   items={[
                     { label: "SKU", value: run.summary?.product_count ?? run.count },
-                    { label: "Целей выгрузки", value: run.summary?.target_count ?? run.batches.length },
+                    { label: runTargetsStale ? "Целей прошлого batch" : "Целей выгрузки", value: run.summary?.target_count ?? run.batches.length },
                     { label: "Готовых строк", value: run.summary?.ready_target_items ?? 0 },
                     { label: "Блокеров", value: blockedTargetItems, accent: blockedTargetItems > 0 },
                   ]}
@@ -1671,8 +1671,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 <section className="card cx-pane">
                   <div className="cx-paneHead">
                     <div>
-                      <div className="cx-paneTitle">Очередь экспорта</div>
-                      <div className="cx-paneSub">Видно, по каким каналам и магазинам собран batch и сколько SKU готовы к выгрузке.</div>
+                      <div className="cx-paneTitle">{runTargetsStale ? "Последний batch" : "Очередь экспорта"}</div>
+                      <div className="cx-paneSub">
+                        {runTargetsStale
+                          ? "Этот batch собран по старым галочкам магазинов. Он остается только для диагностики; для текущего выбора нужно пересобрать экспорт."
+                          : "Видно, по каким каналам и магазинам собран batch и сколько SKU готовы к выгрузке."}
+                      </div>
                     </div>
                   </div>
                   <ResultsTable table={exportQueueTable} />
