@@ -1190,6 +1190,10 @@ Next fix in the category flow:
    - category template attributes are treated as optional seed context during SKU creation;
    - if template DB or category-template resolution cannot be read, the product is still created with its skeleton/variant group and without seeded features;
    - the full `backend/tests/test_operating_workflows.py` suite is green again locally (`132 passed`).
+80. Product parameter tab no longer dead-ends when the info-model is missing:
+   - the old plain `master template not found` line is replaced with a clear empty state;
+   - the empty state links directly to `/sources?tab=params` for collecting the category model and `/sources?tab=sources` for checking SKU sources;
+   - this keeps the product card aligned with the agreed flow: sources and model first, then SKU parameter filling and export.
 
 Current smoke status:
 

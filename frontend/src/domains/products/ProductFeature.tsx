@@ -2326,7 +2326,22 @@ export default function ProductFeature() {
                   </div>
                 );
               })}
-              {!featureDefs.length && !content.features.length && <div className="pn-muted">Для категории не найден мастер-шаблон.</div>}
+              {!featureDefs.length && !content.features.length ? (
+                <div className="productParamEmpty productParamEmptyAction">
+                  <div>
+                    <strong>Инфо-модель категории еще не собрана</strong>
+                    <span>Параметры появятся здесь после сбора полей из площадок, товара и подтвержденных конкурентных источников.</span>
+                  </div>
+                  <div className="productWorkspaceEmptyActions">
+                    <Link className="btn primary" to={`/sources?tab=params&category=${encodeURIComponent(product?.category_id || "")}&product=${encodeURIComponent(productId || "")}`}>
+                      Собрать инфо-модель
+                    </Link>
+                    <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(product?.category_id || "")}&product=${encodeURIComponent(productId || "")}`}>
+                      Проверить источники
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
