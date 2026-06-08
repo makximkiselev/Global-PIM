@@ -97,6 +97,13 @@ function invalidateSourcesReadCaches(categoryId?: string) {
   clearPersistentAttrDetailsCache(categoryId);
 }
 
+function sourcesParamsHref(categoryId?: string) {
+  const params = new URLSearchParams({ tab: "params" });
+  const category = String(categoryId || "").trim();
+  if (category) params.set("category", category);
+  return `/sources?${params.toString()}`;
+}
+
 async function readCategoriesMappingBootstrap(): Promise<CategoriesResp> {
   const now = Date.now();
   if (categoriesMappingCache.data && now - categoriesMappingCache.ts < SOURCES_MAPPING_CACHE_TTL_MS) {
@@ -3665,7 +3672,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                       <div className="mm-emptyText">
                         Сопоставление параметров открывается после draft-модели. Перейдите в поля товара категории, соберите draft из источников и утвердите рабочую структуру.
                       </div>
-                      <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                      <Link className="btn btn-primary" to={sourcesParamsHref(activeAttrCategoryId)}>
                         Открыть инфо-модель
                       </Link>
                     </div>
@@ -3711,7 +3718,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   ))}
                                 </div>
                                 {attrDetails.template_id ? (
-                                  <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                                  <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(attrDetails.template_id)}`}>
                                     Открыть шаблон
                                   </Link>
                                 ) : null}
@@ -4373,7 +4380,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         <div className="mm-savedToast">
           <span>{savedToastText}</span>
           {savedTemplateId ? (
-            <Link to={`/templates/${encodeURIComponent(activeAttrCategoryId || "")}`}>Открыть шаблон</Link>
+            <Link to={`/templates/${encodeURIComponent(savedTemplateId)}`}>Открыть шаблон</Link>
           ) : null}
         </div>
       )}

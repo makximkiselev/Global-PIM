@@ -1194,6 +1194,10 @@ Next fix in the category flow:
    - the old plain `master template not found` line is replaced with a clear empty state;
    - the empty state links directly to `/sources?tab=params` for collecting the category model and `/sources?tab=sources` for checking SKU sources;
    - this keeps the product card aligned with the agreed flow: sources and model first, then SKU parameter filling and export.
+81. Category/model links no longer confuse category ids with template ids:
+   - empty model/value states now route to `/sources?tab=params&category=...` instead of `/templates/{category_id}`;
+   - template links use a real `template_id` when one exists, including the saved-template toast after mapping saves;
+   - product source empty states now keep the user in the source/model workflow instead of opening a template route with the wrong identifier.
 
 Current smoke status:
 

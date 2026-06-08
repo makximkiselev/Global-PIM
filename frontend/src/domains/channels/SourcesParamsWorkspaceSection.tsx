@@ -1152,7 +1152,14 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId: sele
               </p>
             </div>
             <div className="paramsInfoModelSetupActions">
-              <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={!selectedCategoryId || aiMatching || loading}
+                onClick={runAiMatch}
+              >
+                {aiMatching ? "Собираю..." : "Собрать черновик"}
+              </button>
               <Link className="btn" to={sourcesTargetHref("sources", selectedCategoryId, productId)}>Проверить источники</Link>
             </div>
           </div>

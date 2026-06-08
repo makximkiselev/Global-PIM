@@ -870,7 +870,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
               </div>
               <div className="sm-valuesPrereqActions">
                 <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>К параметрам</Link>
-                <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
+                <Link className="btn btn-primary" to={sourcesTargetHref("params", selectedCategoryId, productId)}>Собрать модель</Link>
               </div>
             </div>
           ) : null}
@@ -946,7 +946,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
                     {!mappingItemsCount && !rawItemsCount ? (
                       <div className="sm-valuesEmptyActions">
                         <Link className="btn" to={sourcesTargetHref("params", selectedCategoryId, productId)}>К параметрам</Link>
-                        <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
+                        <Link className="btn btn-primary" to={sourcesTargetHref("params", selectedCategoryId, productId)}>Собрать модель</Link>
                       </div>
                     ) : !mappingItemsCount ? (
                       <div className="sm-valuesEmptyActions">

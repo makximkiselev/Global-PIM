@@ -1517,7 +1517,7 @@ function ProductSourcesWorkbench({ features, categoryId, productId }: { features
               <>
                 <Link className="btn primary" to={sourcesHref("params", categoryId, productId)}>Открыть сопоставление</Link>
                 <Link className="btn" to={sourcesHref("sources", categoryId, productId)}>Связать источники</Link>
-                <Link className="btn" to={`/templates/${encodedCategoryId}`}>Собрать инфо-модель</Link>
+                <Link className="btn" to={sourcesHref("params", categoryId, productId)}>Собрать инфо-модель</Link>
               </>
             ) : (
               <Link className="btn primary" to={sourcesHref("sources", categoryId, productId)}>Открыть сопоставление</Link>
