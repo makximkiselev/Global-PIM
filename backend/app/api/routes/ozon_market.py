@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -28,6 +29,20 @@ CATEGORY_ATTR_VALUES_PATH = DATA_DIR / "attribute_values.json"
 PRODUCT_RATING_PATH = DATA_DIR / "product_rating_by_sku.json"
 IMPORT_INFO_PATH = DATA_DIR / "import_products_info.json"
 OZON_API_BASE = "https://api-seller.ozon.ru"
+
+_OZON_PACKAGE_FIELDS: Dict[str, Tuple[str, str, str]] = {
+    "depth": ("package_length", "Длина упаковки, мм", "dimension"),
+    "length": ("package_length", "Длина упаковки, мм", "dimension"),
+    "width": ("package_width", "Ширина упаковки, мм", "dimension"),
+    "height": ("package_height", "Высота упаковки, мм", "dimension"),
+    "weight": ("package_weight", "Вес упаковки, г", "weight"),
+}
+_OZON_PACKAGE_TARGETS: List[Tuple[str, str, str]] = [
+    ("package_length", "Длина упаковки, мм", "dimension"),
+    ("package_width", "Ширина упаковки, мм", "dimension"),
+    ("package_height", "Высота упаковки, мм", "dimension"),
+    ("package_weight", "Вес упаковки, г", "weight"),
+]
 
 
 def _now_iso() -> str:
@@ -219,6 +234,157 @@ def _merge_marketplace_media_items(existing: Any, urls: List[str], *, source: st
         seen.update(keys)
         out.append(item)
     return out
+
+
+def _positive_number(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)):
+        number = float(value)
+    else:
+        text = str(value or "").strip().replace(",", ".")
+        match = re.search(r"\d+(?:\.\d+)?", text)
+        if not match:
+            return None
+        number = float(match.group(0))
+    if number <= 0:
+        return None
+    return number
+
+
+def _normalize_ozon_dimension(value: Any, unit: str) -> Optional[str]:
+    number = _positive_number(value)
+    if number is None:
+        return None
+    normalized_unit = str(unit or "").strip().lower()
+    if normalized_unit in {"cm", "сm", "см", "centimeter", "centimeters"}:
+        number *= 10
+    return str(max(1, int(round(number))))
+
+
+def _normalize_ozon_weight(value: Any, unit: str) -> Optional[str]:
+    number = _positive_number(value)
+    if number is None:
+        return None
+    normalized_unit = str(unit or "").strip().lower()
+    if normalized_unit in {"kg", "кг", "kilogram", "kilograms"}:
+        number *= 1000
+    return str(max(1, int(round(number))))
+
+
+def _extract_ozon_package_dimensions(item: Dict[str, Any]) -> Dict[str, str]:
+    if not isinstance(item, dict):
+        return {}
+    dimension_unit = str(item.get("dimension_unit") or item.get("dimensions_unit") or "mm").strip() or "mm"
+    weight_unit = str(item.get("weight_unit") or "g").strip() or "g"
+    out: Dict[str, str] = {}
+    raw: Dict[str, str] = {}
+    for source_key, (code, _name, kind) in _OZON_PACKAGE_FIELDS.items():
+        if source_key not in item or (code in out and source_key == "length"):
+            continue
+        value = item.get(source_key)
+        if kind == "weight":
+            normalized = _normalize_ozon_weight(value, weight_unit)
+            unit = weight_unit
+        else:
+            normalized = _normalize_ozon_dimension(value, dimension_unit)
+            unit = dimension_unit
+        if not normalized:
+            continue
+        out[code] = normalized
+        raw[code] = f"{value} {unit}".strip()
+    for code, value in raw.items():
+        out[f"{code}:raw"] = value
+    return out
+
+
+def _merge_ozon_feature_value(
+    current: Optional[Dict[str, Any]],
+    *,
+    code: str,
+    name: str,
+    value: str,
+    raw_value: str,
+    store_id: str,
+    store_title: str,
+    client_id: str,
+) -> Dict[str, Any]:
+    base = dict(current or {})
+    source_values = base.get("source_values") if isinstance(base.get("source_values"), dict) else {}
+    ozon_sources = source_values.get("ozon") if isinstance(source_values.get("ozon"), dict) else {}
+    ozon_sources[store_id] = {
+        "store_id": store_id,
+        "store_title": store_title or store_id,
+        "client_id": client_id,
+        "raw_value": raw_value,
+        "canonical_value": value,
+        "resolved_value": value,
+        "updated_at": _now_iso(),
+    }
+    source_values["ozon"] = ozon_sources
+    selected = str(base.get("selected") or "custom").strip() or "custom"
+    current_value = str(base.get("value") or "").strip()
+    next_value = current_value
+    next_selected = selected
+    if value and (not current_value or selected == "ozon"):
+        next_value = value
+        next_selected = "ozon"
+    return {
+        "code": code,
+        "name": name,
+        "restore": str(base.get("restore") or ""),
+        "store77": str(base.get("store77") or ""),
+        "selected": next_selected,
+        "value": next_value,
+        "source_values": source_values,
+    }
+
+
+def _upsert_ozon_package_features(
+    product: Dict[str, Any],
+    item: Dict[str, Any],
+    *,
+    store_id: str,
+    store_title: str,
+    client_id: str,
+) -> bool:
+    package_values = _extract_ozon_package_dimensions(item)
+    if not package_values:
+        return False
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    features = content.get("features") if isinstance(content.get("features"), list) else []
+    by_code = {
+        str(feature.get("code") or "").strip(): feature
+        for feature in features
+        if isinstance(feature, dict) and str(feature.get("code") or "").strip()
+    }
+    changed = False
+    for code, name, _kind in _OZON_PACKAGE_TARGETS:
+        value = str(package_values.get(code) or "").strip()
+        if not value:
+            continue
+        current = by_code.get(code)
+        next_feature = _merge_ozon_feature_value(
+            current,
+            code=code,
+            name=name,
+            value=value,
+            raw_value=str(package_values.get(f"{code}:raw") or value).strip(),
+            store_id=store_id,
+            store_title=store_title,
+            client_id=client_id,
+        )
+        if current:
+            idx = next((i for i, feature in enumerate(features) if isinstance(feature, dict) and str(feature.get("code") or "").strip() == code), -1)
+            if idx >= 0 and features[idx] != next_feature:
+                features[idx] = next_feature
+                changed = True
+        else:
+            features.append(next_feature)
+            changed = True
+        by_code[code] = next_feature
+    if changed:
+        content["features"] = features
+        product["content"] = content
+    return changed
 
 
 def _normalize_tree(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1342,6 +1508,13 @@ async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
             found_items.append(item)
 
             imported_images = _extract_media_urls_from_item(item)
+            dimensions_changed = _upsert_ozon_package_features(
+                product,
+                item,
+                store_id=store_id,
+                store_title=store_title,
+                client_id=client_id,
+            )
             if imported_images:
                 content = product.get("content") if isinstance(product.get("content"), dict) else {}
                 current_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
@@ -1369,6 +1542,10 @@ async def sync_product_statuses(req: OzonProductsSyncReq) -> Dict[str, Any]:
                     product["updated_at"] = _now_iso()
                     if pid:
                         changed_products[pid] = product
+            if dimensions_changed:
+                product["updated_at"] = _now_iso()
+                if pid:
+                    changed_products[pid] = product
 
     skus = [int(x) for x in sku_to_offer.keys() if str(x).isdigit()]
     for start in range(0, len(skus), 100):

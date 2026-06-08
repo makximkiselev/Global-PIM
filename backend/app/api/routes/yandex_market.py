@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
@@ -522,6 +523,13 @@ _DEPRECATED_FEATURE_ALIASES: Dict[str, Tuple[str, str]] = {
     "изображение_для_миниатюры": ("media_images", "Картинки"),
 }
 
+_YANDEX_PACKAGE_DIMENSIONS: Dict[str, Tuple[str, str, str]] = {
+    "length": ("package_length", "Длина упаковки, мм", "см"),
+    "width": ("package_width", "Ширина упаковки, мм", "см"),
+    "height": ("package_height", "Высота упаковки, мм", "см"),
+    "weight": ("package_weight", "Вес упаковки, г", "кг"),
+}
+
 
 def _canonical_feature_identity(code: Any, name: Any) -> Tuple[str, str]:
     raw_code = str(code or "").strip()
@@ -761,7 +769,62 @@ def _compact_offer_mapping_for_cache(entry: Dict[str, Any]) -> Dict[str, Any]:
         "videos": _entry_urls(entry, "videos", "videoUrls")[:20],
         "vendor": _entry_text(entry, "vendor", "vendorName", "brand"),
         "barcodes": _entry_values(entry, "barcodes", "barcode")[:20],
+        "weightDimensions": _extract_yandex_weight_dimensions(entry),
     }
+
+
+def _positive_number(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)):
+        number = float(value)
+    else:
+        text = str(value or "").strip().replace(",", ".")
+        match = re.search(r"\d+(?:\.\d+)?", text)
+        if not match:
+            return None
+        number = float(match.group(0))
+    if number <= 0:
+        return None
+    return number
+
+
+def _format_source_measure(value: float, unit: str) -> str:
+    text = f"{value:.4f}".rstrip("0").rstrip(".")
+    return f"{text} {unit}"
+
+
+def _extract_yandex_weight_dimensions(entry: Dict[str, Any]) -> Dict[str, str]:
+    if not isinstance(entry, dict):
+        return {}
+    containers = (
+        entry,
+        entry.get("offer") if isinstance(entry.get("offer"), dict) else None,
+        entry.get("mapping") if isinstance(entry.get("mapping"), dict) else None,
+    )
+    source: Dict[str, Any] = {}
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        candidate = container.get("weightDimensions")
+        if isinstance(candidate, dict):
+            source = candidate
+            break
+    if not source:
+        return {}
+
+    out: Dict[str, str] = {}
+    for source_key, (code, _name, source_unit) in _YANDEX_PACKAGE_DIMENSIONS.items():
+        number = _positive_number(source.get(source_key))
+        if number is None:
+            continue
+        if source_key == "weight":
+            normalized = int(round(number * 1000))
+        else:
+            normalized = int(round(number * 10))
+        if normalized <= 0:
+            continue
+        out[code] = str(normalized)
+        out[f"{code}:raw"] = _format_source_measure(number, source_unit)
+    return out
 
 
 def _extract_offer_mapping_entries(body: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1867,6 +1930,21 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 video_row = _find_system_row(rows, {"видео", "video", "videos"})
                 vendor_row = _find_provider_system_row(rows, "yandex_market", {"sys:vendor"}) or _find_system_row(rows, {"бренд", "brand"})
                 barcode_row = _find_provider_system_row(rows, "yandex_market", {"sys:barcode"}) or _find_system_row(rows, {"штрихкод", "barcode"})
+                package_values = _extract_yandex_weight_dimensions(mapping_entry)
+                package_rows = {
+                    "package_length": _find_provider_system_row(rows, "yandex_market", {"sys:weightDimensions.length", "weightDimensions.length"})
+                    or _find_system_row(rows, {"длина упаковки", "длина упаковки мм", "длина упаковки, мм", "package_length"})
+                    or {"catalog_name": "Длина упаковки, мм", "code": "package_length"},
+                    "package_width": _find_provider_system_row(rows, "yandex_market", {"sys:weightDimensions.width", "weightDimensions.width"})
+                    or _find_system_row(rows, {"ширина упаковки", "ширина упаковки мм", "ширина упаковки, мм", "package_width"})
+                    or {"catalog_name": "Ширина упаковки, мм", "code": "package_width"},
+                    "package_height": _find_provider_system_row(rows, "yandex_market", {"sys:weightDimensions.height", "weightDimensions.height"})
+                    or _find_system_row(rows, {"высота упаковки", "высота упаковки мм", "высота упаковки, мм", "package_height"})
+                    or {"catalog_name": "Высота упаковки, мм", "code": "package_height"},
+                    "package_weight": _find_provider_system_row(rows, "yandex_market", {"sys:weightDimensions.weight", "weightDimensions.weight"})
+                    or _find_system_row(rows, {"вес упаковки", "вес упаковки г", "вес упаковки, г", "package_weight"})
+                    or {"catalog_name": "Вес упаковки, г", "code": "package_weight"},
+                }
                 source_meta = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
 
                 if imported_description:
@@ -1959,6 +2037,41 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                             "code": str((barcode_row or {}).get("code") or "barcode"),
                             "raw_value": imported_barcode,
                             "canonical_value": imported_barcode,
+                        }
+                    )
+
+                for package_code, package_row in package_rows.items():
+                    package_value = str(package_values.get(package_code) or "").strip()
+                    if not package_value:
+                        continue
+                    source_raw_value = str(package_values.get(f"{package_code}:raw") or package_value).strip()
+                    if _upsert_imported_system_feature(
+                        features=features,
+                        feature_by_code=feature_by_code,
+                        row=package_row,
+                        raw_value=package_value,
+                        store_key=store_key,
+                        store_id=store_id,
+                        store_title=store_title,
+                        business_id=business_id,
+                        overwrite_existing=bool(req.overwrite_existing),
+                    ):
+                        mapping_changed = True
+                    current = feature_by_code.get(str((package_row or {}).get("code") or package_code).strip() or package_code)
+                    sources = current.get("source_values") if isinstance(current, dict) and isinstance(current.get("source_values"), dict) else {}
+                    ym_sources = sources.get("yandex_market") if isinstance(sources.get("yandex_market"), dict) else {}
+                    store_source = ym_sources.get(store_key) if isinstance(ym_sources.get(store_key), dict) else {}
+                    if store_source:
+                        store_source["raw_value"] = source_raw_value
+                        store_source["canonical_value"] = package_value
+                        store_source["resolved_value"] = package_value
+                    mapped_values.append(
+                        {
+                            "parameterId": f"sys:weightDimensions.{next((k for k, v in _YANDEX_PACKAGE_DIMENSIONS.items() if v[0] == package_code), package_code)}",
+                            "catalog_name": str((package_row or {}).get("catalog_name") or _YANDEX_PACKAGE_DIMENSIONS.get(package_code, ("", package_code, ""))[1]),
+                            "code": package_code,
+                            "raw_value": source_raw_value,
+                            "canonical_value": package_value,
                         }
                     )
                 if source_meta:

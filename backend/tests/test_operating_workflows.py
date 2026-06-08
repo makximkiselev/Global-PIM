@@ -3193,6 +3193,94 @@ class OperatingWorkflowTests(unittest.TestCase):
         ])
         self.assertEqual(saved_products[0][0]["content"]["source_values"]["media_images"]["yandex_market"]["count"], 2)
 
+    def test_yandex_offer_cards_sync_imports_marketplace_package_dimensions(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {"features": []},
+        }
+        saved_products: list[list[dict]] = []
+
+        class FakeResponse:
+            is_success = True
+            content = b"{}"
+
+            def json(self):
+                return {"result": {"offerCards": [{"offerId": "GT-1", "parameterValues": []}]}}
+
+        class FakeAsyncClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def post(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        async def fake_fetch_offer_mappings_once(**_kwargs):
+            return {
+                "ok": True,
+                "body": {
+                    "result": {
+                        "offerMappings": [
+                            {
+                                "offer": {
+                                    "offerId": "GT-1",
+                                    "weightDimensions": {
+                                        "length": 17,
+                                        "width": 9,
+                                        "height": 4,
+                                        "weight": 0.32,
+                                    },
+                                }
+                            }
+                        ]
+                    }
+                },
+            }
+
+        with (
+            patch.object(yandex_market, "_load_products", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_group_name_by_id", return_value={}),
+            patch.object(yandex_market, "_load_nodes", return_value=[]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={"cat-vr": []}),
+            patch.object(yandex_market, "_load_attr_value_refs", return_value={}),
+            patch.object(yandex_market, "_load_offer_cards_doc", return_value={"items": {}}),
+            patch.object(yandex_market, "_load_offer_mappings_doc", return_value={"items": {}}),
+            patch.object(yandex_market, "_save_offer_cards_doc"),
+            patch.object(yandex_market, "_save_offer_mappings_doc"),
+            patch.object(yandex_market, "_save_products", side_effect=lambda items: saved_products.append(deepcopy(items))),
+            patch.object(yandex_market, "_fetch_offer_mappings_once", side_effect=fake_fetch_offer_mappings_once),
+            patch.object(yandex_market.httpx, "AsyncClient", FakeAsyncClient),
+        ):
+            response = asyncio.run(
+                yandex_market.sync_offer_cards(
+                    yandex_market.OfferCardsSyncReq(
+                        product_ids=["product_1"],
+                        token="token",
+                        business_id="business_1",
+                        store_id="store_1",
+                        store_title="GT USD",
+                    )
+                )
+            )
+
+        self.assertEqual(response["updated_products"], 1)
+        features = {item["code"]: item for item in saved_products[0][0]["content"]["features"]}
+        self.assertEqual(features["package_length"]["value"], "170")
+        self.assertEqual(features["package_width"]["value"], "90")
+        self.assertEqual(features["package_height"]["value"], "40")
+        self.assertEqual(features["package_weight"]["value"], "320")
+        self.assertEqual(features["package_weight"]["source_values"]["yandex_market"]["store_1"]["raw_value"], "0.32 кг")
+
     def test_yandex_marketplace_cache_omits_full_raw_mapping_payload(self) -> None:
         entry = {
             "offer": {
@@ -3271,6 +3359,62 @@ class OperatingWorkflowTests(unittest.TestCase):
         ])
         self.assertEqual(media[0]["source"], "ozon")
         self.assertEqual(saved_products[0][0]["content"]["source_values"]["media_images"]["ozon"]["count"], 2)
+
+    def test_ozon_products_sync_imports_marketplace_package_dimensions(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {"features": []},
+        }
+        saved_products: list[list[dict]] = []
+
+        async def fake_post_api_key(path, _payload, _api_key, _client_id):
+            if path == "/v3/product/info/list":
+                return {
+                    "items": [
+                        {
+                            "offer_id": "GT-1",
+                            "sku": 123,
+                            "depth": 170,
+                            "width": 90,
+                            "height": 40,
+                            "dimension_unit": "mm",
+                            "weight": 320,
+                            "weight_unit": "g",
+                            "statuses": {"status": "active", "status_name": "Продается"},
+                        }
+                    ]
+                }
+            return {"products": []}
+
+        with (
+            patch.object(ozon_market, "_load_products", return_value=[deepcopy(product)]),
+            patch.object(ozon_market, "_post_api_key", side_effect=fake_post_api_key),
+            patch.object(ozon_market, "_save_doc"),
+            patch.object(ozon_market, "_save_products", side_effect=lambda items: saved_products.append(deepcopy(items))),
+        ):
+            response = asyncio.run(
+                ozon_market.sync_product_statuses(
+                    ozon_market.OzonProductsSyncReq(
+                        product_ids=["product_1"],
+                        token="token",
+                        client_id="client_1",
+                        store_id="ozon_store_1",
+                        store_title="Ozon",
+                    )
+                )
+            )
+
+        self.assertEqual(response["updated_products"], 1)
+        features = {item["code"]: item for item in saved_products[0][0]["content"]["features"]}
+        self.assertEqual(features["package_length"]["value"], "170")
+        self.assertEqual(features["package_width"]["value"], "90")
+        self.assertEqual(features["package_height"]["value"], "40")
+        self.assertEqual(features["package_weight"]["value"], "320")
+        self.assertEqual(features["package_length"]["source_values"]["ozon"]["ozon_store_1"]["raw_value"], "170 mm")
 
     def test_ozon_media_merge_dedupes_same_image_across_cdn_hosts(self) -> None:
         existing = [
