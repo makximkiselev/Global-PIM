@@ -1105,6 +1105,11 @@ Next fix in the category flow:
    - `Длина/Ширина/Высота/Вес упаковки` are edited through the system `Габариты для Ozon` panel;
    - the general PIM parameter queue hides only package-dimension duplicates while keeping separate device dimensions visible;
    - production browser check on `product_70` confirmed `packageRowsCount=0` in `.productParamList` and `deviceRowsCount=4`.
+60. Values deep-link diagnostics are clearer:
+   - values endpoint supports a diagnostic `refresh=1` cache bypass for stale in-memory value-detail caches;
+   - frontend does not force cache bypass on normal export blocker links, avoiding slow value rebuilds and proxy 504s;
+   - HTML proxy errors such as `504 Gateway Time-out` render as a short actionable message instead of raw HTML;
+   - authenticated headless browser check confirmed `/sources?tab=values&...parameter=Бренд&provider=ozon` loads `67 из 85` value fields on production.
 
 Current smoke status:
 

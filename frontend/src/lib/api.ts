@@ -8,6 +8,14 @@ const API_ERROR_LABELS: Record<string, string> = {
 
 function apiErrorMessage(body: string, status: number) {
   const raw = String(body || "").trim();
+  if (/^\s*</.test(raw)) {
+    const title = raw.match(/<title>([^<]+)<\/title>/i)?.[1] || raw.match(/<h1>([^<]+)<\/h1>/i)?.[1] || "";
+    const normalizedTitle = title.replace(/\s+/g, " ").trim();
+    if (/504|gateway time-?out/i.test(normalizedTitle)) {
+      return "Сервер не успел ответить. Повторите запрос или сузьте область проверки.";
+    }
+    if (normalizedTitle) return normalizedTitle;
+  }
   let detail: unknown = raw;
   if (raw) {
     try {

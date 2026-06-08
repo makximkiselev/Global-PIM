@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.ai_contracts import json_object_from_text, parse_attribute_row_suggestions, parse_value_pair_suggestions
@@ -4464,13 +4464,13 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
 
 
 @router.get("/import/values/{catalog_category_id}")
-def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
+def mapping_value_details(catalog_category_id: str, refresh: bool = Query(default=False)) -> Dict[str, Any]:
     cid = str(catalog_category_id or "").strip()
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
 
     value_cache = _value_details_cache_bucket()
-    cached = _timed_cache_get(value_cache, cid, _VALUE_DETAILS_CACHE_TTL_SECONDS)
+    cached = None if refresh else _timed_cache_get(value_cache, cid, _VALUE_DETAILS_CACHE_TTL_SECONDS)
     if cached:
         return cached
 
