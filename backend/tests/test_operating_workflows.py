@@ -2913,6 +2913,46 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertNotIn("barcodes", batch["items"][0]["payload"])
         self.assertNotIn("parameterValues", batch["items"][0]["payload"])
 
+    def test_export_package_carries_ready_batch_warnings(self) -> None:
+        run = {
+            "id": "export_warn",
+            "selection": {"product_ids": ["product_1"]},
+            "targets": [{"provider": "yandex_market", "store_ids": ["ym-1"]}],
+            "batches": [
+                {
+                    "provider": "yandex_market",
+                    "store_id": "ym-1",
+                    "store_title": "GT USD",
+                    "warnings": [
+                        {
+                            "code": "optional_value_omitted",
+                            "product_id": "product_1",
+                            "category_id": "cat-phone",
+                            "parameter": "Особенности",
+                        }
+                    ],
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {"offerId": "GT-1", "name": "Ready item"},
+                        }
+                    ],
+                }
+            ],
+        }
+
+        package = catalog_exchange._build_export_package(run)
+
+        self.assertEqual(package["status"], "ready")
+        self.assertEqual(package["summary"]["warnings_count"], 1)
+        self.assertEqual(package["warnings"][0]["code"], "optional_value_omitted")
+        self.assertEqual(package["warnings"][0]["provider"], "yandex_market")
+        self.assertEqual(package["warnings"][0]["store_id"], "ym-1")
+        batch = package["batches"][0]
+        self.assertEqual(batch["warnings_count"], 1)
+        self.assertEqual(batch["warnings"][0]["parameter"], "Особенности")
+
     def test_ozon_export_preview_derives_required_type_and_model_name(self) -> None:
         product = {
             "id": "product_iphone",

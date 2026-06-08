@@ -1137,6 +1137,10 @@ Next fix in the category flow:
    - optional unmapped dictionary/controlled values still do not block export;
    - the preview now emits `optional_value_omitted` warnings with product/category/parameter context instead of silently dropping the field;
    - shared export batch adaptation carries these warnings into batch diagnostics.
+67. Export packages preserve warnings from ready batches:
+   - final package `summary.warnings_count` now includes ready-batch diagnostics such as `optional_value_omitted`;
+   - each package batch carries `warnings_count` and warning rows with provider/store context;
+   - ready export packages can therefore be `status=ready` while still showing non-blocking omissions for review.
 
 Current smoke status:
 

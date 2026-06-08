@@ -2577,6 +2577,16 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
                 blocked_items += 1
         ready_items_total += len(ready_items)
         blocked_items_total += blocked_items
+        batch_warning_rows = [
+            {
+                **warning,
+                "provider": str(warning.get("provider") or batch.get("provider") or "").strip(),
+                "store_id": str(warning.get("store_id") or batch.get("store_id") or "").strip(),
+                "store_title": str(warning.get("store_title") or batch.get("store_title") or "").strip(),
+            }
+            for warning in (batch.get("warnings") if isinstance(batch.get("warnings"), list) else [])
+            if isinstance(warning, dict)
+        ]
         if blocked_items:
             warnings.append(
                 {
@@ -2586,6 +2596,7 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
                     "blocked_items": blocked_items,
                 }
             )
+        warnings.extend(batch_warning_rows)
         package_batches.append(
             {
                 "provider": str(batch.get("provider") or "").strip(),
@@ -2594,6 +2605,8 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
                 "status": "ready" if blocked_items == 0 else "partial",
                 "ready_count": len(ready_items),
                 "blocked_count": blocked_items,
+                "warnings_count": len(batch_warning_rows),
+                "warnings": batch_warning_rows[:50],
                 "items": ready_items,
             }
         )
