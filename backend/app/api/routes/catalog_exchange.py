@@ -447,6 +447,34 @@ def _resolve_products(node_ids: List[str], product_ids: List[str], include_desce
     return list(by_id.values())
 
 
+def _products_with_variant_sibling_context(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    selected_ids = [str(product.get("id") or "").strip() for product in products if isinstance(product, dict) and str(product.get("id") or "").strip()]
+    group_ids = sorted(
+        {
+            str(product.get("group_id") or "").strip()
+            for product in products
+            if isinstance(product, dict) and str(product.get("group_id") or "").strip()
+        }
+    )
+    by_id: Dict[str, Dict[str, Any]] = {}
+    if selected_ids:
+        for product in query_products_full(ids=selected_ids):
+            pid = str(product.get("id") or "").strip()
+            if pid:
+                by_id[pid] = product
+    if group_ids:
+        for product in query_products_full(group_ids=group_ids):
+            pid = str(product.get("id") or "").strip()
+            if pid:
+                by_id.setdefault(pid, product)
+    if not by_id:
+        for product in products:
+            pid = str(product.get("id") or "").strip() if isinstance(product, dict) else ""
+            if pid:
+                by_id[pid] = product
+    return list(by_id.values())
+
+
 def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
@@ -3249,6 +3277,7 @@ def _build_catalog_export_run(req: CatalogExportRunReq) -> Dict[str, Any]:
         hydrate_variant_siblings=_hydrate_missing_content_from_variant_siblings,
         save_products=_save_products,
         query_products_by_ids=lambda product_ids: query_products_full(ids=product_ids),
+        query_products_for_sibling_hydration=_products_with_variant_sibling_context,
         connectors_state_factory=ConnectorsStateReadAdapter,
         yandex_preview=lambda product_ids, limit: yandex_export_preview(
             ExportPreviewReq(product_ids=product_ids, only_active=False, limit=limit)

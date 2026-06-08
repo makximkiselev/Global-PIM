@@ -14,6 +14,7 @@ class CatalogExportRunDeps:
     hydrate_variant_siblings: Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]]
     save_products: Callable[[List[Dict[str, Any]]], None]
     query_products_by_ids: Callable[[List[str]], List[Dict[str, Any]]]
+    query_products_for_sibling_hydration: Callable[[List[Dict[str, Any]]], List[Dict[str, Any]]]
     connectors_state_factory: Callable[[], Any]
     yandex_preview: Callable[[List[str], int], Dict[str, Any]]
     ozon_preview: Callable[[List[str], int], Dict[str, Any]]
@@ -42,7 +43,10 @@ def build_catalog_export_run(req: Any, deps: CatalogExportRunDeps) -> Dict[str, 
     marketplace_hydration: List[Dict[str, Any]] = []
     if product_ids:
         marketplace_hydration = asyncio.run(deps.hydrate_marketplace_content(product_ids, req.targets or [], int(req.limit)))
-        sibling_updates = deps.hydrate_variant_siblings(deps.query_products_by_ids(product_ids))
+        sibling_context = deps.query_products_for_sibling_hydration(products)
+        if not sibling_context:
+            sibling_context = deps.query_products_by_ids(product_ids)
+        sibling_updates = deps.hydrate_variant_siblings(sibling_context)
         if sibling_updates:
             deps.save_products(sibling_updates)
             marketplace_hydration.append(

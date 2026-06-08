@@ -990,6 +990,10 @@ Next fix in the category flow:
 36. Export blockers for missing Ozon package dimensions now include sibling SKU evidence when another product in the same variant group has the missing package value:
    - backend adds `missing_details[].sibling_suggestion` with source SKU, value, feature code and current-SKU fix link;
    - export UI shows the concrete sibling value and labels the action as `Взять из <SKU>` instead of leaving the user at a generic package blocker.
+37. Export preparation sibling hydration now expands a selected single SKU into its `group_id` context before filling empty sibling-derived fields:
+   - preview/export still run only for the explicitly selected SKU list;
+   - media/description/brand/package logistics can be copied from sibling products that were not selected for the batch;
+   - this closes the gap where single-SKU export could not benefit from already-filled sibling facts.
 
 Current smoke status:
 
