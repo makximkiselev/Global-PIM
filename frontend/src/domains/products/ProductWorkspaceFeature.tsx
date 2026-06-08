@@ -77,6 +77,7 @@ type VariantData = {
   sku_pim?: string;
   sku_gt?: string;
   status?: string;
+  content?: ProductContent;
 };
 
 type ProductInfoModel = {
@@ -616,6 +617,35 @@ function packageFieldEvidence(targets: Array<{ key: string; label: string; featu
   };
 }
 
+function siblingPackageSuggestion(
+  variants: VariantData[],
+  targets: Array<{ key: string; label: string; parameter: string; feature: ProductFeatureValue }>,
+) {
+  const suggestions = variants
+    .map((variant) => {
+      const variantFeatures = Array.isArray(variant.content?.features) ? variant.content?.features || [] : [];
+      const updates = targets
+        .map((target) => {
+          if (featureValue(target.feature)) return null;
+          const siblingFeature = findFeatureByParameter(variantFeatures, target.parameter);
+          const value = siblingFeature ? featureValue(siblingFeature) : "";
+          if (!value) return null;
+          return { feature: target.feature, value, label: target.label };
+        })
+        .filter((item): item is { feature: ProductFeatureValue; value: string; label: string } => Boolean(item));
+      return { variant, updates };
+    })
+    .filter((item) => item.updates.length);
+  suggestions.sort((left, right) => {
+    if (right.updates.length !== left.updates.length) return right.updates.length - left.updates.length;
+    return normalizeText(left.variant.sku_gt || left.variant.sku_pim || left.variant.title).localeCompare(
+      normalizeText(right.variant.sku_gt || right.variant.sku_pim || right.variant.title),
+      "ru",
+    );
+  });
+  return suggestions[0] || null;
+}
+
 function flowRowForFeature(parameterFlow: ProductParameterFlow | null, feature: ProductFeatureValue | null) {
   if (!feature) return null;
   const code = featureIdentity(feature.code);
@@ -934,6 +964,7 @@ function ProductWorkspaceInspector({
 
 function ProductAttributeWorkbench({
   features,
+  variants,
   hasInfoModel,
   rawFeatureCount,
   channels,
@@ -948,6 +979,7 @@ function ProductAttributeWorkbench({
   saveNotice,
 }: {
   features: ProductFeatureValue[];
+  variants: VariantData[];
   hasInfoModel: boolean;
   rawFeatureCount: number;
   channels: ChannelsSummary | null;
@@ -988,6 +1020,7 @@ function ProductAttributeWorkbench({
     feature: findFeatureByParameter(features, field.parameter),
   })).filter((field): field is typeof field & { feature: ProductFeatureValue } => Boolean(field.feature));
   const packageEvidence = packageFieldEvidence(packageDimensionTargets);
+  const packageSibling = siblingPackageSuggestion(variants, packageDimensionTargets);
   const selectedIsPackageDimension = Boolean(selectedFeature && packageDimensionTargets.some((target) => target.feature === selectedFeature));
   const showPackageDimensionPanel = Boolean(packageDimensionTargets.length && (dimensionBlockers.length || selectedIsPackageDimension));
   const marketplaceEvidenceInProduct = features.some((feature) =>
@@ -1124,12 +1157,28 @@ function ProductAttributeWorkbench({
               </div>
               <div>
                 <span>Варианты</span>
-                <Link to={`/products/${encodeURIComponent(productId)}?tab=variants`}>Проверить SKU family</Link>
+                <Link to={`/products/${encodeURIComponent(productId)}?tab=variants`}>
+                  {packageSibling ? `${packageSibling.updates.length} можно взять` : "Проверить SKU family"}
+                </Link>
               </div>
             </div>
             {marketplacePackageChecked && !packageEvidence.fromMarketplace ? (
               <div className="productLogisticsNotice">
                 Market/Ozon уже проверены для выбранных магазинов, но не вернули размеры упаковки. Заполните поля вручную или сверяйтесь с соседним SKU этой линейки.
+              </div>
+            ) : null}
+            {packageSibling ? (
+              <div className="productLogisticsSiblingAction">
+                <span>
+                  <strong>{normalizeText(packageSibling.variant.sku_gt) || normalizeText(packageSibling.variant.sku_pim) || "sibling SKU"}</strong>
+                  <em>{packageSibling.updates.map((item) => item.label).join(", ")}</em>
+                </span>
+                <Button
+                  onClick={() => void onSaveFeatureValues(packageSibling.updates.map(({ feature, value }) => ({ feature, value })))}
+                  disabled={Boolean(savingFeatureKey)}
+                >
+                  Взять из sibling SKU
+                </Button>
               </div>
             ) : null}
             <div className="productLogisticsQuickGrid">
@@ -2503,6 +2552,7 @@ function ProductWorkspaceFeature() {
               <Card title="Параметры и значения">
                 <ProductAttributeWorkbench
                   features={features}
+                  variants={variants}
                   hasInfoModel={hasInfoModel}
                   rawFeatureCount={rawFeatures.length}
                   channels={channels}
