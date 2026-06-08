@@ -1037,6 +1037,10 @@ Next fix in the category flow:
    - a store enters export only when both `enabled` and `export_enabled` are not false;
    - toggling a provider on selects only exportable stores, not disabled stores;
    - the right inspector and confirmation modal now reuse the same target plan and no longer count stale selected store ids as active batch targets.
+48. Export readiness now reconciles the current store selection with the latest prepared batch:
+   - the UI shows a per-store audit of selected stores vs batch rows with ready/blocked counters;
+   - if store checkboxes changed after preparation, the latest batch is marked stale and payload/final send actions require a new preparation;
+   - the inspector shows current target count, batch row count and whether the batch still matches the current selection.
 
 Current smoke status:
 

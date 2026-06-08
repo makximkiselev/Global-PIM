@@ -62,6 +62,14 @@
   text-align:right;
 }
 
+.cx-inspectorRow strong.is-activeText{
+  color:#146b3a;
+}
+
+.cx-inspectorRow strong.is-dangerText{
+  color:#b42318;
+}
+
 .cx-inspectorStack{
   display:flex;
   flex-direction:column;
@@ -1103,6 +1111,56 @@
   color:#146b3a;
   font-size:12px;
   font-weight:850;
+}
+
+.cx-targetRunAudit{
+  display:grid;
+  gap:14px;
+}
+
+.cx-targetRunAudit.isStale{
+  border-color:rgba(255,122,69,.38);
+  background:linear-gradient(180deg, rgba(255,247,237,.72), rgba(255,255,255,.92));
+}
+
+.cx-targetRunRows{
+  display:grid;
+  gap:8px;
+}
+
+.cx-targetRunRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:10px 12px;
+  border:1px solid rgba(185,199,227,.55);
+  border-radius:14px;
+  background:#fff;
+}
+
+.cx-targetRunRow > div{
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+
+.cx-targetRunRow strong{
+  color:#0f172a;
+  font-size:13px;
+  font-weight:900;
+}
+
+.cx-targetRunRow span{
+  color:#667085;
+  font-size:12px;
+  font-weight:700;
+}
+
+.cx-targetRunRow.isMissing,
+.cx-targetRunRow.isStale{
+  border-color:rgba(255,122,69,.42);
+  background:#fff7ed;
 }
 
 @media (max-width: 1240px){

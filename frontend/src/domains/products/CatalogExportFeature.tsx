@@ -297,6 +297,10 @@ function isStoreExportable(store: Store): boolean {
   return store.enabled !== false && store.export_enabled !== false;
 }
 
+function exportTargetKey(provider: string, storeId: string): string {
+  return `${provider}:${storeId}`;
+}
+
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
@@ -471,9 +475,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const activeTargets = useMemo(() => {
     return Object.entries(selectedProviders)
       .filter(([, on]) => !!on)
-      .map(([provider]) => ({ provider, store_ids: selectedStores[provider] || [] }))
+      .map(([providerCode]) => {
+        const provider = providers.find((item) => item.code === providerCode);
+        const exportableStoreIds = new Set((provider?.import_stores || []).filter(isStoreExportable).map((store) => store.id));
+        const storeIds = (selectedStores[providerCode] || []).filter((storeId) => exportableStoreIds.has(storeId));
+        return { provider: providerCode, store_ids: storeIds };
+      })
       .filter((target) => target.store_ids.length > 0);
-  }, [selectedProviders, selectedStores]);
+  }, [providers, selectedProviders, selectedStores]);
 
   const selectedScope = useMemo(() => {
     if (!selectedNodeIds.length && !selectedProductIds.length) return "Весь каталог";
@@ -538,6 +547,32 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       disabledStores,
     };
   }), [providers, selectedProviders, selectedStores]);
+  const selectedTargetRows = useMemo(() => targetPlanRows.flatMap(({ provider, selectedStores: stores }) => (
+    stores.map((store) => ({
+      key: exportTargetKey(provider.code, store.id),
+      provider,
+      store,
+    }))
+  )), [targetPlanRows]);
+  const runBatchRowsByTarget = useMemo(() => new Map((run?.batches || []).map((batch) => [
+    exportTargetKey(batch.provider, batch.store_id),
+    batch,
+  ])), [run]);
+  const selectedTargetKeySet = useMemo(() => new Set(selectedTargetRows.map((row) => row.key)), [selectedTargetRows]);
+  const runBatchKeySet = useMemo(() => new Set((run?.batches || []).map((batch) => exportTargetKey(batch.provider, batch.store_id))), [run]);
+  const selectedTargetsMissingFromRun = useMemo(
+    () => selectedTargetRows.filter((row) => !runBatchRowsByTarget.has(row.key)),
+    [runBatchRowsByTarget, selectedTargetRows],
+  );
+  const runBatchesOutsideSelection = useMemo(
+    () => (run?.batches || []).filter((batch) => !selectedTargetKeySet.has(exportTargetKey(batch.provider, batch.store_id))),
+    [run, selectedTargetKeySet],
+  );
+  const runTargetsMatchSelection = Boolean(run)
+    && selectedTargetRows.length === runBatchKeySet.size
+    && selectedTargetsMissingFromRun.length === 0
+    && runBatchesOutsideSelection.length === 0;
+  const runTargetsStale = Boolean(run) && !runTargetsMatchSelection;
   const selectedSkuEstimate = useMemo(() => {
     if (selectedProductIds.length) return String(selectedProductIds.length);
     if (selectedNodeIds.length) {
@@ -790,6 +825,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   async function loadExportPackage(download = false) {
     const runId = run?.run_id || run?.id || "";
     if (!runId || packageLoading) return;
+    if (runTargetsStale) {
+      setErr("Последний batch собран для другого набора магазинов. Нажмите «Подготовить экспорт», чтобы пересобрать его под текущие галочки.");
+      return;
+    }
     setPackageLoading(true);
     setErr("");
     try {
@@ -815,6 +854,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   }
 
   function requestSubmitExportPackage() {
+    if (runTargetsStale) {
+      setErr("Нельзя отправить старый batch: текущие магазины отличаются от магазинов в последней подготовке. Пересоберите export batch.");
+      return;
+    }
     if (runBroadScope && !broadSubmitConfirmed) {
       setSubmitConfirmOpen(true);
       return;
@@ -825,6 +868,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   async function submitExportPackage(confirmBroadScope = false) {
     const runId = run?.run_id || run?.id || "";
     if (!runId || submitting) return;
+    if (runTargetsStale) {
+      setErr("Нельзя отправить старый batch: текущие магазины отличаются от магазинов в последней подготовке. Пересоберите export batch.");
+      return;
+    }
     setSubmitting(true);
     setErr("");
     try {
@@ -1031,11 +1078,21 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       </InspectorPanel>
 
       {run ? (
-        <InspectorPanel title="Последний batch" subtitle="Итог текущей подготовки">
+        <InspectorPanel
+          title="Последний batch"
+          subtitle={runTargetsStale ? "Нужно пересобрать под текущие магазины" : "Итог текущей подготовки"}
+        >
           <div className="cx-inspectorList">
             <div className="cx-inspectorRow"><span>Run ID</span><strong>{run.run_id || run.id}</strong></div>
             <div className="cx-inspectorRow"><span>Товаров</span><strong>{run.count}</strong></div>
             <div className="cx-inspectorRow"><span>Batch rows</span><strong>{run.batches.length}</strong></div>
+            <div className="cx-inspectorRow"><span>Текущий выбор</span><strong>{selectedTargetRows.length}</strong></div>
+            <div className="cx-inspectorRow">
+              <span>Сверка</span>
+              <strong className={runTargetsStale ? "is-dangerText" : "is-activeText"}>
+                {runTargetsStale ? "устарел" : "совпадает"}
+              </strong>
+            </div>
           </div>
         </InspectorPanel>
       ) : null}
@@ -1260,18 +1317,61 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     </div>
                     <div className="cx-exportReadyActions">
                       <Badge tone="active">Можно переходить к отправке</Badge>
-                      <Button onClick={() => void loadExportPackage(false)} disabled={packageLoading}>
+                      <Button onClick={() => void loadExportPackage(false)} disabled={packageLoading || runTargetsStale}>
                         {packageLoading ? "Собираю…" : "Показать payload"}
                       </Button>
-                      <Button onClick={() => void loadExportPackage(true)} disabled={packageLoading}>
+                      <Button onClick={() => void loadExportPackage(true)} disabled={packageLoading || runTargetsStale}>
                         Скачать JSON
                       </Button>
-                      <Button variant="primary" onClick={requestSubmitExportPackage} disabled={submitting || packageLoading}>
+                      <Button variant="primary" onClick={requestSubmitExportPackage} disabled={submitting || packageLoading || runTargetsStale}>
                         {submitting ? "Отправляю…" : "Отправить на площадки"}
                       </Button>
                     </div>
                   </section>
                 ) : null}
+
+                <section className={`card cx-targetRunAudit ${runTargetsStale ? "isStale" : ""}`}>
+                  <div className="cx-paneHead">
+                    <div>
+                      <div className="cx-paneTitle">Сверка магазинов с batch</div>
+                      <div className="cx-paneSub">
+                        Проверяем, что последний batch собран ровно под текущие галочки магазинов. Если выбор изменился, нужно нажать «Подготовить экспорт» еще раз.
+                      </div>
+                    </div>
+                    <Badge tone={runTargetsStale ? "pending" : "active"}>
+                      {runTargetsStale ? "Нужно пересобрать" : "Выбор совпадает"}
+                    </Badge>
+                  </div>
+                  <div className="cx-targetRunRows">
+                    {selectedTargetRows.map(({ key, provider, store }) => {
+                      const batch = runBatchRowsByTarget.get(key);
+                      const blocked = batch ? batch.not_ready_count ?? Math.max(0, batch.count - batch.ready_count) : 0;
+                      return (
+                        <div key={key} className={`cx-targetRunRow ${batch ? "" : "isMissing"}`}>
+                          <div>
+                            <strong>{provider.title} · {store.title}</strong>
+                            <span>{batch ? `${batch.ready_count}/${batch.count} строк готово` : "нет в последнем batch"}</span>
+                          </div>
+                          <Badge tone={!batch ? "pending" : blocked > 0 ? "pending" : "active"}>
+                            {!batch ? "пересобрать" : blocked > 0 ? `${blocked} блок.` : "готово"}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                    {runBatchesOutsideSelection.map((batch) => {
+                      const blocked = batch.not_ready_count ?? Math.max(0, batch.count - batch.ready_count);
+                      return (
+                        <div key={exportTargetKey(batch.provider, batch.store_id)} className="cx-targetRunRow isStale">
+                          <div>
+                            <strong>{providerTitle(batch.provider)} · {batch.store_title || batch.store_id}</strong>
+                            <span>{batch.ready_count}/{batch.count} строк готово · сейчас магазин не выбран</span>
+                          </div>
+                          <Badge tone={blocked > 0 ? "pending" : "neutral"}>{blocked > 0 ? `${blocked} блок.` : "старый run"}</Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
 
                 {submission ? (
                   <section className="card cx-pane">
