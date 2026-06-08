@@ -135,7 +135,7 @@ Initial success criteria:
 
 Known rewrite QA notes:
 
-1. `backend/tests/test_operating_workflows.py::OperatingWorkflowTests::test_ozon_export_preview_blocks_empty_parameter_mapping_even_with_system_attrs` currently expects `ready=true` while also expecting the `parameter_mapping_required` blocker. This contradicts the active export-readiness rule that missing parameter mapping must stop real readiness, so the test should be updated after confirming current product behavior.
+1. Export readiness tests now match the active rule: missing Ozon parameter mapping stops readiness even when system attributes can be inferred. The previous contradictory `ready=true` expectation for `parameter_mapping_required` is closed.
 
 ## Next Work Block: Operational Product Maturity
 
@@ -991,13 +991,10 @@ Next fix in the category flow:
    - backend adds `missing_details[].sibling_suggestion` with source SKU, value, feature code and current-SKU fix link;
    - export UI shows the concrete sibling value and labels the action as `Взять из <SKU>` instead of leaving the user at a generic package blocker.
 
-Next block:
+Current smoke status:
 
-1. Store real QA smoke credentials in `~/.config/global-pim/smoke.env` on the deploy machine:
-   - `SMARTPIM_AUTH_SMOKE=1`
-   - `SMARTPIM_SMOKE_EMAIL=...`
-   - `SMARTPIM_SMOKE_PASSWORD=...`
-2. Enable `APP_SCENARIO_SMOKE_PRODUCT_FLOW=1` together with authenticated smoke after QA credentials are stored.
+1. Local QA smoke credentials are stored outside git in `~/.config/global-pim/smoke.env`.
+2. Product-flow authenticated smoke was run against production on 2026-06-08 with `--browser --require-auth --product-flow --export-latest`; login, route checks, latest export run and browser console all passed.
 
 ## Verification Commands
 
