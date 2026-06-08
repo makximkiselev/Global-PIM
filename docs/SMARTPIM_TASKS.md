@@ -676,7 +676,10 @@ Known problems:
 7. re-store MacBook coverage is still partial for base 13-inch M4 configurations: Store77 can provide review candidates, but re-store may be empty when exact SKUs are not present in its current listing.
 7. The clear/replace flow for parent categories is now explicit, but the modal copy and visual hierarchy still need final design polish.
 8. Marketplace AI matching worker daemon is now managed by `global-pim-ai-match-worker.service`; deploy installs/enables/restarts it and `server_ops.sh` exposes `worker-status`, `worker-logs`, and `restart-worker`.
-9. The value workspace can still classify some numeric/logistics fields through the PIM template type, so the next backend pass should verify provider numeric fields are not treated as select-only value dictionaries.
+9. Numeric/logistics value workspace pass on 2026-06-08:
+   - backend already marks provider `number` fields as unit checks instead of dictionary blockers;
+   - frontend now ignores numeric provider `allowed_values` when deciding whether a field has a marketplace dictionary, so values like `100/200/240` no longer make weight/dimensions look like select-only mapping work;
+   - summary copy now says `fields for verification` instead of treating every value row as a dictionary.
 
 Next tasks:
 

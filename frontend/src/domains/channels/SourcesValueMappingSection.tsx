@@ -111,6 +111,14 @@ type WorkFilter = "blockers" | "all" | "ready";
 const SERVICE_VALUE_GROUPS = new Set(["артикулы"]);
 const SERVICE_VALUE_FIELDS = ["sku", "артикул", "штрихкод", "партномер", "barcode", "offerid", "offer id"];
 
+function isNumericProvider(provider: ValueItemProvider) {
+  return String(provider.mode || "").toLowerCase() === "number";
+}
+
+function providerHasDictionary(provider: ValueItemProvider) {
+  return !isNumericProvider(provider) && Number(provider.allowed_count || 0) > 0;
+}
+
 function isDictionaryLike(item: ValueItem) {
   const type = String(item.value_mode || item.type || "").toLowerCase();
   return ["select", "multiselect", "enum", "dictionary", "list"].some((part) => type.includes(part));
@@ -132,15 +140,15 @@ function isServiceValueField(item: ValueItem) {
 }
 
 function needsValueMapping(item: ValueItem) {
-  const hasProviderValues = item.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
+  const hasProviderDictionary = item.providers.some(providerHasDictionary);
   const hasCanonicalValues = Number(item.value_count || 0) > 0;
   if (isServiceValueField(item)) return false;
-  return Boolean(item.needs_value_mapping || item.needs_unit_check) || hasProviderValues || (isDictionaryLike(item) && hasCanonicalValues);
+  return Boolean(item.needs_value_mapping || item.needs_unit_check) || hasProviderDictionary || (isDictionaryLike(item) && hasCanonicalValues);
 }
 
 function usefulProviders(item: ValueItem) {
   return item.providers.filter((provider) =>
-    Number(provider.allowed_count || 0) > 0 ||
+    providerHasDictionary(provider) ||
     Number(provider.mapped_count || 0) > 0 ||
     Boolean(provider.needs_unit_check),
   );
@@ -149,20 +157,22 @@ function usefulProviders(item: ValueItem) {
 function valueItemStatus(item: ValueItem) {
   const providers = usefulProviders(item);
   if (!providers.length) return { label: "нет справочника", tone: "muted" };
+  if (item.needs_unit_check) return { label: "проверить единицы", tone: "muted" };
   if (Number(item.value_count || 0) === 0) return { label: "нет PIM знач.", tone: "muted" };
   const hasGap = providers.some((provider) => Boolean(provider.needs_mapping));
   if (hasGap) return { label: "нужно сопоставить", tone: "warn" };
-  if (item.needs_unit_check) return { label: "проверить единицы", tone: "muted" };
   return { label: "готово", tone: "ok" };
 }
 
 function providerHasGap(provider: ValueItemProvider) {
-  const mode = String(provider.mode || "").toLowerCase();
-  if (mode === "number") return false;
+  if (isNumericProvider(provider)) return false;
   return Boolean(provider.needs_mapping);
 }
 
 function providerSampleText(provider: ValueItemProvider) {
+  if (isNumericProvider(provider)) {
+    return provider.needs_unit_check ? "проверь единицы измерения перед экспортом" : "";
+  }
   const missing = (provider.missing_sample || []).filter(Boolean).slice(0, 3);
   const allowed = (provider.allowed_sample || []).filter(Boolean).slice(0, 3);
   const mapped = (provider.mapped_sample || []).filter((item) => item.canonical || item.output).slice(0, 2);
@@ -170,7 +180,6 @@ function providerSampleText(provider: ValueItemProvider) {
   if (mapped.length) return mapped.map((item) => `${item.canonical} → ${item.output}`).join("; ");
   if (Number(provider.covered_count || 0) > 0) return `покрыто PIM-значений: ${provider.covered_count}`;
   if (allowed.length) return `значения площадки: ${allowed.join(", ")}`;
-  if (provider.needs_unit_check) return "проверь единицы измерения перед экспортом";
   return "";
 }
 
@@ -192,8 +201,7 @@ function sourceEvidenceParts(evidence: ValueSourceEvidence) {
 }
 
 function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
-  const mode = String(provider.mode || "").toLowerCase();
-  if (mode === "number") return "единицы";
+  if (isNumericProvider(provider)) return "единицы";
   const valueCount = Number(item.value_count || 0);
   const covered = Number(provider.covered_count || 0);
   const missing = Number(provider.missing_count || 0);
@@ -392,8 +400,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
         return hay.includes(q);
       })
       .sort((a, b) => {
-        const aReady = a.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
-        const bReady = b.providers.some((provider) => Number(provider.allowed_count || 0) > 0);
+        const aReady = a.providers.some(providerHasDictionary);
+        const bReady = b.providers.some(providerHasDictionary);
         if (aReady !== bReady) return aReady ? -1 : 1;
         return String(a.catalog_name || a.title || "").localeCompare(String(b.catalog_name || b.title || ""), "ru");
       });
@@ -538,7 +546,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
     if (!mappingItemsCount && !rawItemsCount) {
       return "В этой категории еще нет PIM-параметров. Сначала соберите и подтвердите черновик модели, затем здесь появятся значения для Я.Маркета и Ozon.";
     }
-    if (!mappingItemsCount) return "В модели нет полей со справочниками или контролируемыми значениями площадок. Можно перейти к проверке экспорта.";
+    if (!mappingItemsCount) return "В модели нет полей со справочниками, контролируемыми значениями или проверкой единиц. Можно перейти к проверке экспорта.";
     if (workFilter === "blockers") return "Блокеров по значениям нет. Открой «Все», чтобы проверить поля со справочниками.";
     if (workFilter === "ready") return "Готовых сопоставлений значений пока нет.";
     return "Поля есть, но текущий поиск или фильтр их скрыл.";
@@ -807,7 +815,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
           <div className="sm-valuesSummary">
             <span>{selectedCategoryLabel}</span>
             {branchSourcesCount ? <span>{branchSourcesCount} дочерних категорий</span> : null}
-            <span>{mappingItemsCount} из {rawItemsCount} полей со справочниками</span>
+            <span>{mappingItemsCount} из {rawItemsCount} полей для проверки</span>
             <span>{allUnresolvedCount} блокеров</span>
             <span>{unitCheckCount} числовых проверок</span>
             <span>{allReadyCount} готовы</span>
@@ -824,8 +832,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId: selecte
             <div className="sm-valuesPrereq">
               <div>
                 <strong>Значения появятся после параметров</strong>
-                <span>
-                  Сейчас у категории нет подтвержденных PIM-полей со справочниками или контролируемыми значениями площадок. Это нормальное состояние после reset модели: сначала соберите/подтвердите параметры, затем этот шаг покажет словари и value mapping.
+                  <span>
+                  Сейчас у категории нет подтвержденных PIM-полей со справочниками, контролируемыми значениями или числовыми unit-check. Это нормальное состояние после reset модели: сначала соберите/подтвердите параметры, затем этот шаг покажет словари и value mapping.
                 </span>
               </div>
               <div className="sm-valuesPrereqSteps">
