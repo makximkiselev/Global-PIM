@@ -2307,6 +2307,35 @@ def _export_run_with_fix_links(run: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _compact_export_run_for_latest(run: Dict[str, Any]) -> Dict[str, Any]:
+    out = _export_run_with_fix_links(run)
+    compact_batches: List[Dict[str, Any]] = []
+    for batch in out.get("batches") if isinstance(out.get("batches"), list) else []:
+        if not isinstance(batch, dict):
+            continue
+        compact_batches.append(
+            {
+                key: batch.get(key)
+                for key in (
+                    "provider",
+                    "store_id",
+                    "store_title",
+                    "status",
+                    "ready_count",
+                    "not_ready_count",
+                    "blockers_count",
+                    "warnings_count",
+                    "count",
+                    "blockers",
+                    "warnings",
+                )
+                if key in batch
+            }
+        )
+    out["batches"] = compact_batches
+    return out
+
+
 def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, Any]]) -> Dict[str, Any]:
     product_count = len([pid for pid in product_ids if str(pid or "").strip()])
     target_count = len(batches)
@@ -3441,4 +3470,4 @@ def get_latest_catalog_export_run(
     latest = max(filtered, key=lambda row: str(row.get("created_at") or row.get("id") or ""), default=None)
     if not latest:
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
-    return {"ok": True, "run": _export_run_with_fix_links(latest)}
+    return {"ok": True, "run": _compact_export_run_for_latest(latest)}

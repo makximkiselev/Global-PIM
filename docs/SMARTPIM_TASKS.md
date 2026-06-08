@@ -994,6 +994,10 @@ Next fix in the category flow:
    - preview/export still run only for the explicitly selected SKU list;
    - media/description/brand/package logistics can be copied from sibling products that were not selected for the batch;
    - this closes the gap where single-SKU export could not benefit from already-filled sibling facts.
+38. Latest export run API is compact for UI polling:
+   - `/catalog/exchange/export/latest-run` keeps summary, batch counters, blockers and warnings;
+   - heavy batch `items` / payload rows are omitted from this endpoint;
+   - full payload remains available through `/catalog/exchange/export/runs/{run_id}/package`.
 
 Current smoke status:
 

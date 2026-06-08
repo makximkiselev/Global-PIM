@@ -4459,6 +4459,49 @@ class OperatingWorkflowTests(unittest.TestCase):
             "/products/product_1?tab=attributes&parameter=%D0%92%D0%B5%D1%81+%D1%83%D0%BF%D0%B0%D0%BA%D0%BE%D0%B2%D0%BA%D0%B8%2F%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D0%B0",
         )
 
+    def test_latest_export_run_compacts_heavy_batch_payloads(self) -> None:
+        run = {
+            "id": "export_1",
+            "summary": {"product_count": 1, "target_count": 1},
+            "batches": [
+                {
+                    "provider": "ozon",
+                    "store_id": "store_1",
+                    "store_title": "Ozon",
+                    "status": "blocked",
+                    "ready_count": 0,
+                    "not_ready_count": 1,
+                    "blockers_count": 1,
+                    "count": 1,
+                    "items": [{"product_id": "product_1", "payload_item": {"description": "x" * 1000}}],
+                    "blockers": [
+                        {
+                            "product_id": "product_1",
+                            "category_id": "cat-phone",
+                            "missing": ["Ozon: заполните Вес упаковки/товара для отправки карточки"],
+                            "missing_details": [
+                                {
+                                    "code": "required_parameter_missing",
+                                    "target": "attributes",
+                                    "parameter": "Вес упаковки/товара",
+                                    "message": "Ozon: заполните Вес упаковки/товара для отправки карточки",
+                                }
+                            ],
+                        }
+                    ],
+                    "warnings": [{"code": "optional_value_omitted"}],
+                }
+            ],
+        }
+
+        compact = catalog_exchange._compact_export_run_for_latest(run)
+
+        batch = compact["batches"][0]
+        self.assertNotIn("items", batch)
+        self.assertEqual(batch["blockers_count"], 1)
+        self.assertEqual(batch["blockers"][0]["missing_details"][0]["fix_label"], "Заполнить в SKU")
+        self.assertEqual(batch["warnings"], [{"code": "optional_value_omitted"}])
+
     def test_ozon_export_blocker_suggests_sibling_package_value(self) -> None:
         current = {
             "id": "product_1",
