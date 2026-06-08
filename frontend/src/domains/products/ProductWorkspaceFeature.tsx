@@ -990,7 +990,10 @@ function ProductAttributeWorkbench({
   const packageEvidence = packageFieldEvidence(packageDimensionTargets);
   const selectedIsPackageDimension = Boolean(selectedFeature && packageDimensionTargets.some((target) => target.feature === selectedFeature));
   const showPackageDimensionPanel = Boolean(packageDimensionTargets.length && (dimensionBlockers.length || selectedIsPackageDimension));
-  const marketplacePackageChecked = Boolean(dimensionBlockers.length);
+  const marketplaceEvidenceInProduct = features.some((feature) =>
+    sourceEntriesForFeature(feature).some((entry) => isMarketplaceSource(entry.provider) && hasSourceEntryValue(entry)),
+  );
+  const marketplacePackageChecked = Boolean(dimensionBlockers.length || marketplaceEvidenceInProduct);
   const packageMarketplaceStatus = packageEvidence.fromMarketplace
     ? `${packageEvidence.fromMarketplace}/${packageEvidence.rows.length} из площадок`
     : marketplacePackageChecked
