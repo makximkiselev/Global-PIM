@@ -340,7 +340,10 @@ def _resolve_template_id(category_id: str, nodes: List[Dict[str, Any]]) -> str:
 def _template_attr_defs(template_id: str) -> Dict[str, Dict[str, Any]]:
     if not template_id:
         return {}
-    db = load_templates_db()
+    try:
+        db = load_templates_db()
+    except Exception:
+        return {}
     attrs_map = db.get("attributes") if isinstance(db.get("attributes"), dict) else {}
     attrs = attrs_map.get(template_id) if isinstance(attrs_map.get(template_id), list) else []
     out: Dict[str, Dict[str, Any]] = {}

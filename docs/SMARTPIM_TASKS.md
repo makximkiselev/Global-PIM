@@ -1182,6 +1182,10 @@ Next fix in the category flow:
    - product-level competitor spec suggestions return a `competitor_spec_mapping.v1` contract marker with unmatched spec count, target field count, memory count and source breakdown;
    - suggestion rows carry their origin (`llm`, `memory`, or `rule`) so the UI can distinguish model output from confirmed learning and fallback heuristics;
    - the product competitor UI shows mode, model, contract and evidence counters before the suggestion list, while keeping all suggestions as manual-review drafts.
+78. Competitor/import tests now cover the current contracts:
+   - AI mapping memory and template attribute lookups degrade to empty context when Postgres/templates are unavailable, so import and AI suggestion flows do not fail from optional evidence reads;
+   - operating workflow tests now expect export `warnings_count` as part of the run summary contract;
+   - product channel summary tests use current product `content.links` competitor evidence instead of the removed direct relational-link dependency.
 
 Current smoke status:
 

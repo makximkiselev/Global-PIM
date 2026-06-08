@@ -4119,7 +4119,10 @@ def _get_template_or_404(template_id: str) -> Dict[str, Any]:
 
 
 def _get_template_attrs(template_id: str) -> list[dict]:
-    db = load_templates_db()
+    try:
+        db = load_templates_db()
+    except Exception:
+        return []
     attrs_map = db.get("attributes") or {}
     attrs = attrs_map.get(template_id) or []
     if not isinstance(attrs, list):

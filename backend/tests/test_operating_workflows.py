@@ -1748,12 +1748,17 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(detail["fix_label"], "Открыть значения")
         self.assertNotIn("fix_href", run["batches"][0]["blockers"][0]["missing_details"][0])
 
-    def test_product_channels_summary_reads_competitor_links_from_relational_store(self) -> None:
+    def test_product_channels_summary_reads_competitor_links_from_product_content(self) -> None:
         product = {
             "id": "product_1",
             "title": "iPhone 17 Pro Max",
             "category_id": "cat-phone",
-            "content": {},
+            "content": {
+                "links": [
+                    {"label": "restore", "url": "https://re-store.ru/catalog/iphone/"},
+                    {"label": "store77", "url": "https://store77.net/iphone/"},
+                ]
+            },
         }
 
         class FakeConnectors:
@@ -1771,27 +1776,13 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "stores_count": 0,
                 "stores": [],
             }),
-            patch.object(products, "list_pim_channel_links", return_value=[
-                {
-                    "provider": "restore",
-                    "status": "confirmed",
-                    "url": "https://re-store.ru/catalog/iphone/",
-                    "score": 0.95,
-                },
-                {
-                    "provider": "store77",
-                    "status": "candidate",
-                    "url": "https://store77.net/iphone/",
-                    "score": 0.94,
-                },
-            ]),
         ):
             result = products.product_channels_summary("product_1")
 
         by_key = {item["key"]: item for item in result["competitors"]}
         self.assertEqual(by_key["restore"]["status"], "Подключен")
         self.assertEqual(by_key["restore"]["url"], "https://re-store.ru/catalog/iphone/")
-        self.assertEqual(by_key["store77"]["status"], "На проверке")
+        self.assertEqual(by_key["store77"]["status"], "Подключен")
         self.assertEqual(by_key["store77"]["url"], "https://store77.net/iphone/")
 
     def test_competitor_discovery_category_lists_all_branch_sku_for_manual_scan(self) -> None:
@@ -2758,6 +2749,7 @@ class OperatingWorkflowTests(unittest.TestCase):
                 "ready_target_items": 1,
                 "blocked_target_items": 1,
                 "blockers_count": 1,
+                "warnings_count": 0,
                 "status": "blocked",
             },
         )
