@@ -1153,6 +1153,10 @@ Next fix in the category flow:
    - final submission summary now preserves package warning counts;
    - submitted marketplace/store rows keep `warnings_count` and warning rows from the package batch;
    - the post-submit status panel shows warning counts next to sent/error/processing counters, so omitted optional values remain visible after the send.
+71. Export package treats missing payload lineage as a warning:
+   - ready payload rows with marketplace parameters that have no `sourceCatalogName` now emit `payload_source_missing`;
+   - the warning carries provider/store/product/parameter context and remains non-blocking;
+   - package and submission warning counts now cover both omitted optional values and source-less payload parameters.
 
 Current smoke status:
 

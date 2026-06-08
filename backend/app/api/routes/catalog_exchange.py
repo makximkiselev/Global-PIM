@@ -2560,6 +2560,7 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
             continue
         items = batch.get("items") if isinstance(batch.get("items"), list) else []
         ready_items: List[Dict[str, Any]] = []
+        payload_warning_rows: List[Dict[str, Any]] = []
         blocked_items = 0
         for item in items:
             if not isinstance(item, dict):
@@ -2567,14 +2568,31 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
             payload_item = item.get("payload_item") if isinstance(item.get("payload_item"), dict) else {}
             if bool(item.get("ready")) and payload_item:
                 payload = _clean_export_payload_item(str(batch.get("provider") or "").strip(), payload_item)
+                audit = _export_payload_audit(str(batch.get("provider") or "").strip(), payload)
                 ready_items.append(
                     {
                         "product_id": str(item.get("product_id") or "").strip(),
                         "offer_id": str(payload.get("offerId") or payload.get("offer_id") or "").strip(),
                         "payload": payload,
-                        "audit": _export_payload_audit(str(batch.get("provider") or "").strip(), payload),
+                        "audit": audit,
                     }
                 )
+                missing_source = audit.get("missing_source") if isinstance(audit.get("missing_source"), list) else []
+                if int(audit.get("attributes_without_source") or 0) > 0 and missing_source:
+                    examples = [str(x or "").strip() for x in missing_source[:3] if str(x or "").strip()]
+                    payload_warning_rows.append(
+                        {
+                            "code": "payload_source_missing",
+                            "message": f"В payload есть {int(audit.get('attributes_without_source') or 0)} параметров без источника: {', '.join(examples)}",
+                            "provider": str(batch.get("provider") or "").strip(),
+                            "store_id": str(batch.get("store_id") or "").strip(),
+                            "store_title": str(batch.get("store_title") or "").strip(),
+                            "product_id": str(item.get("product_id") or "").strip(),
+                            "category_id": str(item.get("category_id") or "").strip(),
+                            "parameter": examples[0] if examples else "",
+                            "target": "attributes",
+                        }
+                    )
             else:
                 blocked_items += 1
         ready_items_total += len(ready_items)
@@ -2589,6 +2607,7 @@ def _build_export_package(run: Dict[str, Any]) -> Dict[str, Any]:
             for warning in (batch.get("warnings") if isinstance(batch.get("warnings"), list) else [])
             if isinstance(warning, dict)
         ]
+        batch_warning_rows.extend(payload_warning_rows)
         if blocked_items:
             warnings.append(
                 {

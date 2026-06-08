@@ -4832,6 +4832,13 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(audit["attributes_with_source"], 1)
         self.assertEqual(audit["attributes_without_source"], 1)
         self.assertEqual(audit["missing_source"], ["Тип"])
+        self.assertEqual(package["summary"]["warnings_count"], 1)
+        self.assertEqual(package["warnings"][0]["code"], "payload_source_missing")
+        self.assertEqual(package["warnings"][0]["provider"], "ozon")
+        self.assertEqual(package["warnings"][0]["store_id"], "ozon-store")
+        self.assertEqual(package["warnings"][0]["product_id"], "product_1")
+        self.assertEqual(package["warnings"][0]["parameter"], "Тип")
+        self.assertEqual(package["batches"][0]["warnings_count"], 1)
 
     def test_submit_catalog_export_run_persists_dry_run_submission(self) -> None:
         run = {
