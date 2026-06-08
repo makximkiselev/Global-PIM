@@ -1472,7 +1472,16 @@ function ProductAttributeWorkbench({
   );
 }
 
-function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFeatureValue[]; categoryId?: string }) {
+function sourcesHref(tab: "sources" | "params" | "values", categoryId?: string, productId?: string) {
+  const params = new URLSearchParams({ tab });
+  const normalizedCategoryId = normalizeText(categoryId);
+  const normalizedProductId = normalizeText(productId);
+  if (normalizedCategoryId) params.set("category", normalizedCategoryId);
+  if (normalizedProductId) params.set("product", normalizedProductId);
+  return `/sources?${params.toString()}`;
+}
+
+function ProductSourcesWorkbench({ features, categoryId, productId }: { features: ProductFeatureValue[]; categoryId?: string; productId?: string }) {
   const rows = features.flatMap((feature) =>
     sourceEntriesForFeature(feature).map((entry) => ({
       feature: normalizeText(feature.name) || normalizeText(feature.code) || "Параметр",
@@ -1490,12 +1499,12 @@ function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFe
           <div className="productWorkspaceEmptyActions">
             {encodedCategoryId ? (
               <>
-                <Link className="btn primary" to={`/sources?tab=params&category=${encodedCategoryId}`}>Открыть сопоставление</Link>
-                <Link className="btn" to={`/sources?tab=sources&category=${encodedCategoryId}`}>Связать источники</Link>
+                <Link className="btn primary" to={sourcesHref("params", categoryId, productId)}>Открыть сопоставление</Link>
+                <Link className="btn" to={sourcesHref("sources", categoryId, productId)}>Связать источники</Link>
                 <Link className="btn" to={`/templates/${encodedCategoryId}`}>Собрать инфо-модель</Link>
               </>
             ) : (
-              <Link className="btn primary" to="/sources?tab=sources">Открыть сопоставление</Link>
+              <Link className="btn primary" to={sourcesHref("sources", categoryId, productId)}>Открыть сопоставление</Link>
             )}
           </div>
         }
@@ -2738,7 +2747,7 @@ function ProductWorkspaceFeature() {
 
             {activeSection === "sources" ? (
               <Card title="Трассировка источников">
-                <ProductSourcesWorkbench features={features} categoryId={product.category_id} />
+                <ProductSourcesWorkbench features={features} categoryId={product.category_id} productId={product.id} />
               </Card>
             ) : null}
 
