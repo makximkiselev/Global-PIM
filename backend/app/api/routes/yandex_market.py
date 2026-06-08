@@ -773,6 +773,36 @@ def _compact_offer_mapping_for_cache(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _is_offer_mapping_source_payload(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    source_keys = {
+        "entry",
+        "store_id",
+        "store_title",
+        "business_id",
+        "fetched_at",
+        "description",
+        "pictures",
+        "videos",
+        "vendor",
+        "barcodes",
+    }
+    return any(key in value for key in source_keys)
+
+
+def _clean_offer_mapping_cache_sources(value: Any) -> Dict[str, Dict[str, Any]]:
+    sources = value if isinstance(value, dict) else {}
+    cleaned: Dict[str, Dict[str, Any]] = {}
+    for key, payload in sources.items():
+        source_key = str(key or "").strip()
+        if not source_key or source_key in {"offerId", "sources", "fetched_at", "product_id", "store_count"}:
+            continue
+        if _is_offer_mapping_source_payload(payload):
+            cleaned[source_key] = dict(payload)
+    return cleaned
+
+
 def _positive_number(value: Any) -> Optional[float]:
     if isinstance(value, (int, float)):
         number = float(value)
@@ -2108,6 +2138,7 @@ async def sync_offer_cards(req: OfferCardsSyncReq) -> Dict[str, Any]:
                 "vendor": imported_vendor,
                 "barcodes": imported_barcodes,
             }
+            mapping_sources = _clean_offer_mapping_cache_sources(mapping_sources)
             mappings_cache_items[offer_id] = {
                 "offerId": offer_id,
                 "product_id": product_id or None,
