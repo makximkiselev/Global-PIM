@@ -388,6 +388,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [submission, setSubmission] = useState<ExportSubmission | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [broadScopeConfirmed, setBroadScopeConfirmed] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [broadSubmitConfirmed, setBroadSubmitConfirmed] = useState(false);
   const initialCategoryId = String(searchParams.get("category") || "").trim();
   const initialProductIds = [
     ...String(searchParams.get("product") || "").split(","),
@@ -515,6 +517,13 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     return "до 50";
   }, [includeDescendants, productCountsByCategory, selectedNodeIds, selectedProductIds.length]);
   const broadExportScope = selectedProductIds.length === 0 && (selectedNodeIds.length !== 1 || includeDescendants);
+  const runBroadScope = useMemo(() => {
+    const selection = run?.selection || {};
+    const productIds = Array.isArray(selection.product_ids) ? selection.product_ids.filter(Boolean) : [];
+    const nodeIds = Array.isArray(selection.node_ids) ? selection.node_ids.filter(Boolean) : [];
+    if (productIds.length) return false;
+    return nodeIds.length !== 1 || selection.include_descendants !== false;
+  }, [run]);
   const totalBlocked = useMemo(
     () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
     [run],
@@ -775,7 +784,15 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
   }
 
-  async function submitExportPackage() {
+  function requestSubmitExportPackage() {
+    if (runBroadScope && !broadSubmitConfirmed) {
+      setSubmitConfirmOpen(true);
+      return;
+    }
+    void submitExportPackage(runBroadScope && broadSubmitConfirmed);
+  }
+
+  async function submitExportPackage(confirmBroadScope = false) {
     const runId = run?.run_id || run?.id || "";
     if (!runId || submitting) return;
     setSubmitting(true);
@@ -783,8 +800,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     try {
       const response = await api<ExportSubmitResp>(`/catalog/exchange/export/runs/${encodeURIComponent(runId)}/submit`, {
         method: "POST",
-        body: JSON.stringify({ dry_run: false }),
+        body: JSON.stringify({ dry_run: false, confirm_broad_scope: confirmBroadScope }),
       });
+      setSubmitConfirmOpen(false);
+      setBroadSubmitConfirmed(false);
       setSubmission(response.submission);
       if (response.run) setRun(response.run);
       if (!response.ok) {
@@ -1162,7 +1181,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       <Button onClick={() => void loadExportPackage(true)} disabled={packageLoading}>
                         Скачать JSON
                       </Button>
-                      <Button variant="primary" onClick={() => void submitExportPackage()} disabled={submitting || packageLoading}>
+                      <Button variant="primary" onClick={requestSubmitExportPackage} disabled={submitting || packageLoading}>
                         {submitting ? "Отправляю…" : "Отправить на площадки"}
                       </Button>
                     </div>
@@ -1404,6 +1423,56 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <Button onClick={() => setConfirmOpen(false)}>Отмена</Button>
               <Button variant="primary" onClick={() => void startExport()} disabled={loading || activeTargets.length === 0 || (broadExportScope && !broadScopeConfirmed)}>
                 {loading ? "Готовлю…" : "Подтвердить и подготовить"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {submitConfirmOpen ? (
+        <div className="cx-confirmOverlay" role="dialog" aria-modal="true" aria-label="Подтверждение отправки">
+          <div className="cx-confirmCard">
+            <div className="cx-confirmHead">
+              <div>
+                <span>Финальная отправка</span>
+                <strong>Подтвердите широкий batch</strong>
+              </div>
+              <button className="btn" type="button" onClick={() => setSubmitConfirmOpen(false)}>Закрыть</button>
+            </div>
+            <div className="cx-confirmGrid">
+              <div>
+                <span>Run</span>
+                <strong>{run?.run_id || run?.id || "—"}</strong>
+              </div>
+              <div>
+                <span>SKU</span>
+                <strong>{run?.summary?.product_count ?? run?.count ?? "—"}</strong>
+              </div>
+              <div>
+                <span>Целей</span>
+                <strong>{run?.summary?.target_count ?? run?.batches?.length ?? "—"}</strong>
+              </div>
+            </div>
+            <div className="cx-confirmWarning">
+              Это не проверка, а реальная отправка уже подготовленного broad batch на выбранные магазины. Для безопасной финальной отправки лучше использовать отдельные SKU или узкую категорию.
+            </div>
+            <div className="cx-confirmGuard">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={broadSubmitConfirmed}
+                  onChange={(event) => setBroadSubmitConfirmed(event.target.checked)}
+                />
+                <span>Понимаю, что отправляю широкий batch на площадки</span>
+              </label>
+            </div>
+            <div className="cx-confirmActions">
+              <Button onClick={() => setSubmitConfirmOpen(false)}>Отмена</Button>
+              <Button
+                variant="primary"
+                onClick={() => void submitExportPackage(true)}
+                disabled={submitting || !broadSubmitConfirmed}
+              >
+                {submitting ? "Отправляю…" : "Подтвердить отправку"}
               </Button>
             </div>
           </div>

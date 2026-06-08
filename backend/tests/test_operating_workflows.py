@@ -4654,6 +4654,82 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["dry_run"], True)
         self.assertEqual(saved["runs"]["run-submit"]["last_submission"]["batches"][0]["provider"], "yandex_market")
 
+    def test_submit_catalog_export_run_requires_confirmation_for_broad_scope(self) -> None:
+        run = {
+            "id": "run-broad",
+            "selection": {"node_ids": ["cat-phone"], "product_ids": [], "include_descendants": True},
+            "targets": [{"provider": "yandex_market", "store_ids": ["ym-1"]}],
+            "batches": [
+                {
+                    "provider": "yandex_market",
+                    "store_id": "ym-1",
+                    "store_title": "GT USD",
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {"offerId": "GT-1", "name": "Ready item"},
+                        }
+                    ],
+                }
+            ],
+        }
+        runs_doc = {"runs": {"run-broad": deepcopy(run)}}
+
+        with patch.object(catalog_exchange, "_load_runs", return_value=deepcopy(runs_doc)):
+            with self.assertRaises(HTTPException) as ctx:
+                catalog_exchange.submit_catalog_export_run(
+                    "run-broad",
+                    catalog_exchange.CatalogExportSubmitReq(dry_run=False),
+                )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail, "BROAD_EXPORT_SUBMIT_REQUIRES_CONFIRMATION")
+
+    def test_submit_catalog_export_run_allows_confirmed_broad_scope(self) -> None:
+        run = {
+            "id": "run-broad",
+            "selection": {"node_ids": ["cat-phone"], "product_ids": [], "include_descendants": True},
+            "targets": [{"provider": "yandex_market", "store_ids": ["ym-1"]}],
+            "batches": [
+                {
+                    "provider": "yandex_market",
+                    "store_id": "ym-1",
+                    "store_title": "GT USD",
+                    "items": [
+                        {
+                            "product_id": "product_1",
+                            "ready": True,
+                            "payload_item": {"offerId": "GT-1", "name": "Ready item"},
+                        }
+                    ],
+                }
+            ],
+        }
+        runs_doc = {"runs": {"run-broad": deepcopy(run)}}
+        saved: dict[str, object] = {}
+        submission = {
+            "ok": True,
+            "status": "submitted",
+            "submitted_at": "2026-06-08T10:00:00+00:00",
+            "dry_run": False,
+            "summary": {"batch_count": 1, "submitted_batches": 1, "failed_batches": 0},
+            "batches": [{"provider": "yandex_market", "store_id": "ym-1", "status": "submitted"}],
+        }
+
+        with (
+            patch.object(catalog_exchange, "_load_runs", return_value=deepcopy(runs_doc)),
+            patch.object(catalog_exchange, "_save_runs", side_effect=lambda _path, doc: saved.update(deepcopy(doc))),
+            patch.object(catalog_exchange, "_submit_export_package", return_value=submission),
+        ):
+            response = catalog_exchange.submit_catalog_export_run(
+                "run-broad",
+                catalog_exchange.CatalogExportSubmitReq(dry_run=False, confirm_broad_scope=True),
+            )
+
+        self.assertEqual(response["ok"], True)
+        self.assertEqual(saved["runs"]["run-broad"]["last_submission"]["status"], "submitted")
+
     def test_submit_payload_uses_marketplace_api_shape_not_audit_shape(self) -> None:
         yandex_payload = catalog_exchange._prepare_submit_payload_item(
             "yandex_market",

@@ -768,7 +768,7 @@ Known problems:
 
 1. Catalog/source/tree components are still not fully unified.
 2. Some screens still have local layout implementations.
-3. Export readiness needs stronger protection against accidental broad final submissions after the readiness batch.
+3. Export readiness now has server-side and UI protection against accidental broad final submissions after the readiness batch.
 4. Product card description/source evidence must be rechecked after deploy to confirm the compact UI is enough for real content work.
 5. iPhone 17 Pro Max single-SKU export blocker was closed for `product_1052`; keep media import/enrichment reliable for the rest of the line.
 
@@ -998,6 +998,10 @@ Next fix in the category flow:
    - `/catalog/exchange/export/latest-run` keeps summary, batch counters, blockers and warnings;
    - heavy batch `items` / payload rows are omitted from this endpoint;
    - full payload remains available through `/catalog/exchange/export/runs/{run_id}/package`.
+39. Broad final export submission requires explicit confirmation:
+   - backend rejects non-dry-run submit for broad scopes with `BROAD_EXPORT_SUBMIT_REQUIRES_CONFIRMATION` unless `confirm_broad_scope=true`;
+   - frontend shows a second final-submit modal for broad runs, separate from the preparation confirmation;
+   - single-SKU and narrow-category submissions remain one-click after readiness is green.
 
 Current smoke status:
 

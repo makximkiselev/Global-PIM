@@ -1166,6 +1166,7 @@ class CatalogExportRunReq(BaseModel):
 
 class CatalogExportSubmitReq(BaseModel):
     dry_run: bool = False
+    confirm_broad_scope: bool = False
 
 
 def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selected_store_ids: Set[str]) -> List[Dict[str, Any]]:
@@ -2336,6 +2337,16 @@ def _compact_export_run_for_latest(run: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _export_run_has_broad_scope(run: Dict[str, Any]) -> bool:
+    selection = run.get("selection") if isinstance(run.get("selection"), dict) else {}
+    product_ids = [str(item or "").strip() for item in selection.get("product_ids") or [] if str(item or "").strip()]
+    if product_ids:
+        return False
+    node_ids = [str(item or "").strip() for item in selection.get("node_ids") or [] if str(item or "").strip()]
+    include_descendants = selection.get("include_descendants", True)
+    return len(node_ids) != 1 or bool(include_descendants)
+
+
 def _summarize_export_batches(product_ids: List[str], batches: List[Dict[str, Any]]) -> Dict[str, Any]:
     product_count = len([pid for pid in product_ids if str(pid or "").strip()])
     target_count = len(batches)
@@ -3405,6 +3416,8 @@ def submit_catalog_export_run(run_id: str, req: CatalogExportSubmitReq = Catalog
     row = (runs.get("runs") or {}).get(rid)
     if not isinstance(row, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
+    if not bool(req.dry_run) and _export_run_has_broad_scope(row) and not bool(req.confirm_broad_scope):
+        raise HTTPException(status_code=409, detail="BROAD_EXPORT_SUBMIT_REQUIRES_CONFIRMATION")
     package = _build_export_package(_export_run_with_fix_links(row))
     if str(package.get("status") or "") != "ready":
         raise HTTPException(status_code=409, detail="EXPORT_PACKAGE_NOT_READY")
