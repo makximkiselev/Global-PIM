@@ -2286,6 +2286,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         parameter_values: List[Dict[str, Any]] = []
         present_param_ids: Set[str] = set()
         mapped_parameter_values_count = 0
+        warnings: List[Dict[str, Any]] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -2315,6 +2316,17 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
             if not bool(value_details.get("mapped", True)):
                 if any(bool(binding.get("required")) or bool(ym.get("required")) for binding in export_bindings):
                     value_mapping_missing.append(pname)
+                else:
+                    warnings.append(
+                        {
+                            "code": "optional_value_omitted",
+                            "message": f"{pname}: значение не сопоставлено с Я.Маркет. Необязательное поле пропущено в payload.",
+                            "target": "values",
+                            "parameter": pname,
+                            "provider": "yandex_market",
+                            "reason": str(value_details.get("reason") or "").strip(),
+                        }
+                    )
                 continue
             if not value and not mapped_values_for_payload:
                 continue
@@ -2408,6 +2420,7 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
                 "ready": ready,
                 "missing": missing,
                 "missing_details": missing_details,
+                "warnings": warnings,
                 "payload_item": payload_item,
             }
         )

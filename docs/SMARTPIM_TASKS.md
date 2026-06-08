@@ -1133,6 +1133,10 @@ Next fix in the category flow:
    - `provider_export_value_details()` already marks unmapped allowed-value fields as `mapped=false`;
    - `provider_export_value()` now returns empty for that state instead of returning the original canonical value;
    - this prevents future export code from accidentally bypassing value readiness by using the shorter helper.
+66. Я.Маркет optional controlled values are visible when omitted:
+   - optional unmapped dictionary/controlled values still do not block export;
+   - the preview now emits `optional_value_omitted` warnings with product/category/parameter context instead of silently dropping the field;
+   - shared export batch adaptation carries these warnings into batch diagnostics.
 
 Current smoke status:
 

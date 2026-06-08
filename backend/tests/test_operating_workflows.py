@@ -3799,6 +3799,18 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(item["ready"], True)
         self.assertNotIn("Особенности: значение не сопоставлено с Я.Маркет", item["missing"])
         self.assertEqual(len(item["payload_item"]["parameterValues"]), 1)
+        self.assertEqual(item["warnings"][0]["code"], "optional_value_omitted")
+        self.assertEqual(item["warnings"][0]["parameter"], "Особенности")
+        self.assertEqual(item["warnings"][0]["provider"], "yandex_market")
+
+        batch = catalog_exchange._export_batch_from_preview(
+            provider="yandex_market",
+            store={"id": "ym-store", "title": "Я.Маркет"},
+            preview=response,
+        )
+        self.assertEqual(batch["warnings_count"], 1)
+        self.assertEqual(batch["warnings"][0]["parameter"], "Особенности")
+        self.assertEqual(batch["warnings"][0]["product_id"], "product_1")
 
     def test_yandex_export_preview_uses_provider_specific_output_value(self) -> None:
         product = {
