@@ -496,12 +496,16 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const sourcesCategoryHref = selectedCategoryForLinks
     ? `/sources?tab=sources&category=${encodeURIComponent(selectedCategoryForLinks)}`
     : "/sources?tab=sources";
-  const exportEmptyTitle = providers.length === 0
+  const exportEmptyTitle = initialLoading
+    ? "Загружаю магазины и каналы"
+    : providers.length === 0
     ? "Нет магазинов для экспорта"
     : activeTargets.length > 0
       ? "Готово к подготовке"
       : "Выберите магазины выше";
-  const exportEmptyDescription = providers.length === 0
+  const exportEmptyDescription = initialLoading
+    ? "Проверяю подключенные магазины, флаги импорта/экспорта и доступные цели batch run."
+    : providers.length === 0
     ? "Сначала добавьте хотя бы один магазин в коннекторах или проверьте привязку категории к площадкам."
     : activeTargets.length > 0
       ? `Выбрано ${selectedTargetsCount} ${selectedTargetWord} для области "${selectedScope}". Запустите подготовку в панели целей экспорта.`
@@ -1362,7 +1366,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <EmptyState
                 title={exportEmptyTitle}
                 description={exportEmptyDescription}
-                action={providers.length === 0 ? (
+                action={initialLoading ? null : providers.length === 0 ? (
                   <div className="cx-emptyActions">
                     <Link className="btn btn-primary" to="/connectors/status?tab=marketplaces">Открыть коннекторы</Link>
                     <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>

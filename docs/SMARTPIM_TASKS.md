@@ -1026,6 +1026,9 @@ Next fix in the category flow:
    - global attribute matches are labelled as linking a found field to an existing PIM parameter;
    - primary action says `Связать с этим PIM-параметром`;
    - help text explains that this prevents duplicate parameters with the same meaning.
+45. Export target loading state no longer flashes a false “no stores” empty state:
+   - while connector/bootstrap data is loading, the export empty panel says stores/channels are being checked;
+   - connector repair links appear only after loading finishes and no exportable stores actually exist.
 
 Current smoke status:
 
