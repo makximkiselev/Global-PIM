@@ -588,6 +588,34 @@ function sourceEntriesForFeature(feature: ProductFeatureValue) {
   return entries;
 }
 
+function isMarketplaceSource(provider: string) {
+  const value = normalizeText(provider).toLowerCase();
+  return value === "yandex_market" || value === "ozon";
+}
+
+function hasSourceEntryValue(entry: { raw: string; resolved: string; canonical: string }) {
+  return Boolean(normalizeText(entry.raw) || normalizeText(entry.resolved) || normalizeText(entry.canonical));
+}
+
+function packageFieldEvidence(targets: Array<{ key: string; label: string; feature: ProductFeatureValue }>) {
+  const rows = targets.map((target) => {
+    const value = featureValue(target.feature);
+    const marketplaceEntries = sourceEntriesForFeature(target.feature).filter((entry) => isMarketplaceSource(entry.provider) && hasSourceEntryValue(entry));
+    return {
+      ...target,
+      value,
+      marketplaceEntries,
+      hasMarketplaceEvidence: marketplaceEntries.length > 0,
+    };
+  });
+  return {
+    rows,
+    filled: rows.filter((row) => row.value).length,
+    fromMarketplace: rows.filter((row) => row.hasMarketplaceEvidence).length,
+    missing: rows.filter((row) => !row.value).length,
+  };
+}
+
 function flowRowForFeature(parameterFlow: ProductParameterFlow | null, feature: ProductFeatureValue | null) {
   if (!feature) return null;
   const code = featureIdentity(feature.code);
@@ -959,8 +987,15 @@ function ProductAttributeWorkbench({
     ...field,
     feature: findFeatureByParameter(features, field.parameter),
   })).filter((field): field is typeof field & { feature: ProductFeatureValue } => Boolean(field.feature));
+  const packageEvidence = packageFieldEvidence(packageDimensionTargets);
   const selectedIsPackageDimension = Boolean(selectedFeature && packageDimensionTargets.some((target) => target.feature === selectedFeature));
   const showPackageDimensionPanel = Boolean(packageDimensionTargets.length && (dimensionBlockers.length || selectedIsPackageDimension));
+  const marketplacePackageChecked = Boolean(dimensionBlockers.length);
+  const packageMarketplaceStatus = packageEvidence.fromMarketplace
+    ? `${packageEvidence.fromMarketplace}/${packageEvidence.rows.length} из площадок`
+    : marketplacePackageChecked
+      ? "площадки проверены, размеров нет"
+      : "источники еще не проверялись";
   const [dimensionDrafts, setDimensionDrafts] = useState<Record<string, string>>({});
   const conflictCount = features.filter((feature) => {
     const entries = sourceEntriesForFeature(feature);
@@ -1075,6 +1110,25 @@ function ProductAttributeWorkbench({
               <strong>Габариты для Ozon</strong>
               <span>{dimensionBlockers.length ? `${dimensionBlockers.length} поля мешают экспорту` : "Заполните комплектом, затем вернитесь в проверку экспорта"}</span>
             </div>
+            <div className="productLogisticsSourceAudit">
+              <div>
+                <span>Площадки</span>
+                <strong>{packageMarketplaceStatus}</strong>
+              </div>
+              <div>
+                <span>PIM</span>
+                <strong>{packageEvidence.filled}/{packageEvidence.rows.length} заполнено</strong>
+              </div>
+              <div>
+                <span>Варианты</span>
+                <Link to={`/products/${encodeURIComponent(productId)}?tab=variants`}>Проверить SKU family</Link>
+              </div>
+            </div>
+            {marketplacePackageChecked && !packageEvidence.fromMarketplace ? (
+              <div className="productLogisticsNotice">
+                Market/Ozon уже проверены для выбранных магазинов, но не вернули размеры упаковки. Заполните поля вручную или сверяйтесь с соседним SKU этой линейки.
+              </div>
+            ) : null}
             <div className="productLogisticsQuickGrid">
               {packageDimensionTargets.map((target) => (
                 <label key={target.key}>

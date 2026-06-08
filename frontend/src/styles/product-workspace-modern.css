@@ -2059,6 +2059,55 @@
   font-weight:800;
 }
 
+.productLogisticsSourceAudit{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+}
+
+.productLogisticsSourceAudit > div{
+  min-width:0;
+  padding:9px 10px;
+  border:1px solid rgba(var(--line-rgb), .62);
+  border-radius:12px;
+  background:rgba(var(--surface-rgb), .72);
+}
+
+.productLogisticsSourceAudit span{
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.productLogisticsSourceAudit strong,
+.productLogisticsSourceAudit a{
+  display:block;
+  margin-top:3px;
+  color:var(--text);
+  font-size:11px;
+  font-weight:950;
+  line-height:1.25;
+  text-decoration:none;
+}
+
+.productLogisticsSourceAudit a{
+  color:rgb(var(--brand-rgb));
+}
+
+.productLogisticsNotice{
+  padding:10px 11px;
+  border:1px dashed rgba(var(--danger-rgb), .34);
+  border-radius:12px;
+  background:rgba(var(--danger-rgb), .07);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+  line-height:1.38;
+}
+
 .productLogisticsQuickGrid{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
