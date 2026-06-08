@@ -182,12 +182,15 @@ Done:
 17. Product parameter export diff now uses the same backend `/products/{product_id}/parameter-flow` marketplace outputs that feed export readiness/value mapping, instead of frontend-only normalization.
 18. Deploy fails fast when authenticated browser smoke is enabled without `SMARTPIM_SMOKE_EMAIL` / `SMARTPIM_SMOKE_PASSWORD`, before uploading/restarting production.
 19. Product queue links into source mapping preserve SKU context and hide technical draft template UUIDs behind category-based info-model labels.
+20. Template rollback preview is implemented before destructive rollback:
+    - `GET /api/templates/{template_id}/versions/{version}/preview`;
+    - modal shows exact added, removed and changed fields;
+    - rollback action is only available from the preview.
+21. Legacy product card surfaces already reuse `/products/{product_id}/parameter-flow` for lineage, parameter summary and marketplace output diffs.
 
 Next:
 
 1. Store QA smoke credentials in production secret storage and enable authenticated smoke flags for the real deploy environment.
-2. Add a dedicated rollback preview modal with exact field add/remove/change lists before executing rollback.
-3. Reuse `/parameter-flow` in older legacy product UI or remove that legacy surface once the workspace route is confirmed everywhere.
 
 Priority order:
 

@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import ssl
 import sys
 import time
@@ -30,6 +31,7 @@ DEFAULT_PRODUCT_FLOW_PRODUCT_ID = "product_70"
 DEFAULT_PRODUCT_FLOW_SKU_MARKER = "50001"
 DEFAULT_PRODUCT_FLOW_PARAMETER = "Процессор"
 DEFAULT_PRODUCT_FLOW_VALUE_PARAMETER = ""
+TECHNICAL_TEMPLATE_LABEL_RE = re.compile(r"\b(?:Draft|Template|Model):\s*[0-9a-f]{8}-[0-9a-f-]{27,}\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -167,6 +169,19 @@ def validate_export_latest_run(payload: dict[str, Any]) -> CheckResult:
     return CheckResult("export latest run", True, f"{run_id}: ready={ready}, blocked={blocked}, batches={len(batches)}")
 
 
+def validate_product_queue_labels(body: str, sku_marker: str = "") -> CheckResult:
+    text = str(body or "")
+    if TECHNICAL_TEMPLATE_LABEL_RE.search(text):
+        return CheckResult("product queue labels", False, "technical Draft/Template UUID label is visible")
+    if sku_marker and sku_marker not in text:
+        return CheckResult("product queue labels", False, f"smoke SKU {sku_marker} is missing")
+    if "Инфо-модель:" in text:
+        return CheckResult("product queue labels", True, "technical template labels hidden; readable model label visible")
+    if "Собрать модель" in text or "НЕТ ИНФО-МОДЕЛИ" in text:
+        return CheckResult("product queue labels", True, "technical template labels hidden; missing model CTA visible")
+    return CheckResult("product queue labels", False, "neither readable model label nor missing-model CTA is visible")
+
+
 def is_ignorable_browser_console_error(message: str) -> bool:
     transient_network_markers = ("net::ERR_CONNECTION_CLOSED",)
     return any(marker in message for marker in transient_network_markers)
@@ -272,6 +287,7 @@ async def browser_smoke(
     insecure_ssl: bool = False,
     extra_routes: Iterable[tuple[str, tuple[str, ...]]] = (),
     export_latest_product_id: str = "",
+    product_queue_sku_marker: str = "",
 ) -> list[CheckResult]:
     try:
         from playwright.async_api import async_playwright
@@ -307,7 +323,7 @@ async def browser_smoke(
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
-        page = await browser.new_page(ignore_https_errors=insecure_ssl)
+        page = await browser.new_page(ignore_https_errors=insecure_ssl, viewport={"width": 1600, "height": 1000})
         page.on(
             "console",
             lambda msg: console_errors.append(msg.text)
@@ -352,6 +368,19 @@ async def browser_smoke(
                 results.append(CheckResult(f"browser route {route}", ok, detail))
             except Exception as exc:
                 results.append(CheckResult(f"browser route {route}", False, str(exc)))
+
+        if product_queue_sku_marker:
+            try:
+                await goto_app_page(page, f"{base_url}/products")
+                body = await page.locator("body").inner_text()
+                if "Вход пользователя" in body and not email:
+                    results.append(CheckResult("product queue labels", allow_auth_wall, "auth wall; credentials needed for label smoke"))
+                elif "Вход пользователя" in body and require_auth:
+                    results.append(CheckResult("product queue labels", False, "still on auth wall after login"))
+                else:
+                    results.append(validate_product_queue_labels(body, product_queue_sku_marker))
+            except Exception as exc:
+                results.append(CheckResult("product queue labels", False, str(exc)))
 
         if export_latest_product_id:
             try:
@@ -424,6 +453,7 @@ async def async_main(argv: list[str]) -> int:
                 insecure_ssl=args.insecure_ssl,
                 extra_routes=product_flow_routes,
                 export_latest_product_id=args.flow_product_id if args.export_latest else "",
+                product_queue_sku_marker=args.flow_sku_marker if args.product_flow else "",
             )
         )
     print_results(results)

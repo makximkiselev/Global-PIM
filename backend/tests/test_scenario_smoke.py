@@ -167,3 +167,39 @@ def test_validate_export_latest_run_accepts_ready_rows_without_blockers():
     )
 
     assert result == scenario_smoke.CheckResult("export latest run", True, "export_2: ready=2, blocked=0, batches=1")
+
+
+def test_validate_product_queue_labels_rejects_technical_template_names():
+    result = scenario_smoke.validate_product_queue_labels(
+        "Каталог товаров 50001 Draft: 12547e4d-7713-414e-8aaf-a2fe919e1d3d",
+        "50001",
+    )
+
+    assert result.ok is False
+    assert "technical" in result.detail
+
+
+def test_validate_product_queue_labels_accepts_readable_template_names():
+    result = scenario_smoke.validate_product_queue_labels(
+        "Каталог товаров 50001 Инфо-модель: iPhone 16 Pro Max",
+        "50001",
+    )
+
+    assert result == scenario_smoke.CheckResult(
+        "product queue labels",
+        True,
+        "technical template labels hidden; readable model label visible",
+    )
+
+
+def test_validate_product_queue_labels_accepts_missing_model_cta():
+    result = scenario_smoke.validate_product_queue_labels(
+        "Каталог товаров 50001 ИНФО-МОДЕЛЬ Собрать модель НЕТ ИНФО-МОДЕЛИ",
+        "50001",
+    )
+
+    assert result == scenario_smoke.CheckResult(
+        "product queue labels",
+        True,
+        "technical template labels hidden; missing model CTA visible",
+    )
