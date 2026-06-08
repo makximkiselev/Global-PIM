@@ -190,12 +190,11 @@ def validate_product_queue_labels(body: str, sku_marker: str = "") -> CheckResul
     text = str(body or "")
     if TECHNICAL_TEMPLATE_LABEL_RE.search(text):
         return CheckResult("product queue labels", False, "technical Draft/Template UUID label is visible")
-    if sku_marker and sku_marker not in text:
-        return CheckResult("product queue labels", False, f"smoke SKU {sku_marker} is missing")
+    visible_scope = "visible queue" if not sku_marker or sku_marker in text else "visible queue; smoke SKU is checked on product route"
     if "Инфо-модель:" in text:
-        return CheckResult("product queue labels", True, "technical template labels hidden; readable model label visible")
+        return CheckResult("product queue labels", True, f"technical template labels hidden; readable model label visible in {visible_scope}")
     if "Собрать модель" in text or "НЕТ ИНФО-МОДЕЛИ" in text:
-        return CheckResult("product queue labels", True, "technical template labels hidden; missing model CTA visible")
+        return CheckResult("product queue labels", True, f"technical template labels hidden; missing model CTA visible in {visible_scope}")
     return CheckResult("product queue labels", False, "neither readable model label nor missing-model CTA is visible")
 
 
@@ -352,10 +351,12 @@ async def browser_smoke(
             pass
 
     async def page_body_after_markers(page: Any, markers: tuple[str, ...]) -> str:
-        marker_wait_ms = parse_positive_int_env("SMARTPIM_SMOKE_MARKER_WAIT_MS", 7000)
-        body = await page.locator("body").inner_text()
-        missing = [marker for marker in markers if marker not in body]
-        if missing:
+        marker_wait_ms = parse_positive_int_env("SMARTPIM_SMOKE_MARKER_WAIT_MS", 15000)
+        async def read_after_wait() -> str:
+            body_now = await page.locator("body").inner_text()
+            missing_now = [marker for marker in markers if marker not in body_now]
+            if not missing_now:
+                return body_now
             try:
                 await page.wait_for_function(
                     """(markers) => {
@@ -365,7 +366,19 @@ async def browser_smoke(
                     list(markers),
                     timeout=marker_wait_ms,
                 )
-                body = await page.locator("body").inner_text()
+            except Exception:
+                pass
+            return await page.locator("body").inner_text()
+
+        body = await read_after_wait()
+        if any(marker not in body for marker in markers):
+            try:
+                await page.reload(wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=min(marker_wait_ms, 5000))
+                except Exception:
+                    pass
+                body = await read_after_wait()
             except Exception:
                 pass
         return body

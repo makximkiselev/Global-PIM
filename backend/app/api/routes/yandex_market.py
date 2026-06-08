@@ -101,6 +101,24 @@ def _export_media_urls(items: Any) -> List[str]:
     return out
 
 
+def _media_items_for_export_review(media: Any) -> List[Dict[str, Any]]:
+    return [
+        item
+        for item in (media if isinstance(media, list) else [])
+        if isinstance(item, dict) and item.get("selected") is not False and str(item.get("url") or "").strip()
+    ]
+
+
+def _media_review_count(media: Any) -> int:
+    count = 0
+    for item in _media_items_for_export_review(media):
+        status = str(item.get("status") or "").strip().lower()
+        source_type = str(item.get("source_type") or "").strip().lower()
+        if status == "needs_review" or item.get("needs_review") is True or source_type == "external_hotlink":
+            count += 1
+    return count
+
+
 def _env_token() -> str:
     return (
         os.getenv("YANDEX_MARKET_API_TOKEN", "").strip()
@@ -2329,6 +2347,10 @@ def yandex_export_preview(req: ExportPreviewReq) -> Dict[str, Any]:
         if media_enabled and not pictures:
             missing.append("Нет изображений (pictures)")
             missing_details.append({"code": "marketplace_media_import_required", "message": "Нет изображений (pictures)", "target": "import"})
+        elif media_enabled and _media_review_count(media) > 0:
+            message = "Медиа найдено, но часть изображений требует проверки перед выгрузкой"
+            missing.append(message)
+            missing_details.append({"code": "media_review_required", "message": message, "target": "media", "count": _media_review_count(media)})
         if not vendor:
             missing.append("Бренд обязателен")
             missing_details.append({"code": "required_parameter_missing", "message": "Бренд обязателен", "target": "params", "parameter": "Бренд"})

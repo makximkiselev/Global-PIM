@@ -1112,8 +1112,13 @@ Next fix in the category flow:
    - authenticated headless browser check confirmed `/sources?tab=values&...parameter=Бренд&provider=ozon` loads `67 из 85` value fields on production.
 61. Focused values smoke now waits for real queue content:
    - when `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER` is set, the browser smoke requires `Значения для выгрузки`, the loaded field-count marker, and the exact focused parameter;
-   - route-marker checks wait briefly for async data after navigation, so values pages are not read before the queue finishes loading;
-   - production smoke with `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER=Бренд --browser --require-auth --product-flow --export-latest` passed on 2026-06-08.
+   - route-marker checks wait for async data after navigation and retry once with reload, so values pages are not read before the queue finishes loading;
+   - product queue label smoke checks the visible queue for hidden technical UUID labels, while the exact smoke SKU is verified on its own product route;
+   - production smoke with `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER=Бренд --browser --require-auth --product-flow --export-latest` passed on 2026-06-08 after the reload/wait hardening.
+62. Я.Маркет export readiness now blocks review-only media:
+   - selected media with `status=needs_review`, `needs_review=true`, or `source_type=external_hotlink` creates `media_review_required` instead of marking the target ready;
+   - payload preview still shows the candidate picture URL for inspection, but the row stays `ready=false` until media is approved/imported;
+   - Ozon already had this guard; targeted tests now cover both marketplaces, and production deploy/health passed after the backend change.
 
 Current smoke status:
 

@@ -3116,6 +3116,47 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(response["items"][0]["payload_item"]["pictures"], ["https://cdn.example.test/quest.jpg"])
         self.assertEqual(response["items"][0]["payload_item"]["description"], "VR headset")
 
+    def test_yandex_export_preview_classifies_review_media_as_media_check(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Meta Quest 3 128GB",
+            "sku_gt": "GT-1",
+            "category_id": "cat-vr",
+            "status": "active",
+            "content": {
+                "description": "VR headset",
+                "media_images": [
+                    {
+                        "url": "https://restore.example.test/quest.jpg",
+                        "status": "needs_review",
+                        "selected": True,
+                        "source_type": "external_hotlink",
+                    }
+                ],
+                "features": [{"code": "brand", "name": "Бренд", "value": "Meta"}],
+            },
+        }
+
+        with (
+            patch.object(yandex_market, "query_products_full", return_value=[deepcopy(product)]),
+            patch.object(yandex_market, "_load_nodes", return_value=[]),
+            patch.object(yandex_market, "_load_category_mapping", return_value={"cat-vr": {"yandex_market": "ym-vr"}}),
+            patch.object(yandex_market, "_load_attr_mapping_rows", return_value={}),
+            patch.object(yandex_market, "_load_attr_value_refs", return_value={}),
+            patch.object(yandex_market, "_yandex_required_param_ids", return_value=set()),
+        ):
+            response = yandex_market.yandex_export_preview(
+                yandex_market.ExportPreviewReq(product_ids=["product_1"], only_active=False, limit=10)
+            )
+
+        item = response["items"][0]
+        self.assertEqual(item["ready"], False)
+        self.assertEqual(item["payload_item"]["pictures"], ["https://restore.example.test/quest.jpg"])
+        detail = item["missing_details"][0]
+        self.assertEqual(detail["code"], "media_review_required")
+        self.assertEqual(detail["target"], "media")
+        self.assertEqual(detail["count"], 1)
+
     def test_yandex_export_preview_blocks_empty_parameter_mapping(self) -> None:
         product = {
             "id": "product_1",

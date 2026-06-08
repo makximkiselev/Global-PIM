@@ -261,7 +261,7 @@ def test_validate_product_queue_labels_accepts_readable_template_names():
     assert result == scenario_smoke.CheckResult(
         "product queue labels",
         True,
-        "technical template labels hidden; readable model label visible",
+        "technical template labels hidden; readable model label visible in visible queue",
     )
 
 
@@ -274,7 +274,20 @@ def test_validate_product_queue_labels_accepts_missing_model_cta():
     assert result == scenario_smoke.CheckResult(
         "product queue labels",
         True,
-        "technical template labels hidden; missing model CTA visible",
+        "technical template labels hidden; missing model CTA visible in visible queue",
+    )
+
+
+def test_validate_product_queue_labels_does_not_require_smoke_sku_on_visible_page():
+    result = scenario_smoke.validate_product_queue_labels(
+        "Каталог товаров Инфо-модель: iPad Air",
+        "50001",
+    )
+
+    assert result == scenario_smoke.CheckResult(
+        "product queue labels",
+        True,
+        "technical template labels hidden; readable model label visible in visible queue; smoke SKU is checked on product route",
     )
 
 
