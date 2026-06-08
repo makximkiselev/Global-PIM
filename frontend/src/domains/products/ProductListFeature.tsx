@@ -883,7 +883,7 @@ function ProductBulkActionBar({
         <Link className="btn" to={withProductExportHref(selectedIds)}>
           Проверить выбор
         </Link>
-        <Link className="btn" to="/sources?tab=sources">
+        <Link className="btn" to={sourcesMappingHref(categoryId, "sources", first)}>
           К сопоставлениям
         </Link>
         <Button variant="danger" onClick={onDelete}>Удалить выбранные</Button>
