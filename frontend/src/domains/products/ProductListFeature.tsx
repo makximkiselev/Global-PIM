@@ -300,6 +300,37 @@ function compactCategoryPath(path?: string) {
   };
 }
 
+const TECHNICAL_TEMPLATE_NAME_RE = /^(draft|template|model)[:_\s-]*[0-9a-f]{8}-[0-9a-f-]{27,}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i;
+
+function displayTemplateName(product: ProductItem) {
+  const rawName = String(product.effective_template_name || "").trim();
+  if (!rawName) return "";
+  const sourceCategoryId = String(product.effective_template_source_category_id || product.category_id || "").trim();
+  const category = compactCategoryPath(product.category_path).primary;
+  const fallback = category && category !== "Категория не определена"
+    ? `Инфо-модель: ${category}`
+    : "Инфо-модель категории";
+  const normalized = rawName.toLowerCase();
+  const looksTechnical = TECHNICAL_TEMPLATE_NAME_RE.test(rawName)
+    || UUID_RE.test(rawName)
+    || (sourceCategoryId && normalized.includes(sourceCategoryId.toLowerCase()));
+  return looksTechnical ? fallback : rawName;
+}
+
+function displayTemplateItemName(template: TemplateItem, nodeById?: Map<string, CatalogNode>) {
+  const rawName = String(template.name || "").trim();
+  if (!rawName) return "Инфо-модель категории";
+  const categoryId = String(template.category_id || "").trim();
+  const categoryName = categoryId ? String(nodeById?.get(categoryId)?.name || "").trim() : "";
+  const fallback = categoryName ? `Инфо-модель: ${categoryName}` : "Инфо-модель категории";
+  const normalized = rawName.toLowerCase();
+  const looksTechnical = TECHNICAL_TEMPLATE_NAME_RE.test(rawName)
+    || UUID_RE.test(rawName)
+    || (categoryId && normalized.includes(categoryId.toLowerCase()));
+  return looksTechnical ? fallback : rawName;
+}
+
 function displayGroupName(product: ProductItem) {
   const name = String(product.group_name || "").trim();
   const id = String(product.group_id || "").trim();
@@ -560,7 +591,7 @@ function ProductListInspector({
   const title = String(product.title || product.name || "").trim() || product.id;
   const sku = String(product.sku_gt || "").trim() || "Без SKU";
   const group = String(product.group_name || "").trim();
-  const templateName = String(product.effective_template_name || "").trim();
+  const templateName = displayTemplateName(product);
   const ymStatus = String(product.marketplace_statuses?.yandex_market?.status || "Нет данных");
   const ozStatus = String(product.marketplace_statuses?.ozon?.status || "Нет данных");
   const templateSourceCategoryId = String(product.effective_template_source_category_id || "").trim();
@@ -726,7 +757,7 @@ function ProductListTable({
       header: () => "Инфо-модель",
       cell: ({ row }) => {
         const product = row.original;
-        const templateName = String(product.effective_template_name || "").trim();
+        const templateName = displayTemplateName(product);
         return templateName ? (
           <Link
             className="productListInlineLink"
@@ -1070,6 +1101,12 @@ export default function ProductListFeature() {
     return list;
   }, [childrenByParent, nodeById, parentCategoryId]);
 
+  const templateOptions = useMemo(() => (
+    templates
+      .map((template) => ({ ...template, displayName: displayTemplateItemName(template, nodeById) }))
+      .sort((left, right) => left.displayName.localeCompare(right.displayName, "ru"))
+  ), [nodeById, templates]);
+
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
   const pageFrom = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const pageTo = Math.min(total, currentPage * pageSize);
@@ -1210,12 +1247,10 @@ export default function ProductListFeature() {
             <Select value={templateFilter} onChange={(event) => updateFilters({ template: event.target.value, page: 1 })}>
               <option value="">Все модели</option>
               <option value="__without__">Без модели</option>
-              {templates
-                .slice()
-                .sort((left, right) => left.name.localeCompare(right.name, "ru"))
+              {templateOptions
                 .map((template) => (
                   <option key={template.id} value={template.id}>
-                    {template.name}
+                    {template.displayName}
                   </option>
                 ))}
             </Select>

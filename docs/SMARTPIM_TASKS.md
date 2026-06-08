@@ -181,6 +181,7 @@ Done:
     - `POST /api/templates/{template_id}/versions/{version}/rollback` restores the snapshot as a new current model version and preserves history.
 17. Product parameter export diff now uses the same backend `/products/{product_id}/parameter-flow` marketplace outputs that feed export readiness/value mapping, instead of frontend-only normalization.
 18. Deploy fails fast when authenticated browser smoke is enabled without `SMARTPIM_SMOKE_EMAIL` / `SMARTPIM_SMOKE_PASSWORD`, before uploading/restarting production.
+19. Product queue links into source mapping preserve SKU context and hide technical draft template UUIDs behind category-based info-model labels.
 
 Next:
 
