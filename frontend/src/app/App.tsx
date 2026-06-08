@@ -30,6 +30,7 @@ import DictionaryEditorRoute from "../routes/DictionaryEditorRoute";
 import SourcesMappingRoute from "../routes/SourcesMappingRoute";
 import TemplateEditorRoute from "../routes/TemplateEditorRoute";
 import TemplatesRoute from "../routes/TemplatesRoute";
+import { legacyCompetitorWorkspaceHref } from "./legacyRedirects";
 
 function SessionKickToLogin({ reason }: { reason: "denied" | "expired" }) {
   useEffect(() => {
@@ -70,6 +71,11 @@ function CatalogExchangeRedirect({ tab }: { tab: "import" | "export" }) {
   return <Navigate to={`/catalog/exchange?${searchParams.toString()}`} replace />;
 }
 
+function CompetitorWorkspaceRedirect() {
+  const location = useLocation();
+  return <Navigate to={legacyCompetitorWorkspaceHref(location.search)} replace />;
+}
+
 function ProtectedApp() {
   return (
     <Shell>
@@ -95,12 +101,12 @@ function ProtectedApp() {
 
         <Route path="/dictionaries" element={<RequirePage page="dictionaries"><DictionariesRoute /></RequirePage>} />
         <Route path="/dictionaries/:dictId" element={<RequirePage page="dictionaries"><DictionaryEditorRoute /></RequirePage>} />
-        <Route path="/data-prep/competitors" element={<Navigate to="/connectors/status?tab=competitors" replace />} />
+        <Route path="/data-prep/competitors" element={<CompetitorWorkspaceRedirect />} />
         <Route path="/competitor-mapping/category/:categoryId" element={<RequirePage page="sources_mapping"><CompetitorCategoryRoute /></RequirePage>} />
 
         <Route path="/sources" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
         <Route path="/sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
-        <Route path="/competitor-mapping" element={<Navigate to="/data-prep/competitors" replace />} />
+        <Route path="/competitor-mapping" element={<CompetitorWorkspaceRedirect />} />
         <Route path="/marketplace-mapping" element={<Navigate to="/sources?tab=sources" replace />} />
         <Route path="/connectors/status" element={<RequireAnyPage pages={["connectors_status", "sources_mapping"]}><DataSourcesFeature /></RequireAnyPage>} />
         <Route path="/images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />

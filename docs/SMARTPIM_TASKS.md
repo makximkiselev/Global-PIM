@@ -188,6 +188,7 @@ Done:
     - rollback action is only available from the preview.
 21. Legacy product card surfaces already reuse `/products/{product_id}/parameter-flow` for lineage, parameter summary and marketplace output diffs.
 22. Legacy `/sources?tab=competitors|discovery` redirects preserve both category and product context, so SKU-origin flows land in competitor matching without becoming category-only.
+23. Legacy `/data-prep/competitors` and `/competitor-mapping` redirects route SKU/category links back to `/sources?tab=sources`, while global competitor links still open data-source settings.
 
 Next:
 
