@@ -125,7 +125,7 @@ def build_product_flow_routes(
         routes.append(
             (
                 f"/sources?tab=values&category={category}&product={product}&parameter={value_parameter_q}&provider=ozon",
-                ("Сопоставления", "Значения", value_parameter),
+                ("Сопоставления", "Значения для выгрузки", "полей для проверки", value_parameter),
             )
         )
     return tuple(routes)
@@ -351,6 +351,25 @@ async def browser_smoke(
         except Exception:
             pass
 
+    async def page_body_after_markers(page: Any, markers: tuple[str, ...]) -> str:
+        marker_wait_ms = parse_positive_int_env("SMARTPIM_SMOKE_MARKER_WAIT_MS", 7000)
+        body = await page.locator("body").inner_text()
+        missing = [marker for marker in markers if marker not in body]
+        if missing:
+            try:
+                await page.wait_for_function(
+                    """(markers) => {
+                        const text = document.body?.innerText || "";
+                        return markers.every((marker) => text.includes(marker));
+                    }""",
+                    list(markers),
+                    timeout=marker_wait_ms,
+                )
+                body = await page.locator("body").inner_text()
+            except Exception:
+                pass
+        return body
+
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page(ignore_https_errors=insecure_ssl, viewport={"width": 1600, "height": 1000})
@@ -384,7 +403,7 @@ async def browser_smoke(
         for route, markers in (*DEFAULT_ROUTES, *tuple(extra_routes)):
             try:
                 await goto_app_page(page, f"{base_url}{route}")
-                body = await page.locator("body").inner_text()
+                body = await page_body_after_markers(page, markers)
                 if "Вход пользователя" in body and not email:
                     ok = allow_auth_wall
                     detail = "auth wall; set SMARTPIM_SMOKE_EMAIL/SMARTPIM_SMOKE_PASSWORD for full route markers"

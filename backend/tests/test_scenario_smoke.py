@@ -123,6 +123,15 @@ def test_build_product_flow_routes_are_parameterized_and_escaped():
     )
 
 
+def test_build_product_flow_routes_can_include_focused_values_queue():
+    routes = scenario_smoke.build_product_flow_routes("cat/id", "product 70", "50001", "Процессор", "Бренд")
+
+    assert (
+        "/sources?tab=values&category=cat%2Fid&product=product%2070&parameter=%D0%91%D1%80%D0%B5%D0%BD%D0%B4&provider=ozon",
+        ("Сопоставления", "Значения для выгрузки", "полей для проверки", "Бренд"),
+    ) in routes
+
+
 def test_build_product_flow_routes_requires_category_and_product():
     assert scenario_smoke.build_product_flow_routes("", "product_70", "50001") == ()
     assert scenario_smoke.build_product_flow_routes("category", "", "50001") == ()

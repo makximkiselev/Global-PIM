@@ -1110,11 +1110,16 @@ Next fix in the category flow:
    - frontend does not force cache bypass on normal export blocker links, avoiding slow value rebuilds and proxy 504s;
    - HTML proxy errors such as `504 Gateway Time-out` render as a short actionable message instead of raw HTML;
    - authenticated headless browser check confirmed `/sources?tab=values&...parameter=Бренд&provider=ozon` loads `67 из 85` value fields on production.
+61. Focused values smoke now waits for real queue content:
+   - when `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER` is set, the browser smoke requires `Значения для выгрузки`, the loaded field-count marker, and the exact focused parameter;
+   - route-marker checks wait briefly for async data after navigation, so values pages are not read before the queue finishes loading;
+   - production smoke with `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER=Бренд --browser --require-auth --product-flow --export-latest` passed on 2026-06-08.
 
 Current smoke status:
 
 1. Local QA smoke credentials are stored outside git in `~/.config/global-pim/smoke.env`.
 2. Product-flow authenticated smoke was run against production on 2026-06-08 with `--browser --require-auth --product-flow --export-latest`; login, route checks, latest export run and browser console all passed.
+3. Focused values authenticated smoke was run against production on 2026-06-08 with `SMARTPIM_SMOKE_FLOW_VALUE_PARAMETER=Бренд`; the values deep link loaded the real queue and selected parameter markers.
 
 ## Verification Commands
 
