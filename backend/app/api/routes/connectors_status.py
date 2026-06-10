@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -20,6 +22,7 @@ router = APIRouter(prefix="/connectors/status", tags=["connectors-status"])
 BASE_DIR = Path(__file__).resolve().parents[3]  # backend/
 DATA_DIR = BASE_DIR / "data" / "marketplaces"
 STATE_PATH = DATA_DIR / "connectors_scheduler.json"
+STORE_PROVIDERS = {"yandex_market", "ozon", "insales"}
 
 SCHEDULE_SECONDS: Dict[str, int] = {
     "5m": 5 * 60,
@@ -66,6 +69,14 @@ PROVIDERS_DEF: Dict[str, Dict[str, Any]] = {
         "title": "ComfyUI",
         "methods": {
             "healthcheck": "Проверка доступности генератора",
+        },
+    },
+    "insales": {
+        "title": "InSales",
+        "methods": {
+            "categories": "Проверка категорий",
+            "products": "Проверка товаров",
+            "properties": "Проверка характеристик",
         },
     },
 }
@@ -229,6 +240,39 @@ def _load_state(organization_id: Optional[str] = None) -> Dict[str, Any]:
                     }
                 )
             prow["import_stores"] = normalized_stores
+        elif pcode == "insales":
+            normalized_stores: List[Dict[str, Any]] = []
+            for raw in import_stores:
+                if not isinstance(raw, dict):
+                    continue
+                store_id = str(raw.get("id") or "").strip() or f"insales_store_{uuid4().hex[:8]}"
+                shop_domain = _normalize_insales_domain(raw.get("business_id") or raw.get("shop_domain"))
+                api_login = str(raw.get("client_id") or raw.get("api_login") or "").strip()
+                api_password = str(raw.get("api_key") or raw.get("token") or raw.get("api_password") or "").strip()
+                title = str(raw.get("title") or shop_domain or store_id).strip()
+                if not shop_domain or not api_login or not api_password:
+                    continue
+                normalized_stores.append(
+                    {
+                        "id": store_id,
+                        "title": title,
+                        "business_id": shop_domain,
+                        "client_id": api_login,
+                        "api_key": api_password,
+                        "token": api_password,
+                        "auth_mode": "api-key",
+                        "enabled": bool(raw.get("enabled", True)),
+                        "export_enabled": bool(raw.get("export_enabled", False)),
+                        "safe_test_enabled": bool(raw.get("safe_test_enabled", False)),
+                        "notes": str(raw.get("notes") or "").strip(),
+                        "last_check_at": raw.get("last_check_at"),
+                        "last_check_status": str(raw.get("last_check_status") or "").strip() or "idle",
+                        "last_check_error": str(raw.get("last_check_error") or "").strip(),
+                        "created_at": raw.get("created_at") or _now_iso(),
+                        "updated_at": raw.get("updated_at") or _now_iso(),
+                    }
+                )
+            prow["import_stores"] = normalized_stores
         prow["settings"] = settings
         doc["providers"][pcode] = prow
     return doc
@@ -306,9 +350,53 @@ def _enabled_ozon_stores(organization_id: Optional[str] = None) -> List[Dict[str
     return out
 
 
+def _normalize_insales_domain(value: Any) -> str:
+    raw = str(value or "").strip()
+    raw = raw.removeprefix("https://").removeprefix("http://").strip("/")
+    return raw.lower()
+
+
+def _first_enabled_insales_store(organization_id: Optional[str] = None) -> Dict[str, Any]:
+    state = _load_state(organization_id)
+    prow = state.get("providers", {}).get("insales", {})
+    stores = prow.get("import_stores") if isinstance(prow, dict) else []
+    if isinstance(stores, list):
+        for store in stores:
+            if not isinstance(store, dict):
+                continue
+            if not bool(store.get("enabled")):
+                continue
+            if (
+                str(store.get("business_id") or "").strip()
+                and str(store.get("client_id") or "").strip()
+                and str(store.get("api_key") or store.get("token") or "").strip()
+            ):
+                return store
+    return {}
+
+
 def _normalize_store_auth_mode(value: Any) -> str:
     mode = str(value or "").strip().lower() or "auto"
     return mode if mode in {"auto", "api-key", "oauth", "bearer"} else "auto"
+
+
+async def _probe_insales_endpoint(store: Dict[str, Any], endpoint: str) -> Dict[str, Any]:
+    shop_domain = _normalize_insales_domain(store.get("business_id"))
+    api_login = str(store.get("client_id") or "").strip()
+    api_password = str(store.get("api_key") or store.get("token") or "").strip()
+    if not shop_domain:
+        raise HTTPException(status_code=400, detail="INSALES_SHOP_DOMAIN_REQUIRED")
+    if not api_login:
+        raise HTTPException(status_code=400, detail="INSALES_API_LOGIN_REQUIRED")
+    if not api_password:
+        raise HTTPException(status_code=400, detail="INSALES_API_PASSWORD_REQUIRED")
+    token = base64.b64encode(f"{api_login}:{api_password}".encode("utf-8")).decode("ascii")
+    url = f"https://{shop_domain}{endpoint}"
+    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=8.0), follow_redirects=True) as client:
+        response = await client.get(url, headers={"Authorization": f"Basic {token}", "Accept": "application/json"})
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail=f"INSALES_PROBE_FAILED {response.status_code}: {response.text[:240]}")
+    return {"ok": True, "status_code": response.status_code}
 
 
 async def _run_yandex_categories_tree(organization_id: Optional[str] = None) -> None:
@@ -432,6 +520,27 @@ async def _run_comfyui_healthcheck(organization_id: Optional[str] = None) -> Non
         raise ConnectorSoftWarning(message)
 
 
+async def _run_insales_categories(organization_id: Optional[str] = None) -> None:
+    store = _first_enabled_insales_store(organization_id)
+    if not store:
+        raise HTTPException(status_code=400, detail="INSALES_IMPORT_STORE_MISSING")
+    await _probe_insales_endpoint(store, "/admin/categories.json")
+
+
+async def _run_insales_products(organization_id: Optional[str] = None) -> None:
+    store = _first_enabled_insales_store(organization_id)
+    if not store:
+        raise HTTPException(status_code=400, detail="INSALES_IMPORT_STORE_MISSING")
+    await _probe_insales_endpoint(store, "/admin/products.json")
+
+
+async def _run_insales_properties(organization_id: Optional[str] = None) -> None:
+    store = _first_enabled_insales_store(organization_id)
+    if not store:
+        raise HTTPException(status_code=400, detail="INSALES_IMPORT_STORE_MISSING")
+    await _probe_insales_endpoint(store, "/admin/properties.json")
+
+
 METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[Optional[str]], Awaitable[None]]] = {
     ("yandex_market", "categories_tree"): _run_yandex_categories_tree,
     ("yandex_market", "category_parameters"): _run_yandex_category_parameters,
@@ -440,6 +549,9 @@ METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[Optional[str]], Awaitable[None]]
     ("ozon", "category_attributes"): _run_ozon_category_attributes,
     ("ozon", "product_content_status"): _run_ozon_product_content_status,
     ("comfyui", "healthcheck"): _run_comfyui_healthcheck,
+    ("insales", "categories"): _run_insales_categories,
+    ("insales", "products"): _run_insales_products,
+    ("insales", "properties"): _run_insales_properties,
 }
 
 
@@ -568,7 +680,12 @@ class ImportStoreReq(BaseModel):
     auth_mode: Optional[str] = None
     enabled: bool = True
     export_enabled: bool = True
+    safe_test_enabled: bool = False
     notes: Optional[str] = None
+
+
+class ImportStoreExportReq(BaseModel):
+    export_enabled: bool = True
 
 
 @router.get("")
@@ -631,7 +748,7 @@ def connectors_update_provider_settings(req: UpdateProviderSettingsReq, request:
 def connectors_create_import_store(req: ImportStoreReq, request: Request) -> Dict[str, Any]:
     org_id = _request_organization_id(request)
     provider = str(req.provider or "").strip()
-    if provider not in {"yandex_market", "ozon"}:
+    if provider not in STORE_PROVIDERS:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
     lock = _state_lock(org_id)
@@ -661,7 +778,7 @@ def connectors_create_import_store(req: ImportStoreReq, request: Request) -> Dic
                     "updated_at": now,
                 }
             )
-        else:
+        elif provider == "ozon":
             client_id = str(req.client_id or "").strip()
             api_key = str(req.api_key or req.token or "").strip()
             if not client_id:
@@ -683,6 +800,35 @@ def connectors_create_import_store(req: ImportStoreReq, request: Request) -> Dic
                     "updated_at": now,
                 }
             )
+        else:
+            shop_domain = _normalize_insales_domain(req.business_id)
+            api_login = str(req.client_id or "").strip()
+            api_password = str(req.api_key or req.token or "").strip()
+            if not shop_domain:
+                raise HTTPException(status_code=400, detail="INSALES_SHOP_DOMAIN_REQUIRED")
+            if not api_login:
+                raise HTTPException(status_code=400, detail="INSALES_API_LOGIN_REQUIRED")
+            if not api_password:
+                raise HTTPException(status_code=400, detail="INSALES_API_PASSWORD_REQUIRED")
+            if any(str(x.get("business_id") or "").strip() == shop_domain for x in stores if isinstance(x, dict)):
+                raise HTTPException(status_code=400, detail="INSALES_IMPORT_STORE_ALREADY_EXISTS")
+            stores.append(
+                {
+                    "id": f"insales_store_{uuid4().hex[:8]}",
+                    "title": str(req.title or "").strip(),
+                    "business_id": shop_domain,
+                    "client_id": api_login,
+                    "api_key": api_password,
+                    "token": api_password,
+                    "auth_mode": "api-key",
+                    "enabled": bool(req.enabled),
+                    "export_enabled": bool(req.export_enabled),
+                    "safe_test_enabled": bool(req.safe_test_enabled),
+                    "notes": str(req.notes or "").strip(),
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
         prow["import_stores"] = stores
         state["providers"][provider] = prow
         _save_state(state, org_id)
@@ -695,7 +841,7 @@ def connectors_create_import_store(req: ImportStoreReq, request: Request) -> Dic
 def connectors_update_import_store(provider: str, store_id: str, req: ImportStoreReq, request: Request) -> Dict[str, Any]:
     org_id = _request_organization_id(request)
     provider = str(provider or "").strip()
-    if provider not in {"yandex_market", "ozon"}:
+    if provider not in STORE_PROVIDERS:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
     lock = _state_lock(org_id)
@@ -724,7 +870,7 @@ def connectors_update_import_store(provider: str, store_id: str, req: ImportStor
             target["business_id"] = business_id
             target["token"] = str(req.token or "").strip()
             target["auth_mode"] = _normalize_store_auth_mode(req.auth_mode)
-        else:
+        elif provider == "ozon":
             client_id = str(req.client_id or "").strip()
             api_key = str(req.api_key or req.token or "").strip()
             if not client_id:
@@ -738,9 +884,59 @@ def connectors_update_import_store(provider: str, store_id: str, req: ImportStor
                 raise HTTPException(status_code=400, detail="OZON_IMPORT_STORE_ALREADY_EXISTS")
             target["client_id"] = client_id
             target["api_key"] = api_key
+        else:
+            shop_domain = _normalize_insales_domain(req.business_id)
+            api_login = str(req.client_id or "").strip()
+            api_password = str(req.api_key or req.token or "").strip()
+            if not shop_domain:
+                raise HTTPException(status_code=400, detail="INSALES_SHOP_DOMAIN_REQUIRED")
+            if not api_login:
+                raise HTTPException(status_code=400, detail="INSALES_API_LOGIN_REQUIRED")
+            if not api_password:
+                raise HTTPException(status_code=400, detail="INSALES_API_PASSWORD_REQUIRED")
+            if any(
+                str(x.get("business_id") or "").strip() == shop_domain and str(x.get("id") or "").strip() != str(store_id or "").strip()
+                for x in stores if isinstance(x, dict)
+            ):
+                raise HTTPException(status_code=400, detail="INSALES_IMPORT_STORE_ALREADY_EXISTS")
+            target["business_id"] = shop_domain
+            target["client_id"] = api_login
+            target["api_key"] = api_password
+            target["token"] = api_password
+            target["auth_mode"] = "api-key"
         target["enabled"] = bool(req.enabled)
         target["export_enabled"] = bool(req.export_enabled)
         target["notes"] = str(req.notes or "").strip()
+        target["updated_at"] = _now_iso()
+        prow["import_stores"] = stores
+        state["providers"][provider] = prow
+        _save_state(state, org_id)
+    finally:
+        lock.release()
+    return _state_payload(state)
+
+
+@router.patch("/import-stores/{provider}/{store_id}/export")
+def connectors_update_import_store_export(provider: str, store_id: str, req: ImportStoreExportReq, request: Request) -> Dict[str, Any]:
+    org_id = _request_organization_id(request)
+    provider = str(provider or "").strip()
+    if provider not in STORE_PROVIDERS:
+        raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
+
+    lock = _state_lock(org_id)
+    lock.acquire()
+    try:
+        state = _load_state(org_id)
+        prow = state["providers"].setdefault(provider, {"methods": {}, "settings": {}, "import_stores": []})
+        stores = prow.get("import_stores") if isinstance(prow.get("import_stores"), list) else []
+        target = None
+        for store in stores:
+            if isinstance(store, dict) and str(store.get("id") or "").strip() == str(store_id or "").strip():
+                target = store
+                break
+        if target is None:
+            raise HTTPException(status_code=404, detail="IMPORT_STORE_NOT_FOUND")
+        target["export_enabled"] = bool(req.export_enabled)
         target["updated_at"] = _now_iso()
         prow["import_stores"] = stores
         state["providers"][provider] = prow
@@ -754,7 +950,7 @@ def connectors_update_import_store(provider: str, store_id: str, req: ImportStor
 def connectors_delete_import_store(provider: str, store_id: str, request: Request) -> Dict[str, Any]:
     org_id = _request_organization_id(request)
     provider = str(provider or "").strip()
-    if provider not in {"yandex_market", "ozon"}:
+    if provider not in STORE_PROVIDERS:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
     lock = _state_lock(org_id)
@@ -776,7 +972,7 @@ def connectors_delete_import_store(provider: str, store_id: str, request: Reques
 async def connectors_check_import_store(provider: str, store_id: str, request: Request) -> Dict[str, Any]:
     org_id = _request_organization_id(request)
     provider = str(provider or "").strip()
-    if provider not in {"yandex_market", "ozon"}:
+    if provider not in STORE_PROVIDERS:
         raise HTTPException(status_code=400, detail="IMPORT_STORES_UNSUPPORTED_PROVIDER")
 
     lock = _state_lock(org_id)
@@ -807,11 +1003,15 @@ async def connectors_check_import_store(provider: str, store_id: str, request: R
             )
             ok = bool(probe.get("ok"))
             detected_auth_mode = str(probe.get("auth_mode") or detected_auth_mode)
-        else:
+        elif provider == "ozon":
             probe = await ozon_market.probe_store_access(
                 api_key=str(target.get("api_key") or "").strip(),
                 client_id=str(target.get("client_id") or "").strip(),
             )
+            ok = bool(probe.get("ok"))
+            detected_auth_mode = "api-key"
+        else:
+            probe = await _probe_insales_endpoint(target, "/admin/categories.json")
             ok = bool(probe.get("ok"))
             detected_auth_mode = "api-key"
     except HTTPException as e:

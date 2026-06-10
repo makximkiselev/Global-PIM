@@ -63,6 +63,7 @@ type StatusResp = {
   schedule_options: ScheduleOption[];
 };
 type ConnectorsView = "overview" | "marketplaces" | "stores";
+type StoreProviderCode = "yandex_market" | "ozon" | "insales";
 
 function fmtDate(s?: string | null) {
   if (!s) return "еще не запускался";
@@ -96,6 +97,12 @@ function storeAccessLabel(store: ImportStore) {
   if (store.last_check_status === "ok") return "доступ подтвержден";
   if (store.last_check_status === "error") return "ошибка доступа";
   return "ожидает проверки";
+}
+
+function toStoreProviderCode(provider: string): StoreProviderCode {
+  if (provider === "ozon") return "ozon";
+  if (provider === "insales") return "insales";
+  return "yandex_market";
 }
 
 export default function ConnectorsStatus({ embedded = false, view = "overview" }: { embedded?: boolean; view?: ConnectorsView } = {}) {
@@ -185,7 +192,8 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   }
 
   function openCreateStore(provider: string) {
-    setStoreProvider(provider);
+    const providerCode = toStoreProviderCode(provider);
+    setStoreProvider(providerCode);
     setStoreModalMode("create");
     setEditingStoreId("");
     setStoreTitle("");
@@ -195,12 +203,13 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setStoreExportEnabled(true);
     setStoreNotes("");
     setStoreToken("");
-    setStoreAuthMode("auto");
+    setStoreAuthMode(providerCode === "yandex_market" ? "auto" : "api-key");
     setStoreModalOpen(true);
   }
 
   function openEditStore(provider: string, store: ImportStore) {
-    setStoreProvider(provider);
+    const providerCode = toStoreProviderCode(provider);
+    setStoreProvider(providerCode);
     setStoreModalMode("edit");
     setEditingStoreId(store.id);
     setStoreTitle(store.title || "");
@@ -210,7 +219,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setStoreExportEnabled(store.export_enabled !== false);
     setStoreNotes(store.notes || "");
     setStoreToken(store.token || store.api_key || "");
-    setStoreAuthMode((store.auth_mode as "auto" | "api-key" | "oauth" | "bearer") || (provider === "ozon" ? "api-key" : "auto"));
+    setStoreAuthMode((store.auth_mode as "auto" | "api-key" | "oauth" | "bearer") || (providerCode === "yandex_market" ? "auto" : "api-key"));
     setStoreModalOpen(true);
   }
 
@@ -232,6 +241,10 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
       setError("Заполните ID клиента и ключ доступа");
       return;
     }
+    if (storeProvider === "insales" && (!storeBusinessId.trim() || !storeClientId.trim() || !storeToken.trim())) {
+      setError("Заполните домен магазина, API login и API password");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -240,11 +253,12 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
         title: storeTitle.trim(),
         business_id: storeBusinessId.trim(),
         client_id: storeClientId.trim(),
-        api_key: storeProvider === "ozon" ? storeToken.trim() : "",
+        api_key: storeProvider === "ozon" || storeProvider === "insales" ? storeToken.trim() : "",
         token: storeToken.trim(),
         auth_mode: storeAuthMode,
         enabled: storeEnabled,
         export_enabled: storeExportEnabled,
+        safe_test_enabled: false,
         notes: storeNotes.trim(),
       };
       const r = storeModalMode === "create"
@@ -462,7 +476,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                 </div>
               ) : null}
 
-              {showStores && (provider.code === "yandex_market" || provider.code === "ozon") ? (
+              {showStores && (provider.code === "yandex_market" || provider.code === "ozon" || provider.code === "insales") ? (
                 <div className="cs-providerSection">
                   <div className="cs-sectionHead">
                     <div>
@@ -496,6 +510,12 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                             <>
                               <div><dt>ID кабинета</dt><dd>{store.business_id}</dd></div>
                               <div><dt>Ключ доступа</dt><dd>{maskToken(store.token)}</dd></div>
+                            </>
+                          ) : provider.code === "insales" ? (
+                            <>
+                              <div><dt>Домен</dt><dd>{store.business_id}</dd></div>
+                              <div><dt>API login</dt><dd>{store.client_id}</dd></div>
+                              <div><dt>API password</dt><dd>{maskToken(store.api_key || store.token)}</dd></div>
                             </>
                           ) : (
                             <>
@@ -614,6 +634,21 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                 <option value="oauth">OAuth</option>
                 <option value="bearer">Bearer</option>
               </Select>
+            </Field>
+          </>
+        ) : storeProvider === "insales" ? (
+          <>
+            <Field label="Домен магазина" hint="Например: my-shop.myinsales.ru или собственный домен магазина.">
+              <TextInput value={storeBusinessId} onChange={(e) => setStoreBusinessId(e.target.value)} />
+            </Field>
+            <Field label="API login">
+              <TextInput value={storeClientId} onChange={(e) => setStoreClientId(e.target.value)} />
+            </Field>
+            <Field
+              label="API password"
+              hint="Используется для Basic Authorization в /admin/*.json."
+            >
+              <TextInput value={storeToken} onChange={(e) => setStoreToken(e.target.value)} />
             </Field>
           </>
         ) : (

@@ -333,6 +333,19 @@ else
   echo "Requirements unchanged; skipping pip install"
 fi
 
+if [[ -f "\${APP_SERVER_PATH}/backend/alembic.ini" && -f "\${APP_SERVER_PATH}/backend/app/migrations/env.py" ]]; then
+  echo "Running database migrations"
+  migration_database_url="\$(grep '^PIM_DATABASE_URL=' "\${APP_SERVER_PATH}/backend/.env" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  if [[ -z "\${migration_database_url}" ]]; then
+    migration_database_url="\$(grep '^DATABASE_URL=' "\${APP_SERVER_PATH}/backend/.env" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  fi
+  test -n "\${migration_database_url}"
+  export DATABASE_URL="\${migration_database_url}"
+  cd "\${APP_SERVER_PATH}/backend"
+  "\${APP_SERVER_PATH}/.venv/bin/alembic" -c alembic.ini upgrade head
+  unset DATABASE_URL
+fi
+
 repair_app_db_grants
 
 systemctl restart "\${APP_SERVICE_NAME}"

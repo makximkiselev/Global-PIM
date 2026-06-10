@@ -703,6 +703,76 @@ Next fix in the category flow:
 15. `/sources` context fallback no longer mixes an explicit category URL with the last cached SKU:
    - if the URL has `category` and no `product`, the page works in pure category context;
    - cached SKU context is reused only when there is no explicit category, or when the explicit SKU matches the cached SKU.
+16. Parameter matching vs product enrichment is now explicit:
+   - `/sources?tab=params&category=...&product=...` shows the route `sources -> PIM value -> provider values -> SKU export`;
+   - matching fields does not itself fill a product value;
+   - product value filling is visible in `/products/{product_id}?tab=attributes`;
+   - AI may write a PIM value only when source evidence exists and the value is high-confidence;
+   - conflicting source values remain `нужно проверить`;
+   - empty fields with evidence remain `есть кандидаты`;
+   - empty fields without evidence remain `нет значения`.
+17. Product API now returns category info-model context for product cards:
+   - `GET /products/{product_id}` includes `info_model.has_template`, `attributes_count`, and `attributes` when the product category has a template/model;
+   - the product card seeds a read-time feature skeleton from the category template so `product_70` no longer dead-ends with `Инфо-модель не создана` while its category model exists.
+18. Product value review actions are visible in `/products/{product_id}?tab=attributes`:
+   - each source evidence card has `Принять значение`;
+   - the selected field has `Оставить для ручного заполнения`;
+   - accepting writes `content.features[].value`, `fill_source = source_reviewed`, and `review_status = accepted`;
+   - manual deferral writes `review_status = manual_required` so the field leaves the conflict state without silently choosing a value;
+   - production browser check accepted `Название цвета от производителя = Desert Titanium` for `product_70` and the `проверено` state persisted after reload.
+19. Product value review now has an explicit SKU-family action:
+   - source evidence cards can show `Применить к группе (N SKU)` when the product has variants in the same `group_id`;
+   - this action writes the accepted value to every SKU in the variant family through `POST /products/{product_id}/features/apply-to-group`;
+   - saved features keep existing `source_values`, merge incoming evidence, and record `source_values.review.source_product_id`;
+   - use this only for shared facts that are identical across the group, not for variant axes such as memory, color, SIM configuration, kit, or regional model differences.
+20. Product value review now blocks group apply for detected variant-axis fields:
+   - color, built-in storage, SIM/eSIM, kit, regional version, size, connectivity, SKU/article/barcode fields show a `Только этот SKU` guard instead of the group button;
+   - common fields such as processor/RAM can still use `Применить к группе`;
+   - the frontend guard is backed by the product PATCH service: cross-SKU review writes with `source_values.review.source_product_id` are rejected for detected variant-axis fields before saving.
+21. Export blockers now deep-link into value mapping:
+   - value-mapping blockers include the blocked parameter name in `missing_details.parameter`;
+   - export blocker actions keep one button per fix section, but the values button opens the first concrete blocked parameter;
+   - `/sources?tab=values&category=...&product=...&parameter=...` selects the matching field and shows an `Открыт блокер экспорта` focus notice;
+   - production browser check on `product_70 / GT 50001` verified the Я.Маркет blocker opens `Аутентификация` directly on the values screen.
+22. Export preview and AI competitor discovery tightened:
+   - Ozon and Я.Маркет batch preparation replaces technical price fallback with cached marketplace-store price when it exists; if the selected store has no imported price, the row gets a warning and the real send preflight blocks the whole run instead of partially exporting another store;
+   - Ozon product sync now refreshes `/v5/product/info/prices` by `offer_id` and stores the returned price row in `import_products_info`, so export can use the selected Ozon store price after marketplace hydration/import;
+   - Ozon smartphone preview restores system `ТН ВЭД` attribute `22232` with dictionary value `8517130000 - Смартфоны`;
+   - controlled multi-value dictionaries use provider-specific export values for both Ozon and Я.Маркет, and missing mappings create value blockers;
+   - optional controlled values that cannot be mapped no longer block export; they are omitted from payload and returned as warnings for content review;
+   - export UI shows these warnings separately from blockers: ready batch remains green, metrics/table show `Проверить`, and payload package keeps warning counts;
+   - `/catalog/exchange/export/runs/{run_id}/send` sends only saved run batches, uses the stores selected in the run, persists `last_send`/`send_history`, and refuses to send anything when any selected target fails preflight.
+23. Export store/media contract tightened:
+   - backend export preparation now rejects empty `store_ids` for a provider target, so a missing UI selection cannot silently export to every enabled store;
+   - Ozon has explicit regression coverage for product media export selection/order, matching Я.Маркет behavior;
+   - product media bulk-selection copy now says it is for deletion, while the per-image `Выгружать` control and order badge define the export set.
+   - competitor discovery can use AI from confirmed product links when ordinary source discovery finds only hidden/low-confidence candidates;
+   - AI competitor suggestions are constrained to the selected competitor domain and are stored under the same discovery flow with `use_ai` preserved for background workers.
+24. Production was reset to a catalog-only working baseline on 2026-06-10:
+   - full pre-reset JSON gzip backup: `/opt/projects/global-pim/backups/pre-catalog-only-reset-20260610-212036.json.gz`;
+   - preserved `catalog_nodes_rel` (273), `products_rel` (1091), `product_groups_rel` (105), product variants and SKU indexes;
+   - cleared derived/runtime layers: info models, parameter/value mappings, dictionaries, channel links, workflow runs, connector stores/state, export statuses, category template links/resolution, old run JSON documents;
+   - created organizations `GSM King` (`org_gsm_king`) and `Девайс Молл` (`org_device_mall`);
+   - `owner` is `org_owner` in every organization; `andreyk@id-store.ru` was not promoted.
+25. Added reusable Codex skill `b2b-saas-page-architecture` for heavy B2B SaaS page architecture:
+   - shadcn/ui architecture vocabulary;
+   - Origin UI table ergonomics;
+   - Tremor-style KPI/analytics blocks;
+   - required output format for product-architecture page designs.
+26. InSales API integration baseline:
+   - official API docs are at `https://api.insales.ru/`;
+   - API uses `/admin/*.json` endpoints and Basic Authorization examples;
+   - categories are checked via `GET /admin/categories.json`;
+   - product read/write endpoints include `/admin/products.json` and product field value endpoints under `/admin/products/:product_id/product_field_values...`;
+   - properties/options are represented through `/admin/properties.json`, `/admin/option_names.json`, and `/admin/option_names/:option_name_id/option_values.json`;
+   - backend connector status now includes provider `insales`;
+   - connector store CRUD supports InSales credentials: shop domain, API login, API password;
+   - store check probes `GET https://{shop_domain}/admin/categories.json` with Basic Auth.
+27. Product queue redesign started from `/products`:
+   - page now follows the new SaaS page architecture: compact top bar, KPI summary strip, sticky filter toolbar, primary table, right inspector, sticky bulk action bar;
+   - table order now prioritizes SKU and next action before category/model details;
+   - filters are grouped as a working toolbar, not competing navigation;
+   - first implementation keeps existing API contracts and only changes UI structure.
 
 ## Verification Commands
 

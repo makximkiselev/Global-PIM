@@ -288,7 +288,7 @@ function ProductListEntryBar({
   return (
     <div className="productListEntryBar">
       <div className="productListEntryTitleBlock">
-        <div className="productListEntryEyebrow">Каталог товаров</div>
+        <div className="productListEntryEyebrow">Рабочая очередь</div>
         <h1>{hasCategoryScope ? `Товары: ${categoryName}` : "Товары"}</h1>
         <div className="productListEntryMeta">
           <span>{branchLabel}</span>
@@ -299,6 +299,9 @@ function ProductListEntryBar({
         </div>
       </div>
       <div className="productListEntryActions">
+        <Link className="btn" to="/catalog">
+          Каталог
+        </Link>
         <Link className="btn" to={catalogExchangeHref("import", categoryId)}>
           Импорт
         </Link>
@@ -309,6 +312,65 @@ function ProductListEntryBar({
           Создать товар
         </Link>
       </div>
+    </div>
+  );
+}
+
+function ProductListSummaryStrip({
+  rows,
+  total,
+  selectedCount,
+  loading,
+}: {
+  rows: ProductItem[];
+  total: number;
+  selectedCount: number;
+  loading: boolean;
+}) {
+  const noTemplate = rows.filter((product) => !String(product.effective_template_name || "").trim()).length;
+  const ready = rows.filter((product) => {
+    const hasTemplate = !!String(product.effective_template_name || "").trim();
+    const ym = normalizeStatus(
+      product.marketplace_statuses?.yandex_market?.status,
+      product.marketplace_statuses?.yandex_market?.present,
+    );
+    const oz = normalizeStatus(
+      product.marketplace_statuses?.ozon?.status,
+      product.marketplace_statuses?.ozon?.present,
+    );
+    return hasTemplate && ym === "good" && oz === "good";
+  }).length;
+  const needsWork = Math.max(0, rows.length - ready);
+  const withoutChannels = rows.filter((product) => {
+    const ym = normalizeStatus(
+      product.marketplace_statuses?.yandex_market?.status,
+      product.marketplace_statuses?.yandex_market?.present,
+    );
+    const oz = normalizeStatus(
+      product.marketplace_statuses?.ozon?.status,
+      product.marketplace_statuses?.ozon?.present,
+    );
+    return ym !== "good" || oz !== "good";
+  }).length;
+
+  const items = [
+    { label: "Всего SKU", value: total, meta: loading ? "обновляется" : `${rows.length} на странице` },
+    { label: "Требуют работы", value: needsWork, meta: "модель, каналы или экспорт" },
+    { label: "Без инфо-модели", value: noTemplate, meta: "сначала сопоставить параметры" },
+    { label: "Нет готовых каналов", value: withoutChannels, meta: "Я.Маркет / Ozon" },
+    { label: "Готовы", value: ready, meta: "можно проверять экспорт" },
+    { label: "Выбрано", value: selectedCount, meta: selectedCount ? "доступны массовые действия" : "выбор через чекбоксы" },
+  ];
+
+  return (
+    <div className="productListSummaryStrip" aria-label="Сводка очереди товаров">
+      {items.map((item) => (
+        <div key={item.label} className="productListSummaryItem">
+          <div className="productListSummaryLabel">{item.label}</div>
+          <div className="productListSummaryValue">{item.value}</div>
+          <div className="productListSummaryMeta">{item.meta}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -498,10 +560,10 @@ function ProductListTable({
                 />
               </th>
               <th>Товар</th>
+              <th>Следующий шаг</th>
               <th>Категория</th>
               <th>Инфо-модель</th>
               <th>Семейство</th>
-              <th>Что сделать</th>
               <th>Площадки</th>
               <th className="productListActionCol">Действие</th>
             </tr>
@@ -512,10 +574,10 @@ function ProductListTable({
                   <tr key={`sk-${index}`} className="productListRow productListRowSkeleton">
                     <td><span className="productListSkeleton productListSkeletonCheck" /></td>
                     <td><span className="productListSkeleton productListSkeletonTitle" /></td>
-                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
-                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
-                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
                     <td><span className="productListSkeleton productListSkeletonBadge" /></td>
+                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
+                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
+                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
                     <td><span className="productListSkeleton productListSkeletonChannels" /></td>
                     <td><span className="productListSkeleton productListSkeletonAction" /></td>
                   </tr>
@@ -563,6 +625,12 @@ function ProductListTable({
                         </div>
                       </td>
                       <td>
+                        <div className="productListNextStep">
+                          <Badge tone={nextStep.tone}>{nextStep.title}</Badge>
+                          <div>{nextStep.detail}</div>
+                        </div>
+                      </td>
+                      <td>
                         <div className="productListCategoryCell">
                           <div className="productListCellMeta isStrong">{category.primary}</div>
                           {category.secondary ? <div className="productListCellSubtle">{category.secondary}</div> : null}
@@ -591,12 +659,6 @@ function ProductListTable({
                         <div className="productListGroupCell">
                           <div className="productListCellMeta isStrong">{group.primary}</div>
                           {group.secondary ? <div className="productListCellSubtle">{group.secondary}</div> : null}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="productListNextStep">
-                          <Badge tone={nextStep.tone}>{nextStep.title}</Badge>
-                          <div>{nextStep.detail}</div>
                         </div>
                       </td>
                       <td>
@@ -1033,8 +1095,17 @@ export default function ProductListFeature() {
         </Alert>
       ) : null}
 
+      <ProductListSummaryStrip
+        rows={products}
+        total={total}
+        selectedCount={selectedIds.length}
+        loading={loading}
+      />
+
       <DataToolbar
         className="productListToolbar"
+        title="Фильтры очереди"
+        subtitle="Оставь на экране только SKU, по которым нужно принять решение."
         actions={
           hasActiveFilters ? (
             <Button
@@ -1056,20 +1127,22 @@ export default function ProductListFeature() {
             </Button>
           ) : null
         }
+        compact
       >
         <div className="productListToolbarContent">
-          <div className="productListToolbarSearch">
-            <TextInput
-              className="pn-input productListSearchInput"
-              placeholder="Поиск по названию, SKU и группе..."
-              value={searchDraft}
-              onChange={(event) => setSearchDraft(event.target.value)}
-            />
+          <div className="productListToolbarTop">
+            <div className="productListToolbarSearch">
+              <TextInput
+                className="pn-input productListSearchInput"
+                placeholder="Поиск по названию, SKU и группе..."
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+              />
+            </div>
+            <ProductQueueSwitch mode={queueMode} onChange={(next) => updateFilters({ view: next, page: 1 })} />
           </div>
 
-          <ProductQueueSwitch mode={queueMode} onChange={(next) => updateFilters({ view: next, page: 1 })} />
-
-          <div className="productListFiltersGrid">
+          <div className="productListFiltersGrid" aria-label="Фильтры товаров">
             <Select value={parentCategoryId} onChange={(event) => updateFilters({ parent: event.target.value, sub: "", page: 1 })}>
               <option value="">Все категории</option>
               {rootCategories.map((category) => (

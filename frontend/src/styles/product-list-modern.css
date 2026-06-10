@@ -1,7 +1,7 @@
 .productListPage{
   display:flex;
   flex-direction:column;
-  gap:10px;
+  gap:12px;
 }
 
 .productListPage .page-header{
@@ -13,11 +13,11 @@
   align-items:center;
   justify-content:space-between;
   gap:18px;
-  padding:14px 16px;
-  border:1px solid rgba(var(--line-rgb), .72);
-  border-radius:20px;
-  background:linear-gradient(180deg, rgba(var(--card-rgb), .98), rgba(var(--card-rgb), .86));
-  box-shadow:0 14px 42px rgba(0, 0, 0, .1);
+  padding:16px 18px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(var(--card-rgb), .96);
+  box-shadow:0 1px 2px rgba(15, 23, 42, .04);
 }
 
 .productListEntryTitleBlock{
@@ -29,15 +29,15 @@
   color:rgba(var(--brand-rgb), .92);
   font-size:10px;
   font-weight:900;
-  letter-spacing:.16em;
+  letter-spacing:.12em;
   text-transform:uppercase;
 }
 
 .productListEntryTitleBlock h1{
   margin:0;
-  font-size:24px;
-  line-height:1;
-  letter-spacing:-.045em;
+  font-size:26px;
+  line-height:1.08;
+  letter-spacing:0;
 }
 
 .productListEntryMeta{
@@ -52,9 +52,9 @@
   display:inline-flex;
   align-items:center;
   min-height:24px;
-  padding:0 9px;
+  padding:0 8px;
   border:1px solid rgba(var(--line-rgb), .7);
-  border-radius:999px;
+  border-radius:8px;
   background:rgba(var(--surface-rgb), .62);
   color:var(--muted);
   font-size:11px;
@@ -71,33 +71,30 @@
 
 .productListSummaryStrip{
   display:grid;
-  grid-template-columns:repeat(4, minmax(0, 1fr));
-  gap:0;
-  padding:0;
-  overflow:hidden;
+  grid-template-columns:repeat(6, minmax(0, 1fr));
+  gap:10px;
 }
 
 .productListSummaryItem{
-  padding:18px 20px;
-  border-right:1px solid var(--line);
-  background:linear-gradient(180deg, rgba(var(--card-rgb), .98), rgba(var(--card-rgb), .9));
-}
-
-.productListSummaryItem:last-child{
-  border-right:0;
+  min-height:96px;
+  padding:14px 14px 13px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(var(--card-rgb), .96);
+  box-shadow:0 1px 2px rgba(15, 23, 42, .035);
 }
 
 .productListSummaryLabel{
   font-size:11px;
   font-weight:800;
   text-transform:uppercase;
-  letter-spacing:.08em;
+  letter-spacing:.06em;
   color:var(--text-soft);
 }
 
 .productListSummaryValue{
   margin-top:8px;
-  font-size:32px;
+  font-size:28px;
   line-height:1;
   font-weight:900;
   color:var(--text);
@@ -113,8 +110,12 @@
 
 .productListToolbar{
   position:sticky;
-  top:10px;
+  top:8px;
   z-index:12;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(var(--card-rgb), .96);
+  backdrop-filter:blur(12px);
 }
 
 .productListToolbarContent{
@@ -124,8 +125,15 @@
   width:100%;
 }
 
+.productListToolbarTop{
+  display:grid;
+  grid-template-columns:minmax(260px, 520px) minmax(0, 1fr);
+  gap:12px;
+  align-items:center;
+}
+
 .productListToolbarSearch{
-  width:min(680px, 100%);
+  width:100%;
 }
 
 .productListSearchInput{
@@ -145,7 +153,7 @@
 .productListQueueSwitchButton{
   min-height:32px;
   padding:0 12px;
-  border-radius:999px;
+  border-radius:8px;
   border:1px solid var(--line);
   background:rgba(var(--bg-rgb), .36);
   color:var(--text-soft);
@@ -161,8 +169,8 @@
 }
 
 .productListQueueSwitchButton.isActive{
-  background:rgba(var(--brand-rgb), .12);
-  border-color:rgba(var(--brand-rgb), .24);
+  background:rgba(var(--brand-rgb), .1);
+  border-color:rgba(var(--brand-rgb), .32);
   color:var(--text);
 }
 
@@ -178,8 +186,8 @@
 }
 
 .productListWorkspace.workspaceFrameTwo{
-  grid-template-columns:minmax(0, 1fr) 280px;
-  gap:14px;
+  grid-template-columns:minmax(0, 1fr) 320px;
+  gap:12px;
 }
 
 .productListMainStack{
@@ -191,6 +199,7 @@
 .productListTableCard{
   padding:0;
   overflow:hidden;
+  border-radius:14px;
 }
 
 .productListTableHead{
@@ -198,11 +207,12 @@
   align-items:flex-start;
   justify-content:space-between;
   gap:16px;
-  padding:12px 14px 0;
+  padding:14px 16px 10px;
+  border-bottom:1px solid var(--line);
 }
 
 .productListTableTitle{
-  font-size:18px;
+  font-size:17px;
   line-height:1.1;
   font-weight:900;
   color:var(--text);
@@ -236,13 +246,13 @@
 .productListTableScroller{
   width:100%;
   overflow:auto;
-  padding:10px 14px 14px;
-  max-height:calc(100vh - 278px);
+  padding:0;
+  max-height:calc(100vh - 330px);
 }
 
 .productListTable{
   width:100%;
-  min-width:1120px;
+  min-width:1160px;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -251,12 +261,12 @@
   position:sticky;
   top:0;
   z-index:1;
-  padding:10px 12px;
+  padding:11px 12px;
   text-align:left;
   font-size:11px;
   font-weight:800;
   text-transform:uppercase;
-  letter-spacing:.08em;
+  letter-spacing:.06em;
   color:var(--text-soft);
   background:rgba(var(--bg-rgb), .7);
   backdrop-filter:blur(8px);
@@ -264,7 +274,7 @@
 }
 
 .productListTable tbody td{
-  padding:11px 12px;
+  padding:12px;
   border-bottom:1px solid var(--line);
   background:rgba(var(--card-rgb), .98);
   vertical-align:top;
@@ -305,10 +315,10 @@
 
 .productListThumb{
   display:block;
-  width:42px;
-  height:42px;
+  width:40px;
+  height:40px;
   object-fit:cover;
-  border-radius:12px;
+  border-radius:8px;
   border:1px solid var(--line);
   background:rgba(var(--bg-rgb), .36);
 }
@@ -382,7 +392,7 @@
   min-height:28px;
   padding:0 10px;
   border:1px solid rgba(var(--brand-rgb), .25);
-  border-radius:999px;
+  border-radius:8px;
   background:rgba(var(--brand-rgb), .08);
   color:var(--brand-strong);
   font-size:12px;
@@ -426,7 +436,7 @@
   min-height:26px;
   min-width:118px;
   padding:0 9px;
-  border-radius:999px;
+  border-radius:8px;
   border:1px solid var(--line);
   background:rgba(var(--bg-rgb), .26);
   font-size:11px;
@@ -580,14 +590,14 @@
 
 .productListBulkBar{
   position:sticky;
-  bottom:18px;
+  bottom:14px;
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:16px;
   padding:14px 16px;
   border:1px solid rgba(var(--brand-rgb), .18);
-  border-radius:18px;
+  border-radius:14px;
   background:rgba(var(--card-rgb), .92);
   backdrop-filter:blur(12px);
   box-shadow:var(--shadow-soft);
@@ -636,14 +646,22 @@
   }
 
   .productListSummaryStrip{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
+    grid-template-columns:repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 1100px){
+  .productListToolbarTop{
+    grid-template-columns:1fr;
+  }
+
   .productListTableHead,
   .productListBulkBar{
     flex-direction:column;
     align-items:flex-start;
+  }
+
+  .productListSummaryStrip{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 }
