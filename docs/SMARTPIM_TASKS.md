@@ -773,6 +773,12 @@ Next fix in the category flow:
    - table order now prioritizes SKU and next action before category/model details;
    - filters are grouped as a working toolbar, not competing navigation;
    - first implementation keeps existing API contracts and only changes UI structure.
+28. Import/export and mapping workspace UX pass:
+   - `/catalog/exchange?tab=export` now keeps scope, SKU estimate, channels, and store targets visible before channel selection;
+   - export target copy explicitly says stores are selected in the UI, not by code/defaults;
+   - provider target cards show selected store count and direct recovery links when stores are missing;
+   - `/sources` context actions now use SPA navigation and show route state (`Шаг 1/2/3 из 4`), SKU/category context, and selected category id;
+   - production browser check verified export and sources pages render without horizontal overflow or console errors.
 
 ## Verification Commands
 
