@@ -759,6 +759,11 @@ Next fix in the category flow:
    - provider target cards show selected store count and direct recovery links when stores are missing;
    - `/sources` context actions now use SPA navigation and show route state (`Шаг 1/2/3 из 4`), SKU/category context, and selected category id;
    - production browser check verified export and sources pages render without horizontal overflow or console errors.
+29. `/sources?tab=values` no-AI value review pass:
+   - selected field now shows a compact matrix `PIM value -> source evidence count -> provider output`;
+   - each row makes missing provider output visible without opening the full dictionary editor;
+   - source evidence remains visible as raw/resolved/canonical values, but no longer carries AI wording;
+   - inline provider value editing stays the primary fix action before export readiness.
 
 ## Verification Commands
 

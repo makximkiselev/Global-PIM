@@ -2978,6 +2978,111 @@
   opacity:.72;
 }
 
+.sm-valuesEvidencePanel{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));
+  gap:8px;
+  margin:0 0 12px;
+}
+
+.sm-valuesEvidenceCard{
+  min-width:0;
+  display:grid;
+  gap:4px;
+  padding:10px 11px;
+  border:1px solid var(--values-line, var(--line));
+  border-radius:14px;
+  background:rgba(var(--card-rgb),.68);
+}
+
+.sm-valuesEvidenceCard strong,
+.sm-valuesDecisionCanon strong,
+.sm-valuesDecisionProvider strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+}
+
+.sm-valuesEvidenceCard span,
+.sm-valuesEvidenceCard small,
+.sm-valuesDecisionCanon small,
+.sm-valuesDecisionProvider small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:800;
+}
+
+.sm-valuesDecisionPanel{
+  display:grid;
+  gap:10px;
+  margin:0 0 12px;
+  padding:12px;
+  border:1px solid var(--values-line, var(--line));
+  border-radius:16px;
+  background:rgba(var(--card-rgb),.7);
+}
+
+.sm-valuesDecisionRows{
+  display:grid;
+  gap:7px;
+  max-height:360px;
+  overflow:auto;
+  padding-right:2px;
+}
+
+.sm-valuesDecisionRow{
+  display:grid;
+  grid-template-columns:minmax(160px,1.1fr) repeat(auto-fit, minmax(150px,.9fr));
+  gap:8px;
+  align-items:stretch;
+  padding:8px;
+  border:1px solid rgba(var(--line-rgb),.1);
+  border-radius:12px;
+  background:rgba(var(--bg-rgb),.16);
+}
+
+.sm-valuesDecisionCanon,
+.sm-valuesDecisionProvider{
+  min-width:0;
+  display:grid;
+  gap:3px;
+  padding:8px 9px;
+  border:1px solid rgba(var(--line-rgb),.1);
+  border-radius:10px;
+  background:rgba(var(--card-rgb),.7);
+}
+
+.sm-valuesDecisionCanon span,
+.sm-valuesDecisionProvider span{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--brand-strong);
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.sm-valuesDecisionProvider.is-ready{
+  border-color:rgba(34,197,94,.22);
+  background:rgba(34,197,94,.08);
+}
+
+.sm-valuesDecisionProvider.is-gap{
+  border-color:rgba(var(--brand-rgb),.32);
+  background:rgba(var(--brand-rgb),.1);
+}
+
+.sm-valuesDecisionProvider.is-unit,
+.sm-valuesDecisionProvider.is-free,
+.sm-valuesDecisionProvider.is-muted{
+  opacity:.78;
+}
+
 .sourcesMappingCanvas .sm-valuesEmpty{
   border-color:var(--values-line);
   background:rgba(var(--card-rgb),.56);

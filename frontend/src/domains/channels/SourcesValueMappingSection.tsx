@@ -178,6 +178,30 @@ function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
   return "свободно";
 }
 
+function providerValueDecision(provider: ValueItemProvider, canonicalValue: string) {
+  const mode = String(provider.mode || "").toLowerCase();
+  if (mode === "number") return { status: "unit", label: "единицы", output: "" };
+  if (!Number(provider.allowed_count || 0) && !Number(provider.mapped_count || 0)) {
+    return { status: "free", label: "не требуется", output: "" };
+  }
+  const key = normValueKey(canonicalValue);
+  const output = String((provider.mapped_values || {})[key] || "").trim();
+  if (output) return { status: "ready", label: "готово", output };
+  const missing = new Set((provider.missing_values || []).map(normValueKey));
+  if (missing.has(key) || provider.needs_mapping) return { status: "gap", label: "сопоставить", output: "" };
+  return { status: "muted", label: "нет данных", output: "" };
+}
+
+function evidenceCountForValue(item: ValueItem, canonicalValue: string) {
+  const key = normValueKey(canonicalValue);
+  return (item.source_evidence || []).filter((evidence) => {
+    const values = [evidence.canonical_value, evidence.resolved_value, evidence.raw_value]
+      .map((value) => normValueKey(String(value || "")))
+      .filter(Boolean);
+    return values.includes(key);
+  }).length;
+}
+
 function normValueKey(value: string) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -786,6 +810,38 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                       </div>
                     ))}
                   </div>
+                  {activeItem.pim_values?.length ? (
+                    <div className="sm-valuesDecisionPanel">
+                      <div className="sm-valuesSourceEvidenceHead">
+                        <strong>Что будет выгружено</strong>
+                        <span>Каноническое PIM-значение, подтверждающие источники и выходное значение по каждой площадке</span>
+                      </div>
+                      <div className="sm-valuesDecisionRows">
+                        {activeItem.pim_values.slice(0, 16).map((value) => (
+                          <div className="sm-valuesDecisionRow" key={`${activeItem.dict_id}:${value}`}>
+                            <div className="sm-valuesDecisionCanon">
+                              <span>PIM</span>
+                              <strong title={value}>{value}</strong>
+                              <small>{evidenceCountForValue(activeItem, value) || 0} источн.</small>
+                            </div>
+                            {usefulProviders(activeItem).slice(0, 4).map((provider) => {
+                              const decision = providerValueDecision(provider, value);
+                              return (
+                                <div className={`sm-valuesDecisionProvider is-${decision.status}`} key={`${provider.code}:${value}`}>
+                                  <span>{provider.title}</span>
+                                  <strong title={decision.output || decision.label}>{decision.output || decision.label}</strong>
+                                  <small>{provider.param_name || providerCoverageLabel(provider, activeItem)}</small>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                      {activeItem.pim_values.length > 16 ? (
+                        <div className="sm-valuesInlineFoot">Показаны первые 16 значений. Полный список редактируется ниже в словаре.</div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {valueMapError ? <div className="sm-valuesEmpty">{valueMapError}</div> : null}
                   {activeItem.source_evidence?.length ? (
                     <div className="sm-valuesSourceEvidence">
