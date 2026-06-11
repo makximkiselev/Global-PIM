@@ -771,7 +771,9 @@ Next fix in the category flow:
    - results are stored per organization as external competitor catalog runs/products and do not create or mutate PIM products;
    - imported competitor products now expose deterministic PIM SKU candidates based on SKU/title/brand/tokens;
    - user can link a competitor card to a PIM SKU, ignore it, or unlink it from the inspector;
-   - next required layer is applying linked competitor facts to product media/attributes with explicit review.
+   - linked competitor cards now produce an explicit apply plan: media to add, description if the target is empty, existing empty specs to fill, and new competitor specs to create;
+   - apply action merges only non-duplicate media and empty/missing facts into the linked SKU, then recomputes the remaining plan;
+   - next required layer is a dedicated review queue/filter for linked-but-not-applied competitor cards and manual SKU search when deterministic candidates are weak.
 
 ## Verification Commands
 

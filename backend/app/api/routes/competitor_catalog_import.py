@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, with_lock, write_doc
 from app.core.tenant_context import current_tenant_organization_id
+from app.core.products.service import patch_product_service
 from app.storage.relational_pim_store import query_products_full
 
 router = APIRouter(prefix="/competitor-catalog", tags=["competitor-catalog"])
@@ -39,6 +40,12 @@ class CompetitorCatalogLinkRequest(BaseModel):
     product_id: str = Field(min_length=3, max_length=120)
     pim_product_id: str = Field(default="", max_length=120)
     status: str = Field(default="linked", max_length=24)
+
+
+class CompetitorCatalogApplyRequest(BaseModel):
+    apply_media: bool = True
+    apply_description: bool = True
+    apply_specs: bool = True
 
 
 def _now_iso() -> str:
@@ -181,6 +188,177 @@ def _suggest_candidates(competitor_product: dict[str, Any], limit: int = 8) -> l
         )
     candidates.sort(key=lambda row: (int(row.get("score") or 0), str(row.get("title") or "")), reverse=True)
     return candidates[:limit]
+
+
+def _feature_code_for_spec(name: str) -> str:
+    base = _norm_for_match(name).replace(" ", "_")
+    safe = re.sub(r"[^a-zа-я0-9_]+", "_", base).strip("_")
+    return safe[:80] or f"competitor_spec_{hashlib.sha1(name.encode('utf-8')).hexdigest()[:8]}"
+
+
+def _media_key(item: dict[str, Any]) -> str:
+    return str(item.get("external_url") or item.get("source_image_url") or item.get("url") or "").strip()
+
+
+def _build_competitor_apply_plan(competitor_product: dict[str, Any], pim_product: dict[str, Any]) -> dict[str, Any]:
+    content = pim_product.get("content") if isinstance(pim_product.get("content"), dict) else {}
+    existing_media = content.get("media_images") if isinstance(content.get("media_images"), list) else []
+    existing_media_keys = {_media_key(item) for item in existing_media if isinstance(item, dict)}
+    media_to_add = []
+    for index, url in enumerate(competitor_product.get("images") if isinstance(competitor_product.get("images"), list) else []):
+        image_url = str(url or "").strip()
+        if not image_url or image_url in existing_media_keys:
+            continue
+        media_to_add.append(
+            {
+                "url": image_url,
+                "external_url": image_url,
+                "source_image_url": image_url,
+                "source_type": "competitor_catalog",
+                "source_product_id": competitor_product.get("id"),
+                "source_url": competitor_product.get("url"),
+                "caption": competitor_product.get("title") or "",
+                "selected": True,
+                "export_order": len(existing_media) + len(media_to_add) + 1,
+            }
+        )
+
+    existing_description = _text(content.get("description"))
+    competitor_description = _text(competitor_product.get("description"))
+    description_to_apply = competitor_description if competitor_description and not existing_description else ""
+
+    existing_features = content.get("features") if isinstance(content.get("features"), list) else []
+    feature_by_key: dict[str, dict[str, Any]] = {}
+    for feature in existing_features:
+        if not isinstance(feature, dict):
+            continue
+        for key in (feature.get("code"), feature.get("name")):
+            normalized = _norm_for_match(key)
+            if normalized:
+                feature_by_key[normalized] = feature
+
+    specs = competitor_product.get("specs") if isinstance(competitor_product.get("specs"), dict) else {}
+    specs_to_fill: list[dict[str, Any]] = []
+    specs_to_create: list[dict[str, Any]] = []
+    for raw_name, raw_value in specs.items():
+        name = _text(raw_name)
+        value = _text(raw_value)
+        if not name or not value:
+            continue
+        existing = feature_by_key.get(_norm_for_match(name))
+        proposal = {
+            "name": name,
+            "code": _feature_code_for_spec(name),
+            "value": value,
+            "source": "competitor_catalog",
+            "source_product_id": competitor_product.get("id"),
+            "source_url": competitor_product.get("url"),
+        }
+        if existing:
+            if not _text(existing.get("value")):
+                proposal["code"] = _text(existing.get("code")) or proposal["code"]
+                proposal["existing_name"] = _text(existing.get("name")) or name
+                specs_to_fill.append(proposal)
+        else:
+            specs_to_create.append(proposal)
+
+    return {
+        "media_to_add": media_to_add,
+        "description_to_apply": description_to_apply,
+        "description_skipped_reason": "target_not_empty" if competitor_description and existing_description else "",
+        "specs_to_fill": specs_to_fill,
+        "specs_to_create": specs_to_create[:80],
+        "summary": {
+            "media_to_add": len(media_to_add),
+            "description_ready": bool(description_to_apply),
+            "specs_to_fill": len(specs_to_fill),
+            "specs_to_create": min(len(specs_to_create), 80),
+        },
+    }
+
+
+def _apply_competitor_plan(pim_product: dict[str, Any], competitor_product: dict[str, Any], plan: dict[str, Any], req: CompetitorCatalogApplyRequest) -> dict[str, Any]:
+    content = pim_product.get("content") if isinstance(pim_product.get("content"), dict) else {}
+    next_content = dict(content)
+    applied = {"media": 0, "description": False, "specs": 0}
+
+    if req.apply_media:
+        media_images = list(next_content.get("media_images") if isinstance(next_content.get("media_images"), list) else [])
+        additions = [item for item in plan.get("media_to_add", []) if isinstance(item, dict)]
+        if additions:
+            media_images.extend(additions)
+            next_content["media_images"] = media_images
+            next_content["media"] = media_images
+            applied["media"] = len(additions)
+
+    if req.apply_description and plan.get("description_to_apply"):
+        next_content["description"] = plan.get("description_to_apply")
+        applied["description"] = True
+
+    if req.apply_specs:
+        features = list(next_content.get("features") if isinstance(next_content.get("features"), list) else [])
+        by_key: dict[str, int] = {}
+        for idx, feature in enumerate(features):
+            if not isinstance(feature, dict):
+                continue
+            for key in (feature.get("code"), feature.get("name")):
+                normalized = _norm_for_match(key)
+                if normalized:
+                    by_key[normalized] = idx
+        for proposal in list(plan.get("specs_to_fill") or []) + list(plan.get("specs_to_create") or []):
+            if not isinstance(proposal, dict):
+                continue
+            code = _text(proposal.get("code"))
+            name = _text(proposal.get("name"))
+            value = _text(proposal.get("value"))
+            if not name or not value:
+                continue
+            idx = by_key.get(_norm_for_match(code)) if code else None
+            if idx is None:
+                idx = by_key.get(_norm_for_match(name))
+            if idx is not None and 0 <= idx < len(features) and isinstance(features[idx], dict):
+                if _text(features[idx].get("value")):
+                    continue
+                source_values = features[idx].get("source_values") if isinstance(features[idx].get("source_values"), dict) else {}
+                features[idx] = {
+                    **features[idx],
+                    "value": value,
+                    "source_values": {
+                        **source_values,
+                        "competitor_catalog": {
+                            "value": value,
+                            "source_product_id": competitor_product.get("id"),
+                            "source_url": competitor_product.get("url"),
+                        },
+                    },
+                }
+            else:
+                features.append(
+                    {
+                        "code": code or _feature_code_for_spec(name),
+                        "name": name,
+                        "value": value,
+                        "type": "text",
+                        "required": False,
+                        "scope": "competitor",
+                        "field_layer": "features",
+                        "fill_source": "competitor_catalog",
+                        "locked": False,
+                        "source_values": {
+                            "competitor_catalog": {
+                                "value": value,
+                                "source_product_id": competitor_product.get("id"),
+                                "source_url": competitor_product.get("url"),
+                            }
+                        },
+                    }
+                )
+                by_key[_norm_for_match(code or name)] = len(features) - 1
+            applied["specs"] += 1
+        next_content["features"] = features
+
+    result = patch_product_service(str(pim_product.get("id") or ""), {"content": next_content})
+    return {"product": result.get("product"), "applied": applied}
 
 
 def _jsonld_nodes(soup: BeautifulSoup) -> list[dict[str, Any]]:
@@ -543,6 +721,62 @@ def save_competitor_product_link(product_id: str, payload: CompetitorCatalogLink
         return {"product": _public_product(store["products"][product_id], store)}
     finally:
         lock.release()
+
+
+@router.get("/products/{product_id}/apply-preview")
+def preview_competitor_product_apply(product_id: str) -> dict[str, Any]:
+    store = _load_store()
+    competitor_product = store.get("products", {}).get(product_id)
+    if not isinstance(competitor_product, dict):
+        raise HTTPException(status_code=404, detail="PRODUCT_NOT_FOUND")
+    link = _link_payload(store, product_id)
+    if not link or link.get("status") != "linked":
+        raise HTTPException(status_code=400, detail="COMPETITOR_PRODUCT_NOT_LINKED")
+    pim_product_id = str(link.get("pim_product_id") or "").strip()
+    pim_products = query_products_full(ids=[pim_product_id], limit=1)
+    if not pim_products:
+        raise HTTPException(status_code=404, detail="PIM_PRODUCT_NOT_FOUND")
+    plan = _build_competitor_apply_plan(competitor_product, pim_products[0])
+    return {
+        "competitor_product": _public_product(competitor_product, store),
+        "pim_product": {
+            "id": pim_products[0].get("id"),
+            "title": pim_products[0].get("title"),
+            "sku_gt": pim_products[0].get("sku_gt"),
+            "sku_pim": pim_products[0].get("sku_pim"),
+            "category_id": pim_products[0].get("category_id"),
+        },
+        "plan": plan,
+    }
+
+
+@router.post("/products/{product_id}/apply")
+def apply_competitor_product_to_pim(product_id: str, payload: CompetitorCatalogApplyRequest) -> dict[str, Any]:
+    store = _load_store()
+    competitor_product = store.get("products", {}).get(product_id)
+    if not isinstance(competitor_product, dict):
+        raise HTTPException(status_code=404, detail="PRODUCT_NOT_FOUND")
+    link = _link_payload(store, product_id)
+    if not link or link.get("status") != "linked":
+        raise HTTPException(status_code=400, detail="COMPETITOR_PRODUCT_NOT_LINKED")
+    pim_product_id = str(link.get("pim_product_id") or "").strip()
+    pim_products = query_products_full(ids=[pim_product_id], limit=1)
+    if not pim_products:
+        raise HTTPException(status_code=404, detail="PIM_PRODUCT_NOT_FOUND")
+    plan = _build_competitor_apply_plan(competitor_product, pim_products[0])
+    result = _apply_competitor_plan(pim_products[0], competitor_product, plan, payload)
+    updated_product = result.get("product") if isinstance(result.get("product"), dict) else pim_products[0]
+    next_plan = _build_competitor_apply_plan(competitor_product, updated_product)
+    link["last_applied_at"] = _now_iso()
+    link["last_applied"] = result.get("applied")
+    store.setdefault("links", {})[product_id] = link
+    _save_store(store)
+    return {
+        "competitor_product": _public_product(competitor_product, store),
+        "pim_product": result.get("product"),
+        "applied": result.get("applied"),
+        "plan": next_plan,
+    }
 
 
 @router.post("/runs")

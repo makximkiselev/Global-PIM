@@ -46,6 +46,7 @@ type ProductLink = {
   sku_gt?: string;
   sku_pim?: string;
   updated_at: string;
+  last_applied_at?: string;
 };
 
 type ProductCandidate = {
@@ -79,6 +80,32 @@ type LinkResponse = {
   product: ImportedProduct;
 };
 
+type ApplyPlan = {
+  summary: {
+    media_to_add: number;
+    description_ready: boolean;
+    specs_to_fill: number;
+    specs_to_create: number;
+  };
+  media_to_add: Array<{ url: string; caption?: string }>;
+  description_to_apply: string;
+  description_skipped_reason?: string;
+  specs_to_fill: Array<{ name: string; value: string }>;
+  specs_to_create: Array<{ name: string; value: string }>;
+};
+
+type ApplyPreviewResponse = {
+  competitor_product: ImportedProduct;
+  pim_product: { id: string; title: string; sku_gt: string; sku_pim: string };
+  plan: ApplyPlan;
+};
+
+type ApplyResponse = {
+  competitor_product: ImportedProduct;
+  applied: { media: number; description: boolean; specs: number };
+  plan: ApplyPlan;
+};
+
 function parseApiError(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error || "");
   if (raw.includes("ROBOTS_DISALLOW_ALL")) return "Сайт запретил обход в robots.txt.";
@@ -104,17 +131,25 @@ function linkLabel(link?: ProductLink | null) {
 function ProductInspector({
   product,
   candidates,
+  applyPlan,
   loadingCandidates,
+  loadingPlan,
+  applying,
   onLink,
   onIgnore,
   onUnlink,
+  onApply,
 }: {
   product: ImportedProduct | null;
   candidates: ProductCandidate[];
+  applyPlan: ApplyPlan | null;
   loadingCandidates: boolean;
+  loadingPlan: boolean;
+  applying: boolean;
   onLink: (candidate: ProductCandidate) => void;
   onIgnore: () => void;
   onUnlink: () => void;
+  onApply: () => void;
 }) {
   if (!product) {
     return (
@@ -202,6 +237,53 @@ function ProductInspector({
         )}
       </div>
 
+      {product.link?.status === "linked" ? (
+        <div className="cciApplyBlock">
+          <div className="cciSectionTitle">Предложения к товару</div>
+          {loadingPlan ? (
+            <div className="cciMuted">Собираю план применения...</div>
+          ) : applyPlan ? (
+            <>
+              <div className="cciApplyGrid">
+                <div>
+                  <span>Медиа</span>
+                  <strong>{applyPlan.summary.media_to_add}</strong>
+                </div>
+                <div>
+                  <span>Описание</span>
+                  <strong>{applyPlan.summary.description_ready ? "есть" : "нет"}</strong>
+                </div>
+                <div>
+                  <span>Заполнить</span>
+                  <strong>{applyPlan.summary.specs_to_fill}</strong>
+                </div>
+                <div>
+                  <span>Новые поля</span>
+                  <strong>{applyPlan.summary.specs_to_create}</strong>
+                </div>
+              </div>
+              <div className="cciApplyPreview">
+                {applyPlan.media_to_add.slice(0, 4).map((item) => (
+                  <img key={item.url} src={item.url} alt="" loading="lazy" />
+                ))}
+                {applyPlan.description_to_apply ? <p>{applyPlan.description_to_apply}</p> : null}
+                {[...applyPlan.specs_to_fill, ...applyPlan.specs_to_create].slice(0, 6).map((item) => (
+                  <div key={`${item.name}:${item.value}`} className="cciSpecRow">
+                    <span>{item.name}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+              <Button variant="primary" onClick={onApply} disabled={applying}>
+                {applying ? "Применяю..." : "Применить к SKU"}
+              </Button>
+            </>
+          ) : (
+            <div className="cciMuted">Нет данных для применения.</div>
+          )}
+        </div>
+      ) : null}
+
       <div className="cciSpecs">
         <div className="cciSectionTitle">Найденные характеристики</div>
         {specs.length ? (
@@ -233,6 +315,9 @@ export default function CompetitorCatalogImportFeature() {
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<ProductCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [applyPlan, setApplyPlan] = useState<ApplyPlan | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const [applying, setApplying] = useState(false);
 
   const selectedProduct = products.find((product) => product.id === selectedId) || products[0] || null;
   const lastRun = runs[0] || null;
@@ -289,6 +374,28 @@ export default function CompetitorCatalogImportFeature() {
     };
   }, [selectedProduct?.id, selectedProduct?.link?.status]);
 
+  useEffect(() => {
+    if (!selectedProduct?.id || selectedProduct.link?.status !== "linked") {
+      setApplyPlan(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingPlan(true);
+    api<ApplyPreviewResponse>(`/competitor-catalog/products/${selectedProduct.id}/apply-preview`)
+      .then((data) => {
+        if (!cancelled) setApplyPlan(data.plan || null);
+      })
+      .catch(() => {
+        if (!cancelled) setApplyPlan(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPlan(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProduct?.id, selectedProduct?.link?.status, selectedProduct?.link?.last_applied_at]);
+
   function replaceProduct(next: ImportedProduct) {
     setProducts((items) => items.map((item) => (item.id === next.id ? next : item)));
   }
@@ -304,6 +411,24 @@ export default function CompetitorCatalogImportFeature() {
       replaceProduct(data.product);
     } catch (err) {
       setError(parseApiError(err));
+    }
+  }
+
+  async function applySelectedProduct() {
+    if (!selectedProduct) return;
+    setApplying(true);
+    setError("");
+    try {
+      const data = await api<ApplyResponse>(`/competitor-catalog/products/${selectedProduct.id}/apply`, {
+        method: "POST",
+        body: JSON.stringify({ apply_media: true, apply_description: true, apply_specs: true }),
+      });
+      replaceProduct(data.competitor_product);
+      setApplyPlan(data.plan || null);
+    } catch (err) {
+      setError(parseApiError(err));
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -424,10 +549,14 @@ export default function CompetitorCatalogImportFeature() {
         <ProductInspector
           product={selectedProduct}
           candidates={candidates}
+          applyPlan={applyPlan}
           loadingCandidates={loadingCandidates}
+          loadingPlan={loadingPlan}
+          applying={applying}
           onLink={(candidate) => saveLink("linked", candidate.product_id)}
           onIgnore={() => saveLink("ignored")}
           onUnlink={() => saveLink("unlinked")}
+          onApply={applySelectedProduct}
         />
       </section>
     </div>

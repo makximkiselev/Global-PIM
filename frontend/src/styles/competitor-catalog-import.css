@@ -357,6 +357,75 @@
   text-transform:uppercase;
 }
 
+.cciApplyBlock{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:18px 22px 0;
+}
+
+.cciApplyGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+}
+
+.cciApplyGrid div{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(248,250,252,.72);
+  padding:10px;
+}
+
+.cciApplyGrid span{
+  display:block;
+  overflow:hidden;
+  color:var(--text-soft);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.cciApplyGrid strong{
+  display:block;
+  margin-top:4px;
+  color:var(--text);
+  font-size:16px;
+  font-weight:1000;
+}
+
+.cciApplyPreview{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height:360px;
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(255,255,255,.6);
+  padding:10px;
+}
+
+.cciApplyPreview img{
+  width:100%;
+  max-height:160px;
+  object-fit:contain;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#fff;
+}
+
+.cciApplyPreview p{
+  margin:0;
+  color:var(--text-soft);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:750;
+}
+
 .cciSpecs{
   display:flex;
   flex-direction:column;
@@ -414,7 +483,8 @@
   }
 
   .cciFormGrid,
-  .cciInspectorFacts{
+  .cciInspectorFacts,
+  .cciApplyGrid{
     grid-template-columns:1fr;
   }
 
