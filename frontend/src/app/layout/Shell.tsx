@@ -5,7 +5,6 @@ import { useAuth } from "../auth/AuthContext";
 import AppShell from "../../components/layout/AppShell";
 import ShellSidebarNav, { type ShellNavGroup } from "../../components/layout/ShellSidebarNav";
 import ShellThemeToggle from "../../components/layout/ShellThemeToggle";
-import ShellWorkspaceBar from "../../components/layout/ShellWorkspaceBar";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
 import Field from "../../components/ui/Field";
@@ -146,6 +145,15 @@ function findCurrentLabel(pathname: string, groupsList: ShellNavGroup[]) {
   return "";
 }
 
+function organizationStatusLabel(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized === "active" || normalized === "ready") return "Активна";
+  if (normalized === "provisioning") return "Настраивается";
+  if (normalized === "pending") return "Ожидает";
+  if (["failed", "error", "suspended", "revoked"].includes(normalized)) return "Проблема";
+  return "Неизвестно";
+}
+
 export default function Shell({ children }: { children: ReactNode }) {
   const { pathname, search } = useLocation();
   const {
@@ -170,7 +178,6 @@ export default function Shell({ children }: { children: ReactNode }) {
   const currentLocation = `${pathname}${search}`;
   const currentLabel = useMemo(() => findCurrentLabel(currentLocation, visibleGroups), [currentLocation, visibleGroups]);
   const [activeGroupTitle, setActiveGroupTitle] = useState("");
-  const showWorkspaceBar = false;
   const showShellHeading = false;
   const userLabel = user?.name || user?.login || user?.email || "Пользователь";
   const userMeta = user?.login || user?.email || "";
@@ -223,10 +230,15 @@ export default function Shell({ children }: { children: ReactNode }) {
     setSwitchingOrganization(true);
     try {
       await switchOrganization(nextOrganizationId);
+      window.location.assign("/");
     } finally {
       setSwitchingOrganization(false);
     }
   }
+
+  const currentOrganizationStatus = String(provisioningStatus?.organization?.status || currentOrganization?.status || "unknown");
+  const normalizedOrganizationStatus = currentOrganizationStatus.toLowerCase();
+  const currentOrganizationLabel = organizationStatusLabel(currentOrganizationStatus);
 
   return (
     <>
@@ -234,22 +246,6 @@ export default function Shell({ children }: { children: ReactNode }) {
         eyebrow="Рабочий контур"
         title={currentLabel || "SmartPim"}
         showHeading={showShellHeading}
-        topbar={showWorkspaceBar ? (
-          <ShellWorkspaceBar
-            organizations={organizations}
-            currentOrganization={currentOrganization}
-            switching={switchingOrganization}
-            onChange={(organizationId) => void handleOrganizationChange(organizationId)}
-            organizationStatus={String(provisioningStatus?.organization?.status || currentOrganization?.status || "unknown")}
-            isDeveloper={isDeveloper}
-            userName={user?.name || "Пользователь"}
-            userMeta={user?.login || user?.email || ""}
-            onChangePassword={() => setShowPasswordModal(true)}
-            onLogout={() => {
-              void logout();
-            }}
-          />
-        ) : undefined}
         sidebar={
           <aside className="shellSidebar">
             <div className="shellSidebarInner">
@@ -283,6 +279,59 @@ export default function Shell({ children }: { children: ReactNode }) {
                         {userInitials}
                       </Link>
                     </>
+                  }
+                  panelFooter={
+                    currentOrganization ? (
+                      <div className="shellNavAccount">
+                        <div className="shellNavAccountOrg">
+                          <div className="shellNavAccountLabel">Организация</div>
+                          {organizations.length > 1 ? (
+                            <select
+                              className="shellNavAccountSelect"
+                              value={currentOrganization.id}
+                              onChange={(event) => void handleOrganizationChange(event.target.value)}
+                              disabled={switchingOrganization}
+                              aria-label="Переключить организацию"
+                            >
+                              {organizations.map((organization) => (
+                                <option key={organization.id} value={organization.id}>
+                                  {organization.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="shellNavAccountName">{currentOrganization.name}</div>
+                          )}
+                          <div className="shellSidebarStatusRow">
+                            <span className={`shellStatusBadge is-${normalizedOrganizationStatus}`}>{currentOrganizationLabel}</span>
+                            {isDeveloper ? <span className="shellRoleBadge">Разработчик</span> : null}
+                          </div>
+                        </div>
+
+                        <div className="shellNavAccountUser">
+                          <div className="shellNavAvatar">{userInitials}</div>
+                          <div className="shellNavUserCopy">
+                            <div className="shellNavUserName">{userLabel}</div>
+                            {userMeta ? <div className="shellNavUserMeta">{userMeta}</div> : null}
+                          </div>
+                        </div>
+
+                        <div className="shellNavAccountActions">
+                          <button type="button" className="shellNavAccountButton" onClick={() => setShowPasswordModal(true)}>
+                            Пароль
+                          </button>
+                          <button
+                            type="button"
+                            className="shellNavAccountButton"
+                            onClick={() => {
+                              void logout();
+                            }}
+                          >
+                            Выйти
+                          </button>
+                        </div>
+                      </div>
+                    ) : null
                   }
                 />
               </div>
