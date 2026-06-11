@@ -5,6 +5,7 @@ import { firstAllowedPath } from "./permissions";
 type CatalogRow = { code: string; title: string };
 type OrganizationRow = {
   id: string;
+  org_key?: string;
   slug: string;
   name: string;
   status: string;

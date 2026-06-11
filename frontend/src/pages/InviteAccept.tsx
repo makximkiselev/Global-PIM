@@ -2,10 +2,11 @@ import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../app/auth/AuthContext";
+import { withOrgPath } from "../app/orgRoutes";
 import AuthShell from "../components/auth/AuthShell";
 
 export default function InviteAccept() {
-  const { loading, firstPath, user, refresh } = useAuth();
+  const { loading, firstPath, user, refresh, currentOrganization } = useAuth();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
   const initialEmail = searchParams.get("email") || user?.email || "";
@@ -47,7 +48,7 @@ export default function InviteAccept() {
   }
 
   if (!loading && accepted && !tokenError) {
-    return <Navigate to={firstPath} replace />;
+    return <Navigate to={withOrgPath(currentOrganization, firstPath)} replace />;
   }
 
   return (

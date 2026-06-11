@@ -2,11 +2,12 @@ import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../app/auth/AuthContext";
+import { withOrgPath } from "../app/orgRoutes";
 import AuthWorkspaceScene from "../components/auth/AuthWorkspaceScene";
 import AuthViewTransitionLink from "../components/auth/AuthViewTransitionLink";
 
 export default function Register() {
-  const { authenticated, loading, firstPath, refresh } = useAuth();
+  const { authenticated, loading, firstPath, refresh, currentOrganization } = useAuth();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
@@ -38,7 +39,7 @@ export default function Register() {
   }
 
   if (!loading && authenticated) {
-    return <Navigate to={firstPath} replace />;
+    return <Navigate to={withOrgPath(currentOrganization, firstPath)} replace />;
   }
 
   return (

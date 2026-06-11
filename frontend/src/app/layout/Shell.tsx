@@ -10,6 +10,7 @@ import Button from "../../components/ui/Button";
 import Field from "../../components/ui/Field";
 import Modal from "../../components/ui/Modal";
 import TextInput from "../../components/ui/TextInput";
+import { orgAwarePath, stripOrgPrefix, withOrgPath } from "../orgRoutes";
 
 const groups: ShellNavGroup[] = [
   {
@@ -175,8 +176,9 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [switchingOrganization, setSwitchingOrganization] = useState(false);
 
   const visibleGroups = useMemo(() => filterGroups(canPage, isDeveloper), [canPage, isDeveloper]);
-  const currentLocation = `${pathname}${search}`;
-  const currentLabel = useMemo(() => findCurrentLabel(currentLocation, visibleGroups), [currentLocation, visibleGroups]);
+  const appPathname = stripOrgPrefix(pathname).appPath;
+  const appLocation = `${appPathname}${search}`;
+  const currentLabel = useMemo(() => findCurrentLabel(appLocation, visibleGroups), [appLocation, visibleGroups]);
   const [activeGroupTitle, setActiveGroupTitle] = useState("");
   const showShellHeading = false;
   const userLabel = user?.name || user?.login || user?.email || "Пользователь";
@@ -192,7 +194,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   useEffect(() => {
     const activeGroup =
       visibleGroups.find((group) =>
-        group.sections.some((section) => section.items.some((item) => isActive(currentLocation, item.href))),
+        group.sections.some((section) => section.items.some((item) => isActive(appLocation, item.href))),
       ) || visibleGroups[0];
     setActiveGroupTitle((current) => {
       if (!activeGroup?.title) return current;
@@ -201,10 +203,10 @@ export default function Shell({ children }: { children: ReactNode }) {
       if (!currentVisible) return activeGroup.title;
       const routeInsideCurrent = visibleGroups
         .find((group) => group.title === current)
-        ?.sections.some((section) => section.items.some((item) => isActive(currentLocation, item.href)));
+        ?.sections.some((section) => section.items.some((item) => isActive(appLocation, item.href)));
       return routeInsideCurrent ? current : activeGroup.title;
     });
-  }, [currentLocation, visibleGroups]);
+  }, [appLocation, visibleGroups]);
 
   async function submitPasswordChange() {
     setSavingPassword(true);
@@ -230,7 +232,8 @@ export default function Shell({ children }: { children: ReactNode }) {
     setSwitchingOrganization(true);
     try {
       await switchOrganization(nextOrganizationId);
-      window.location.assign("/");
+      const nextOrganization = organizations.find((organization) => organization.id === nextOrganizationId) || null;
+      window.location.assign(withOrgPath(nextOrganization, "/"));
     } finally {
       setSwitchingOrganization(false);
     }
@@ -250,7 +253,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           <aside className="shellSidebar">
             <div className="shellSidebarInner">
               <div className="shellSidebarBrand">
-                <Link to="/" className="shellSidebarBrandLink">
+                <Link to={withOrgPath(currentOrganization, "/")} className="shellSidebarBrandLink">
                   <div className="logo" />
                   <div className="shellSidebarBrandText">
                     <div className="shellSidebarBrandTitle">SmartPim</div>
@@ -262,16 +265,17 @@ export default function Shell({ children }: { children: ReactNode }) {
               <div className="shellSidebarWorkspace">
                 <ShellSidebarNav
                   pathname={pathname}
-                  currentLocation={currentLocation}
+                  currentLocation={appLocation}
                   groups={visibleGroups}
                   activeGroupTitle={activeGroupTitle}
                   onSelectGroup={setActiveGroupTitle}
                   isActive={isActive}
+                  resolveHref={(href) => orgAwarePath(pathname, href, currentOrganization)}
                   railFooter={
                     <>
                       <ShellThemeToggle />
                       <Link
-                        to="/profile"
+                        to={withOrgPath(currentOrganization, "/profile")}
                         className="shellRailUser"
                         aria-label={`Пользователь: ${userLabel}`}
                         title={`${userLabel}${userMeta ? ` · ${userMeta}` : ""}`}

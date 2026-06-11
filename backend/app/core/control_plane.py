@@ -72,8 +72,10 @@ def _org_role_from_legacy_roles(role_codes: Iterable[Any]) -> str:
 
 
 def _org_public(row: Dict[str, Any]) -> Dict[str, Any]:
+    organization_id = _normalize_text(row.get("id"))
     return {
-        "id": _normalize_text(row.get("id")),
+        "id": organization_id,
+        "org_key": hashlib.sha256(f"smartpim:organization:{organization_id}".encode("utf-8")).hexdigest()[:16] if organization_id else "",
         "slug": _normalize_text(row.get("slug")),
         "name": _normalize_text(row.get("name")),
         "status": _normalize_text(row.get("status")) or "active",

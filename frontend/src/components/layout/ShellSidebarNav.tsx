@@ -20,6 +20,7 @@ export default function ShellSidebarNav({
   activeGroupTitle,
   onSelectGroup,
   isActive,
+  resolveHref,
   railFooter,
   panelFooter,
 }: {
@@ -29,6 +30,7 @@ export default function ShellSidebarNav({
   activeGroupTitle: string;
   onSelectGroup: (title: string) => void;
   isActive: (pathname: string, href: string) => boolean;
+  resolveHref?: (href: string) => string;
   railFooter?: ReactNode;
   panelFooter?: ReactNode;
 }) {
@@ -187,7 +189,7 @@ export default function ShellSidebarNav({
                     {section.items.map((item) => (
                       <Link
                         key={item.href}
-                        to={item.href}
+                        to={resolveHref ? resolveHref(item.href) : item.href}
                         className={`shellSidebarLink${isActive(activeLocation, item.href) ? " active" : ""}`}
                         onClick={() => closePanel(true)}
                       >

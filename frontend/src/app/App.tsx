@@ -29,6 +29,7 @@ import DictionaryEditorRoute from "../routes/DictionaryEditorRoute";
 import SourcesMappingRoute from "../routes/SourcesMappingRoute";
 import TemplateEditorRoute from "../routes/TemplateEditorRoute";
 import TemplatesRoute from "../routes/TemplatesRoute";
+import { orgRouteKey, stripOrgPrefix, withOrgPath } from "./orgRoutes";
 
 function SessionKickToLogin({ reason }: { reason: "denied" | "expired" }) {
   useEffect(() => {
@@ -41,17 +42,19 @@ function SessionKickToLogin({ reason }: { reason: "denied" | "expired" }) {
 }
 
 function RequirePage({ page, children }: { page: string; children: JSX.Element }) {
-  const { loading, authenticated, canPage, user } = useAuth();
+  const { loading, authenticated, canPage, user, currentOrganization } = useAuth();
   if (loading) return <div className="pageLoading">Загрузка...</div>;
   if (!authenticated || !user) return <Navigate to="/login" replace />;
+  if (!currentOrganization) return <div className="pageLoading">Организация не выбрана</div>;
   if (!canPage(page)) return <SessionKickToLogin reason="denied" />;
   return children;
 }
 
 function RequireAnyPage({ pages, children }: { pages: string[]; children: JSX.Element }) {
-  const { loading, authenticated, canPage, user } = useAuth();
+  const { loading, authenticated, canPage, user, currentOrganization } = useAuth();
   if (loading) return <div className="pageLoading">Загрузка...</div>;
   if (!authenticated || !user) return <Navigate to="/login" replace />;
+  if (!currentOrganization) return <div className="pageLoading">Организация не выбрана</div>;
   if (!pages.some((page) => canPage(page))) return <SessionKickToLogin reason="denied" />;
   return children;
 }
@@ -59,64 +62,93 @@ function RequireAnyPage({ pages, children }: { pages: string[]; children: JSX.El
 function CompetitorCategoryRoute() {
   const params = useParams();
   const category = encodeURIComponent(params.categoryId || "");
-  return <Navigate to={`/sources?tab=sources&category=${category}`} replace />;
+  return <Navigate to={`sources?tab=sources&category=${category}`} replace />;
 }
 
 function CatalogExchangeRedirect({ tab }: { tab: "import" | "export" }) {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   searchParams.set("tab", tab);
-  return <Navigate to={`/catalog/exchange?${searchParams.toString()}`} replace />;
+  return <Navigate to={`catalog/exchange?${searchParams.toString()}`} replace />;
 }
 
-function ProtectedApp() {
+function WorkspaceRoutes() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<RequirePage page="dashboard"><DashboardRoute /></RequirePage>} />
-        <Route path="/catalog" element={<RequirePage page="catalog"><CatalogRoute /></RequirePage>} />
-        <Route path="/catalog/groups" element={<RequirePage page="product_groups"><ProductGroupsRoute /></RequirePage>} />
-        <Route path="/product-groups" element={<Navigate to="/catalog/groups" replace />} />
-        <Route path="/products/media" element={<RequirePage page="infographics"><Placeholder title="Медиа товаров" /></RequirePage>} />
-        <Route path="/media" element={<Navigate to="/products/media" replace />} />
-        <Route path="/catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
-        <Route path="/products" element={<RequirePage page="products"><ProductListRoute /></RequirePage>} />
-        <Route path="/catalog/exchange" element={<RequireAnyPage pages={["catalog_import", "catalog_export"]}><CatalogExchangeFeature /></RequireAnyPage>} />
-        <Route path="/catalog/import" element={<CatalogExchangeRedirect tab="import" />} />
-        <Route path="/catalog/export" element={<CatalogExchangeRedirect tab="export" />} />
-        <Route path="/profile" element={<ProfileFeature />} />
+        <Route index element={<RequirePage page="dashboard"><DashboardRoute /></RequirePage>} />
+        <Route path="catalog" element={<RequirePage page="catalog"><CatalogRoute /></RequirePage>} />
+        <Route path="catalog/groups" element={<RequirePage page="product_groups"><ProductGroupsRoute /></RequirePage>} />
+        <Route path="product-groups" element={<Navigate to="../catalog/groups" replace />} />
+        <Route path="products/media" element={<RequirePage page="infographics"><Placeholder title="Медиа товаров" /></RequirePage>} />
+        <Route path="media" element={<Navigate to="../products/media" replace />} />
+        <Route path="catalog/content-index" element={<RequirePage page="stats_card_quality"><Placeholder title="Контент-индекс" /></RequirePage>} />
+        <Route path="products" element={<RequirePage page="products"><ProductListRoute /></RequirePage>} />
+        <Route path="catalog/exchange" element={<RequireAnyPage pages={["catalog_import", "catalog_export"]}><CatalogExchangeFeature /></RequireAnyPage>} />
+        <Route path="catalog/import" element={<CatalogExchangeRedirect tab="import" />} />
+        <Route path="catalog/export" element={<CatalogExchangeRedirect tab="export" />} />
+        <Route path="profile" element={<ProfileFeature />} />
 
-        <Route path="/templates" element={<RequirePage page="templates"><TemplatesRoute /></RequirePage>} />
-        <Route path="/templates/:categoryId" element={<RequirePage page="templates"><TemplateEditorRoute /></RequirePage>} />
+        <Route path="templates" element={<RequirePage page="templates"><TemplatesRoute /></RequirePage>} />
+        <Route path="templates/:categoryId" element={<RequirePage page="templates"><TemplateEditorRoute /></RequirePage>} />
 
-        <Route path="/products/new" element={<RequirePage page="products"><ProductNewRoute /></RequirePage>} />
-        <Route path="/products/:productId" element={<RequirePage page="products"><ProductRoute /></RequirePage>} />
+        <Route path="products/new" element={<RequirePage page="products"><ProductNewRoute /></RequirePage>} />
+        <Route path="products/:productId" element={<RequirePage page="products"><ProductRoute /></RequirePage>} />
 
-        <Route path="/dictionaries" element={<RequirePage page="dictionaries"><DictionariesRoute /></RequirePage>} />
-        <Route path="/dictionaries/:dictId" element={<RequirePage page="dictionaries"><DictionaryEditorRoute /></RequirePage>} />
-        <Route path="/data-prep/competitors" element={<Navigate to="/connectors/status?tab=competitors" replace />} />
-        <Route path="/competitor-mapping/category/:categoryId" element={<RequirePage page="sources_mapping"><CompetitorCategoryRoute /></RequirePage>} />
+        <Route path="dictionaries" element={<RequirePage page="dictionaries"><DictionariesRoute /></RequirePage>} />
+        <Route path="dictionaries/:dictId" element={<RequirePage page="dictionaries"><DictionaryEditorRoute /></RequirePage>} />
+        <Route path="data-prep/competitors" element={<Navigate to="../connectors/status?tab=competitors" replace />} />
+        <Route path="competitor-mapping/category/:categoryId" element={<RequirePage page="sources_mapping"><CompetitorCategoryRoute /></RequirePage>} />
 
-        <Route path="/sources" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
-        <Route path="/sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
-        <Route path="/competitor-mapping" element={<Navigate to="/data-prep/competitors" replace />} />
-        <Route path="/marketplace-mapping" element={<Navigate to="/sources?tab=sources" replace />} />
-        <Route path="/connectors/status" element={<RequireAnyPage pages={["connectors_status", "sources_mapping"]}><DataSourcesFeature /></RequireAnyPage>} />
-        <Route path="/images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />
-        <Route path="/data-prep/infographics" element={<Navigate to="/images/infographics" replace />} />
+        <Route path="sources" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
+        <Route path="sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
+        <Route path="competitor-mapping" element={<Navigate to="../data-prep/competitors" replace />} />
+        <Route path="marketplace-mapping" element={<Navigate to="../sources?tab=sources" replace />} />
+        <Route path="connectors/status" element={<RequireAnyPage pages={["connectors_status", "sources_mapping"]}><DataSourcesFeature /></RequireAnyPage>} />
+        <Route path="images/infographics" element={<RequirePage page="infographics"><Infographics /></RequirePage>} />
+        <Route path="data-prep/infographics" element={<Navigate to="../images/infographics" replace />} />
 
-        <Route path="/admin/access" element={<RequirePage page="admin_access"><AdminAccessRoute /></RequirePage>} />
-        <Route path="/admin/organizations" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="organizations" /></RequirePage>} />
-        <Route path="/admin/members" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="members" /></RequirePage>} />
-        <Route path="/admin/invites" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="invites" /></RequirePage>} />
-        <Route path="/admin/platform" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="platform" /></RequirePage>} />
+        <Route path="admin/access" element={<RequirePage page="admin_access"><AdminAccessRoute /></RequirePage>} />
+        <Route path="admin/organizations" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="organizations" /></RequirePage>} />
+        <Route path="admin/members" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="members" /></RequirePage>} />
+        <Route path="admin/invites" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="invites" /></RequirePage>} />
+        <Route path="admin/platform" element={<RequirePage page="admin_access"><OrganizationsRoute initialTab="platform" /></RequirePage>} />
+        <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
     </Shell>
   );
 }
 
+function OrgWorkspaceGuard() {
+  const { orgKey = "" } = useParams();
+  const location = useLocation();
+  const { loading, authenticated, currentOrganization, organizations, switchOrganization } = useAuth();
+  const currentKey = orgRouteKey(currentOrganization);
+  const targetOrganization = organizations.find((organization) => orgRouteKey(organization) === orgKey);
+
+  useEffect(() => {
+    if (loading || !authenticated || !targetOrganization || targetOrganization.id === currentOrganization?.id) return;
+    void switchOrganization(targetOrganization.id);
+  }, [authenticated, currentOrganization?.id, loading, switchOrganization, targetOrganization]);
+
+  if (loading) return <div className="pageLoading">Загрузка...</div>;
+  if (!authenticated) return <Navigate to="/login" replace />;
+  if (!currentOrganization) return <div className="pageLoading">Организация не выбрана</div>;
+  if (!targetOrganization) return <Navigate to={withOrgPath(currentOrganization, "/")} replace />;
+  if (currentKey !== orgKey) return <div className="pageLoading">Переключение организации...</div>;
+
+  return <WorkspaceRoutes key={orgKey} />;
+}
+
+function LegacyWorkspaceRedirect() {
+  const location = useLocation();
+  const { currentOrganization } = useAuth();
+  const { appPath } = stripOrgPrefix(location.pathname);
+  return <Navigate to={`${withOrgPath(currentOrganization, appPath)}${location.search}${location.hash}`} replace />;
+}
+
 export default function App() {
-  const { authenticated, loading, user } = useAuth();
+  const { authenticated, loading, user, currentOrganization } = useAuth();
   if (loading) return <div className="pageLoading">Загрузка...</div>;
   if (!authenticated) {
     return (
@@ -132,11 +164,12 @@ export default function App() {
   }
   return (
     <Routes>
-      <Route path="/login" element={<Navigate to={firstAllowedPath(user?.pages || [])} replace />} />
-      <Route path="/register" element={<Navigate to={firstAllowedPath(user?.pages || [])} replace />} />
+      <Route path="/login" element={<Navigate to={withOrgPath(currentOrganization, firstAllowedPath(user?.pages || []))} replace />} />
+      <Route path="/register" element={<Navigate to={withOrgPath(currentOrganization, firstAllowedPath(user?.pages || []))} replace />} />
       <Route path="/invite/accept" element={<InviteAccept />} />
       <Route path="/auth" element={<Navigate to="/login" replace />} />
-      <Route path="/*" element={<ProtectedApp />} />
+      <Route path="/org/:orgKey/*" element={<OrgWorkspaceGuard />} />
+      <Route path="/*" element={<LegacyWorkspaceRedirect />} />
     </Routes>
   );
 }

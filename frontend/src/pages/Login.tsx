@@ -1,11 +1,12 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../app/auth/AuthContext";
+import { withOrgPath } from "../app/orgRoutes";
 import AuthWorkspaceScene from "../components/auth/AuthWorkspaceScene";
 import AuthViewTransitionLink from "../components/auth/AuthViewTransitionLink";
 
 export default function Login() {
-  const { authenticated, loading, login, firstPath } = useAuth();
+  const { authenticated, loading, login, firstPath, currentOrganization } = useAuth();
   const [searchParams] = useSearchParams();
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +34,7 @@ export default function Login() {
   }
 
   if (!loading && authenticated && !sessionError) {
-    return <Navigate to={firstPath} replace />;
+    return <Navigate to={withOrgPath(currentOrganization, firstPath)} replace />;
   }
 
   return (
