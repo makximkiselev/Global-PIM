@@ -36,6 +36,27 @@ type ImportedProduct = {
   spec_count: number;
   confidence: number;
   updated_at: string;
+  link?: ProductLink | null;
+};
+
+type ProductLink = {
+  status: "linked" | "ignored" | "unlinked";
+  pim_product_id: string;
+  pim_title?: string;
+  sku_gt?: string;
+  sku_pim?: string;
+  updated_at: string;
+};
+
+type ProductCandidate = {
+  product_id: string;
+  title: string;
+  sku_gt: string;
+  sku_pim: string;
+  category_id: string;
+  group_id?: string;
+  score: number;
+  reasons: string[];
 };
 
 type RunsResponse = {
@@ -47,6 +68,15 @@ type RunsResponse = {
 type RunResponse = {
   run: ImportRun;
   products: ImportedProduct[];
+};
+
+type SuggestionsResponse = {
+  product: ImportedProduct;
+  candidates: ProductCandidate[];
+};
+
+type LinkResponse = {
+  product: ImportedProduct;
 };
 
 function parseApiError(error: unknown) {
@@ -64,7 +94,28 @@ function runStatusLabel(status: string) {
   return status || "Черновик";
 }
 
-function ProductInspector({ product }: { product: ImportedProduct | null }) {
+function linkLabel(link?: ProductLink | null) {
+  if (!link) return "Не связана";
+  if (link.status === "ignored") return "Не использовать";
+  if (link.status === "linked") return "Связана";
+  return "Не связана";
+}
+
+function ProductInspector({
+  product,
+  candidates,
+  loadingCandidates,
+  onLink,
+  onIgnore,
+  onUnlink,
+}: {
+  product: ImportedProduct | null;
+  candidates: ProductCandidate[];
+  loadingCandidates: boolean;
+  onLink: (candidate: ProductCandidate) => void;
+  onIgnore: () => void;
+  onUnlink: () => void;
+}) {
   if (!product) {
     return (
       <aside className="cciInspector">
@@ -82,7 +133,9 @@ function ProductInspector({ product }: { product: ImportedProduct | null }) {
           <div className="cciEyebrow">Карточка конкурента</div>
           <h2>{product.title}</h2>
         </div>
-        <Badge tone={product.confidence >= 70 ? "active" : "pending"}>{product.confidence}%</Badge>
+        <Badge tone={product.link?.status === "linked" ? "active" : product.link?.status === "ignored" ? "neutral" : "pending"}>
+          {linkLabel(product.link)}
+        </Badge>
       </div>
 
       {product.images?.[0] ? <img className="cciPreview" src={product.images[0]} alt="" loading="lazy" /> : null}
@@ -109,6 +162,45 @@ function ProductInspector({ product }: { product: ImportedProduct | null }) {
       <a className="cciExternalLink" href={product.url} target="_blank" rel="noreferrer">
         Открыть исходную карточку
       </a>
+
+      <div className="cciLinkBlock">
+        <div className="cciSectionTitle">Связь с PIM</div>
+        {product.link?.status === "linked" ? (
+          <div className="cciLinkedProduct">
+            <span>Связана с SKU</span>
+            <strong>{product.link.pim_title || product.link.pim_product_id}</strong>
+            <small>{product.link.sku_gt || product.link.sku_pim || product.link.pim_product_id}</small>
+            <Button onClick={onUnlink}>Снять связь</Button>
+          </div>
+        ) : product.link?.status === "ignored" ? (
+          <div className="cciLinkedProduct">
+            <span>Эта карточка исключена</span>
+            <strong>Не использовать для насыщения</strong>
+            <Button onClick={onUnlink}>Вернуть в работу</Button>
+          </div>
+        ) : (
+          <>
+            <div className="cciCandidateList">
+              {loadingCandidates ? (
+                <div className="cciMuted">Подбираю кандидатов...</div>
+              ) : candidates.length ? (
+                candidates.map((candidate) => (
+                  <button key={candidate.product_id} type="button" className="cciCandidate" onClick={() => onLink(candidate)}>
+                    <span>
+                      <strong>{candidate.title}</strong>
+                      <small>{candidate.sku_gt || candidate.sku_pim || candidate.product_id}</small>
+                    </span>
+                    <Badge tone={candidate.score >= 70 ? "active" : "pending"}>{candidate.score}%</Badge>
+                  </button>
+                ))
+              ) : (
+                <div className="cciMuted">Похожие SKU не найдены. Позже здесь нужен ручной поиск по каталогу.</div>
+              )}
+            </div>
+            <Button onClick={onIgnore}>Не использовать карточку</Button>
+          </>
+        )}
+      </div>
 
       <div className="cciSpecs">
         <div className="cciSectionTitle">Найденные характеристики</div>
@@ -139,6 +231,8 @@ export default function CompetitorCatalogImportFeature() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [candidates, setCandidates] = useState<ProductCandidate[]>([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
 
   const selectedProduct = products.find((product) => product.id === selectedId) || products[0] || null;
   const lastRun = runs[0] || null;
@@ -171,6 +265,47 @@ export default function CompetitorCatalogImportFeature() {
       .catch((err) => setError(parseApiError(err)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedProduct?.id || selectedProduct.link?.status === "linked" || selectedProduct.link?.status === "ignored") {
+      setCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCandidates(true);
+    api<SuggestionsResponse>(`/competitor-catalog/products/${selectedProduct.id}/suggestions`)
+      .then((data) => {
+        if (cancelled) return;
+        setCandidates(data.candidates || []);
+      })
+      .catch(() => {
+        if (!cancelled) setCandidates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCandidates(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProduct?.id, selectedProduct?.link?.status]);
+
+  function replaceProduct(next: ImportedProduct) {
+    setProducts((items) => items.map((item) => (item.id === next.id ? next : item)));
+  }
+
+  async function saveLink(status: "linked" | "ignored" | "unlinked", pimProductId = "") {
+    if (!selectedProduct) return;
+    setError("");
+    try {
+      const data = await api<LinkResponse>(`/competitor-catalog/products/${selectedProduct.id}/link`, {
+        method: "POST",
+        body: JSON.stringify({ product_id: selectedProduct.id, pim_product_id: pimProductId, status }),
+      });
+      replaceProduct(data.product);
+    } catch (err) {
+      setError(parseApiError(err));
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -249,6 +384,7 @@ export default function CompetitorCatalogImportFeature() {
               <div className="cciTable">
                 <div className="cciTableHead">
                   <span>Товар</span>
+                  <span>Связь</span>
                   <span>Цена</span>
                   <span>Медиа</span>
                   <span>Параметры</span>
@@ -265,6 +401,11 @@ export default function CompetitorCatalogImportFeature() {
                       <strong>{product.title}</strong>
                       <small>{product.url}</small>
                     </span>
+                    <span>
+                      <Badge tone={product.link?.status === "linked" ? "active" : product.link?.status === "ignored" ? "neutral" : "pending"}>
+                        {linkLabel(product.link)}
+                      </Badge>
+                    </span>
                     <span>{product.price ? `${product.price} ${product.currency || ""}`.trim() : "-"}</span>
                     <span>{product.images?.length || 0}</span>
                     <span>{product.spec_count || 0}</span>
@@ -280,7 +421,14 @@ export default function CompetitorCatalogImportFeature() {
           </section>
         </main>
 
-        <ProductInspector product={selectedProduct} />
+        <ProductInspector
+          product={selectedProduct}
+          candidates={candidates}
+          loadingCandidates={loadingCandidates}
+          onLink={(candidate) => saveLink("linked", candidate.product_id)}
+          onIgnore={() => saveLink("ignored")}
+          onUnlink={() => saveLink("unlinked")}
+        />
       </section>
     </div>
   );

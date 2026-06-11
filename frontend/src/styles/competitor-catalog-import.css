@@ -144,7 +144,7 @@
 .cciTableHead,
 .cciTableRow{
   display:grid;
-  grid-template-columns:minmax(360px, 1fr) 150px 92px 110px 120px;
+  grid-template-columns:minmax(360px, 1fr) 132px 150px 92px 110px 120px;
   gap:14px;
   align-items:center;
 }
@@ -278,6 +278,83 @@
 .cciExternalLink:hover{
   border-color:rgba(var(--brand-rgb), .3);
   background:rgba(var(--brand-rgb), .06);
+}
+
+.cciLinkBlock{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:18px 22px 0;
+}
+
+.cciCandidateList{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.cciCandidate{
+  display:flex;
+  width:100%;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(248,250,252,.74);
+  padding:10px 12px;
+  color:var(--text);
+  text-align:left;
+  cursor:pointer;
+}
+
+.cciCandidate:hover{
+  border-color:rgba(var(--brand-rgb), .32);
+  background:rgba(var(--brand-rgb), .06);
+}
+
+.cciCandidate span{
+  min-width:0;
+}
+
+.cciCandidate strong,
+.cciLinkedProduct strong{
+  display:block;
+  overflow:hidden;
+  color:var(--text);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:13px;
+  font-weight:1000;
+}
+
+.cciCandidate small,
+.cciLinkedProduct small{
+  display:block;
+  overflow:hidden;
+  margin-top:4px;
+  color:var(--text-soft);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+  font-weight:800;
+}
+
+.cciLinkedProduct{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  border:1px solid rgba(22, 163, 74, .24);
+  border-radius:14px;
+  background:rgba(240, 253, 244, .72);
+  padding:12px;
+}
+
+.cciLinkedProduct span{
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
 }
 
 .cciSpecs{

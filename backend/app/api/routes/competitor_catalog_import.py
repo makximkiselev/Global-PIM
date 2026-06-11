@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import read_doc, with_lock, write_doc
 from app.core.tenant_context import current_tenant_organization_id
+from app.storage.relational_pim_store import query_products_full
 
 router = APIRouter(prefix="/competitor-catalog", tags=["competitor-catalog"])
 
@@ -34,6 +35,12 @@ class CompetitorCatalogRunRequest(BaseModel):
     max_products: int = Field(default=60, ge=1, le=MAX_PRODUCTS_HARD_LIMIT)
 
 
+class CompetitorCatalogLinkRequest(BaseModel):
+    product_id: str = Field(min_length=3, max_length=120)
+    pim_product_id: str = Field(default="", max_length=120)
+    status: str = Field(default="linked", max_length=24)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -48,7 +55,7 @@ def _store_path() -> Path:
 
 
 def _default_store() -> dict[str, Any]:
-    return {"version": 1, "runs": {}, "products": {}}
+    return {"version": 1, "runs": {}, "products": {}, "links": {}}
 
 
 def _load_store() -> dict[str, Any]:
@@ -59,6 +66,8 @@ def _load_store() -> dict[str, Any]:
         doc["runs"] = {}
     if not isinstance(doc.get("products"), dict):
         doc["products"] = {}
+    if not isinstance(doc.get("links"), dict):
+        doc["links"] = {}
     doc["version"] = 1
     return doc
 
@@ -94,6 +103,84 @@ def _product_id_for(url: str) -> str:
 
 def _text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _norm_for_match(value: Any) -> str:
+    raw = _text(value).lower().replace("ё", "е")
+    return re.sub(r"[^a-zа-я0-9]+", " ", raw).strip()
+
+
+def _tokens_for_match(value: Any) -> set[str]:
+    ignored = {"смартфон", "телефон", "apple", "samsung", "xiaomi", "global", "original", "new", "для", "and", "the"}
+    return {token for token in _norm_for_match(value).split() if len(token) >= 2 and token not in ignored}
+
+
+def _candidate_score(competitor_product: dict[str, Any], pim_product: dict[str, Any]) -> tuple[int, list[str]]:
+    reasons: list[str] = []
+    score = 0
+    c_title = _norm_for_match(competitor_product.get("title"))
+    p_title = _norm_for_match(pim_product.get("title"))
+    c_sku = _norm_for_match(competitor_product.get("sku"))
+    p_sku_gt = _norm_for_match(pim_product.get("sku_gt"))
+    p_sku_pim = _norm_for_match(pim_product.get("sku_pim"))
+    if c_sku and c_sku in {p_sku_gt, p_sku_pim}:
+        score += 95
+        reasons.append("SKU совпал")
+    c_brand = _norm_for_match(competitor_product.get("brand"))
+    if c_brand and c_brand in p_title:
+        score += 10
+        reasons.append("бренд найден в PIM-названии")
+    if p_title and c_title and (p_title in c_title or c_title in p_title):
+        score += 55
+        reasons.append("название входит целиком")
+    c_tokens = _tokens_for_match(c_title)
+    p_tokens = _tokens_for_match(p_title)
+    overlap = c_tokens.intersection(p_tokens)
+    if c_tokens and p_tokens:
+        ratio = len(overlap) / max(len(c_tokens), 1)
+        score += int(ratio * 70)
+        if overlap:
+            reasons.append(f"общие токены: {', '.join(sorted(overlap)[:5])}")
+    for token in ("128", "256", "512", "1tb", "1тб", "black", "white", "pink", "blue", "titanium", "desert", "natural"):
+        if token in c_tokens and token in p_tokens:
+            score += 6
+    return min(score, 100), reasons
+
+
+def _link_payload(store: dict[str, Any], competitor_product_id: str) -> dict[str, Any] | None:
+    link = store.get("links", {}).get(competitor_product_id)
+    return link if isinstance(link, dict) else None
+
+
+def _public_product(product: dict[str, Any], store: dict[str, Any]) -> dict[str, Any]:
+    out = dict(product)
+    out["link"] = _link_payload(store, str(product.get("id") or "")) or None
+    return out
+
+
+def _suggest_candidates(competitor_product: dict[str, Any], limit: int = 8) -> list[dict[str, Any]]:
+    products = query_products_full(limit=900)
+    candidates: list[dict[str, Any]] = []
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        score, reasons = _candidate_score(competitor_product, product)
+        if score < 18:
+            continue
+        candidates.append(
+            {
+                "product_id": product.get("id"),
+                "title": product.get("title"),
+                "sku_gt": product.get("sku_gt"),
+                "sku_pim": product.get("sku_pim"),
+                "category_id": product.get("category_id"),
+                "group_id": product.get("group_id"),
+                "score": score,
+                "reasons": reasons,
+            }
+        )
+    candidates.sort(key=lambda row: (int(row.get("score") or 0), str(row.get("title") or "")), reverse=True)
+    return candidates[:limit]
 
 
 def _jsonld_nodes(soup: BeautifulSoup) -> list[dict[str, Any]]:
@@ -398,7 +485,64 @@ def get_competitor_catalog_run(run_id: str) -> dict[str, Any]:
     if not isinstance(run, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
     products = [store.get("products", {}).get(pid) for pid in run.get("product_ids", [])]
-    return {"run": run, "products": [p for p in products if isinstance(p, dict)]}
+    return {"run": run, "products": [_public_product(p, store) for p in products if isinstance(p, dict)]}
+
+
+@router.get("/products/{product_id}/suggestions")
+def get_competitor_product_suggestions(product_id: str) -> dict[str, Any]:
+    store = _load_store()
+    product = store.get("products", {}).get(product_id)
+    if not isinstance(product, dict):
+        raise HTTPException(status_code=404, detail="PRODUCT_NOT_FOUND")
+    return {
+        "product": _public_product(product, store),
+        "candidates": _suggest_candidates(product),
+    }
+
+
+@router.post("/products/{product_id}/link")
+def save_competitor_product_link(product_id: str, payload: CompetitorCatalogLinkRequest) -> dict[str, Any]:
+    if payload.product_id != product_id:
+        raise HTTPException(status_code=400, detail="PRODUCT_ID_MISMATCH")
+    status = payload.status.strip().lower()
+    if status not in {"linked", "ignored", "unlinked"}:
+        raise HTTPException(status_code=400, detail="BAD_LINK_STATUS")
+
+    lock = with_lock(f"competitor_catalog_imports:{_tenant_safe_key()}")
+    if not lock.acquire(timeout=10):
+        raise HTTPException(status_code=423, detail="STORE_LOCKED")
+    try:
+        store = _load_store()
+        product = store.get("products", {}).get(product_id)
+        if not isinstance(product, dict):
+            raise HTTPException(status_code=404, detail="PRODUCT_NOT_FOUND")
+        if status == "unlinked":
+            store["links"].pop(product_id, None)
+        elif status == "ignored":
+            store["links"][product_id] = {
+                "status": "ignored",
+                "pim_product_id": "",
+                "updated_at": _now_iso(),
+            }
+        else:
+            pim_product_id = payload.pim_product_id.strip()
+            if not pim_product_id:
+                raise HTTPException(status_code=400, detail="PIM_PRODUCT_REQUIRED")
+            found = query_products_full(ids=[pim_product_id], limit=1)
+            if not found:
+                raise HTTPException(status_code=404, detail="PIM_PRODUCT_NOT_FOUND")
+            store["links"][product_id] = {
+                "status": "linked",
+                "pim_product_id": pim_product_id,
+                "pim_title": found[0].get("title"),
+                "sku_gt": found[0].get("sku_gt"),
+                "sku_pim": found[0].get("sku_pim"),
+                "updated_at": _now_iso(),
+            }
+        _save_store(store)
+        return {"product": _public_product(store["products"][product_id], store)}
+    finally:
+        lock.release()
 
 
 @router.post("/runs")
@@ -415,4 +559,5 @@ async def create_competitor_catalog_run(payload: CompetitorCatalogRunRequest) ->
         _save_store(store)
     finally:
         lock.release()
-    return {"run": run, "products": products}
+    store = _load_store()
+    return {"run": run, "products": [_public_product(product, store) for product in products]}
