@@ -60,6 +60,16 @@ type ProductCandidate = {
   reasons: string[];
 };
 
+type CatalogSearchItem = {
+  id: string;
+  title?: string;
+  name?: string;
+  sku_gt?: string;
+  sku_pim?: string;
+  category_id?: string;
+  group_id?: string;
+};
+
 type RunsResponse = {
   runs: ImportRun[];
   total_products: number;
@@ -106,6 +116,12 @@ type ApplyResponse = {
   plan: ApplyPlan;
 };
 
+type ProductQueueFilter = "all" | "unlinked" | "ready" | "applied" | "ignored";
+
+type ProductSearchResponse = {
+  items: CatalogSearchItem[];
+};
+
 function parseApiError(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error || "");
   if (raw.includes("ROBOTS_DISALLOW_ALL")) return "Сайт запретил обход в robots.txt.";
@@ -126,6 +142,21 @@ function linkLabel(link?: ProductLink | null) {
   if (link.status === "ignored") return "Не использовать";
   if (link.status === "linked") return "Связана";
   return "Не связана";
+}
+
+function queueFilterLabel(filter: ProductQueueFilter) {
+  if (filter === "unlinked") return "Не связаны";
+  if (filter === "ready") return "К применению";
+  if (filter === "applied") return "Применены";
+  if (filter === "ignored") return "Игнор";
+  return "Все";
+}
+
+function queueStatus(product: ImportedProduct): ProductQueueFilter {
+  if (product.link?.status === "ignored") return "ignored";
+  if (product.link?.status === "linked" && product.link.last_applied_at) return "applied";
+  if (product.link?.status === "linked") return "ready";
+  return "unlinked";
 }
 
 function ProductInspector({
@@ -151,6 +182,52 @@ function ProductInspector({
   onUnlink: () => void;
   onApply: () => void;
 }) {
+  const [manualQuery, setManualQuery] = useState("");
+  const [manualResults, setManualResults] = useState<ProductCandidate[]>([]);
+  const [manualLoading, setManualLoading] = useState(false);
+
+  useEffect(() => {
+    if (!product?.id || product.link?.status === "linked" || product.link?.status === "ignored") {
+      setManualResults([]);
+      return;
+    }
+    const q = manualQuery.trim();
+    if (q.length < 2) {
+      setManualResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setManualLoading(true);
+      api<ProductSearchResponse>(`/catalog/products/search?q=${encodeURIComponent(q)}&limit=20`)
+        .then((data) => {
+          if (cancelled) return;
+          setManualResults(
+            (data.items || []).map((item) => ({
+              product_id: item.id,
+              title: item.title || item.name || item.id,
+              sku_gt: item.sku_gt || "",
+              sku_pim: item.sku_pim || "",
+              category_id: item.category_id || "",
+              group_id: item.group_id,
+              score: 0,
+              reasons: ["ручной поиск"],
+            })),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setManualResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setManualLoading(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [manualQuery, product?.id, product?.link?.status]);
+
   if (!product) {
     return (
       <aside className="cciInspector">
@@ -229,8 +306,29 @@ function ProductInspector({
                   </button>
                 ))
               ) : (
-                <div className="cciMuted">Похожие SKU не найдены. Позже здесь нужен ручной поиск по каталогу.</div>
+                <div className="cciMuted">Похожие SKU не найдены. Используйте ручной поиск ниже.</div>
               )}
+            </div>
+            <div className="cciManualSearch">
+              <TextInput
+                value={manualQuery}
+                onChange={(event) => setManualQuery(event.target.value)}
+                placeholder="Ручной поиск SKU: название, GT SKU, PIM SKU"
+              />
+              {manualLoading ? <div className="cciMuted">Ищу товары...</div> : null}
+              {manualResults.length ? (
+                <div className="cciCandidateList">
+                  {manualResults.map((candidate) => (
+                    <button key={candidate.product_id} type="button" className="cciCandidate" onClick={() => onLink(candidate)}>
+                      <span>
+                        <strong>{candidate.title}</strong>
+                        <small>{candidate.sku_gt || candidate.sku_pim || candidate.product_id}</small>
+                      </span>
+                      <Badge tone="neutral">ручной</Badge>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <Button onClick={onIgnore}>Не использовать карточку</Button>
           </>
@@ -318,19 +416,38 @@ export default function CompetitorCatalogImportFeature() {
   const [applyPlan, setApplyPlan] = useState<ApplyPlan | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [queueFilter, setQueueFilter] = useState<ProductQueueFilter>("all");
 
-  const selectedProduct = products.find((product) => product.id === selectedId) || products[0] || null;
   const lastRun = runs[0] || null;
+  const queueCounts = useMemo(() => {
+    const counts: Record<ProductQueueFilter, number> = { all: products.length, unlinked: 0, ready: 0, applied: 0, ignored: 0 };
+    for (const product of products) {
+      counts[queueStatus(product)] += 1;
+    }
+    return counts;
+  }, [products]);
+  const filteredProducts = useMemo(
+    () => products.filter((product) => queueFilter === "all" || queueStatus(product) === queueFilter),
+    [products, queueFilter],
+  );
+  const selectedProduct = filteredProducts.find((product) => product.id === selectedId) || filteredProducts[0] || null;
 
   const metrics = useMemo(
     () => [
       { label: "Найдено карточек", value: lastRun?.products_found || 0, meta: lastRun?.host || "последний прогон" },
-      { label: "Просканировано страниц", value: lastRun?.pages_scanned || 0, meta: lastRun ? `лимит ${lastRun.limits?.max_pages || "-"}` : "ограниченный обход" },
-      { label: "Всего во внешнем каталоге", value: totalProducts, meta: "по текущей организации" },
-      { label: "Ошибки обхода", value: lastRun?.errors?.length || 0, meta: "часть страниц могла не открыться" },
+      { label: "Не связаны", value: queueCounts.unlinked, meta: "нужен SKU" },
+      { label: "К применению", value: queueCounts.ready, meta: "связаны с SKU" },
+      { label: "Применены", value: queueCounts.applied, meta: `${totalProducts} всего` },
     ],
-    [lastRun, totalProducts],
+    [lastRun, queueCounts, totalProducts],
   );
+
+  useEffect(() => {
+    if (!filteredProducts.length) return;
+    if (!filteredProducts.some((product) => product.id === selectedId)) {
+      setSelectedId(filteredProducts[0].id);
+    }
+  }, [filteredProducts, selectedId]);
 
   async function loadRuns() {
     const data = await api<RunsResponse>("/competitor-catalog/runs");
@@ -502,10 +619,26 @@ export default function CompetitorCatalogImportFeature() {
                 <div className="cciEyebrow">Внешний каталог</div>
                 <h2>Найденные карточки</h2>
               </div>
-              {loading ? <Badge tone="provisioning">Загрузка</Badge> : <Badge tone="neutral">{products.length} товаров</Badge>}
+              {loading ? <Badge tone="provisioning">Загрузка</Badge> : <Badge tone="neutral">{filteredProducts.length} из {products.length}</Badge>}
             </div>
 
             {products.length ? (
+              <div className="cciQueueFilters">
+                {(["all", "unlinked", "ready", "applied", "ignored"] as ProductQueueFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    className={queueFilter === filter ? "isActive" : ""}
+                    onClick={() => setQueueFilter(filter)}
+                  >
+                    <span>{queueFilterLabel(filter)}</span>
+                    <strong>{queueCounts[filter]}</strong>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {filteredProducts.length ? (
               <div className="cciTable">
                 <div className="cciTableHead">
                   <span>Товар</span>
@@ -515,7 +648,7 @@ export default function CompetitorCatalogImportFeature() {
                   <span>Параметры</span>
                   <span>Уверенность</span>
                 </div>
-                {products.map((product) => (
+                {filteredProducts.map((product) => (
                   <button
                     key={product.id}
                     type="button"
@@ -540,7 +673,11 @@ export default function CompetitorCatalogImportFeature() {
               </div>
             ) : (
               <div className="cciEmpty">
-                {loading ? "Загружаю последние результаты..." : "Пока нет импортированных карточек. Запусти первый обход сайта конкурента."}
+                {loading
+                  ? "Загружаю последние результаты..."
+                  : products.length
+                    ? "В выбранном состоянии нет карточек."
+                    : "Пока нет импортированных карточек. Запусти первый обход сайта конкурента."}
               </div>
             )}
           </section>

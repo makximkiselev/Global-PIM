@@ -141,6 +141,50 @@
   flex-direction:column;
 }
 
+.cciQueueFilters{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:14px 22px;
+  border-bottom:1px solid var(--line);
+}
+
+.cciQueueFilters button{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:38px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(255,255,255,.72);
+  color:var(--text-soft);
+  padding:0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+.cciQueueFilters button.isActive{
+  border-color:rgba(var(--brand-rgb), .34);
+  background:rgba(var(--brand-rgb), .09);
+  color:var(--text);
+}
+
+.cciQueueFilters strong{
+  display:inline-flex;
+  min-width:22px;
+  height:22px;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:rgba(15, 23, 42, .07);
+  color:var(--text);
+  font-size:12px;
+  font-weight:1000;
+}
+
 .cciTableHead,
 .cciTableRow{
   display:grid;
@@ -291,6 +335,29 @@
   display:flex;
   flex-direction:column;
   gap:8px;
+}
+
+.cciManualSearch{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(255,255,255,.56);
+  padding:10px;
+}
+
+.cciManualSearch input{
+  width:100%;
+  min-height:38px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:rgba(255,255,255,.86);
+  color:var(--text);
+  padding:0 10px;
+  font:inherit;
+  font-size:13px;
+  font-weight:800;
 }
 
 .cciCandidate{
