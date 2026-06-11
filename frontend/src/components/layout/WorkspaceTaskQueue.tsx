@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 
 type WorkspaceTaskItem = {
   key: string;
@@ -31,6 +32,7 @@ export default function WorkspaceTaskQueue({
   aside,
   className = "",
 }: WorkspaceTaskQueueProps) {
+  const orgPath = useOrgPath();
   if (!items.length) return null;
   const activeItem = items.find((item) => item.status === "active" || item.status === "blocked") || items[0];
 
@@ -61,7 +63,7 @@ export default function WorkspaceTaskQueue({
           );
 
           return item.href ? (
-            <Link key={item.key} className={`workspaceTaskQueueItem is-${status}`} to={item.href}>
+            <Link key={item.key} className={`workspaceTaskQueueItem is-${status}`} to={orgPath(item.href)}>
               {content}
             </Link>
           ) : (
@@ -77,7 +79,7 @@ export default function WorkspaceTaskQueue({
           <strong>{activeItem.label}</strong>
           <p>{activeItem.description}</p>
           {activeItem.href ? (
-            <Link to={activeItem.href} className="workspaceTaskQueueFocusAction">
+            <Link to={orgPath(activeItem.href)} className="workspaceTaskQueueFocusAction">
               {activeItem.actionLabel || "Открыть"}
             </Link>
           ) : null}

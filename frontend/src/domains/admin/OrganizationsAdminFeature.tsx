@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../app/auth/AuthContext";
+import { useOrgPath } from "../../app/orgRoutes";
 import DataList from "../../components/data/DataList";
 import DataTable from "../../components/data/DataTable";
 import InspectorPanel from "../../components/data/InspectorPanel";
@@ -132,6 +133,7 @@ function pluralRu(value: number, forms: [string, string, string]) {
 
 export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const navigate = useNavigate();
+  const orgPath = useOrgPath();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentOrganization, switchOrganization } = useAuth();
 
@@ -348,11 +350,11 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
             ]}
           />
           <div className="orgAdminNextSteps">
-            <button type="button" onClick={() => navigate(`/admin/members?organization=${encodeURIComponent(selectedOrganization.id)}`)}>
+            <button type="button" onClick={() => navigate(orgPath(`/admin/members?organization=${encodeURIComponent(selectedOrganization.id)}`))}>
               <span>Команда</span>
               <strong>Проверить сотрудников и роли</strong>
             </button>
-            <button type="button" onClick={() => navigate(`/admin/invites?organization=${encodeURIComponent(selectedOrganization.id)}`)}>
+            <button type="button" onClick={() => navigate(orgPath(`/admin/invites?organization=${encodeURIComponent(selectedOrganization.id)}`))}>
               <span>Приглашения</span>
               <strong>Добавить нового сотрудника</strong>
             </button>
@@ -462,7 +464,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         ]}
         onChange={(key) => {
           const next = key as AdminMode;
-          navigate(`${TAB_TO_PATH[next]}?${searchParams.toString()}`);
+          navigate(orgPath(`${TAB_TO_PATH[next]}?${searchParams.toString()}`));
         }}
       />
 

@@ -1,5 +1,6 @@
 import { type CSSProperties, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import { api } from "../../lib/api";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
@@ -106,6 +107,7 @@ function toStoreProviderCode(provider: string): StoreProviderCode {
 }
 
 export default function ConnectorsStatus({ embedded = false, view = "overview" }: { embedded?: boolean; view?: ConnectorsView } = {}) {
+  const orgPath = useOrgPath();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [runningProvider, setRunningProvider] = useState("");
@@ -410,7 +412,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
               <Link
                 key={`${issue.provider}-${issue.method.code}`}
                 className={`cs-actionItem ${connectorStatusClass(issue.method.status)}`}
-                to={issue.action.href}
+                to={orgPath(issue.action.href)}
               >
                 <span>{issue.intent.label}</span>
                 <strong>{issue.provider}</strong>
