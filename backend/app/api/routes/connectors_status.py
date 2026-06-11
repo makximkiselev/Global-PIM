@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.json_store import with_lock
 from app.core.control_plane import DEFAULT_ORGANIZATION_ID
+from app.core.control_plane import list_organizations_overview
 from app.core.tenant_context import TenantContext
 from app.api.routes import marketplace_mapping, yandex_market, ozon_market, comfyui
 from app.storage.relational_pim_store import load_connectors_state_doc, save_connectors_state_doc
@@ -143,6 +144,24 @@ def _request_organization_id(request: Optional[Request]) -> str:
     if isinstance(tenant, TenantContext):
         return _normalize_organization_id(tenant.organization_id)
     return DEFAULT_ORGANIZATION_ID
+
+
+def _active_scheduler_organization_ids() -> List[str]:
+    try:
+        organizations = list_organizations_overview()
+    except Exception:
+        return [DEFAULT_ORGANIZATION_ID]
+    out: List[str] = []
+    for organization in organizations:
+        org_id = str((organization or {}).get("id") or "").strip()
+        status = str((organization or {}).get("status") or "").strip().lower()
+        tenant_status = str((organization or {}).get("tenant_status") or "").strip().lower()
+        if not org_id or status != "active":
+            continue
+        if tenant_status and tenant_status != "active":
+            continue
+        out.append(org_id)
+    return out or [DEFAULT_ORGANIZATION_ID]
 
 
 def _state_lock(organization_id: Optional[str]):
@@ -1064,31 +1083,29 @@ async def connectors_run_provider(provider: str, request: Request) -> Dict[str, 
 async def _scheduler_loop() -> None:
     while True:
         await asyncio.sleep(30)
-        state = _load_state(DEFAULT_ORGANIZATION_ID)
-        now = datetime.now(timezone.utc)
-        due: List[Tuple[str, str]] = []
-        for pcode, pdef in PROVIDERS_DEF.items():
-            methods = state.get("providers", {}).get(pcode, {}).get("methods", {})
-            for mcode in pdef["methods"].keys():
-                mrow = methods.get(mcode, {})
-                schedule = str(mrow.get("schedule") or DEFAULT_SCHEDULE)
-                interval = SCHEDULE_SECONDS.get(schedule, SCHEDULE_SECONDS[DEFAULT_SCHEDULE])
-                last = _parse_iso(mrow.get("last_run_at"))
-                if last is None:
-                    due.append((pcode, mcode))
-                    continue
-                if (now - last).total_seconds() >= interval:
-                    due.append((pcode, mcode))
-
-        if not due:
-            continue
         async with _runner_lock:
-            for pcode, mcode in due:
-                try:
-                    await _run_method(pcode, mcode, DEFAULT_ORGANIZATION_ID)
-                except Exception:
-                    # state already updated in _run_method
-                    continue
+            for organization_id in _active_scheduler_organization_ids():
+                state = _load_state(organization_id)
+                now = datetime.now(timezone.utc)
+                due: List[Tuple[str, str]] = []
+                for pcode, pdef in PROVIDERS_DEF.items():
+                    methods = state.get("providers", {}).get(pcode, {}).get("methods", {})
+                    for mcode in pdef["methods"].keys():
+                        mrow = methods.get(mcode, {})
+                        schedule = str(mrow.get("schedule") or DEFAULT_SCHEDULE)
+                        interval = SCHEDULE_SECONDS.get(schedule, SCHEDULE_SECONDS[DEFAULT_SCHEDULE])
+                        last = _parse_iso(mrow.get("last_run_at"))
+                        if last is None:
+                            due.append((pcode, mcode))
+                            continue
+                        if (now - last).total_seconds() >= interval:
+                            due.append((pcode, mcode))
+                for pcode, mcode in due:
+                    try:
+                        await _run_method(pcode, mcode, organization_id)
+                    except Exception:
+                        # state already updated in _run_method
+                        continue
 
 
 def start_scheduler() -> None:

@@ -9,6 +9,7 @@ from app.core.tenant_context import (
     reset_current_tenant_organization_id,
     set_current_tenant_organization_id,
 )
+from app.workers.tenant_iteration import active_worker_organization_ids
 
 
 async def run_once(job_id: str, organization_id: Optional[str] = None) -> Dict[str, Any]:
@@ -94,7 +95,8 @@ async def run_loop(
 ) -> None:
     delay = max(float(poll_interval_seconds or 5.0), 0.5)
     while True:
-        await run_pending_once(organization_id, limit=limit)
+        for org_id in active_worker_organization_ids(organization_id):
+            await run_pending_once(org_id, limit=limit)
         await asyncio.sleep(delay)
 
 
@@ -112,7 +114,11 @@ def main() -> None:
         asyncio.run(run_loop(organization_id, poll_interval_seconds=args.poll_interval, limit=args.limit))
         return
     if args.run_pending:
-        asyncio.run(run_pending_once(organization_id, limit=args.limit))
+        async def _run_all_pending() -> None:
+            for org_id in active_worker_organization_ids(organization_id):
+                await run_pending_once(org_id, limit=args.limit)
+
+        asyncio.run(_run_all_pending())
         return
     if not str(args.job_id or "").strip():
         parser.error("--job-id is required unless --run-pending or --loop is used")

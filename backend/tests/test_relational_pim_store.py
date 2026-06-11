@@ -11,9 +11,163 @@ sys.path.insert(0, os.path.abspath("backend"))
 
 from app.storage import relational_pim_store
 from app.storage import json_store
+from app.core.tenant_context import reset_current_tenant_organization_id, set_current_tenant_organization_id
 
 
 class RelationalPimStoreTests(unittest.TestCase):
+    def test_product_read_models_are_scoped_to_current_tenant(self) -> None:
+        product_rows = {
+            "org_a": [
+                (
+                    "product_a",
+                    "cat-a",
+                    "single",
+                    "draft",
+                    "Product A",
+                    "pim-a",
+                    "gt-a",
+                    "group_a",
+                    [],
+                    [],
+                    {},
+                    {},
+                    {},
+                    "2026-01-01T00:00:00+00:00",
+                    "2026-01-01T00:00:00+00:00",
+                )
+            ],
+            "org_b": [
+                (
+                    "product_b",
+                    "cat-b",
+                    "single",
+                    "draft",
+                    "Product B",
+                    "pim-b",
+                    "gt-b",
+                    "group_b",
+                    [],
+                    [],
+                    {},
+                    {},
+                    {},
+                    "2026-01-01T00:00:00+00:00",
+                    "2026-01-01T00:00:00+00:00",
+                )
+            ],
+        }
+        group_rows = {
+            "org_a": [("group_a", "Group A", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00", "memory")],
+            "org_b": [("group_b", "Group B", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00", "color")],
+        }
+        page_rows = {
+            "org_a": [
+                (
+                    "product_a",
+                    "Product A",
+                    "cat-a",
+                    "A",
+                    "pim-a",
+                    "gt-a",
+                    "group_a",
+                    "Group A",
+                    "tpl-a",
+                    "Template A",
+                    "cat-a",
+                    True,
+                    "ok",
+                    True,
+                    "ok",
+                    "a.jpg",
+                    {},
+                )
+            ],
+            "org_b": [
+                (
+                    "product_b",
+                    "Product B",
+                    "cat-b",
+                    "B",
+                    "pim-b",
+                    "gt-b",
+                    "group_b",
+                    "Group B",
+                    "tpl-b",
+                    "Template B",
+                    "cat-b",
+                    False,
+                    "Нет данных",
+                    False,
+                    "Нет данных",
+                    "b.jpg",
+                    {},
+                )
+            ],
+        }
+
+        class _Cursor:
+            def __init__(self) -> None:
+                self._rows = []
+                self._one = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            def execute(self, query, params=None) -> None:
+                sql = " ".join(str(query).split())
+                params = list(params or [])
+                organization_id = str(params[0] if params else "")
+                self._one = None
+                self._rows = []
+                if "FROM products_rel" in sql:
+                    rows = list(product_rows.get(organization_id, []))
+                    if "id = ANY" in sql and len(params) > 1:
+                        wanted = set(params[1] or [])
+                        rows = [row for row in rows if row[0] in wanted]
+                    self._rows = rows
+                elif "FROM product_groups_rel" in sql:
+                    self._rows = list(group_rows.get(organization_id, []))
+                elif "FROM catalog_product_page_tenant_rel" in sql and "COUNT(*)" in sql:
+                    self._one = [len(page_rows.get(organization_id, []))]
+                elif "FROM catalog_product_page_tenant_rel" in sql:
+                    self._rows = list(page_rows.get(organization_id, []))
+
+            def fetchall(self):
+                return self._rows
+
+            def fetchone(self):
+                return self._one
+
+        class _Conn:
+            def cursor(self) -> _Cursor:
+                return _Cursor()
+
+        with (
+            patch.object(relational_pim_store, "_ensure_tables", return_value=None),
+            patch.object(relational_pim_store, "_bootstrap_products_from_legacy", return_value=None),
+            patch.object(relational_pim_store, "_bootstrap_product_groups_from_legacy", return_value=None),
+            patch.object(relational_pim_store, "_bootstrap_catalog_product_page_tenant_from_legacy", return_value=None),
+            patch.object(relational_pim_store, "_with_pg_retry", side_effect=lambda fn: fn()),
+            patch.object(relational_pim_store, "_pg_connect", return_value=(_Conn(), None, None)),
+        ):
+            token = set_current_tenant_organization_id("org_b")
+            try:
+                products_doc = relational_pim_store.load_products_doc()
+                products = relational_pim_store.query_products_full(ids=["product_a", "product_b"])
+                groups_doc = relational_pim_store.load_product_groups_doc()
+                page = relational_pim_store.query_catalog_product_page_rows(page=1, page_size=50)
+            finally:
+                reset_current_tenant_organization_id(token)
+
+        self.assertEqual([item["id"] for item in products_doc["items"]], ["product_b"])
+        self.assertEqual([item["id"] for item in products], ["product_b"])
+        self.assertEqual([item["id"] for item in groups_doc["items"]], ["group_b"])
+        self.assertEqual([item["id"] for item in page["items"]], ["product_b"])
+        self.assertEqual(page["total"], 1)
+
     def test_replace_templates_tenant_tables_persists_template_meta(self) -> None:
         inserted_templates: list[tuple[object, ...]] = []
 
