@@ -672,7 +672,7 @@
 
 .cx-summaryStrip{
   display:grid;
-  grid-template-columns:repeat(6,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:0;
   padding:0;
   overflow:hidden;
@@ -702,6 +702,18 @@
   font-size:24px;
   line-height:1;
   color:#172033;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.cx-stripMetric em{
+  color:var(--muted);
+  font-size:12px;
+  font-style:normal;
+  font-weight:650;
+  line-height:1.35;
 }
 
 .cx-stripMetric.isAlert b{
@@ -900,12 +912,19 @@
 
 .cx-targetCard{
   border:1px solid rgba(185,199,227,.55);
-  border-radius:18px;
+  border-radius:14px;
   padding:14px;
   background:#fbfcff;
   display:flex;
   flex-direction:column;
   gap:12px;
+}
+
+.cx-targetCardHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
 }
 
 .cx-pickerGrid.isEmbedded .cx-paneSidebar,
@@ -934,7 +953,7 @@
   align-items:center;
   padding:8px 10px;
   border:1px solid rgba(185,199,227,.55);
-  border-radius:999px;
+  border-radius:10px;
   background:#fff;
   font-size:13px;
   font-weight:700;
@@ -950,6 +969,22 @@
   border-style:dashed;
   background:#f7f8fb;
   color:#8a94aa;
+}
+
+.cx-targetHelp{
+  padding:10px 12px;
+  border:1px dashed rgba(185,199,227,.75);
+  border-radius:12px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+  line-height:1.4;
+  background:#fff;
+}
+
+.cx-targetHelp a{
+  color:var(--brand);
+  text-decoration:none;
 }
 
 @media (max-width: 1240px){

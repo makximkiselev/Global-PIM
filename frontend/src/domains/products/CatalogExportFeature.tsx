@@ -116,6 +116,7 @@ type ExportMissingDetail = {
 type MetricItem = {
   label: string;
   value: number | string;
+  hint?: string;
   accent?: boolean;
 };
 
@@ -126,6 +127,7 @@ function SummaryMetricRow({ items }: { items: MetricItem[] }) {
         <div key={item.label} className={`cx-stripMetric${item.accent ? " isAlert" : ""}`}>
           <span>{item.label}</span>
           <b>{item.value}</b>
+          {item.hint ? <em>{item.hint}</em> : null}
         </div>
       ))}
     </section>
@@ -343,6 +345,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return "до 50";
   }, [includeDescendants, productCountsByCategory, selectedNodeIds, selectedProductIds.length]);
+  const readyForPrepare = activeTargets.length > 0;
   const broadExportScope = selectedProductIds.length === 0 && (selectedNodeIds.length !== 1 || includeDescendants);
   const totalBlocked = useMemo(
     () => (run?.batches || []).reduce((sum, item) => sum + (item.not_ready_count ?? Math.max(0, item.count - item.ready_count)), 0),
@@ -583,10 +586,20 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         )}
         main={(
           <div className="cx-workspaceMain">
+            <SummaryMetricRow
+              items={[
+                { label: "Область", value: selectedScope, hint: includeDescendants && selectedNodeIds.length ? "с дочерними ветками" : "текущий выбор" },
+                { label: "SKU в проверке", value: selectedSkuEstimate, hint: selectedProductIds.length ? "точный выбор" : "контрольный batch" },
+                { label: "Каналы", value: activeTargets.length, hint: "площадки" },
+                { label: "Магазины", value: selectedTargetsCount, hint: "цели batch", accent: !readyForPrepare },
+              ]}
+            />
+
             <DataToolbar
               title="Цели экспорта"
-              subtitle="Выбирай площадки и конкретные магазины. Экспорт запускается как batch-подготовка по текущей области."
+              subtitle="Отметьте магазины, куда нужно подготовить карточки. Выбор хранится в интерфейсе, кодом ничего включать не нужно."
               className="cx-workspaceToolbar"
+              compact
               actions={(
                 <div className="cx-toolbarActions">
                   <Badge tone={exportBadgeTone}>{exportBadgeText}</Badge>
@@ -614,17 +627,22 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   const current = new Set(selectedStores[provider.code] || []);
                   return (
                     <div key={provider.code} className="cx-targetCard">
-                      <label className={`cx-inlineCheck ${stores.length ? "" : "isDisabled"}`}>
-                        <input
-                          type="checkbox"
-                          checked={stores.length > 0 && checked}
-                          disabled={!stores.length}
-                          onChange={(e) => {
-                            setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
-                          }}
-                        />
-                        <span>{provider.title}</span>
-                      </label>
+                      <div className="cx-targetCardHead">
+                        <label className={`cx-inlineCheck ${stores.length ? "" : "isDisabled"}`}>
+                          <input
+                            type="checkbox"
+                            checked={stores.length > 0 && checked}
+                            disabled={!stores.length}
+                            onChange={(e) => {
+                              setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
+                            }}
+                          />
+                          <span>{provider.title}</span>
+                        </label>
+                        <Badge tone={checked && current.size ? "active" : "neutral"}>
+                          {current.size ? `${current.size}/${stores.length}` : "Выберите"}
+                        </Badge>
+                      </div>
                       <div className="cx-storeChips">
                         {stores.map((store) => {
                           const storeDisabled = store.enabled === false;
@@ -646,19 +664,18 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           );
                         })}
                       </div>
+                      {!stores.length ? (
+                        <div className="cx-targetHelp">
+                          <Link to="/connectors/status?tab=stores">Добавить магазин</Link>
+                        </div>
+                      ) : current.size === 0 ? (
+                        <div className="cx-targetHelp">Ни один магазин не попадет в batch, пока не выбрана галочка магазина.</div>
+                      ) : null}
                     </div>
                   );
                 })}
               </div>
             </DataToolbar>
-
-            <SummaryMetricRow
-              items={[
-                { label: "Выбранная область", value: selectedScope },
-                { label: "Каналов", value: activeTargets.length },
-                { label: "Целей", value: selectedTargetsCount },
-              ]}
-            />
 
             {broadExportScope ? (
               <section className="card cx-exportScopeGuard">

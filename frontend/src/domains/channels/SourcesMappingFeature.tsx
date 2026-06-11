@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
@@ -156,6 +156,7 @@ export default function SourcesMappingFeature() {
     [tab],
   );
   const nextAction = useMemo(() => sourcesNextAction(tab, selectedCategoryId, productParam), [productParam, selectedCategoryId, tab]);
+  const routeStateLabel = tab === "sources" ? "Шаг 1 из 4" : tab === "params" ? "Шаг 2 из 4" : "Шаг 3 из 4";
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
@@ -371,6 +372,11 @@ export default function SourcesMappingFeature() {
         <div>
           <span>Рабочий контекст</span>
           <strong>{selectedCategoryName || "Категория не выбрана"}</strong>
+          <div className="sourcesMappingContextMeta">
+            <b>{routeStateLabel}</b>
+            {productParam ? <b>SKU-контекст</b> : <b>Категория</b>}
+            {selectedCategoryId ? <b>ID {selectedCategoryId}</b> : null}
+          </div>
           <p>
             {productParam
               ? `Переход из SKU ${productParam}: правки применяются к категории, а проверку результата лучше запускать по этому SKU.`
@@ -378,9 +384,9 @@ export default function SourcesMappingFeature() {
           </p>
         </div>
         <div className="sourcesMappingContextActions">
-          {productParam ? <a className="btn" href={`/products/${encodeURIComponent(productParam)}`}>Открыть SKU</a> : null}
-          <a className="btn" href={exportHref(selectedCategoryId, productParam)}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</a>
-          <a className="btn primary" href={nextAction.href}>{nextAction.label}</a>
+          {productParam ? <Link className="btn" to={`/products/${encodeURIComponent(productParam)}`}>Открыть SKU</Link> : null}
+          <Link className="btn" to={exportHref(selectedCategoryId, productParam)}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</Link>
+          <Link className="btn primary" to={nextAction.href}>{nextAction.label}</Link>
         </div>
       </div>
 
