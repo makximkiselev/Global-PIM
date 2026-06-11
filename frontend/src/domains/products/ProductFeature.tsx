@@ -1,5 +1,6 @@
 import { DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import "../../styles/product-new.css";
 import "../../styles/product.css";
 import "../../styles/product-groups.css";
@@ -422,6 +423,7 @@ function renderDescriptionHtml(source: string) {
 export default function ProductFeature() {
   const { productId } = useParams();
   const navigate = useNavigate();
+  const orgPath = useOrgPath();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1357,7 +1359,7 @@ export default function ProductFeature() {
     setErr(null);
     try {
       await api(`/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
-      navigate("/products");
+      navigate(orgPath("/products"));
     } catch (e) {
       setErr((e as Error).message || "Ошибка удаления товара");
     } finally {
@@ -1453,7 +1455,7 @@ export default function ProductFeature() {
         </div>
 
         <div className="pn-actions">
-          <Link className="pn-editBtn" to="/catalog">
+          <Link className="pn-editBtn" to={orgPath("/catalog")}>
             ← Каталог
           </Link>
           <button className="pn-cancelBtn" type="button" onClick={moveToArchive} disabled={saving || status === "archived"}>
@@ -1682,7 +1684,7 @@ export default function ProductFeature() {
               </>
             );
             return step.href ? (
-              <Link key={step.key} className={`pn-workflowStep is-${step.tone}`} to={step.href}>
+              <Link key={step.key} className={`pn-workflowStep is-${step.tone}`} to={orgPath(step.href)}>
                 {body}
               </Link>
             ) : (
@@ -1711,7 +1713,7 @@ export default function ProductFeature() {
           <button className={`pn-tab ${tab === "validation" ? "isActive" : ""}`} onClick={() => setTab("validation")} type="button">
             Проверка
           </button>
-          <Link className="pn-tab pn-tabLink" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`}>
+          <Link className="pn-tab pn-tabLink" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`)}>
             Экспорт
           </Link>
         </div>
@@ -1725,7 +1727,7 @@ export default function ProductFeature() {
                 <div className="pn-cardTitle">Проверка перед экспортом</div>
                 <div className="pn-muted">Сводная точка для SKU: каналы, family/варианты, документы и товарные связи.</div>
               </div>
-              <Link className="pn-saveBtn" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`}>
+              <Link className="pn-saveBtn" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(product.category_id || "")}&product=${encodeURIComponent(product.id || "")}`)}>
                 Проверить экспорт
               </Link>
             </div>
@@ -1761,7 +1763,7 @@ export default function ProductFeature() {
               <div className="pn-muted pn-variantLead">
                 Группа товара:{" "}
                 {product.group_id ? (
-                  <Link to={`/catalog/groups?group=${encodeURIComponent(product.group_id)}`} style={{ textDecoration: "underline" }}>
+                  <Link to={orgPath(`/catalog/groups?group=${encodeURIComponent(product.group_id)}`)} style={{ textDecoration: "underline" }}>
                     {groupName || product.group_id}
                   </Link>
                 ) : (
@@ -1810,14 +1812,14 @@ export default function ProductFeature() {
                       style={{ gridTemplateColumns: "260px 1fr 88px" }}
                       role={isCurrent ? undefined : "link"}
                       tabIndex={isCurrent ? -1 : 0}
-                      onClick={isCurrent ? undefined : () => navigate(`/products/${encodeURIComponent(it.id)}`)}
+                      onClick={isCurrent ? undefined : () => navigate(orgPath(`/products/${encodeURIComponent(it.id)}`))}
                       onKeyDown={
                         isCurrent
                           ? undefined
                           : (e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
-                                navigate(`/products/${encodeURIComponent(it.id)}`);
+                                navigate(orgPath(`/products/${encodeURIComponent(it.id)}`));
                               }
                             }
                       }
@@ -1838,7 +1840,7 @@ export default function ProductFeature() {
                       ) : (
                         <Link
                           className="pn-editBtn"
-                          to={`/products/${encodeURIComponent(it.id)}`}
+                          to={orgPath(`/products/${encodeURIComponent(it.id)}`)}
                           onClick={(e) => e.stopPropagation()}
                         >
                           Открыть
@@ -2438,7 +2440,7 @@ export default function ProductFeature() {
                   <div className="pn-relMeta">GT: {a.sku_gt || "-"}</div>
                 </div>
                 <div className="pn-relActions">
-                  {a.id ? <Link className="pn-editBtn" to={`/products/${encodeURIComponent(a.id)}`}>Открыть</Link> : <span />}
+                  {a.id ? <Link className="pn-editBtn" to={orgPath(`/products/${encodeURIComponent(a.id)}`)}>Открыть</Link> : <span />}
                   <button className="pn-cancelBtn" type="button" onClick={() => setContent((c) => mergeContent(c, { analogs: removeAt(c.analogs, idx) }))}>Удалить</button>
                 </div>
               </div>
@@ -2467,7 +2469,7 @@ export default function ProductFeature() {
                   <div className="pn-relMeta">GT: {r.sku_gt || "-"}</div>
                 </div>
                 <div className="pn-relActions">
-                  {r.id ? <Link className="pn-editBtn" to={`/products/${encodeURIComponent(r.id)}`}>Открыть</Link> : <span />}
+                  {r.id ? <Link className="pn-editBtn" to={orgPath(`/products/${encodeURIComponent(r.id)}`)}>Открыть</Link> : <span />}
                   <button className="pn-cancelBtn" type="button" onClick={() => setContent((c) => mergeContent(c, { related: removeAt(c.related, idx) }))}>Удалить</button>
                 </div>
               </div>

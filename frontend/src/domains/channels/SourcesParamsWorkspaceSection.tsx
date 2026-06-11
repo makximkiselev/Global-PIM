@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import CategorySidebar from "../../components/CategorySidebar";
 import { api } from "../../lib/api";
 
@@ -483,6 +484,7 @@ function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds
 }
 
 export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
+  const orgPath = useOrgPath();
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
@@ -914,7 +916,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                 <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
                   {aiMatching ? "Собираю..." : "Собрать черновик"}
                 </button>
-                <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+                <Link className="btn btn-primary" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить выгрузку</Link>
               </>
             ) : null}
           </div>
@@ -963,7 +965,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           <div className="paramsAlert isInfo">
             Площадки уже дают список обязательных и полезных полей, но финальная инфо-модель строится после конкурентных карточек и товарных данных.
             Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к черновику параметров.
-            <Link className="btn sm" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть источники</Link>
+            <Link className="btn sm" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть источники</Link>
           </div>
         ) : null}
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
@@ -985,8 +987,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               </p>
             </div>
             <div className="paramsInfoModelSetupActions">
-              <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать инфо-модель</Link>
-              <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить источники</Link>
+              <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(selectedCategoryId)}`)}>Собрать инфо-модель</Link>
+              <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить источники</Link>
             </div>
           </div>
         ) : (
@@ -1351,7 +1353,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       <em>отдельная очередь</em>
                     </div>
                   </div>
-                  <Link className="btn" to={`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`}>Открыть источники</Link>
+                  <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть источники</Link>
                 </div>
 
                 <div className="paramsInspectorSection">
@@ -1390,7 +1392,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     >
                       Сбросить решение
                     </button>
-                    <Link className="btn" to={`/sources?tab=values&category=${encodeURIComponent(selectedCategoryId)}`}>Настроить значения</Link>
+                    <Link className="btn" to={orgPath(`/sources?tab=values&category=${encodeURIComponent(selectedCategoryId)}`)}>Настроить значения</Link>
                   </div>
                 </div>
 

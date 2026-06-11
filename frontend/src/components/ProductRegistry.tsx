@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../app/orgRoutes";
 import { api } from "../lib/api";
 import { toRenderableMediaUrl } from "../lib/media";
 import "../styles/products-list.css";
@@ -84,6 +85,7 @@ export default function ProductRegistry({
   onProductMoved,
 }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [searchDraft, setSearchDraft] = useState(searchParams.get(`${paramPrefix}q`) || "");
@@ -430,7 +432,7 @@ export default function ProductRegistry({
             <div className="page-subtitle">Список товаров и статусы подготовки к выгрузке.</div>
           </div>
           <div className="page-header-actions">
-            <Link className="btn primary" to="/products/new">Добавить товар</Link>
+            <Link className="btn primary" to={orgPath("/products/new")}>Добавить товар</Link>
             <button className="btn" type="button" onClick={() => void load()} disabled={loading}>
               {loading ? "Обновляю..." : "Обновить"}
             </button>
@@ -588,20 +590,20 @@ export default function ProductRegistry({
                         )}
                       </div>
                       <div className="products-mainMeta">
-                        <Link to={`/products/${encodeURIComponent(p.id)}`} className="products-titleLink">{title}</Link>
+                        <Link to={orgPath(`/products/${encodeURIComponent(p.id)}`)} className="products-titleLink">{title}</Link>
                         <div className="products-breadcrumbs">{breadcrumbs}</div>
                       </div>
                     </div>
                   </td>
                   <td className="products-colGroup">
                     <div className="products-sideCell">
-                      {gname ? <Link to={`/catalog/groups?group=${encodeURIComponent(gid)}`} className="products-cellLink">{gname}</Link> : <span className="muted">Без группы</span>}
+                      {gname ? <Link to={orgPath(`/catalog/groups?group=${encodeURIComponent(gid)}`)} className="products-cellLink">{gname}</Link> : <span className="muted">Без группы</span>}
                     </div>
                   </td>
                   {isCatalogClean ? (
                     <td className="products-colAction">
                       <div className="products-rowActions">
-                        <Link to={`/products/${encodeURIComponent(p.id)}`} className="btn sm products-openBtn">
+                        <Link to={orgPath(`/products/${encodeURIComponent(p.id)}`)} className="btn sm products-openBtn">
                           Открыть
                         </Link>
                         <button className="btn sm products-openBtn" type="button" onClick={() => openMoveDialog(p)}>
@@ -622,7 +624,7 @@ export default function ProductRegistry({
                       <td className="products-colTemplate">
                         <div className="products-sideCell">
                           {templateName ? (
-                            <Link to={`/templates/${encodeURIComponent(templateSourceCategoryId)}`} className="products-cellLink">
+                            <Link to={orgPath(`/templates/${encodeURIComponent(templateSourceCategoryId)}`)} className="products-cellLink">
                               {templateName}
                             </Link>
                           ) : (

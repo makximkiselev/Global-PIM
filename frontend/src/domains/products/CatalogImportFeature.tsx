@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import CatalogExchangePicker, { type ExchangeNode } from "../../components/CatalogExchangePicker";
 import DataToolbar from "../../components/data/DataToolbar";
 import InspectorPanel from "../../components/data/InspectorPanel";
@@ -127,6 +128,7 @@ function ProductsResultsTable({
   loading?: boolean;
   showConflicts?: boolean;
 }) {
+  const orgPath = useOrgPath();
   return (
     <section className="card cx-pane">
       <div className="cx-paneHead">
@@ -152,7 +154,7 @@ function ProductsResultsTable({
               <tr key={row.product_id}>
                 <td>
                   <div className="cx-resultProduct">
-                    <Link to={`/products/${encodeURIComponent(row.product_id)}`}>{row.title}</Link>
+                    <Link to={orgPath(`/products/${encodeURIComponent(row.product_id)}`)}>{row.title}</Link>
                     <span>GT SKU {row.sku_gt || "—"}</span>
                   </div>
                 </td>
@@ -196,6 +198,7 @@ function ProductsResultsTable({
 
 export default function CatalogImportFeature({ embedded = false }: { embedded?: boolean } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
@@ -517,7 +520,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
           subtitle="Заполняй товары через Яндекс.Маркет и конкурентные источники без переходов между отдельными экранами."
           actions={(
             <>
-              <Link className="btn" to="/catalog">К каталогу</Link>
+              <Link className="btn" to={orgPath("/catalog")}>К каталогу</Link>
               <Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
                 {loading ? "Заполняю…" : "Запустить заполнение"}
               </Button>
@@ -639,7 +642,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
                             <div>
                               <div className="cx-conflictTitle">{row.field_name}</div>
                               <div className="cx-conflictMeta">
-                                <Link to={`/products/${encodeURIComponent(row.product_id)}`}>{row.product_title}</Link>
+                                <Link to={orgPath(`/products/${encodeURIComponent(row.product_id)}`)}>{row.product_title}</Link>
                               </div>
                             </div>
                             <Badge tone="pending">{row.kind}</Badge>

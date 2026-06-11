@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import ConnectorsStatusFeature from "../channels/ConnectorsStatusFeature";
 import PageHeader from "../../components/ui/PageHeader";
 import PageTabs from "../../components/ui/PageTabs";
@@ -13,6 +14,7 @@ function normalizeTab(value: string | null): DataSourcesTab {
 
 export default function DataSourcesFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const tab = normalizeTab(searchParams.get("tab"));
 
   function setTab(nextTab: DataSourcesTab) {
@@ -28,8 +30,8 @@ export default function DataSourcesFeature() {
         subtitle="Сначала подключаем магазины, площадки и конкурентов. Затем эти источники питают импорт, инфо-модели, насыщение и экспорт."
         actions={
           <>
-            <Link className="btn" to="/sources?tab=sources">К сопоставлениям</Link>
-            <Link className="btn" to="/templates">К инфо-моделям</Link>
+            <Link className="btn" to={orgPath("/sources?tab=sources")}>К сопоставлениям</Link>
+            <Link className="btn" to={orgPath("/templates")}>К инфо-моделям</Link>
           </>
         }
       />

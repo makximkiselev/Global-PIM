@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -612,6 +613,7 @@ function ProductWorkspaceSectionNav({
   onSelect: (id: SectionId) => void;
   productId: string;
 }) {
+  const orgPath = useOrgPath();
   return (
     <nav className="productWorkspaceNav" aria-label="Навигация по товару">
       <div className="productWorkspaceNavTitle">Меню товара</div>
@@ -627,7 +629,7 @@ function ProductWorkspaceSectionNav({
             <span>{section.meta}</span>
           </button>
         ))}
-        <Link className="productWorkspaceNavItem productWorkspaceNavLink" to={productExportHref(productId)}>
+        <Link className="productWorkspaceNavItem productWorkspaceNavLink" to={orgPath(productExportHref(productId))}>
           <strong>Экспорт</strong>
           <span>проверка и payload</span>
         </Link>
@@ -651,6 +653,7 @@ function ProductWorkspaceInspector({
   channels: ChannelsSummary | null;
   media: ProductMedia[];
 }) {
+  const orgPath = useOrgPath();
   const filledAttributes = features.filter((feature) => featureValue(feature)).length;
   const emptyAttributes = Math.max(features.length - filledAttributes, 0);
   const activeChannels =
@@ -705,11 +708,11 @@ function ProductWorkspaceInspector({
 
       <InspectorPanel title="Действия" subtitle="Быстрые переходы">
         <div className="productWorkspaceInspectorActions">
-          <Link className="btn primary" to="/products">
+          <Link className="btn primary" to={orgPath("/products")}>
             К списку товаров
           </Link>
           {normalizeText(product.group_id) ? (
-            <Link className="btn" to="/catalog/groups">
+            <Link className="btn" to={orgPath("/catalog/groups")}>
               Открыть группу
             </Link>
           ) : null}
@@ -734,6 +737,7 @@ function ProductAttributeWorkbench({
   selectedKey: string;
   onSelect: (key: string) => void;
 }) {
+  const orgPath = useOrgPath();
   const selectedFeature = useMemo(() => {
     return features.find((feature, index) => featureKey(feature, index) === selectedKey) || features[0] || null;
   }, [features, selectedKey]);
@@ -889,12 +893,12 @@ function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFe
           <div className="productWorkspaceEmptyActions">
             {encodedCategoryId ? (
               <>
-                <Link className="btn primary" to={`/sources?tab=params&category=${encodedCategoryId}`}>Открыть сопоставление</Link>
-                <Link className="btn" to={`/sources?tab=sources&category=${encodedCategoryId}`}>Связать источники</Link>
-                <Link className="btn" to={`/templates/${encodedCategoryId}`}>Собрать инфо-модель</Link>
+                <Link className="btn primary" to={orgPath(`/sources?tab=params&category=${encodedCategoryId}`)}>Открыть сопоставление</Link>
+                <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodedCategoryId}`)}>Связать источники</Link>
+                <Link className="btn" to={orgPath(`/templates/${encodedCategoryId}`)}>Собрать инфо-модель</Link>
               </>
             ) : (
-              <Link className="btn primary" to="/sources?tab=sources">Открыть сопоставление</Link>
+              <Link className="btn primary" to={orgPath("/sources?tab=sources")}>Открыть сопоставление</Link>
             )}
           </div>
         }
@@ -946,6 +950,7 @@ function ProductValidationWorkbench({
   onOpenMedia: () => void;
   onOpenCompetitors: () => void;
 }) {
+  const orgPath = useOrgPath();
   const missing = features.filter((feature) => !featureValue(feature));
   const requiredMissing = missing.filter((feature) => feature.required);
   const optionalMissing = missing.filter((feature) => !feature.required);
@@ -1018,7 +1023,7 @@ function ProductValidationWorkbench({
             <Badge tone={blockers.length ? "danger" : "active"}>{blockers.length ? "нужно исправить" : "готово"}</Badge>
           </div>
           <div className="productValidationExportAction">
-            <Link className="btn primary" to={exportHref}>Проверить экспорт SKU</Link>
+            <Link className="btn primary" to={orgPath(exportHref)}>Проверить экспорт SKU</Link>
             <span>Readiness batch покажет реальные блокеры площадок и прямые места исправления.</span>
           </div>
           {blockers.length ? (
@@ -1260,6 +1265,7 @@ function ProductWorkspaceFeature() {
   const { productId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const orgPath = useOrgPath();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [product, setProduct] = useState<ProductData | null>(null);
@@ -1551,7 +1557,7 @@ function ProductWorkspaceFeature() {
     setError("");
     try {
       await api(`/products/${encodeURIComponent(product.id)}`, { method: "DELETE" });
-      navigate("/products");
+      navigate(orgPath("/products"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось удалить товар.");
     }
@@ -1879,7 +1885,7 @@ function ProductWorkspaceFeature() {
         <div className="productWorkspaceTopbarActions">
           <Button variant="primary">Сохранить</Button>
           <Button variant="danger" onClick={deleteProduct}>Удалить</Button>
-          <Link className="btn" to="/products">
+          <Link className="btn" to={orgPath("/products")}>
             К очереди товаров
           </Link>
         </div>
@@ -1902,7 +1908,7 @@ function ProductWorkspaceFeature() {
             <span>{nextAction.detail}</span>
           </div>
           {nextAction.href ? (
-            <Link className="btn primary" to={nextAction.href}>{nextAction.cta}</Link>
+            <Link className="btn primary" to={orgPath(nextAction.href)}>{nextAction.cta}</Link>
           ) : nextAction.tab ? (
             <Button variant="primary" onClick={() => handleSectionSelect(nextAction.tab as SectionId)}>{nextAction.cta}</Button>
           ) : null}
@@ -2296,7 +2302,7 @@ function ProductWorkspaceFeature() {
                         {variants.map((variant) => (
                           <tr key={variant.id}>
                             <td>
-                              <Link to={`/products/${variant.id}`}>{normalizeText(variant.title) || variant.id}</Link>
+                              <Link to={orgPath(`/products/${variant.id}`)}>{normalizeText(variant.title) || variant.id}</Link>
                             </td>
                             <td>{normalizeText(variant.sku_gt) || "—"}</td>
                             <td>{normalizeText(variant.sku_pim) || "—"}</td>

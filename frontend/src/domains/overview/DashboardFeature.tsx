@@ -7,6 +7,7 @@ import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import { api } from "../../lib/api";
 import { useAuth } from "../../app/auth/AuthContext";
+import { useOrgPath } from "../../app/orgRoutes";
 
 type StatsSummary = {
   categories: number;
@@ -76,6 +77,7 @@ function platformWord(count: number) {
 
 export default function DashboardFeature() {
   const { loading: authLoading, authenticated } = useAuth();
+  const orgPath = useOrgPath();
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>("");
@@ -224,10 +226,10 @@ export default function DashboardFeature() {
         subtitle="Короткий вход в товары, каталог, инфо-модели и подготовку к выгрузке."
         actions={
           <>
-            <Link className="btn" to="/products">
+            <Link className="btn" to={orgPath("/products")}>
               Открыть товары
             </Link>
-            <Link className="btn primary" to="/products/new">
+            <Link className="btn primary" to={orgPath("/products/new")}>
               Создать товар
             </Link>
           </>
@@ -249,7 +251,7 @@ export default function DashboardFeature() {
           </div>
           <div className="controlCenterQueueGrid">
             {queueItems.map((item) => (
-              <QueueCard key={item.title} item={item} />
+              <QueueCard key={item.title} item={{ ...item, to: orgPath(item.to) }} />
             ))}
           </div>
         </Card>
@@ -273,7 +275,7 @@ export default function DashboardFeature() {
                 </div>
                 <div className="controlCenterIssueLinks">
                   {mappingIssues.slice(0, 3).map((issue) => (
-                    <Link key={issue.id} className="controlCenterIssueLink" to={issue.to}>
+                    <Link key={issue.id} className="controlCenterIssueLink" to={orgPath(issue.to)}>
                       <span>{issue.title}</span>
                       <small>{issue.category_name || issue.category_path || "Открыть категорию"}</small>
                     </Link>
@@ -291,7 +293,7 @@ export default function DashboardFeature() {
                 Проверь подключение площадок и сопоставление параметров до следующей выгрузки.
               </div>
             </div>
-            <Link className="btn" to="/connectors/status?tab=marketplaces">
+            <Link className="btn" to={orgPath("/connectors/status?tab=marketplaces")}>
               Открыть источники
             </Link>
           </div>
@@ -317,21 +319,21 @@ export default function DashboardFeature() {
             </div>
           </div>
           <div className="controlCenterOperations">
-            <Link className="controlCenterOperationRow" to="/catalog/exchange?tab=import">
+            <Link className="controlCenterOperationRow" to={orgPath("/catalog/exchange?tab=import")}>
               <div>
                 <strong>Импорт каталога</strong>
                 <small>Загрузка Excel и импорт в товары.</small>
               </div>
               <span>Импорт</span>
             </Link>
-            <Link className="controlCenterOperationRow" to="/catalog/exchange?tab=export">
+            <Link className="controlCenterOperationRow" to={orgPath("/catalog/exchange?tab=export")}>
               <div>
                 <strong>Экспорт данных</strong>
                 <small>Выгрузка подготовленных данных и контроль ошибок.</small>
               </div>
               <span>Экспорт</span>
             </Link>
-            <Link className="controlCenterOperationRow" to="/sources-mapping">
+            <Link className="controlCenterOperationRow" to={orgPath("/sources-mapping")}>
               <div>
                 <strong>Сопоставления</strong>
                 <small>Связка категорий, параметров, значений и источников.</small>
@@ -344,7 +346,7 @@ export default function DashboardFeature() {
 
       <section className="controlCenterQuickActionsGrid">
         {quickActions.map((action) => (
-          <QuickActionCard key={action.title} action={action} />
+          <QuickActionCard key={action.title} action={{ ...action, to: orgPath(action.to) }} />
         ))}
       </section>
     </div>

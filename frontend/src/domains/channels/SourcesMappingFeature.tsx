@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
@@ -129,6 +130,7 @@ async function loadMappingBootstrap() {
 }
 
 export default function SourcesMappingFeature() {
+  const orgPath = useOrgPath();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
@@ -315,7 +317,7 @@ export default function SourcesMappingFeature() {
 
   if (rawTab === "competitors" || rawTab === "competitor" || rawTab === "competitor_links" || rawTab === "discovery") {
     const categoryParam = selectedCategoryId ? `?category=${encodeURIComponent(selectedCategoryId)}` : "";
-    return <Navigate to={`/data-prep/competitors${categoryParam}`} replace />;
+    return <Navigate to={orgPath(`/data-prep/competitors${categoryParam}`)} replace />;
   }
 
   return (
@@ -384,9 +386,9 @@ export default function SourcesMappingFeature() {
           </p>
         </div>
         <div className="sourcesMappingContextActions">
-          {productParam ? <Link className="btn" to={`/products/${encodeURIComponent(productParam)}`}>Открыть SKU</Link> : null}
-          <Link className="btn" to={exportHref(selectedCategoryId, productParam)}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</Link>
-          <Link className="btn primary" to={nextAction.href}>{nextAction.label}</Link>
+          {productParam ? <Link className="btn" to={orgPath(`/products/${encodeURIComponent(productParam)}`)}>Открыть SKU</Link> : null}
+          <Link className="btn" to={orgPath(exportHref(selectedCategoryId, productParam))}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</Link>
+          <Link className="btn primary" to={orgPath(nextAction.href)}>{nextAction.label}</Link>
         </div>
       </div>
 

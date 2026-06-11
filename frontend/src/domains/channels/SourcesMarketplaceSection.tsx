@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import { api } from "../../lib/api";
 import CategorySidebar from "../../components/CategorySidebar";
 import "../../styles/marketplace-mapping.css";
@@ -973,6 +974,7 @@ function buildDraftRowsFromYandexParams(
 }
 
 export default function SourcesMarketplaceSection(props: SourcesMarketplaceSectionProps = {}) {
+  const orgPath = useOrgPath();
   const {
     embedded = false,
     forcedMainTab,
@@ -2909,7 +2911,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             <button className="btn mm-syncBtn" type="button" onClick={runBackgroundSync} disabled={loading || syncing}>
               {syncing ? "Синхронизация..." : "Обновить"}
             </button>
-            <Link className="btn" to="/">← На главную</Link>
+            <Link className="btn" to={orgPath("/")}>← На главную</Link>
           </div>
         </div>
       ) : null}
@@ -3318,7 +3320,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           {competitorDiscoveryRunning ? "Подбираю..." : "Подобрать карточки"}
                                         </button>
                                         {selectedSampleProduct ? (
-                                          <Link className="btn mm-miniBtn mm-ghostBtn" to={`/products/${encodeURIComponent(selectedSampleProduct.id)}`}>
+                                          <Link className="btn mm-miniBtn mm-ghostBtn" to={orgPath(`/products/${encodeURIComponent(selectedSampleProduct.id)}`)}>
                                             Открыть SKU
                                           </Link>
                                         ) : null}
@@ -3640,7 +3642,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                       <div className="mm-emptyText">
                         Сопоставление параметров открывается после draft-модели. Перейдите в поля товара категории, соберите draft из источников и утвердите рабочую структуру.
                       </div>
-                      <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                      <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(activeAttrCategoryId)}`)}>
                         Открыть инфо-модель
                       </Link>
                     </div>
@@ -3686,7 +3688,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   ))}
                                 </div>
                                 {attrDetails.template_id ? (
-                                  <Link className="btn mm-metaLink" to={`/templates/${encodeURIComponent(activeAttrCategoryId)}`}>
+                                  <Link className="btn mm-metaLink" to={orgPath(`/templates/${encodeURIComponent(activeAttrCategoryId)}`)}>
                                     Открыть шаблон
                                   </Link>
                                 ) : null}
@@ -4348,7 +4350,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         <div className="mm-savedToast">
           <span>{savedToastText}</span>
           {savedTemplateId ? (
-            <Link to={`/templates/${encodeURIComponent(activeAttrCategoryId || "")}`}>Открыть шаблон</Link>
+            <Link to={orgPath(`/templates/${encodeURIComponent(activeAttrCategoryId || "")}`)}>Открыть шаблон</Link>
           ) : null}
         </div>
       )}

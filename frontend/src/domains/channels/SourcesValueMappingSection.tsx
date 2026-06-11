@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import CategorySidebar from "../../components/CategorySidebar";
 import DictionaryEditorFeature from "../data-prep/DictionaryEditorFeature";
 import { api } from "../../lib/api";
@@ -244,6 +245,7 @@ function searchMatch(node: CatalogNode, q: string) {
 }
 
 export default function SourcesValueMappingSection({ selectedCategoryId = "", onSelectedCategoryChange }: Props) {
+  const orgPath = useOrgPath();
   const [nodes, setNodes] = useState<CatalogNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(true);
   const [treeQuery, setTreeQuery] = useState("");
@@ -652,8 +654,8 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
             </div>
             <div className="sm-valuesActions">
               <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
-              <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
-              <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить выгрузку</Link>
+              <Link className="btn" to={orgPath(`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`)}>К параметрам</Link>
+              <Link className="btn btn-primary" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить выгрузку</Link>
             </div>
           </div>
 
@@ -727,13 +729,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     <p>{emptyValuesMessage}</p>
                     {!mappingItemsCount && !rawItemsCount ? (
                       <div className="sm-valuesEmptyActions">
-                        <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>К параметрам</Link>
-                        <Link className="btn btn-primary" to={`/templates/${encodeURIComponent(selectedCategoryId)}`}>Собрать модель</Link>
+                        <Link className="btn" to={orgPath(`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`)}>К параметрам</Link>
+                        <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(selectedCategoryId)}`)}>Собрать модель</Link>
                       </div>
                     ) : !mappingItemsCount ? (
                       <div className="sm-valuesEmptyActions">
-                        <Link className="btn" to={`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить параметры</Link>
-                        <Link className="btn btn-primary" to={`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`}>Проверить экспорт</Link>
+                        <Link className="btn" to={orgPath(`/sources?tab=params&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить параметры</Link>
+                        <Link className="btn btn-primary" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить экспорт</Link>
                       </div>
                     ) : null}
                   </div>

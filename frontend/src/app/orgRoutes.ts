@@ -1,3 +1,7 @@
+import { useCallback } from "react";
+import { useLocation } from "react-router-dom";
+import { useAuth } from "./auth/AuthContext";
+
 export type OrganizationRouteRef = {
   id: string;
   org_key?: string | null;
@@ -39,4 +43,13 @@ export function orgAwarePath(currentPathname: string, target: string, organizati
   const orgKey = orgRouteKey(organization) || current.orgKey;
   if (!orgKey) return appPath;
   return `/org/${encodeURIComponent(orgKey)}${appPath === "/" ? "" : appPath}`;
+}
+
+export function useOrgPath(): (target: string) => string {
+  const location = useLocation();
+  const { currentOrganization } = useAuth();
+  return useCallback(
+    (target: string) => orgAwarePath(location.pathname, target, currentOrganization),
+    [currentOrganization, location.pathname],
+  );
 }

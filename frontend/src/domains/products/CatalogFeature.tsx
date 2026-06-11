@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import {
   DndContext,
   DragOverlay,
@@ -258,6 +259,7 @@ function CatalogProductPreview({
   loading: boolean;
   selectedId: string;
 }) {
+  const orgPath = useOrgPath();
   if (loading) {
     return (
       <div className="catalogPreviewList">
@@ -275,10 +277,10 @@ function CatalogProductPreview({
         description="Категория настроена, но SKU в нее еще не загружены."
         action={
           <div className="catalogEmptyActions">
-            <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selectedId)}`}>
+            <Link className="btn primary" to={orgPath(`/products/new?category_id=${encodeURIComponent(selectedId)}`)}>
               Добавить SKU
             </Link>
-            <Link className="btn" to={`/catalog/exchange?tab=import&category=${encodeURIComponent(selectedId)}`}>
+            <Link className="btn" to={orgPath(`/catalog/exchange?tab=import&category=${encodeURIComponent(selectedId)}`)}>
               Импорт Excel
             </Link>
           </div>
@@ -294,7 +296,7 @@ function CatalogProductPreview({
         const sku = String(product.sku_gt || "").trim() || "Без SKU";
         const group = String(product.group_id || "").trim();
         return (
-          <Link key={product.id} className="catalogPreviewRow" to={`/products/${encodeURIComponent(product.id)}`}>
+          <Link key={product.id} className="catalogPreviewRow" to={orgPath(`/products/${encodeURIComponent(product.id)}`)}>
             <div className="catalogPreviewCopy">
               <strong>{title}</strong>
               <span>{sku}</span>
@@ -311,6 +313,7 @@ function CatalogProductPreview({
 }
 
 export default function CatalogFeature() {
+  const orgPath = useOrgPath();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [refreshError, setRefreshError] = useState("");
@@ -749,7 +752,7 @@ export default function CatalogFeature() {
         ]}
         actions={
           <>
-            <Link className="btn" to="/catalog/groups">
+            <Link className="btn" to={orgPath("/catalog/groups")}>
               Группы
             </Link>
             <Button variant="primary" onClick={openCreateRoot}>
@@ -896,10 +899,10 @@ export default function CatalogFeature() {
                     </div>
                   </div>
                   <div className="catalogProductsCommandActions">
-                    <Link className="btn primary" to={`/products/new?category_id=${encodeURIComponent(selected.id)}`}>
+                    <Link className="btn primary" to={orgPath(`/products/new?category_id=${encodeURIComponent(selected.id)}`)}>
                       Добавить SKU
                     </Link>
-                    <Link className="btn" to={openProductsHref}>Полный список</Link>
+                    <Link className="btn" to={orgPath(openProductsHref)}>Полный список</Link>
                     <Button onClick={() => openRename(selected.id)}>Переименовать</Button>
                     <Button variant="danger" onClick={() => openDelete(selected.id)}>
                       Удалить

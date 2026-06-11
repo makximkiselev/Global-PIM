@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import "../../styles/product-new.css";
 
 function apiBase() {
@@ -810,6 +811,7 @@ function variantContentPatch(
 
 export default function ProductNewFeature() {
   const navigate = useNavigate();
+  const orgPath = useOrgPath();
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -1314,9 +1316,9 @@ export default function ProductNewFeature() {
         setCreated(firstCreated);
         const groupId = String(res.group?.id || "").trim();
         if (productType === "multi" && groupId) {
-          navigate(`/catalog/groups?group=${encodeURIComponent(groupId)}&created=1`);
+          navigate(orgPath(`/catalog/groups?group=${encodeURIComponent(groupId)}&created=1`));
         } else {
-          navigate(`/products/${encodeURIComponent(firstCreated.id)}?tab=sources&created=1`);
+          navigate(orgPath(`/products/${encodeURIComponent(firstCreated.id)}?tab=sources&created=1`));
         }
       }
     } catch (e: any) {
@@ -1408,7 +1410,7 @@ export default function ProductNewFeature() {
               <p>{wizardSteps[activeStep].meta}</p>
             </div>
             <div className="pnWizardTopActions">
-              <Link className="btn" to="/products">К товарам</Link>
+              <Link className="btn" to={orgPath("/products")}>К товарам</Link>
               <button className="btn primary" onClick={onSaveAll} disabled={!canSave || !readyToCreate}>
                 {saving ? "Создаем..." : productType === "single" ? "Создать SKU" : "Создать группу"}
               </button>
@@ -1433,7 +1435,7 @@ export default function ProductNewFeature() {
                 <strong>Товар создан</strong>
                 <span>ID: {created.id}. Дальше лучше открыть карточку и довести параметры, медиа и каналы.</span>
               </div>
-              <Link className="btn primary" to={`/products/${created.id}`}>Открыть карточку</Link>
+              <Link className="btn primary" to={orgPath(`/products/${created.id}`)}>Открыть карточку</Link>
             </div>
           ) : null}
 

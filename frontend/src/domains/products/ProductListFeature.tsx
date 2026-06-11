@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
@@ -282,6 +283,7 @@ function ProductListEntryBar({
   categoryName?: string;
   directCount?: number;
 }) {
+  const orgPath = useOrgPath();
   const hasCategoryScope = Boolean(categoryId && categoryName);
   const branchLabel = hasCategoryScope ? `${total} SKU в выбранной ветке` : `${total} SKU в каталоге`;
 
@@ -299,16 +301,16 @@ function ProductListEntryBar({
         </div>
       </div>
       <div className="productListEntryActions">
-        <Link className="btn" to="/catalog">
+        <Link className="btn" to={orgPath("/catalog")}>
           Каталог
         </Link>
-        <Link className="btn" to={catalogExchangeHref("import", categoryId)}>
+        <Link className="btn" to={orgPath(catalogExchangeHref("import", categoryId))}>
           Импорт
         </Link>
-        <Link className="btn" to={catalogExchangeHref("export", categoryId)}>
+        <Link className="btn" to={orgPath(catalogExchangeHref("export", categoryId))}>
           Экспорт
         </Link>
-        <Link className="btn primary" to={withCategoryHref("/products/new", categoryId, "category_id")}>
+        <Link className="btn primary" to={orgPath(withCategoryHref("/products/new", categoryId, "category_id"))}>
           Создать товар
         </Link>
       </div>
@@ -431,6 +433,7 @@ function ProductListInspector({
   selectedCount: number;
   onClearSelection: () => void;
 }) {
+  const orgPath = useOrgPath();
   if (!product) {
     return (
       <InspectorPanel
@@ -499,7 +502,7 @@ function ProductListInspector({
           {templateName ? (
             <Link
               className="productListInlineLink"
-              to={templateSourceCategoryId ? `/templates/${encodeURIComponent(templateSourceCategoryId)}` : "/templates"}
+              to={orgPath(templateSourceCategoryId ? `/templates/${encodeURIComponent(templateSourceCategoryId)}` : "/templates")}
             >
               {templateName}
             </Link>
@@ -509,13 +512,13 @@ function ProductListInspector({
         </div>
 
         <div className="productListInspectorActions">
-          <Link className="btn primary" to={`/products/${encodeURIComponent(product.id)}`}>
+          <Link className="btn primary" to={orgPath(`/products/${encodeURIComponent(product.id)}`)}>
             Открыть SKU
           </Link>
-          <Link className="btn" to={sourcesMappingHref(product.category_id, "sources")}>
+          <Link className="btn" to={orgPath(sourcesMappingHref(product.category_id, "sources"))}>
             Открыть сопоставления
           </Link>
-          <Link className="btn" to={withProductExportHref([product.id])}>
+          <Link className="btn" to={orgPath(withProductExportHref([product.id]))}>
             Проверить этот SKU
           </Link>
         </div>
@@ -543,6 +546,7 @@ function ProductListTable({
   onToggleAll,
   loading,
 }: ProductListTableProps) {
+  const orgPath = useOrgPath();
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.includes(row.id));
 
   return (
@@ -615,7 +619,7 @@ function ProductListTable({
                           <div className="productListTitleMeta">
                             <Link
                               className="productListPrimaryLink"
-                              to={`/products/${encodeURIComponent(product.id)}`}
+                              to={orgPath(`/products/${encodeURIComponent(product.id)}`)}
                               onClick={(event) => event.stopPropagation()}
                             >
                               {title}
@@ -640,7 +644,7 @@ function ProductListTable({
                         {templateName ? (
                           <Link
                             className="productListInlineLink"
-                            to={templateHref(product)}
+                            to={orgPath(templateHref(product))}
                             onClick={(event) => event.stopPropagation()}
                           >
                             {templateName}
@@ -648,7 +652,7 @@ function ProductListTable({
                         ) : (
                           <Link
                             className="productListMissingLink"
-                            to={templateHref(product)}
+                            to={orgPath(templateHref(product))}
                             onClick={(event) => event.stopPropagation()}
                           >
                             Собрать модель
@@ -665,7 +669,7 @@ function ProductListTable({
                         <ProductChannelsCell product={product} />
                       </td>
                       <td className="productListActionCol" onClick={(event) => event.stopPropagation()}>
-                        <Link className="btn productListRowAction" to={nextStep.href}>
+                        <Link className="btn productListRowAction" to={orgPath(nextStep.href)}>
                           {nextStep.cta}
                         </Link>
                       </td>
@@ -690,6 +694,7 @@ function ProductBulkActionBar({
   onClear: () => void;
   onDelete: () => void;
 }) {
+  const orgPath = useOrgPath();
   if (!selectedIds.length) return null;
 
   const first = selectedIds[0];
@@ -700,13 +705,13 @@ function ProductBulkActionBar({
         <strong>{selectedIds.length}</strong> SKU в выборе
       </div>
       <div className="productListBulkBarActions">
-        <Link className="btn" to={`/products/${encodeURIComponent(first)}`}>
+        <Link className="btn" to={orgPath(`/products/${encodeURIComponent(first)}`)}>
           Открыть первый
         </Link>
-        <Link className="btn" to={withProductExportHref(selectedIds)}>
+        <Link className="btn" to={orgPath(withProductExportHref(selectedIds))}>
           Проверить выбор
         </Link>
-        <Link className="btn" to="/sources?tab=sources">
+        <Link className="btn" to={orgPath("/sources?tab=sources")}>
           К сопоставлениям
         </Link>
         <Button variant="danger" onClick={onDelete}>Удалить выбранные</Button>
@@ -718,6 +723,7 @@ function ProductBulkActionBar({
 
 export default function ProductListFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [isFallbackMode, setIsFallbackMode] = useState(false);
@@ -1230,7 +1236,7 @@ export default function ProductListFeature() {
                 Сбросить фильтры
               </Button>
             ) : (
-              <Link className="btn primary" to="/products/new">
+              <Link className="btn primary" to={orgPath("/products/new")}>
                 Создать первый товар
               </Link>
             )

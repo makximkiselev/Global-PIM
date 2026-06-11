@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import { api } from "../../lib/api";
 import "../../styles/product-groups.css";
 
@@ -116,6 +117,7 @@ function uniqueIds(list: string[]) {
 
 export default function ProductGroupsFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const [tab, setTabState] = useState<TabKey>(searchParams.get("tab") === TAB_UNGROUPED ? TAB_UNGROUPED : TAB_GROUPS);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
@@ -870,7 +872,7 @@ export default function ProductGroupsFeature() {
           <div className="page-subtitle">Объединяйте товары в группы и управляйте вариантами.</div>
         </div>
         <div className="page-header-actions">
-          <Link className="btn" to="/catalog">
+          <Link className="btn" to={orgPath("/catalog")}>
             ← В каталог
           </Link>
           <button className="btn" type="button" onClick={refreshCurrentTab} disabled={groupsLoading || ungroupedLoading}>
@@ -1008,11 +1010,11 @@ export default function ProductGroupsFeature() {
                     </div>
                     <div className="pg-createdGuideActions">
                       {firstSelectedGroupProductId ? (
-                        <Link className="btn primary" to={`/products/${encodeURIComponent(firstSelectedGroupProductId)}?tab=sources&created=1`}>
+                        <Link className="btn primary" to={orgPath(`/products/${encodeURIComponent(firstSelectedGroupProductId)}?tab=sources&created=1`)}>
                           Открыть источники
                         </Link>
                       ) : null}
-                      <Link className="btn" to={selectedGroupExportHref}>
+                      <Link className="btn" to={orgPath(selectedGroupExportHref)}>
                         Подготовить выгрузку SKU
                       </Link>
                     </div>
@@ -1159,7 +1161,7 @@ export default function ProductGroupsFeature() {
                     {groupDetails.items.map((p) => (
                       <div key={p.id} className="pg-itemRow">
                         <div>
-                          <Link to={`/products/${p.id}`} className="pg-itemTitle">
+                          <Link to={orgPath(`/products/${p.id}`)} className="pg-itemTitle">
                             {productLabel(p)}
                           </Link>
                           <div className="muted">{productSkuIds(p)}</div>
@@ -1251,7 +1253,7 @@ export default function ProductGroupsFeature() {
                         {!!p.category_id && <div className="muted">{categoryPathLabel(p.category_id)}</div>}
                       </span>
                     </div>
-                    <Link to={`/products/${p.id}`} className="pg-itemSku" onClick={(e) => e.stopPropagation()}>
+                    <Link to={orgPath(`/products/${p.id}`)} className="pg-itemSku" onClick={(e) => e.stopPropagation()}>
                       {productSkuIds(p)}
                     </Link>
                   </div>

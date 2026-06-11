@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import PageHeader from "../../components/ui/PageHeader";
 import PageTabs from "../../components/ui/PageTabs";
 import CatalogExportFeature from "./CatalogExportFeature";
@@ -12,6 +13,7 @@ function normalizeTab(value: string | null): ExchangeTab {
 
 export default function CatalogExchangeFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const tab = normalizeTab(searchParams.get("tab"));
 
   function setTab(nextTab: ExchangeTab) {
@@ -27,8 +29,8 @@ export default function CatalogExchangeFeature() {
         subtitle="Одна рабочая область для загрузки данных в товары и подготовки выгрузки на площадки."
         actions={
           <>
-            <Link className="btn" to="/catalog">К каталогу</Link>
-            <Link className="btn" to="/products">К товарам</Link>
+            <Link className="btn" to={orgPath("/catalog")}>К каталогу</Link>
+            <Link className="btn" to={orgPath("/products")}>К товарам</Link>
           </>
         }
       />

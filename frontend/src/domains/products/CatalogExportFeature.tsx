@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";
+import { useOrgPath } from "../../app/orgRoutes";
 import CatalogExchangePicker, { type ExchangeNode } from "../../components/CatalogExchangePicker";
 import DataToolbar from "../../components/data/DataToolbar";
 import InspectorPanel from "../../components/data/InspectorPanel";
@@ -211,6 +212,7 @@ function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
 
 export default function CatalogExportFeature({ embedded = false }: { embedded?: boolean } = {}) {
   const [searchParams] = useSearchParams();
+  const orgPath = useOrgPath();
   const [nodes, setNodes] = useState<ExchangeNode[]>([]);
   const [productCountsByCategory, setProductCountsByCategory] = useState<Record<string, number>>({});
   const [providers, setProviders] = useState<ProviderRow[]>([]);
@@ -557,7 +559,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
           subtitle="Собирай batch-выгрузку по выбранным каналам и магазинам из той же рабочей области, где отбирается каталог."
           actions={(
             <>
-              <Link className="btn" to="/products">К товарам</Link>
+              <Link className="btn" to={orgPath("/products")}>К товарам</Link>
               <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
                 {loading ? "Готовлю…" : "Подготовить экспорт"}
               </Button>
@@ -617,8 +619,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     <strong>Нет магазинов для экспорта</strong>
                     <span>Включите магазины для выгрузки в настройках коннекторов или проверьте привязку категории к площадкам.</span>
                     <div className="cx-emptyActions">
-                      <Link className="btn btn-primary" to="/connectors/status?tab=marketplaces">Открыть коннекторы</Link>
-                      <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>
+                      <Link className="btn btn-primary" to={orgPath("/connectors/status?tab=marketplaces")}>Открыть коннекторы</Link>
+                      <Link className="btn" to={orgPath(sourcesCategoryHref)}>Проверить привязку</Link>
                     </div>
                   </div>
                 ) : providers.map((provider) => {
@@ -666,7 +668,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                       </div>
                       {!stores.length ? (
                         <div className="cx-targetHelp">
-                          <Link to="/connectors/status?tab=stores">Добавить магазин</Link>
+                          <Link to={orgPath("/connectors/status?tab=stores")}>Добавить магазин</Link>
                         </div>
                       ) : current.size === 0 ? (
                         <div className="cx-targetHelp">Ни один магазин не попадет в batch, пока не выбрана галочка магазина.</div>
@@ -839,7 +841,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                               <span>{blocker.offer_id ? `SKU GT ${blocker.offer_id}` : blocker.product_id}</span>
                             </div>
                             <div className="cx-exportBlockerProduct">
-                              <Link to={`/products/${encodeURIComponent(blocker.product_id)}`}>{blocker.product_title || blocker.product_id}</Link>
+                              <Link to={orgPath(`/products/${encodeURIComponent(blocker.product_id)}`)}>{blocker.product_title || blocker.product_id}</Link>
                             </div>
                             <ul>
                               {blocker.missing.slice(0, 4).map((reason, index) => {
@@ -848,14 +850,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                               })}
                             </ul>
                             <div className="cx-exportBlockerActions">
-                              <Link className="btn" to={`/products/${encodeURIComponent(blocker.product_id)}`}>Открыть SKU</Link>
+                              <Link className="btn" to={orgPath(`/products/${encodeURIComponent(blocker.product_id)}`)}>Открыть SKU</Link>
                               {blocker.missing.slice(0, 4).map((reason, index) => {
                                 const detail = blocker.missing_details[index];
                                 return (
                                 <Link
                                   key={`${reason}:${index}`}
                                   className={`btn ${index === 0 ? "btn-primary" : ""}`}
-                                  to={blockerFixHref(blocker, reason, detail)}
+                                  to={orgPath(blockerFixHref(blocker, reason, detail))}
                                   title={reason}
                                 >
                                   {blockerFixLabel(reason, detail)}
@@ -875,8 +877,8 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 description={exportEmptyDescription}
                 action={providers.length === 0 ? (
                   <div className="cx-emptyActions">
-                    <Link className="btn btn-primary" to="/connectors/status?tab=marketplaces">Открыть коннекторы</Link>
-                    <Link className="btn" to={sourcesCategoryHref}>Проверить привязку</Link>
+                    <Link className="btn btn-primary" to={orgPath("/connectors/status?tab=marketplaces")}>Открыть коннекторы</Link>
+                    <Link className="btn" to={orgPath(sourcesCategoryHref)}>Проверить привязку</Link>
                   </div>
                 ) : (
                   <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
