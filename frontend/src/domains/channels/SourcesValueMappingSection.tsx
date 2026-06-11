@@ -82,21 +82,6 @@ type ValuesResp = {
   count: number;
 };
 
-type ValueAiJobResp = {
-  ok?: boolean;
-  job_id?: string;
-  status?: string;
-  phase?: string;
-  message?: string;
-  error?: string;
-  ai_error?: string;
-  summary?: {
-    suggestions?: number;
-    ai_suggestions?: number;
-    rule_suggestions?: number;
-  };
-};
-
 type Props = {
   selectedCategoryId?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
@@ -257,10 +242,9 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const [loadingValues, setLoadingValues] = useState(false);
   const [activeDictId, setActiveDictId] = useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
-  const [aiValueLoading, setAiValueLoading] = useState("");
-  const [aiValueMessage, setAiValueMessage] = useState("");
   const [valueMapDraft, setValueMapDraft] = useState<Record<string, string>>({});
   const [valueMapSaving, setValueMapSaving] = useState("");
+  const [valueMapError, setValueMapError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -460,59 +444,11 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
     setActiveDictId(nextBlocker.dict_id);
   }
 
-  async function runValueAi(provider: ValueItemProvider) {
-    if (!selectedCategoryId || !activeItem?.dict_id || !provider.code) return;
-    const key = `${activeItem.dict_id}:${provider.code}`;
-    setAiValueLoading(key);
-    setAiValueMessage("");
-    try {
-      const job = await api<ValueAiJobResp>(
-        `/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}/dictionaries/${encodeURIComponent(activeItem.dict_id)}/ai-suggest/jobs`,
-        {
-          method: "POST",
-          body: JSON.stringify({ provider: provider.code, apply: true }),
-        },
-      );
-      const jobId = String(job?.job_id || "");
-      if (!jobId) throw new Error("VALUE_AI_JOB_NOT_CREATED");
-      setAiValueMessage(job?.message || "AI-сопоставление значений поставлено в очередь.");
-
-      let result: ValueAiJobResp = job;
-      for (let attempt = 0; attempt < 90; attempt += 1) {
-        if (!["queued", "running"].includes(String(result?.status || ""))) break;
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        result = await api<ValueAiJobResp>(`/marketplaces/mapping/import/values/ai-suggest/jobs/${encodeURIComponent(jobId)}`);
-        if (result?.message) setAiValueMessage(result.message);
-      }
-      if (["queued", "running"].includes(String(result?.status || ""))) {
-        throw new Error("VALUE_AI_JOB_TIMEOUT");
-      }
-      if (String(result?.status || "") === "failed") {
-        throw new Error(result?.error || result?.message || "VALUE_AI_JOB_FAILED");
-      }
-      const suggestions = Number(result?.summary?.suggestions || 0);
-      const aiSuggestions = Number(result?.summary?.ai_suggestions || 0);
-      const ruleSuggestions = Number(result?.summary?.rule_suggestions || 0);
-      setAiValueMessage(
-        suggestions
-          ? `Сопоставлено: ${suggestions} знач. (AI ${aiSuggestions}, правило ${ruleSuggestions}).`
-          : result?.message || result?.ai_error || "AI не нашел уверенных пар.",
-      );
-      setLoadingValues(true);
-      const refreshed = await api<ValuesResp>(`/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}`);
-      setData(refreshed);
-    } catch (e: any) {
-      setAiValueMessage(e?.message || "AI_VALUE_MATCH_FAILED");
-    } finally {
-      setAiValueLoading("");
-      setLoadingValues(false);
-    }
-  }
-
   async function saveInlineValueMapping(provider: ValueItemProvider, canonicalValue: string, outputValue: string) {
     if (!selectedCategoryId || !activeItem?.dict_id || !provider.code) return;
     const saveKey = `${activeItem.dict_id}:${provider.code}:${canonicalValue}`;
     setValueMapSaving(saveKey);
+    setValueMapError("");
     try {
       await api(
         `/marketplaces/mapping/import/values/${encodeURIComponent(selectedCategoryId)}/dictionaries/${encodeURIComponent(activeItem.dict_id)}/export-map`,
@@ -534,7 +470,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
         return next;
       });
     } catch (e: any) {
-      setAiValueMessage(e?.message || "VALUE_MAPPING_SAVE_FAILED");
+      setValueMapError(e?.message || "VALUE_MAPPING_SAVE_FAILED");
     } finally {
       setValueMapSaving("");
       setLoadingValues(false);
@@ -847,20 +783,10 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                             ))}
                           </div>
                         ) : null}
-                        {String(provider.mode || "").toLowerCase() !== "number" && Number(activeItem.value_count || 0) > 0 && Number(provider.allowed_count || 0) > 0 ? (
-                          <button
-                            className="btn sm"
-                            type="button"
-                            disabled={aiValueLoading === `${activeItem.dict_id}:${provider.code}`}
-                            onClick={() => void runValueAi(provider)}
-                          >
-                            {aiValueLoading === `${activeItem.dict_id}:${provider.code}` ? "AI подбирает…" : "Подобрать AI"}
-                          </button>
-                        ) : null}
                       </div>
                     ))}
                   </div>
-                  {aiValueMessage ? <div className="sm-valuesEmpty">{aiValueMessage}</div> : null}
+                  {valueMapError ? <div className="sm-valuesEmpty">{valueMapError}</div> : null}
                   {activeItem.source_evidence?.length ? (
                     <div className="sm-valuesSourceEvidence">
                       <div className="sm-valuesSourceEvidenceHead">

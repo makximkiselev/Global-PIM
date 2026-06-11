@@ -616,7 +616,7 @@ export default function TemplatesCatalogFeature() {
                 <Card className="tplCanvasCard">
                   <DataToolbar
                     title="Поля модели"
-                    subtitle="Быстрый просмотр состава модели. Детальная сборка и AI-проверка находятся в редакторе."
+                    subtitle="Быстрый просмотр состава модели. Детальная сборка и проверка связей находятся в редакторе."
                   />
                   <div className="tplModelSections">
                     <section className="tplSectionCard">

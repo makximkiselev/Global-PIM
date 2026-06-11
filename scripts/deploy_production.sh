@@ -14,8 +14,6 @@ APP_SERVER_HOST="${APP_SERVER_HOST:-}"
 APP_SERVER_USER="${APP_SERVER_USER:-}"
 APP_SERVER_PATH="${APP_SERVER_PATH:-/opt/projects/global-pim}"
 APP_SERVICE_NAME="${APP_SERVICE_NAME:-global-pim.service}"
-APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME:-global-pim-ai-match-worker.service}"
-APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME:-global-pim-value-ai-worker.service}"
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME:-global-pim-export-worker.service}"
 APP_SERVER_PORT="${APP_SERVER_PORT:-22}"
 APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD:-}"
@@ -113,8 +111,6 @@ require_file "${ROOT_DIR}/backend/main.py"
 require_file "${ROOT_DIR}/backend/.env.example"
 require_file "${ROOT_DIR}/frontend/package.json"
 require_file "${ROOT_DIR}/frontend/index.html"
-require_file "${ROOT_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}"
-require_file "${ROOT_DIR}/deploy/systemd/${APP_VALUE_WORKER_SERVICE_NAME}"
 require_file "${ROOT_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}"
 require_file "${DB_CA_CERT_PATH}"
 
@@ -235,8 +231,6 @@ rsync -a \
   "${ROOT_DIR}/frontend/dist/" "${LOCAL_TMP_DIR}/frontend/dist/"
 
 cp "${DB_CA_CERT_PATH}" "${LOCAL_TMP_DIR}/certs/ca.crt"
-cp "${ROOT_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}" "${LOCAL_TMP_DIR}/deploy/systemd/${APP_WORKER_SERVICE_NAME}"
-cp "${ROOT_DIR}/deploy/systemd/${APP_VALUE_WORKER_SERVICE_NAME}" "${LOCAL_TMP_DIR}/deploy/systemd/${APP_VALUE_WORKER_SERVICE_NAME}"
 cp "${ROOT_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}" "${LOCAL_TMP_DIR}/deploy/systemd/${APP_EXPORT_WORKER_SERVICE_NAME}"
 
 if command -v xattr >/dev/null 2>&1; then
@@ -248,8 +242,6 @@ cat > "${REMOTE_SCRIPT_LOCAL}" <<EOF
 set -euo pipefail
 APP_SERVER_PATH="${APP_SERVER_PATH}"
 APP_SERVICE_NAME="${APP_SERVICE_NAME}"
-APP_WORKER_SERVICE_NAME="${APP_WORKER_SERVICE_NAME}"
-APP_VALUE_WORKER_SERVICE_NAME="${APP_VALUE_WORKER_SERVICE_NAME}"
 APP_EXPORT_WORKER_SERVICE_NAME="${APP_EXPORT_WORKER_SERVICE_NAME}"
 APP_DB_ROLE="${APP_DB_ROLE}"
 REMOTE_TMP_ARCHIVE="${REMOTE_TMP_ARCHIVE}"
@@ -301,22 +293,14 @@ cp "\${REMOTE_TMP_EXTRACT}/backend/.env.example" "\${APP_SERVER_PATH}/backend/.e
 cp -R "\${REMOTE_TMP_EXTRACT}/frontend/dist" "\${APP_SERVER_PATH}/frontend/dist"
 cp "\${REMOTE_TMP_EXTRACT}/certs/ca.crt" "\${APP_SERVER_PATH}/certs/ca.crt"
 
-if [[ -f "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_WORKER_SERVICE_NAME}" ]]; then
-  cp "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_WORKER_SERVICE_NAME}" "/etc/systemd/system/\${APP_WORKER_SERVICE_NAME}"
-fi
-if [[ -f "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_VALUE_WORKER_SERVICE_NAME}" ]]; then
-  cp "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_VALUE_WORKER_SERVICE_NAME}" "/etc/systemd/system/\${APP_VALUE_WORKER_SERVICE_NAME}"
-fi
 if [[ -f "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_EXPORT_WORKER_SERVICE_NAME}" ]]; then
   cp "\${REMOTE_TMP_EXTRACT}/deploy/systemd/\${APP_EXPORT_WORKER_SERVICE_NAME}" "/etc/systemd/system/\${APP_EXPORT_WORKER_SERVICE_NAME}"
 fi
+for legacy_ai_unit in global-pim-ai-match-worker.service global-pim-value-ai-worker.service; do
+  systemctl disable --now "\${legacy_ai_unit}" >/dev/null 2>&1 || true
+  rm -f "/etc/systemd/system/\${legacy_ai_unit}"
+done
 systemctl daemon-reload
-if [[ -f "/etc/systemd/system/\${APP_WORKER_SERVICE_NAME}" ]]; then
-  systemctl enable "\${APP_WORKER_SERVICE_NAME}" >/dev/null
-fi
-if [[ -f "/etc/systemd/system/\${APP_VALUE_WORKER_SERVICE_NAME}" ]]; then
-  systemctl enable "\${APP_VALUE_WORKER_SERVICE_NAME}" >/dev/null
-fi
 if [[ -f "/etc/systemd/system/\${APP_EXPORT_WORKER_SERVICE_NAME}" ]]; then
   systemctl enable "\${APP_EXPORT_WORKER_SERVICE_NAME}" >/dev/null
 fi
@@ -350,12 +334,6 @@ fi
 repair_app_db_grants
 
 systemctl restart "\${APP_SERVICE_NAME}"
-if systemctl list-unit-files "\${APP_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then
-  systemctl restart "\${APP_WORKER_SERVICE_NAME}"
-fi
-if systemctl list-unit-files "\${APP_VALUE_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then
-  systemctl restart "\${APP_VALUE_WORKER_SERVICE_NAME}"
-fi
 if systemctl list-unit-files "\${APP_EXPORT_WORKER_SERVICE_NAME}" >/dev/null 2>&1; then
   systemctl restart "\${APP_EXPORT_WORKER_SERVICE_NAME}"
 fi
@@ -379,7 +357,7 @@ echo "==> Deploying on server"
 ssh_run "bash /tmp/global-pim-${RELEASE_ID}.remote.sh"
 
 echo "==> Post-deploy smoke"
-ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_WORKER_SERVICE_NAME} && systemctl is-active ${APP_VALUE_WORKER_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && curl -fsS ${APP_LOCAL_HEALTH_URL} && curl -fsS ${APP_LOCAL_DB_GRANTS_HEALTH_URL}"
+ssh_run "systemctl is-active ${APP_SERVICE_NAME} && systemctl is-active ${APP_EXPORT_WORKER_SERVICE_NAME} && ! systemctl is-active --quiet global-pim-ai-match-worker.service && ! systemctl is-active --quiet global-pim-value-ai-worker.service && curl -fsS ${APP_LOCAL_HEALTH_URL} && curl -fsS ${APP_LOCAL_DB_GRANTS_HEALTH_URL}"
 curl_retry "${APP_PUBLIC_HEALTH_URL}" 30 1
 curl_retry "${APP_PUBLIC_DB_GRANTS_HEALTH_URL}" 30 1
 curl -I -fsS "${APP_PUBLIC_BASE_URL}" >/dev/null

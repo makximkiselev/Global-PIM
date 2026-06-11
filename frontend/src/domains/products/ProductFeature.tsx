@@ -459,19 +459,9 @@ export default function ProductFeature() {
   const [originalRelatedIds, setOriginalRelatedIds] = useState<string[]>([]);
 
   const [featureDefs, setFeatureDefs] = useState<FeatureDef[]>([]);
-  const [seoSourceA, setSeoSourceA] = useState("");
-  const [seoSourceB, setSeoSourceB] = useState("");
-  const [seoKeywords, setSeoKeywords] = useState("");
-  const [seoProfile, setSeoProfileState] = useState<"fast" | "balanced" | "quality">(
-    searchParams.get("seoProfile") === "fast" || searchParams.get("seoProfile") === "quality"
-      ? (searchParams.get("seoProfile") as "fast" | "quality")
-      : "balanced"
-  );
-  const [seoUseFeatures, setSeoUseFeatures] = useState(true);
   const [descriptionView, setDescriptionViewState] = useState<"preview" | "edit">(
     searchParams.get("descView") === "edit" ? "edit" : "preview"
   );
-  const [seoLoading, setSeoLoading] = useState(false);
 
   const [selectModalKind, setSelectModalKind] = useState<"analogs" | "related" | null>(null);
   const [selectQuery, setSelectQuery] = useState("");
@@ -504,11 +494,6 @@ export default function ProductFeature() {
   }, [searchParams]);
 
   useEffect(() => {
-    setSeoProfileState(
-      searchParams.get("seoProfile") === "fast" || searchParams.get("seoProfile") === "quality"
-        ? (searchParams.get("seoProfile") as "fast" | "quality")
-        : "balanced"
-    );
     setDescriptionViewState(searchParams.get("descView") === "edit" ? "edit" : "preview");
   }, [searchParams]);
 
@@ -516,14 +501,6 @@ export default function ProductFeature() {
     setTabState(nextTab);
     const next = new URLSearchParams(searchParams);
     next.set("tab", nextTab);
-    setSearchParams(next, { replace: true });
-  }
-
-  function setSeoProfile(nextProfile: "fast" | "balanced" | "quality") {
-    setSeoProfileState(nextProfile);
-    const next = new URLSearchParams(searchParams);
-    if (nextProfile === "balanced") next.delete("seoProfile");
-    else next.set("seoProfile", nextProfile);
     setSearchParams(next, { replace: true });
   }
 
@@ -1367,46 +1344,6 @@ export default function ProductFeature() {
     }
   }
 
-  async function generateSeoDescription() {
-    const keywords = seoKeywords
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
-    const requiredByCode = new Map((featureDefs || []).map((item) => [qnorm(item.code || item.name), !!item.required]));
-    const featureFacts = (content.features || [])
-      .filter((item) => String(item.value || "").trim())
-      .map((item) => ({
-        name: String(item.name || item.code || "").trim(),
-        value: String(item.value || "").trim(),
-        required: requiredByCode.get(qnorm(item.code || item.name)) || false,
-      }));
-    if (!seoSourceA.trim() && !seoSourceB.trim() && !(seoUseFeatures && featureFacts.length)) {
-      setErr("Добавьте хотя бы один исходный текст для генерации.");
-      return;
-    }
-    setSeoLoading(true);
-    setErr(null);
-    try {
-      const r = await api<{ description: string; model?: string }>("/products/seo-description", {
-        method: "POST",
-        body: JSON.stringify({
-          source_a: seoSourceA,
-          source_b: seoSourceB,
-          use_features: seoUseFeatures,
-          features: featureFacts,
-          keywords,
-          profile: seoProfile,
-          max_chars: 2200,
-        }),
-      });
-      setContent((c) => mergeContent(c, { description: r.description || "" }));
-    } catch (e) {
-      setErr((e as Error).message || "Ошибка генерации описания");
-    } finally {
-      setSeoLoading(false);
-    }
-  }
-
   function toggleRelation(kind: "analogs" | "related", p: CatalogProductItem) {
     const key = kind;
     const current = (content[key] || []) as ProductRelation[];
@@ -2247,7 +2184,7 @@ export default function ProductFeature() {
             <div>
               <div className="pn-cardTitle">Описание</div>
               <div className="pn-muted">
-                Подтягивается из загруженных данных или генерируется AI на основе двух описаний и ключевых слов.
+                Подтягивается из загруженных данных и редактируется контент-менеджером.
               </div>
             </div>
           </div>
@@ -2300,69 +2237,6 @@ export default function ProductFeature() {
                 </div>
               </div>
 
-              <aside className="pn-descriptionSidebar">
-                <div className="pn-descriptionSidebarCard">
-                  <div className="pn-label pn-descriptionSourceLabel">Ключевые слова</div>
-                  <input
-                    className="pn-input pn-descriptionKeywords"
-                    placeholder="смартфон 5G, AMOLED, NFC..."
-                    value={seoKeywords}
-                    onChange={(e) => setSeoKeywords(e.target.value)}
-                  />
-                </div>
-
-                <div className="pn-descriptionSidebarCard">
-                  <div className="pn-label pn-descriptionSourceLabel">Режим генерации</div>
-                  <label className="pn-descriptionCheckbox">
-                    <input
-                      type="checkbox"
-                      checked={seoUseFeatures}
-                      onChange={(e) => setSeoUseFeatures(e.target.checked)}
-                    />
-                    <span>На основе характеристик</span>
-                  </label>
-                  <div className="pn-descriptionHint">
-                    AI возьмет заполненные характеристики как основу фактов и органично встроит их в SEO-описание.
-                  </div>
-                  <div className="pn-descriptionControlActions">
-                    <div className="pn-selectWrap pn-descriptionProfileWrap">
-                      <select
-                        className="pn-select"
-                        value={seoProfile}
-                        onChange={(e) => setSeoProfile(e.target.value as any)}
-                      >
-                        <option value="fast">Быстро</option>
-                        <option value="balanced">Баланс</option>
-                        <option value="quality">Качество</option>
-                      </select>
-                      <div className="pn-caret">▾</div>
-                    </div>
-                    <button className="pn-editBtn" type="button" disabled={seoLoading} onClick={generateSeoDescription}>
-                      {seoLoading ? "Генерирую..." : "AI SEO-описание"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pn-descriptionSidebarCard">
-                  <div className="pn-label pn-descriptionSourceLabel">Источник 1</div>
-                  <textarea
-                    className="pn-textarea pn-descriptionSourceArea"
-                    placeholder="Вставьте первое описание..."
-                    value={seoSourceA}
-                    onChange={(e) => setSeoSourceA(e.target.value)}
-                  />
-                </div>
-
-                <div className="pn-descriptionSidebarCard">
-                  <div className="pn-label pn-descriptionSourceLabel">Источник 2</div>
-                  <textarea
-                    className="pn-textarea pn-descriptionSourceArea"
-                    placeholder="Вставьте второе описание..."
-                    value={seoSourceB}
-                    onChange={(e) => setSeoSourceB(e.target.value)}
-                  />
-                </div>
-              </aside>
             </div>
           </div>
         </div>

@@ -51,7 +51,7 @@ type AttrDetailsResp = {
   master_template?: { row_count?: number; confirmed_count?: number } | null;
 };
 
-type AttrAiMatchResp = {
+type AttrDraftBuildResp = {
   ok: boolean;
   engine: string;
   applied: boolean;
@@ -64,20 +64,6 @@ type AttrAiMatchResp = {
     before?: { total?: number; ready?: number; attention?: number; unmapped?: number; sample_unmapped?: string[] };
     after?: { total?: number; ready?: number; attention?: number; unmapped?: number; sample_unmapped?: string[] };
   };
-};
-
-type AttrAiMatchJobResp = {
-  ok: boolean;
-  job_id: string;
-  catalog_category_id: string;
-  status: "queued" | "running" | "completed" | "failed" | string;
-  phase?: string;
-  message?: string;
-  engine?: string | null;
-  ai_error?: string;
-  rows_count?: number | null;
-  summary?: AttrAiMatchResp["summary"];
-  error?: string;
 };
 
 type CompetitorSourceSuggestion = {
@@ -227,7 +213,7 @@ function rowStatusReason(row: AttrRow, codes: string[]) {
     if (row.confirmed) {
       return "Пользователь подтвердил, что это поле не передается как характеристика площадки. Если решение изменилось, сбросьте его и выберите поле площадки.";
     }
-    return "Поле PIM пока не связано ни с одной площадкой. Выберите подходящие поля вручную или запустите AI-подбор по всей категории.";
+    return "Поле PIM пока не связано ни с одной площадкой. Выберите подходящие поля вручную или соберите черновик по правилам категории.";
   }
   if (rowHasComplexBindings(row, codes)) {
     return "У поля есть сложная связка: один параметр PIM передается в несколько полей площадки. Проверьте это вручную перед подтверждением.";
@@ -240,9 +226,9 @@ function rowStatusReason(row: AttrRow, codes: string[]) {
 
 function mappingOriginLabel(source?: string) {
   const value = qnorm(source || "");
-  if (value === "ai" || value === "ollama" || value === "llm") return "AI";
+  if (value === "ai" || value === "ollama" || value === "llm") return "Автоподбор";
   if (value === "rule" || value === "fallback" || value === "deterministic") return "Правило";
-  if (value === "memory" || value === "ai_mapping_memory") return "Память";
+  if (value === "memory" || value === "ai_mapping_memory") return "Подтвержденная связь";
   if (value === "manual" || value === "user") return "Ручное";
   if (value === "system") return "Системное";
   return "Источник не указан";
@@ -364,11 +350,7 @@ function providerOriginChips(bindings: ProviderBinding[]) {
   });
 }
 
-function aiEngineLabel(engine: string) {
-  return engine === "ollama" ? "Ollama" : "локальные правила";
-}
-
-function formatAiMatchNotice(resp: AttrAiMatchResp) {
+function formatDraftBuildNotice(resp: AttrDraftBuildResp) {
   const summary = resp.summary || {};
   const after = summary.after || {};
   const improved = Number(summary.improved_rows || 0);
@@ -383,20 +365,9 @@ function formatAiMatchNotice(resp: AttrAiMatchResp) {
     .map(([provider, count]) => `${provider === "yandex_market" ? "Я.Маркет" : provider === "ozon" ? "Ozon" : provider}: +${count}`);
   const providerText = providerParts.length ? ` Источники: ${providerParts.join(", ")}.` : "";
   if (improved > 0) {
-    return `AI-сопоставление (${aiEngineLabel(resp.engine)}) улучшило ${improved} полей, изменено ${changed}. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.${providerText}`;
+    return `Черновик по правилам улучшил ${improved} полей, изменено ${changed}. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.${providerText}`;
   }
-  return `AI-сопоставление (${aiEngineLabel(resp.engine)}) проверило ${total} полей, но новых уверенных связок не нашло. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.`;
-}
-
-function formatAiJobNotice(job: AttrAiMatchJobResp) {
-  return formatAiMatchNotice({
-    ok: true,
-    engine: String(job.engine || "fallback"),
-    applied: true,
-    rows: [],
-    rows_count: Number(job.rows_count || 0),
-    summary: job.summary,
-  });
+  return `Черновик по правилам проверил ${total} полей, но новых уверенных связок не нашел. Готово ${ready}/${total}, без связки ${unmapped}, требует внимания ${attention}.`;
 }
 
 function providerBindingPayload(param?: ProviderParam | ProviderBinding): ProviderBinding | null {
@@ -492,8 +463,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [aiMatching, setAiMatching] = useState(false);
-  const [aiJob, setAiJob] = useState<AttrAiMatchJobResp | null>(null);
+  const [draftBuilding, setDraftBuilding] = useState(false);
   const [competitors, setCompetitors] = useState<CompetitorCategoryResp | null>(null);
   const [competitorsLoading, setCompetitorsLoading] = useState(false);
   const [competitorsError, setCompetitorsError] = useState("");
@@ -546,37 +516,6 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       cancelled = true;
     };
   }, [selectedCategoryId]);
-
-  useEffect(() => {
-    if (!aiJob?.job_id || aiJob.status === "completed" || aiJob.status === "failed") return;
-    let cancelled = false;
-    const timer = window.setTimeout(async () => {
-      try {
-        const next = await api<AttrAiMatchJobResp>(
-          `/marketplaces/mapping/import/attributes/ai-match/jobs/${encodeURIComponent(aiJob.job_id)}`
-        );
-        if (cancelled) return;
-        setAiJob(next);
-        setAiMatching(next.status === "queued" || next.status === "running");
-        if (next.status === "completed") {
-          await loadDetails(next.catalog_category_id || selectedCategoryId);
-          if (!cancelled) setNotice(formatAiJobNotice(next));
-        }
-        if (next.status === "failed") {
-          setError(next.error || "AI-сопоставление не завершилось");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setAiMatching(false);
-          setError(err instanceof Error ? err.message : "Не удалось получить статус AI-сопоставления");
-        }
-      }
-    }, 1600);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [aiJob, selectedCategoryId]);
 
   useEffect(() => {
     if (!selectedCategoryId) {
@@ -733,22 +672,22 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
     setExpanded(Object.fromEntries(ids.map((id) => [id, true])));
   }
 
-  async function runAiMatch() {
+  async function buildDraft() {
     if (!selectedCategoryId) return;
-    setAiMatching(true);
+    setDraftBuilding(true);
     setError("");
     setNotice("");
-    setAiJob(null);
     try {
-      const resp = await api<AttrAiMatchJobResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}/ai-match/jobs`, {
+      const resp = await api<AttrDraftBuildResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(selectedCategoryId)}/ai-match`, {
         method: "POST",
         body: JSON.stringify({ apply: true }),
       });
-      setAiJob(resp);
-      setNotice(resp.message || "AI-подбор запущен. Можно продолжать работу на странице.");
+      setNotice(formatDraftBuildNotice(resp));
+      await loadDetails(selectedCategoryId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка AI-сопоставления");
-      setAiMatching(false);
+      setError(err instanceof Error ? err.message : "Ошибка сборки черновика");
+    } finally {
+      setDraftBuilding(false);
     }
   }
 
@@ -913,8 +852,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
             {!infoModelIsEmpty ? (
               <>
-                <button className="btn" type="button" onClick={runAiMatch} disabled={!selectedCategoryId || aiMatching || loading}>
-                  {aiMatching ? "Собираю..." : "Собрать черновик"}
+                <button className="btn" type="button" onClick={buildDraft} disabled={!selectedCategoryId || draftBuilding || loading}>
+                  {draftBuilding ? "Собираю..." : "Собрать черновик"}
                 </button>
                 <Link className="btn btn-primary" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить выгрузку</Link>
               </>
@@ -969,11 +908,6 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           </div>
         ) : null}
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
-        {aiJob && (aiJob.status === "queued" || aiJob.status === "running") ? (
-          <div className="paramsAlert">
-            {aiJob.status === "queued" ? "AI-подбор в очереди." : "AI-подбор выполняется."} {aiJob.message || ""}
-          </div>
-        ) : null}
         {loading ? <div className="paramsAlert">Загружаю параметры категории...</div> : null}
 
         {infoModelIsEmpty ? (
@@ -1201,7 +1135,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       <div className="paramsProvenancePanel">
                         <div>
                           <strong>Почему предложена эта связь</strong>
-                          <span>AI, правила и память показываются до ручного подтверждения.</span>
+                          <span>Показаны правила и ранее подтвержденные связи до ручного подтверждения.</span>
                         </div>
                         <div className="paramsProvenanceList">
                           {provenance.map((item) => (
@@ -1363,10 +1297,10 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     <button
                       className="btn"
                       type="button"
-                      disabled={!selectedCategoryId || aiMatching || loading}
-                      onClick={runAiMatch}
+                      disabled={!selectedCategoryId || draftBuilding || loading}
+                      onClick={buildDraft}
                     >
-                      {aiMatching ? "Собираю черновик..." : "Собрать черновик"}
+                      {draftBuilding ? "Собираю черновик..." : "Собрать черновик"}
                     </button>
                     <button
                       className="btn btn-primary"

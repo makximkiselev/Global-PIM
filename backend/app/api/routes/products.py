@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
+from app.core.ai_runtime import require_ai_enabled
 from app.core.llm import LlmError, llm_chat_text, llm_model_for_profile
 from app.core.products.service import (
     create_product_family_service,
@@ -667,6 +668,8 @@ def _select_features_for_seo(items: List[Dict[str, str]], limit: int = 14) -> Li
 
 @router.post("/seo-description")
 async def products_seo_description(req: SeoDescriptionReq):
+    require_ai_enabled()
+
     src_a = (req.source_a or "").strip()
     src_b = (req.source_b or "").strip()
     keywords = _norm_keywords(req.keywords or [])

@@ -20,6 +20,7 @@ import httpx
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from app.core.ai_runtime import ai_enabled, require_ai_enabled
 from app.core.llm import LlmError, llm_chat_text
 from app.core.object_storage import ObjectStorageError, s3_enabled, upload_bytes
 from app.core.products.parameter_flow import dict_id_for_product_feature
@@ -846,7 +847,7 @@ def _ai_candidate_items_from_response(payload: Dict[str, Any]) -> List[Dict[str,
 
 
 async def _discover_ai_competitor_candidates(product: Dict[str, Any], source: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if os.getenv("ENABLE_AI_COMPETITOR_DISCOVERY", "1").strip().lower() in {"0", "false", "no"}:
+    if not ai_enabled() or os.getenv("ENABLE_AI_COMPETITOR_DISCOVERY", "0").strip().lower() in {"0", "false", "no"}:
         return []
     source_id = str(source.get("id") or "").strip()
     if source_id not in ALLOWED_SITES:
@@ -3089,6 +3090,9 @@ async def _competitor_ai_suggestion_items(product: Dict[str, Any]) -> Dict[str, 
     warnings: List[str] = []
     if not specs:
         return {"mode": "empty", "items": [], "warnings": warnings}
+    if not ai_enabled():
+        warnings.append("AI_DISABLED")
+        return {"mode": "rules", "items": rule_items, "warnings": warnings}
 
     product_title = _compact_ai_text(product.get("title") or product.get("name") or product.get("sku_gt") or product.get("id"), 100)
     spec_payload = specs[:_AI_PRODUCT_MAPPING_SPEC_LIMIT]
@@ -3178,6 +3182,8 @@ async def _ai_map_competitor_specs_to_template(template_id: str, source_id: str,
     memory_examples = _load_ai_mapping_memory_examples(source_id=source_id, targets=targets)
     rule_items = _apply_ai_mapping_memory(rule_items, memory_examples, targets)
     mapped = _mapped_specs_from_ai_items(rule_items, specs, targets)
+    if not ai_enabled():
+        return mapped
     prompt_targets = _compact_targets_for_prompt(_candidate_targets_for_ai(spec_items, targets, per_spec=6, limit=28))
     prompt_specs = _compact_specs_for_prompt(spec_items)
     prompt_memory = _compact_memory_for_prompt(memory_examples)
@@ -5695,6 +5701,8 @@ def product_enrich_job_status(job_id: str) -> Dict[str, Any]:
 
 @router.post("/discovery/products/{product_id}/ai-suggestions")
 async def competitor_product_ai_suggestions(product_id: str) -> Dict[str, Any]:
+    require_ai_enabled()
+
     normalized_product_id = str(product_id or "").strip()
     if not normalized_product_id:
         raise HTTPException(status_code=400, detail="product_id required")

@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from app.core.ai_runtime import ai_enabled
+
 
 class LlmError(RuntimeError):
     pass
@@ -26,7 +28,11 @@ async def llm_chat_text(
     model: Optional[str] = None,
     temperature: float = 0.2,
     timeout_seconds: float = 90.0,
+    max_tokens: Optional[int] = None,
 ) -> Dict[str, str]:
+    if not ai_enabled():
+        raise LlmError("AI_DISABLED")
+
     model_name, normalized_profile = llm_model_for_profile(profile, model)
     api_base = os.getenv("LLM_API_BASE", "http://localhost:11434/v1").strip().rstrip("/")
     api_key = os.getenv("LLM_API_KEY", "").strip()
@@ -35,6 +41,8 @@ async def llm_chat_text(
         "messages": messages,
         "temperature": temperature,
     }
+    if max_tokens is not None and int(max_tokens) > 0:
+        payload["max_tokens"] = int(max_tokens)
     headers: Dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -50,6 +58,8 @@ async def llm_chat_text(
                     "stream": False,
                     "options": {"temperature": temperature},
                 }
+                if max_tokens is not None and int(max_tokens) > 0:
+                    native_payload["options"]["num_predict"] = int(max_tokens)
                 res = await client.post(f"{native_base}/api/chat", json=native_payload, headers=headers)
     except Exception as exc:
         raise LlmError(f"LLM_ERROR:{exc.__class__.__name__}: {str(exc).strip()}") from exc

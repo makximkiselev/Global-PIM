@@ -49,7 +49,7 @@ API_ROUTER_ENTRIES: tuple[ApiRouterEntry, ...] = (
     ApiRouterEntry("data_prep", templates, "info-model templates"),
     ApiRouterEntry("data_prep", info_models, "info-model assembly helpers"),
     ApiRouterEntry("data_prep", dictionaries, "dictionaries and normalized values"),
-    ApiRouterEntry("data_prep", attributes, "attribute proposals and AI mapping"),
+    ApiRouterEntry("data_prep", attributes, "attribute proposals and mapping"),
     ApiRouterEntry("data_prep", competitor_mapping, "competitor discovery and enrichment evidence"),
     ApiRouterEntry("data_prep", comfyui, "media generation jobs"),
     ApiRouterEntry("channels", yandex_market, "Yandex Market channel API"),

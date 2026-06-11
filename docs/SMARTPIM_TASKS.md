@@ -7,10 +7,17 @@ Do not create separate `.md` plans, specs, notes, or task lists. Add every new t
 ## Current Baseline
 
 1. Production is deployed at `https://pim.id-smart.ru`.
-2. Active organization is `org_default / Global Trade`.
-3. Main production category for vertical QA: `Смартфоны`, id `bb40de87-254b-4170-84d7-8e5d3925b251`.
-4. Auth/admin schema is relational: `users`, `roles`, `organizations`, `organization_members`, `organization_invites`.
-5. Competitor workflow source of truth is relational:
+2. Local AI runtime was removed from the active product path on 2026-06-11:
+   - deploy no longer installs/restarts AI matching workers;
+   - legacy AI systemd units are stopped and removed during deploy;
+   - `PIM_ENABLE_AI` defaults to disabled and LLM calls fail fast with `AI_DISABLED`;
+   - frontend AI launch actions were removed from parameter matching, value mapping, competitors, and product SEO description;
+   - confirmed mapping rows remain usable as ordinary previously approved links, not as an AI runtime dependency.
+   - any older AI/LLM task notes below are historical and superseded by this baseline.
+3. Active organization is `org_default / Global Trade`.
+4. Main production category for vertical QA: `Смартфоны`, id `bb40de87-254b-4170-84d7-8e5d3925b251`.
+5. Auth/admin schema is relational: `users`, `roles`, `organizations`, `organization_members`, `organization_invites`.
+6. Competitor workflow source of truth is relational:
    - product candidates, confirmed/rejected/stale links, moderation evidence, and category/template competitor mappings live in `pim_channel_links`;
    - discovery run polling/state lives in `pim_workflow_runs`;
    - legacy competitor JSON is not runtime source of truth.
@@ -308,17 +315,13 @@ Current state:
 6. Values workspace now opens in blocker mode by default and separates `Блокеры`, `Все`, and `Готово`.
 7. Selected value field now shows compact route `PIM поле -> Канон -> Я.Маркет -> Ozon -> Статус` above the dictionary editor.
 8. Backend value details now return provider `allowed_sample` and `mapped_sample` for compact evidence UI.
-9. Competitor parameter mapping now uses the local LLM path as a controlled suggestion layer after deterministic matching.
-10. LLM suggestions are validated against real model fields and cannot map competitor specs into protected core fields (`Наименование товара`, `Описание товара`).
+9. Competitor parameter mapping now uses deterministic matching and confirmed links in the active no-local-AI flow.
+10. Legacy LLM suggestions, when explicitly enabled outside production, are validated against real model fields and cannot map competitor specs into protected core fields (`Наименование товара`, `Описание товара`).
 11. Explicit/manual competitor mappings into protected core fields are ignored by import/export enrichment.
-12. Production Ollama is configured for `qwen2.5:7b-instruct`; the same model is used by both the new competitor matching path and the legacy marketplace AI path.
-13. Confirmed category/template competitor mappings are now stored as AI learning examples in `pim_channel_links` with scope `ai_mapping_memory`.
-14. AI prompt context now includes confirmed mapping examples, and confirmed memory overrides later LLM/rule suggestions for the same source field.
-15. Production LLM check after server upgrade on 2026-05-21:
-   - server resources are now enough for `qwen2.5:7b-instruct` single-product mapping runs;
-   - `product_648 / AirPods 4` AI suggestions completed in LLM mode without warnings;
-   - deterministic enrichment filled 16/20 headphone fields from confirmed `store77` and `re-store` links;
-   - remaining AI suggestions are mostly `create_attribute`, which exposes model gaps rather than silently writing wrong fields.
+12. Local/production AI runtime is no longer part of the active flow as of 2026-06-11. Older Ollama/LLM notes in this section are historical only.
+13. Confirmed category/template competitor mappings are stored in `pim_channel_links` as reusable approved links. Treat them as deterministic product data, not as AI memory.
+14. Confirmed links override later rule suggestions for the same source field.
+15. Historical production LLM check after server upgrade on 2026-05-21 is superseded by the current no-local-AI baseline.
 16. `/sources-mapping?tab=sources` initial catalog load was optimized on 2026-05-21:
    - previous bootstrap returned all marketplace category trees with the catalog: about 3.31 MB and 19,051 provider categories;
    - new bootstrap returns only the PIM catalog, mappings, states, and mapped provider-category labels: about 0.30 MB;
@@ -328,34 +331,20 @@ Current state:
    - `Задать общую` opens the explicit clear/replace flow;
    - the old confusing `Сопоставить -> очистка дочерних связей` path was removed from the primary action.
 18. `/sources?tab=params` selected-parameter inspector now explains why a field needs attention and exposes direct actions:
-   - `Подобрать AI`;
+   - `Подтвердить связь`;
    - `Подтвердить`;
    - `Не передавать`;
    - `Настроить значения`.
 19. Marketplace parameter bindings now carry and display provenance:
-   - `AI` for LLM suggestions;
+   - `Автоподбор` for legacy imported suggestions when present;
    - `Правило` for deterministic fallback matches;
-   - `Память` for learned mappings when present;
+   - `Подтвержденная связь` for previously approved mappings when present;
    - `Ручное` for user-edited bindings.
 20. The selected-parameter inspector shows source, confidence, and reason per marketplace field so a content manager can decide whether to confirm or edit.
 21. Core export fields (`SKU GT`, product title, description, media/images) are protected from arbitrary category-attribute bindings. They are exported through the product/export flow, not through marketplace characteristic mapping.
-22. Legacy marketplace AI-match now uses the installed production model by default:
-   - `qwen2.5:7b-instruct`, not the missing `qwen2.5:14b-instruct`;
-   - compact JSON pair prompt instead of a verbose schema prompt;
-   - shortlist candidates before sending to Ollama;
-   - chunked matching and `ai_error` diagnostics instead of silent fallback.
-23. `/sources?tab=params` now starts marketplace AI matching through a background job:
-   - `POST /api/marketplaces/mapping/import/attributes/{category_id}/ai-match/jobs` returns immediately with `job_id`;
-   - `GET /api/marketplaces/mapping/import/attributes/ai-match/jobs/{job_id}` returns queued/running/completed/failed state;
-   - the UI polls job status, shows progress copy, and reloads parameter details when the job completes;
-   - duplicate running jobs for the same category are reused instead of starting parallel LLM runs.
-24. AI job state is now persistent in `pim_workflow_runs`, workflow `marketplace_attribute_ai_match`:
-   - job state survives process restarts and can be inspected from SQL;
-   - stale queued/running jobs are marked `failed/stale` after the bounded timeout window;
-   - execution is started through a separate `app.workers.marketplace_attribute_ai_match` worker process per job;
-   - the same worker also supports `--run-pending` and `--loop` to pick queued jobs from `pim_workflow_runs` after restarts;
-   - worker execution claims a job with a conditional `queued -> running` update before running LLM work, so parallel one-job/daemon workers skip already claimed jobs;
-   - the previous in-memory-only job map was removed.
+22. Legacy marketplace AI-match worker/job flow was removed from active runtime on 2026-06-11.
+23. `/sources?tab=params` builds drafts synchronously through deterministic rules and confirmed links. Legacy persisted workflow names may remain only for reading old rows.
+24. Deploy removes legacy AI systemd units and must not start Ollama-backed matching workers.
 25. `Смартфоны` parameter remap after reset:
    - endpoint stayed stable and did not crash;
    - deterministic rule/memory mapping produced 86 rows, 62 ready rows, 18 attention rows, and 5 unmapped Я.Маркет fields;
@@ -469,14 +458,14 @@ Current state:
 Known problems:
 
 1. Value mapping now has a first `Следующий блокер` action and inline PIM -> provider value editing in the selected-field panel, but dictionary data quality still needs real-category QA.
-2. Canonical PIM value, marketplace output value, allowed marketplace values, AI result, and manual save/remove are visible in the values panel; raw competitor/source value snippets still need a dedicated pass.
+2. Canonical PIM value, marketplace output value, allowed marketplace values, deterministic status, and manual save/remove are visible in the values panel; raw competitor/source value snippets still need a dedicated pass.
 3. Marketplace dictionary data quality still needs verification.
 4. Actual export payload now has route-level guard tests for provider-specific output values; remaining risk is the quality/completeness of the dictionaries and export maps.
 5. Parameter list provenance and type-mode chips are now visible, but the next pass should verify the density on narrow laptop widths after more real mappings are confirmed.
 6. Enrichment for weak models still depends on approved template fields; if a model is missing a field, source values remain unmatched even when competitors have useful specs.
 7. re-store MacBook coverage is still partial for base 13-inch M4 configurations: Store77 can provide review candidates, but re-store may be empty when exact SKUs are not present in its current listing.
 7. The clear/replace flow for parent categories is now explicit, but the modal copy and visual hierarchy still need final design polish.
-8. Marketplace AI matching worker daemon is now managed by `global-pim-ai-match-worker.service`; deploy installs/enables/restarts it and `server_ops.sh` exposes `worker-status`, `worker-logs`, and `restart-worker`.
+8. Legacy marketplace AI matching worker daemon was removed from active deploy; no `global-pim-ai-match-worker.service` should be installed or running.
 9. The value workspace can still classify some numeric/logistics fields through the PIM template type, so the next backend pass should verify provider numeric fields are not treated as select-only value dictionaries.
 
 Next tasks:
@@ -666,14 +655,9 @@ Next fix in the category flow:
    - value readiness now checks real PIM dictionary values against provider output coverage, not the full provider allowed-value list;
    - production value check after deploy: `iPhone 17 Pro Max` has 0 value blockers and 26 unit checks; `iPad Air 11 M3` has 0 value blockers and 24 unit checks;
    - `/sources?tab=values` shows provider coverage as covered PIM values (`covered / PIM total`) instead of `mapped / allowed`.
-   - value mapping now has an AI suggestion endpoint and UI action for a selected PIM dictionary/provider:
-     `POST /api/marketplaces/mapping/import/values/{category_id}/dictionaries/{dict_id}/ai-suggest`;
-     the endpoint uses the same allowed-value evidence as the value tab, validates that every suggested output is an actual provider allowed value, writes accepted pairs into dictionary `meta.export_map`, and records AI/rule evidence in `meta.value_ai`.
-   - value AI matching also has a persisted job path for long dictionaries/Ollama calls:
-     `POST /api/marketplaces/mapping/import/values/{category_id}/dictionaries/{dict_id}/ai-suggest/jobs`,
-     `GET /api/marketplaces/mapping/import/values/ai-suggest/jobs/{job_id}`;
-     queued/running jobs are saved in `pim_workflow_runs` as `marketplace_value_ai_match`, stale jobs are failed after a bounded window, and `global-pim-value-ai-worker.service` can resume queued work after restart.
-   - when provider allowed values come only from category value bindings, value AI now treats missing `export_map` rows as unmapped even if the generic exporter would fall back to free text. This prevents false `already_covered` and forces a real PIM value -> provider allowed value pair.
+   - value mapping keeps manual provider output editing and deterministic validation against provider allowed values.
+   - legacy value AI suggestion/job endpoints are disabled unless `PIM_ENABLE_AI=1`; the active UI no longer exposes them.
+   - when provider allowed values come only from category value bindings, missing `export_map` rows remain unmapped even if the generic exporter would fall back to free text. This prevents false `already_covered` and forces a real PIM value -> provider allowed value pair.
 3. Long full-category export preparation now has a persisted backend job path:
    - `POST /api/catalog/exchange/export/jobs` creates/reuses a queued job;
    - `GET /api/catalog/exchange/export/jobs/{job_id}` returns queued/running/completed/failed status and the saved run result;

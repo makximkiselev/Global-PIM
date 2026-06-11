@@ -17,199 +17,9 @@ from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
 from app.core import value_mapping
-from app.workers import marketplace_attribute_ai_match, marketplace_value_ai_match
 
 
 class OperatingWorkflowTests(unittest.TestCase):
-    def test_marketplace_attribute_ai_match_worker_executes_saved_job(self) -> None:
-        saved_job = {
-            "id": "attr_ai_job_test",
-            "job_id": "attr_ai_job_test",
-            "catalog_category_id": "cat_phone",
-            "status": "queued",
-            "apply": False,
-        }
-        executed: list[tuple[str, bool]] = []
-
-        async def execute(job_id, catalog_category_id, req):
-            executed.append((catalog_category_id, bool(req.apply)))
-
-        with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
-            patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "_claim_attr_ai_job",
-                return_value=deepcopy(saved_job),
-            ),
-            patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "_run_attr_ai_match_job",
-                side_effect=execute,
-            ),
-        ):
-            result = asyncio.run(marketplace_attribute_ai_match.run_once("attr_ai_job_test", "org_default"))
-
-        self.assertEqual(result["job_id"], "attr_ai_job_test")
-        self.assertEqual(result["catalog_category_id"], "cat_phone")
-        self.assertEqual(executed, [("cat_phone", False)])
-
-    def test_marketplace_attribute_ai_match_worker_skips_already_claimed_job(self) -> None:
-        executed: list[str] = []
-
-        async def execute(job_id, catalog_category_id, req):
-            executed.append(job_id)
-
-        with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_claim_attr_ai_job", return_value=None),
-            patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "_run_attr_ai_match_job",
-                side_effect=execute,
-            ),
-        ):
-            result = asyncio.run(marketplace_attribute_ai_match.run_once("attr_ai_job_claimed", "org_default"))
-
-        self.assertEqual(result["ok"], False)
-        self.assertEqual(result["skipped"], True)
-        self.assertEqual(executed, [])
-
-    def test_marketplace_attribute_ai_match_worker_runs_pending_jobs(self) -> None:
-        queued_jobs = [
-            {
-                "id": "attr_ai_job_1",
-                "job_id": "attr_ai_job_1",
-                "catalog_category_id": "cat_phone",
-                "status": "queued",
-                "apply": True,
-            },
-            {
-                "id": "attr_ai_job_2",
-                "job_id": "attr_ai_job_2",
-                "catalog_category_id": "cat_tablet",
-                "status": "queued",
-                "apply": False,
-            },
-        ]
-        executed: list[str] = []
-
-        async def execute(job_id, organization_id=None):
-            executed.append(job_id)
-            return {"ok": True, "job_id": job_id, "catalog_category_id": "cat"}
-
-        with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
-            patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "list_pim_workflow_runs",
-                return_value=deepcopy(queued_jobs),
-            ),
-            patch.object(marketplace_attribute_ai_match, "run_once", side_effect=execute),
-        ):
-            result = asyncio.run(marketplace_attribute_ai_match.run_pending_once("org_default", limit=10))
-
-        self.assertEqual(result["picked"], 2)
-        self.assertEqual(result["completed"], 2)
-        self.assertEqual(result["failed"], 0)
-        self.assertEqual(executed, ["attr_ai_job_1", "attr_ai_job_2"])
-
-    def test_marketplace_attribute_ai_match_worker_counts_raced_claims_as_skipped(self) -> None:
-        queued_jobs = [
-            {
-                "id": "attr_ai_job_1",
-                "job_id": "attr_ai_job_1",
-                "catalog_category_id": "cat_phone",
-                "status": "queued",
-            }
-        ]
-
-        async def execute(job_id, organization_id=None):
-            return {"ok": False, "skipped": True, "job_id": job_id}
-
-        with (
-            patch.object(marketplace_attribute_ai_match.marketplace_mapping, "_prune_attr_ai_jobs"),
-            patch.object(
-                marketplace_attribute_ai_match.marketplace_mapping,
-                "list_pim_workflow_runs",
-                return_value=deepcopy(queued_jobs),
-            ),
-            patch.object(marketplace_attribute_ai_match, "run_once", side_effect=execute),
-        ):
-            result = asyncio.run(marketplace_attribute_ai_match.run_pending_once("org_default", limit=10))
-
-        self.assertEqual(result["picked"], 1)
-        self.assertEqual(result["completed"], 0)
-        self.assertEqual(result["skipped"], 1)
-        self.assertEqual(result["failed"], 0)
-
-    def test_marketplace_value_ai_match_worker_executes_saved_job(self) -> None:
-        saved_job = {
-            "id": "value_ai_job_test",
-            "job_id": "value_ai_job_test",
-            "catalog_category_id": "cat_phone",
-            "dict_id": "dict_version",
-            "provider": "yandex_market",
-            "status": "queued",
-            "apply": True,
-        }
-        executed: list[tuple[str, str, str, bool]] = []
-
-        async def execute(job_id, catalog_category_id, dict_id, req):
-            executed.append((catalog_category_id, dict_id, req.provider, bool(req.apply)))
-
-        with (
-            patch.object(marketplace_value_ai_match.marketplace_mapping, "_prune_value_ai_jobs"),
-            patch.object(
-                marketplace_value_ai_match.marketplace_mapping,
-                "_claim_value_ai_job",
-                return_value=deepcopy(saved_job),
-            ),
-            patch.object(
-                marketplace_value_ai_match.marketplace_mapping,
-                "_run_value_ai_match_job",
-                side_effect=execute,
-            ),
-        ):
-            result = asyncio.run(marketplace_value_ai_match.run_once("value_ai_job_test", "org_default"))
-
-        self.assertEqual(result["job_id"], "value_ai_job_test")
-        self.assertEqual(result["catalog_category_id"], "cat_phone")
-        self.assertEqual(result["dict_id"], "dict_version")
-        self.assertEqual(executed, [("cat_phone", "dict_version", "yandex_market", True)])
-
-    def test_marketplace_value_ai_match_worker_runs_pending_jobs(self) -> None:
-        queued_jobs = [
-            {
-                "id": "value_ai_job_1",
-                "job_id": "value_ai_job_1",
-                "catalog_category_id": "cat_phone",
-                "dict_id": "dict_version",
-                "provider": "yandex_market",
-                "status": "queued",
-            }
-        ]
-        executed: list[str] = []
-
-        async def execute(job_id, organization_id=None):
-            executed.append(job_id)
-            return {"ok": True, "job_id": job_id, "catalog_category_id": "cat_phone", "dict_id": "dict_version"}
-
-        with (
-            patch.object(marketplace_value_ai_match.marketplace_mapping, "_prune_value_ai_jobs"),
-            patch.object(
-                marketplace_value_ai_match.marketplace_mapping,
-                "list_pim_workflow_runs",
-                return_value=deepcopy(queued_jobs),
-            ),
-            patch.object(marketplace_value_ai_match, "run_once", side_effect=execute),
-        ):
-            result = asyncio.run(marketplace_value_ai_match.run_pending_once("org_default", limit=10))
-
-        self.assertEqual(result["picked"], 1)
-        self.assertEqual(result["completed"], 1)
-        self.assertEqual(result["failed"], 0)
-        self.assertEqual(executed, ["value_ai_job_1"])
-
     def test_product_parameter_flow_connects_sources_pim_and_marketplace_outputs(self) -> None:
         product = {
             "id": "product_phone",
@@ -696,6 +506,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             ]
 
         with (
+            patch.dict(os.environ, {"PIM_ENABLE_AI": "1"}),
             patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
             patch.object(marketplace_mapping, "_load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
             patch.object(marketplace_mapping, "_catalog_rows", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
@@ -751,6 +562,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             return [{"canonical": "Global", "output": "GLOBAL", "confidence": 0.96, "reason": "same region"}]
 
         with (
+            patch.dict(os.environ, {"PIM_ENABLE_AI": "1"}),
             patch.object(marketplace_mapping, "_value_details_cache_bucket", return_value={}),
             patch.object(marketplace_mapping, "_load_catalog_nodes", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
             patch.object(marketplace_mapping, "_catalog_rows", return_value=[{"id": "cat-phone", "parent_id": None, "name": "Смартфоны"}]),
@@ -1764,7 +1576,11 @@ class OperatingWorkflowTests(unittest.TestCase):
         async def failing_llm_chat_text(**kwargs):
             raise RuntimeError("llm unavailable")
 
-        with patch.object(competitor_mapping, "llm_chat_text", side_effect=failing_llm_chat_text):
+        with (
+            patch.dict(os.environ, {"PIM_ENABLE_AI": "0"}),
+            patch.object(competitor_mapping, "list_pim_channel_links", return_value=[]),
+            patch.object(competitor_mapping, "llm_chat_text", side_effect=failing_llm_chat_text),
+        ):
             response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
         items = response["items"]
         by_name = {item["source_name"]: item for item in items}
@@ -1828,7 +1644,11 @@ class OperatingWorkflowTests(unittest.TestCase):
                 ),
             }
 
-        with patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text):
+        with (
+            patch.dict(os.environ, {"PIM_ENABLE_AI": "1"}),
+            patch.object(competitor_mapping, "list_pim_channel_links", return_value=[]),
+            patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
+        ):
             response = asyncio.run(competitor_mapping._competitor_ai_suggestion_items(product))
 
         items = {item["source_name"]: item for item in response["items"]}
@@ -1895,6 +1715,7 @@ class OperatingWorkflowTests(unittest.TestCase):
             }
 
         with (
+            patch.dict(os.environ, {"PIM_ENABLE_AI": "1"}),
             patch.object(competitor_mapping, "list_pim_channel_links", return_value=memory_rows),
             patch.object(competitor_mapping, "llm_chat_text", side_effect=bad_llm_chat_text),
         ):
@@ -1987,6 +1808,8 @@ class OperatingWorkflowTests(unittest.TestCase):
             }
 
         with (
+            patch.dict(os.environ, {"PIM_ENABLE_AI": "1"}),
+            patch.object(competitor_mapping, "list_pim_channel_links", return_value=[]),
             patch.object(competitor_mapping, "_master_fields", return_value=fields),
             patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
         ):

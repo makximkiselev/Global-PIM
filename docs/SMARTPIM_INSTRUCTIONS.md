@@ -105,11 +105,7 @@ Unified parameter flow:
 25. export preparation may run bounded marketplace product-card hydration for the selected stores/SKUs before readiness checks, because marketplace imports are first-party product data for the final catalog;
 26. candidate competitor links may be shown for manual review, but only confirmed links may be used for automatic media/parameter enrichment or export-side fallback.
 27. candidate moderation must distinguish proven conflicts from unknown data. If both product and competitor SIM profiles are known and different, approval is blocked. If competitor SIM is not recognized, keep it as manual review and allow an explicit source-labelled approval/reject decision.
-28. AI competitor candidate discovery must learn from confirmed product-card links, not from prompt edits:
-    - use only `pim_channel_links` rows with `scope = competitor_product`, `entity_type = product`, `status = confirmed`, and the same `provider`;
-    - validate every AI URL with `detect_site(url) == provider`;
-    - pass the AI title/URL through the same variant confidence checks as deterministic discovery;
-    - persist AI suggestions only as review candidates (`needs_review` / channel `candidate`), never as confirmed links.
+28. Competitor candidate discovery must use deterministic search/parsing and confirmed product-card links. Local AI discovery is disabled by default because the production server cannot carry the model/runtime load.
 29. long browser-facing operations must not expose raw nginx `504` pages in the UI. Use persisted run/job state and polling when the backend operation can exceed the proxy timeout; show the saved result once the backend finishes.
 30. export media selection is separate from media enrichment. Removing media from the export set must not delete the enriched source media, and later enrichment must not automatically re-enable media that the user excluded from export.
 31. product media export uses `content.media_images[].selected !== false` and `export_order`/array order. Physical deletion is separate from excluding an image from export.
@@ -324,80 +320,25 @@ scripts/backup_server_config.sh
 
 Production deploy/backup scripts must not interpolate `APP_SERVER_PASSWORD` into command strings. Pass it through environment variables into `expect` and use `send -- "$env(APP_SERVER_PASSWORD)\r"`.
 
-## Production LLM
+## AI Runtime
 
-Local AI matching runs through Ollama on the production server.
+Local AI/LLM runtime is disabled by default. The server must not run Ollama-backed matching workers, value-matching workers, competitor AI parsing, or SEO generation in normal production.
 
-Required production service:
+Runtime contract:
 
-```bash
-ollama.service
-```
+1. `PIM_ENABLE_AI` defaults to `0`.
+2. `app.core.llm.llm_chat_text` must raise `AI_DISABLED` before opening any network connection when AI is disabled.
+3. Deploy must not install, enable, or restart `global-pim-ai-match-worker.service` or `global-pim-value-ai-worker.service`.
+4. Deploy must stop and remove those legacy unit files if they exist on the server.
+5. Frontend must not show AI launch buttons for parameter matching, value matching, competitor residue parsing, or SEO generation.
+6. Rule-based and confirmed-link based matching remains allowed because it does not start an LLM runtime.
 
-Required local model:
+Confirmed mapping memory is data, not AI:
 
-```bash
-qwen2.5:7b-instruct
-```
-
-Backend runtime env must include these non-secret values in `/opt/projects/global-pim/backend/.env`:
-
-```bash
-LLM_API_BASE=http://localhost:11434/v1
-LLM_MODEL=qwen2.5:7b-instruct
-LLM_MODEL_FAST=qwen2.5:7b-instruct
-LLM_MODEL_BALANCED=qwen2.5:7b-instruct
-LLM_MODEL_QUALITY=qwen2.5:7b-instruct
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen2.5:7b-instruct
-AI_MATCH_OLLAMA_TIMEOUT_SECONDS=90
-AI_MATCH_OLLAMA_CHUNK_SIZE=12
-```
-
-Use one model across the old marketplace AI path and the newer `app.core.llm` path. Do not point production to `llama3.1:*`, `qwen2.5:14b-instruct`, or `70b` models unless the model is installed and server resources are checked first.
-
-Category-level marketplace AI matching must stay bounded:
-
-1. never send the full marketplace parameter dictionary plus all PIM rows as one prompt;
-2. shortlist marketplace candidates by deterministic token score before calling Ollama;
-3. send compact pair prompts (`rows: [[pim_name, provider_id_or_null]]`), not verbose schemas;
-4. run category rows in chunks and preserve deterministic rule/memory fallback;
-5. expose `ai_error` when LLM fails, instead of silently claiming AI matched the data;
-6. use a background job/queue for any full-category LLM rematch that can take longer than an interactive request.
-
-Interactive parameter matching should use the background job endpoints:
-
-```text
-POST /api/marketplaces/mapping/import/attributes/{category_id}/ai-match/jobs
-GET  /api/marketplaces/mapping/import/attributes/ai-match/jobs/{job_id}
-```
-
-The old synchronous endpoint may remain for scripts and diagnostics, but frontend buttons should not block on it.
-
-AI matching job state is persisted in `pim_workflow_runs` with workflow:
-
-```text
-marketplace_attribute_ai_match
-```
-
-Use this table to inspect stuck/completed AI jobs. Queued/running jobs older than the bounded stale window are marked `failed/stale` on the next job start/status check so users can restart matching.
-
-Execution is handled by `app.workers.marketplace_attribute_ai_match` as a separate one-job worker process. The worker can also run queued jobs directly:
-
-```bash
-PYTHONPATH=backend python3 -m app.workers.marketplace_attribute_ai_match --run-pending --organization-id org_default
-PYTHONPATH=backend python3 -m app.workers.marketplace_attribute_ai_match --loop --poll-interval 5 --organization-id org_default
-```
-
-Production deploy installs and restarts the managed loop unit:
-
-```text
-global-pim-ai-match-worker.service
-```
-
-Use `scripts/server_ops.sh worker-status`, `worker-logs`, or `restart-worker` for operations. The unit runs `--loop --poll-interval 5 --limit 10 --organization-id org_default`, so queued jobs are picked up again after host/process restarts.
-
-The worker must claim jobs before running LLM work. The claim path is a conditional update in `pim_workflow_runs` from `queued` to `running`; if another process already claimed the job, the worker reports it as skipped and does not execute matching again.
+1. confirmed category/template competitor mappings may be saved in `pim_channel_links`;
+2. legacy `scope = ai_mapping_memory` rows can still be read as previously confirmed links;
+3. UI should describe them as `Подтвержденная связь`, not as AI memory;
+4. protected fields such as product name/title and description must never be target fields for competitor parameter mapping.
 
 Runtime memory rules:
 
@@ -419,29 +360,14 @@ Production disk rules:
    - bound import/export run history before saving;
    - after large JSON rewrites, use a planned `VACUUM FULL json_documents` or `pg_repack` window to return old TOAST space to disk.
 
-AI mapping must learn from user confirmations through data, not through ad-hoc prompt edits:
+Confirmed mapping memory must come from user confirmations through data, not through prompt edits:
 
 1. confirmed category/template competitor mappings are saved in `pim_channel_links`;
-2. AI learning rows use `scope = ai_mapping_memory`, `entity_type = template`, `status = confirmed`;
+2. legacy rows may still use `scope = ai_mapping_memory`, but treat them as ordinary confirmed mapping memory;
 3. the row `provider` is the competitor source, `title` is the competitor/source field name, and `external_id` is the target PIM field code;
-4. `payload_json` must include `source_name`, `source_name_key`, `target_code`, `target_name`, `template_id`, `context_type`, and `context_id`;
-5. AI prompts must include recent confirmed examples before unmatched source fields;
-6. if a confirmed memory example matches the source field, it overrides later LLM/rule suggestions;
-7. protected fields such as product name/title and description must never be target fields for competitor parameter mapping.
-8. product-card candidate discovery uses a separate learning path: confirmed competitor product links (`scope = competitor_product`) are few-shot examples for future URL suggestions, but the result is still only a candidate until the user approves it.
-
-Verify LLM without printing secrets:
-
-```bash
-scripts/server_ops.sh exec "cd /opt/projects/global-pim && set -a && . /opt/projects/global-pim/backend/.env && set +a && PYTHONPATH=/opt/projects/global-pim/backend /opt/projects/global-pim/.venv/bin/python - <<'PY'
-import asyncio
-from app.core.llm import llm_chat_text
-async def main():
-    res = await llm_chat_text(messages=[{'role': 'user', 'content': 'Ответь одним словом: ok'}], profile='fast', timeout_seconds=60)
-    print('llm_ok', res.get('model'), str(res.get('content') or '')[:120])
-asyncio.run(main())
-PY"
-```
+4. `payload_json` should include `source_name`, `source_name_key`, `target_code`, `target_name`, `template_id`, `context_type`, and `context_id`;
+5. if a confirmed memory example matches the source field, it may override generic rule suggestions;
+6. protected fields such as product name/title and description must never be target fields for competitor parameter mapping.
 
 ## Browser QA
 

@@ -4,8 +4,6 @@ import asyncio
 import json
 import os
 import re
-import subprocess
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +14,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.ai_runtime import ai_enabled, require_ai_enabled
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import normalize_value_key, provider_export_value_details
@@ -2569,68 +2568,6 @@ _VALUE_AI_WORKFLOW = "marketplace_value_ai_match"
 _VALUE_AI_JOB_TTL_SECONDS = 300.0
 
 
-def _backend_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _repo_root() -> Path:
-    return _backend_root().parent
-
-
-def _start_attr_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
-    env = os.environ.copy()
-    backend_root = str(_backend_root())
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-
-    command = [
-        sys.executable,
-        "-m",
-        "app.workers.marketplace_attribute_ai_match",
-        "--job-id",
-        job_id,
-    ]
-    if organization_id:
-        command.extend(["--organization-id", organization_id])
-
-    subprocess.Popen(
-        command,
-        cwd=str(_repo_root()),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-
-def _start_value_ai_match_worker_process(job_id: str, organization_id: Optional[str]) -> None:
-    env = os.environ.copy()
-    backend_root = str(_backend_root())
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = backend_root if not existing_pythonpath else f"{backend_root}{os.pathsep}{existing_pythonpath}"
-
-    command = [
-        sys.executable,
-        "-m",
-        "app.workers.marketplace_value_ai_match",
-        "--job-id",
-        job_id,
-    ]
-    if organization_id:
-        command.extend(["--organization-id", organization_id])
-
-    subprocess.Popen(
-        command,
-        cwd=str(_repo_root()),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-
 def _job_ts(value: Any) -> float:
     if isinstance(value, (int, float)):
         return float(value)
@@ -2648,7 +2585,7 @@ def _claim_attr_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
         workflow=_ATTR_AI_WORKFLOW,
         payload_updates={
             "phase": "matching",
-            "message": "AI подбирает спорные связки. Уверенные rule/memory-связки применяются автоматически.",
+            "message": "Автоподбор проверяет спорные связки. Уверенные правила и подтвержденные связи применяются автоматически.",
             "started_at": _now_iso(),
             "updated_ts": time.time(),
         },
@@ -2666,7 +2603,7 @@ def _claim_value_ai_job(job_id: str) -> Optional[Dict[str, Any]]:
         workflow=_VALUE_AI_WORKFLOW,
         payload_updates={
             "phase": "matching",
-            "message": "AI сопоставляет значения PIM со справочником площадки.",
+            "message": "Автоподбор сопоставляет значения PIM со справочником площадки.",
             "started_at": _now_iso(),
             "updated_ts": time.time(),
         },
@@ -2682,7 +2619,7 @@ def _prune_attr_ai_jobs() -> None:
             job.update({
                 "status": "failed",
                 "phase": "stale",
-                "message": "AI-подбор был прерван. Запустите подбор заново.",
+                "message": "Автоподбор был прерван. Запустите подбор заново.",
                 "finished_at": _now_iso(),
                 "updated_ts": now,
                 "error": "STALE_AI_MATCH_JOB",
@@ -2699,7 +2636,7 @@ def _prune_value_ai_jobs() -> None:
             job.update({
                 "status": "failed",
                 "phase": "stale",
-                "message": "AI-сопоставление значений было прервано. Запустите подбор заново.",
+                "message": "Автоподбор значений был прерван. Запустите подбор заново.",
                 "finished_at": _now_iso(),
                 "updated_ts": now,
                 "error": "STALE_VALUE_AI_MATCH_JOB",
@@ -2754,7 +2691,7 @@ async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiM
     job.update({
         "status": "running",
         "phase": "matching",
-        "message": "AI подбирает спорные связки. Уверенные rule/memory-связки применяются автоматически.",
+        "message": "Автоподбор проверяет спорные связки. Уверенные правила и подтвержденные связи применяются автоматически.",
         "started_at": _now_iso(),
         "updated_ts": time.time(),
     })
@@ -2764,7 +2701,7 @@ async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiM
         job.update({
             "status": "completed",
             "phase": "completed",
-            "message": "AI-подбор завершен. Обновите список параметров и проверьте спорные строки.",
+            "message": "Автоподбор завершен. Обновите список параметров и проверьте спорные строки.",
             "finished_at": _now_iso(),
             "updated_ts": time.time(),
             "engine": result.get("engine"),
@@ -2777,7 +2714,7 @@ async def _run_attr_ai_match_job(job_id: str, catalog_category_id: str, req: AiM
         job.update({
             "status": "failed",
             "phase": "failed",
-            "message": "AI-подбор не завершился. Rule/memory-связки можно применить повторно.",
+            "message": "Автоподбор не завершился. Правила и подтвержденные связи можно применить повторно.",
             "finished_at": _now_iso(),
             "updated_ts": time.time(),
             "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
@@ -2792,7 +2729,7 @@ async def _run_value_ai_match_job(job_id: str, catalog_category_id: str, dict_id
     job.update({
         "status": "running",
         "phase": "matching",
-        "message": "AI сопоставляет значения PIM со справочником площадки.",
+        "message": "Автоподбор сопоставляет значения PIM со справочником площадки.",
         "started_at": _now_iso(),
         "updated_ts": time.time(),
     })
@@ -2805,9 +2742,9 @@ async def _run_value_ai_match_job(job_id: str, catalog_category_id: str, dict_id
             "status": "completed",
             "phase": "completed",
             "message": (
-                f"AI-сопоставление значений завершено: {suggestions_count} знач."
+                f"Автоподбор значений завершен: {suggestions_count} знач."
                 if suggestions_count
-                else str(result.get("message") or "AI-сопоставление значений завершено.")
+                else str(result.get("message") or "Автоподбор значений завершен.")
             ),
             "finished_at": _now_iso(),
             "updated_ts": time.time(),
@@ -2820,7 +2757,7 @@ async def _run_value_ai_match_job(job_id: str, catalog_category_id: str, dict_id
         job.update({
             "status": "failed",
             "phase": "failed",
-            "message": "AI-сопоставление значений не завершилось. Запустите подбор заново.",
+            "message": "Автоподбор значений не завершился. Запустите подбор заново.",
             "finished_at": _now_iso(),
             "updated_ts": time.time(),
             "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
@@ -4622,6 +4559,8 @@ def mapping_value_details(catalog_category_id: str) -> Dict[str, Any]:
 
 @router.post("/import/values/{catalog_category_id}/dictionaries/{dict_id}/ai-suggest")
 async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: ValueAiSuggestReq) -> Dict[str, Any]:
+    require_ai_enabled()
+
     cid = str(catalog_category_id or "").strip()
     did = str(dict_id or "").strip()
     provider = str(req.provider or "").strip()
@@ -4759,6 +4698,8 @@ async def mapping_value_ai_suggest(catalog_category_id: str, dict_id: str, req: 
 
 @router.post("/import/values/{catalog_category_id}/dictionaries/{dict_id}/ai-suggest/jobs")
 async def mapping_value_ai_suggest_job_start(catalog_category_id: str, dict_id: str, req: ValueAiSuggestReq) -> Dict[str, Any]:
+    require_ai_enabled()
+
     cid = str(catalog_category_id or "").strip()
     did = str(dict_id or "").strip()
     provider = str(req.provider or "").strip()
@@ -4789,20 +4730,20 @@ async def mapping_value_ai_suggest_job_start(catalog_category_id: str, dict_id: 
         "provider": provider,
         "status": "queued",
         "phase": "queued",
-        "message": "AI-сопоставление значений поставлено в очередь.",
+        "message": "Автоподбор значений поставлен в очередь.",
         "created_at": _now_iso(),
         "created_ts": time.time(),
         "updated_ts": time.time(),
         "apply": bool(req.apply),
     }
     _save_value_ai_job(job)
-    organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
-    _start_value_ai_match_worker_process(job_id, organization_id)
     return _public_value_ai_job(job)
 
 
 @router.get("/import/values/ai-suggest/jobs/{job_id}")
 async def mapping_value_ai_suggest_job_status(job_id: str) -> Dict[str, Any]:
+    require_ai_enabled()
+
     _prune_value_ai_jobs()
     jid = str(job_id or "").strip()
     job = get_pim_workflow_run(jid, workflow=_VALUE_AI_WORKFLOW)
@@ -4987,7 +4928,7 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
         if not str((((row.get("provider_map") or {}).get("yandex_market") or {}).get("id") or "")).strip()
     ]
     try:
-        if ai_seed_rows:
+        if ai_enabled() and ai_seed_rows:
             async with asyncio.timeout(_ai_match_timeout_seconds()):
                 rows_ai = await _ollama_suggest_rows_chunked(
                     category_name=str(cat.get("path") or cat.get("name") or cid),
@@ -5070,6 +5011,8 @@ async def mapping_attribute_ai_match(catalog_category_id: str, req: AiMatchReq) 
 
 @router.post("/import/attributes/{catalog_category_id}/ai-match/jobs")
 async def mapping_attribute_ai_match_job_start(catalog_category_id: str, req: AiMatchReq) -> Dict[str, Any]:
+    require_ai_enabled()
+
     cid = str(catalog_category_id or "").strip()
     if not cid:
         raise HTTPException(status_code=400, detail="CATALOG_CATEGORY_REQUIRED")
@@ -5090,20 +5033,20 @@ async def mapping_attribute_ai_match_job_start(catalog_category_id: str, req: Ai
         "catalog_category_id": cid,
         "status": "queued",
         "phase": "queued",
-        "message": "AI-подбор поставлен в очередь.",
+        "message": "Автоподбор поставлен в очередь.",
         "created_at": _now_iso(),
         "created_ts": time.time(),
         "updated_ts": time.time(),
         "apply": bool(req.apply),
     }
     _save_attr_ai_job(job)
-    organization_id = str(current_tenant_organization_id() or "").strip() or "org_default"
-    _start_attr_ai_match_worker_process(job_id, organization_id)
     return _public_attr_ai_job(job)
 
 
 @router.get("/import/attributes/ai-match/jobs/{job_id}")
 async def mapping_attribute_ai_match_job_status(job_id: str) -> Dict[str, Any]:
+    require_ai_enabled()
+
     _prune_attr_ai_jobs()
     jid = str(job_id or "").strip()
     job = get_pim_workflow_run(jid, workflow=_ATTR_AI_WORKFLOW)

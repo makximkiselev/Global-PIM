@@ -308,14 +308,6 @@ type AttrDetailsResp = {
   sources?: Record<string, any>;
 };
 
-type AttrAiMatchResp = {
-  ok: boolean;
-  engine: string;
-  applied: boolean;
-  rows: AttrRow[];
-  rows_count: number;
-};
-
 type AttrSaveResp = {
   ok: boolean;
   catalog_category_id: string;
@@ -1016,7 +1008,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrDetailsErrorCode, setAttrDetailsErrorCode] = useState("");
   const [attrRows, setAttrRows] = useState<AttrRow[]>([]);
   const [attrSaving, setAttrSaving] = useState(false);
-  const [attrAiMatching, setAttrAiMatching] = useState(false);
   const [attrEditMode, setAttrEditMode] = useState(true);
   const [attrHasServerSaved, setAttrHasServerSaved] = useState(false);
   const [attrDraftExists, setAttrDraftExists] = useState(false);
@@ -2535,36 +2526,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
-  async function runAiMatch() {
-    if (!activeAttrCategoryId) return;
-    if (!attrEditMode) return;
-    setAttrAiMatching(true);
-    setErr(null);
-    try {
-      const res = await api<AttrAiMatchResp>(
-        `/marketplaces/mapping/import/attributes/${encodeURIComponent(activeAttrCategoryId)}/ai-match`,
-        {
-          method: "POST",
-          body: JSON.stringify({ apply: true }),
-        }
-      );
-      invalidateSourcesReadCaches(activeAttrCategoryId);
-      setAttrDraftDirty(false);
-      setAttrRows(enforceServiceRowsTop(res.rows || [], serviceParamDefs));
-      setSyncMsg(`AI-сопоставление выполнено (${res.engine === "ollama" ? "Ollama" : "fallback"})`);
-      setSavedToastText(`AI-сопоставление выполнено (${res.engine === "ollama" ? "Ollama" : "fallback"})`);
-      setSavedToast(true);
-      void Promise.allSettled([
-        loadAttrBootstrap(),
-        loadAttrDetails(activeAttrCategoryId),
-      ]);
-    } catch (e) {
-      setErr((e as Error).message || "Ошибка AI-сопоставления");
-    } finally {
-      setAttrAiMatching(false);
-    }
-  }
-
   const selectedCatalogNode = useMemo(() => {
     if (!selectedCatalogId) return null;
     const node = catalogNodes.find((item) => item.id === selectedCatalogId);
@@ -3725,7 +3686,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               <div className="mm-draftNotice">
                                 <div className="mm-draftNoticeHead">
                                   <div className="mm-draftNoticeTitle">Черновик собран автоматически</div>
-                                  <button className="btn mm-miniBtn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving || attrAiMatching}>
+                                  <button className="btn mm-miniBtn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving}>
                                     Очистить
                                   </button>
                                 </div>
@@ -3772,16 +3733,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             </div>
                             <div className="mm-attrToolbarActions">
                               {attrHasServerSaved ? (
-                                <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving || attrAiMatching}>
+                                <button className="btn" type="button" onClick={() => setAttrEditMode(true)} disabled={attrEditMode || attrSaving}>
                                   Редактировать
                                 </button>
                               ) : null}
                                 <button className="btn" type="button" onClick={addAttrRow} disabled={!attrEditMode || attrTemplateTab === "base"}>
                                 Добавить параметр
                                 </button>
-                              <button className="btn" type="button" onClick={runAiMatch} disabled={attrAiMatching || attrSaving || !attrEditMode}>
-                                {attrAiMatching ? "Сопоставляю..." : "Сопоставить с AI"}
-                              </button>
                               <button className="btn btn-primary" type="button" onClick={saveAttrRows} disabled={attrSaving || !attrEditMode}>
                                 {attrSaving ? "Сохраняю..." : "Сохранить шаблон"}
                               </button>
