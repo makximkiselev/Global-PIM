@@ -116,6 +116,7 @@ case "${command_name}" in
     require_env APP_DB_ROLE
     ssh_run "cd ${APP_SERVER_PATH}/backend && DATABASE_URL=\$(grep ^DATABASE_URL= .env | cut -d= -f2-) && test -n \"\$DATABASE_URL\" && psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -v app_role='${APP_DB_ROLE}' <<'SQL'
 GRANT USAGE ON SCHEMA public TO :\"app_role\";
+GRANT CREATE ON SCHEMA public TO :\"app_role\";
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :\"app_role\";
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :\"app_role\";
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :\"app_role\";
