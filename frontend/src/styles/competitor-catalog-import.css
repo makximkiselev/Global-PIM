@@ -1,0 +1,356 @@
+.cciPage{
+  --cci-line:rgba(15, 23, 42, .1);
+}
+
+.cciPage .page-header,
+.cciMetrics,
+.cciLayout{
+  max-width:min(1760px, calc(100vw - 156px));
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.cciMetrics{
+  margin-bottom:16px;
+}
+
+.cciLayout{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 420px;
+  gap:16px;
+  align-items:start;
+}
+
+.cciMain{
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:16px;
+}
+
+.cciRunPanel,
+.cciTablePanel,
+.cciInspector{
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:rgba(var(--card-rgb), .96);
+  box-shadow:var(--shadow-soft);
+}
+
+.cciRunPanel{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  padding:22px;
+}
+
+.cciRunPanel h2,
+.cciTablePanel h2,
+.cciInspector h2{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.08;
+  letter-spacing:0;
+}
+
+.cciRunPanel p{
+  max-width:860px;
+  margin:8px 0 0;
+  color:var(--text-soft);
+  font-size:14px;
+  line-height:1.5;
+  font-weight:700;
+}
+
+.cciEyebrow{
+  color:rgba(var(--brand-rgb), .9);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.cciFormGrid{
+  display:grid;
+  grid-template-columns:minmax(180px, .7fr) minmax(260px, 1.4fr) 150px 150px;
+  gap:12px;
+  align-items:end;
+}
+
+.cciFormGrid label{
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:8px;
+}
+
+.cciFormGrid label span{
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:900;
+}
+
+.cciFormGrid input{
+  width:100%;
+  height:42px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(255,255,255,.82);
+  color:var(--text);
+  padding:0 12px;
+  font:inherit;
+  font-weight:800;
+}
+
+.cciRunActions{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  color:var(--text-soft);
+  font-size:13px;
+  font-weight:800;
+}
+
+.cciError{
+  border:1px solid rgba(220, 38, 38, .24);
+  border-radius:14px;
+  background:rgba(254, 242, 242, .86);
+  color:#991b1b;
+  padding:12px 14px;
+  font-size:13px;
+  font-weight:900;
+}
+
+.cciTablePanel{
+  overflow:hidden;
+}
+
+.cciPanelHead,
+.cciInspectorHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  padding:20px 22px;
+  border-bottom:1px solid var(--line);
+}
+
+.cciTable{
+  display:flex;
+  flex-direction:column;
+}
+
+.cciTableHead,
+.cciTableRow{
+  display:grid;
+  grid-template-columns:minmax(360px, 1fr) 150px 92px 110px 120px;
+  gap:14px;
+  align-items:center;
+}
+
+.cciTableHead{
+  padding:12px 22px;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:1000;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  background:rgba(248, 250, 252, .92);
+}
+
+.cciTableRow{
+  width:100%;
+  border:0;
+  border-top:1px solid var(--line);
+  background:transparent;
+  padding:16px 22px;
+  color:var(--text);
+  text-align:left;
+  font:inherit;
+  cursor:pointer;
+}
+
+.cciTableRow:hover,
+.cciTableRow.isActive{
+  background:rgba(var(--brand-rgb), .06);
+}
+
+.cciTableRow strong{
+  display:block;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:14px;
+  font-weight:1000;
+}
+
+.cciTableRow small{
+  display:block;
+  max-width:100%;
+  overflow:hidden;
+  margin-top:5px;
+  color:var(--text-soft);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+  font-weight:700;
+}
+
+.cciEmpty,
+.cciInspectorEmpty{
+  border:1px dashed rgba(100, 116, 139, .26);
+  border-radius:18px;
+  margin:22px;
+  padding:28px;
+  color:var(--text-soft);
+  font-weight:900;
+  text-align:center;
+}
+
+.cciInspector{
+  position:sticky;
+  top:18px;
+  min-width:0;
+  overflow:hidden;
+}
+
+.cciPreview{
+  display:block;
+  width:calc(100% - 44px);
+  max-height:280px;
+  object-fit:contain;
+  margin:20px 22px 0;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#fff;
+}
+
+.cciInspectorFacts{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  padding:20px 22px 0;
+}
+
+.cciInspectorFacts div{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px;
+  background:rgba(248,250,252,.72);
+}
+
+.cciInspectorFacts span,
+.cciSpecRow span{
+  display:block;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.cciInspectorFacts strong,
+.cciSpecRow strong{
+  display:block;
+  overflow:hidden;
+  margin-top:5px;
+  color:var(--text);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:13px;
+  font-weight:1000;
+}
+
+.cciExternalLink{
+  display:block;
+  margin:16px 22px 0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:11px 12px;
+  color:var(--text);
+  text-align:center;
+  text-decoration:none;
+  font-weight:900;
+}
+
+.cciExternalLink:hover{
+  border-color:rgba(var(--brand-rgb), .3);
+  background:rgba(var(--brand-rgb), .06);
+}
+
+.cciSpecs{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:20px 22px 22px;
+}
+
+.cciSectionTitle{
+  margin-bottom:2px;
+  font-size:13px;
+  font-weight:1000;
+}
+
+.cciSpecRow{
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px 12px;
+}
+
+.cciMuted{
+  color:var(--text-soft);
+  font-size:13px;
+  font-weight:800;
+}
+
+@media (max-width: 1180px){
+  .cciPage .page-header,
+  .cciMetrics,
+  .cciLayout{
+    max-width:calc(100vw - 96px);
+  }
+
+  .cciLayout{
+    grid-template-columns:1fr;
+  }
+
+  .cciInspector{
+    position:static;
+  }
+
+  .cciFormGrid{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .cciWideField{
+    grid-column:span 2;
+  }
+}
+
+@media (max-width: 760px){
+  .cciPage .page-header,
+  .cciMetrics,
+  .cciLayout{
+    max-width:calc(100vw - 24px);
+  }
+
+  .cciFormGrid,
+  .cciInspectorFacts{
+    grid-template-columns:1fr;
+  }
+
+  .cciWideField{
+    grid-column:auto;
+  }
+
+  .cciTable{
+    overflow-x:auto;
+  }
+
+  .cciTableHead,
+  .cciTableRow{
+    min-width:840px;
+  }
+}

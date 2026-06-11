@@ -27,6 +27,7 @@ import OrganizationsRoute from "../routes/OrganizationsRoute";
 import DictionariesRoute from "../routes/DictionariesRoute";
 import DictionaryEditorRoute from "../routes/DictionaryEditorRoute";
 import SourcesMappingRoute from "../routes/SourcesMappingRoute";
+import CompetitorCatalogImportRoute from "../routes/CompetitorCatalogImportRoute";
 import TemplateEditorRoute from "../routes/TemplateEditorRoute";
 import TemplatesRoute from "../routes/TemplatesRoute";
 import { orgRouteKey, stripOrgPrefix, withOrgPath } from "./orgRoutes";
@@ -102,6 +103,7 @@ function WorkspaceRoutes() {
 
         <Route path="sources" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
         <Route path="sources-mapping" element={<RequirePage page="sources_mapping"><SourcesMappingRoute /></RequirePage>} />
+        <Route path="data-prep/competitor-import" element={<RequirePage page="sources_mapping"><CompetitorCatalogImportRoute /></RequirePage>} />
         <Route path="competitor-mapping" element={<Navigate to="../data-prep/competitors" replace />} />
         <Route path="marketplace-mapping" element={<Navigate to="../sources?tab=sources" replace />} />
         <Route path="connectors/status" element={<RequireAnyPage pages={["connectors_status", "sources_mapping"]}><DataSourcesFeature /></RequireAnyPage>} />

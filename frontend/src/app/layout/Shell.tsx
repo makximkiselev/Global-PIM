@@ -66,6 +66,7 @@ const groups: ShellNavGroup[] = [
           { href: "/templates", label: "Инфо-модели", page: "templates" },
           { href: "/sources?tab=sources", label: "Сопоставления", page: "sources_mapping" },
           { href: "/connectors/status", label: "Источники данных", pages: ["connectors_status", "sources_mapping"] },
+          { href: "/data-prep/competitor-import", label: "Импорт конкурента", page: "sources_mapping" },
         ],
       },
     ],

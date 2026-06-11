@@ -764,6 +764,12 @@ Next fix in the category flow:
    - each row makes missing provider output visible without opening the full dictionary editor;
    - source evidence remains visible as raw/resolved/canonical values, but no longer carries AI wording;
    - inline provider value editing stays the primary fix action before export readiness.
+30. Competitor full-site catalog import MVP:
+   - added separate page `/data-prep/competitor-import` under data preparation;
+   - user can enter a competitor site/category URL and run bounded same-domain crawling;
+   - crawler tries sitemap first, then follows internal links, extracts product JSON-LD/h1/meta/images/price/spec tables;
+   - results are stored per organization as external competitor catalog runs/products and do not create or mutate PIM products;
+   - next required layer is matching imported competitor products to our SKU/group/category before enrichment.
 
 ## Verification Commands
 
