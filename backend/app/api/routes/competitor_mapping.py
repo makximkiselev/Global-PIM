@@ -939,14 +939,6 @@ async def _discover_product_candidates_for_source(product: Dict[str, Any], sourc
         candidate for candidate in candidates
         if float(candidate.get("confidence_score") or 0.0) >= _VISIBLE_DISCOVERY_CONFIDENCE_SCORE
     ]
-    if use_ai and not visible_candidates:
-        ai_candidates = await _discover_ai_competitor_candidates(product, source)
-        seen_urls = {str(candidate.get("url") or "").strip() for candidate in candidates if str(candidate.get("url") or "").strip()}
-        for candidate in ai_candidates:
-            candidate_url = str(candidate.get("url") or "").strip()
-            if candidate_url and candidate_url not in seen_urls:
-                candidates.append(candidate)
-                seen_urls.add(candidate_url)
     return candidates
 
 
@@ -5054,7 +5046,9 @@ def _parse_discovery_run_request(payload: Dict[str, Any]) -> Tuple[List[Dict[str
         limit = int(payload.get("limit", 50))
     except Exception:
         limit = 50
-    use_ai = bool(payload.get("use_ai", False))
+    # Local AI discovery is intentionally disabled in the active product flow.
+    # Keep the response tuple shape for old callers, but ignore legacy payload flags.
+    use_ai = False
     return sources, product_ids, limit, use_ai
 
 

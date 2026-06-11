@@ -1775,7 +1775,6 @@ function ProductWorkspaceFeature() {
           product_ids: ids,
           sources: ["restore", "store77"],
           limit: ids.length,
-          use_ai: true,
         }),
       });
       const status = normalizeText(response.run?.status) || "queued";

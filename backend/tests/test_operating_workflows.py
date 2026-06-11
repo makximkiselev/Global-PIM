@@ -2073,7 +2073,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(examples[0]["product_id"], "product_seed")
         self.assertIn("store77.net", examples[0]["url"])
 
-    def test_ai_competitor_candidate_discovery_rejects_wrong_domain(self) -> None:
+    def test_legacy_ai_competitor_candidate_discovery_is_disabled(self) -> None:
         product = {
             "id": "product_target",
             "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
@@ -2081,41 +2081,12 @@ class OperatingWorkflowTests(unittest.TestCase):
         }
         source = {"id": "store77", "domain": "store77.net", "base_url": "https://store77.net", "name": "store77"}
 
-        async def fake_llm_chat_text(**kwargs):
-            return {
-                "model": "test-model",
-                "content": json.dumps(
-                    {
-                        "candidates": [
-                            {
-                                "url": "https://example.com/not-allowed",
-                                "title": "Смартфон Apple iPhone 17 Pro 256GB Silver",
-                            }
-                        ]
-                    }
-                ),
-            }
-
-        with (
-            patch.object(
-                competitor_mapping,
-                "_confirmed_competitor_candidate_examples",
-                return_value=[
-                    {
-                        "product_id": "product_seed",
-                        "product_title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
-                        "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_silver/",
-                        "title": "Телефон Apple iPhone 17 Pro 256GB Silver",
-                    }
-                ],
-            ),
-            patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
-        ):
+        with patch.dict(os.environ, {"PIM_ENABLE_AI": "0", "ENABLE_AI_COMPETITOR_DISCOVERY": "0"}):
             candidates = asyncio.run(competitor_mapping._discover_ai_competitor_candidates(product, source))
 
         self.assertEqual(candidates, [])
 
-    def test_ai_competitor_candidate_discovery_uses_confirmed_links_as_memory(self) -> None:
+    def test_legacy_ai_competitor_candidate_discovery_ignores_confirmed_links_when_disabled(self) -> None:
         product = {
             "id": "product_target",
             "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
@@ -2123,48 +2094,12 @@ class OperatingWorkflowTests(unittest.TestCase):
         }
         source = {"id": "store77", "domain": "store77.net", "base_url": "https://store77.net", "name": "store77"}
 
-        async def fake_llm_chat_text(**kwargs):
-            user_prompt = kwargs["messages"][1]["content"]
-            self.assertIn("product_seed", user_prompt)
-            self.assertIn("store77.net", user_prompt)
-            return {
-                "model": "test-model",
-                "content": json.dumps(
-                    {
-                        "candidates": [
-                            {
-                                "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_esim_silver/",
-                                "title": "Телефон Apple iPhone 17 Pro 256 ГБ eSIM Silver",
-                                "reason": "same learned slug family",
-                            }
-                        ]
-                    }
-                ),
-            }
-
-        with (
-            patch.object(
-                competitor_mapping,
-                "_confirmed_competitor_candidate_examples",
-                return_value=[
-                    {
-                        "product_id": "product_seed",
-                        "product_title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
-                        "url": "https://store77.net/apple_iphone_17_pro/telefon_apple_iphone_17_pro_256gb_silver/",
-                        "title": "Телефон Apple iPhone 17 Pro 256GB Silver",
-                    }
-                ],
-            ),
-            patch.object(competitor_mapping, "llm_chat_text", side_effect=fake_llm_chat_text),
-        ):
+        with patch.dict(os.environ, {"PIM_ENABLE_AI": "0", "ENABLE_AI_COMPETITOR_DISCOVERY": "0"}):
             candidates = asyncio.run(competitor_mapping._discover_ai_competitor_candidates(product, source))
 
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(candidates[0]["discovery_strategy"], "ai_confirmed_link_memory")
-        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.45)
-        self.assertIn("AI предложил по подтвержденным привязкам", candidates[0]["confidence_reasons"])
+        self.assertEqual(candidates, [])
 
-    def test_discovery_run_request_parses_ai_candidate_flag(self) -> None:
+    def test_discovery_run_request_ignores_legacy_ai_candidate_flag(self) -> None:
         sources, product_ids, limit, use_ai = competitor_mapping._parse_discovery_run_request(
             {"sources": ["store77"], "product_ids": ["product_1"], "limit": 1, "use_ai": True}
         )
@@ -2172,9 +2107,9 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in sources], ["store77"])
         self.assertEqual(product_ids, ["product_1"])
         self.assertEqual(limit, 1)
-        self.assertTrue(use_ai)
+        self.assertFalse(use_ai)
 
-    def test_product_discovery_uses_ai_when_source_returns_only_hidden_candidates(self) -> None:
+    def test_product_discovery_does_not_append_ai_candidates_in_active_flow(self) -> None:
         product = {
             "id": "product_target",
             "title": "Смартфон Apple iPhone 17 Pro 256Gb eSIM Silver (Global)",
@@ -2199,7 +2134,7 @@ class OperatingWorkflowTests(unittest.TestCase):
         ):
             candidates = asyncio.run(competitor_mapping._discover_product_candidates_for_source(product, source, use_ai=True))
 
-        self.assertEqual(candidates, [low_candidate, ai_candidate])
+        self.assertEqual(candidates, [low_candidate])
 
     def test_export_preview_keeps_ready_and_blockers_per_marketplace(self) -> None:
         saved_runs: dict[str, object] = {}

@@ -212,10 +212,7 @@ Current state:
 18. Production check on 2026-05-24: GT 52432 (`256Gb Sim+eSim Silver`) confirmed Re:Store, imported 9 ready media images, and left Store77 candidates unconfirmed because the UI detected SIM mismatch (`nano SIM + eSIM` vs `eSIM only`).
 19. Store77 deterministic candidate generation now supports Samsung Galaxy Z Fold7 by model, memory and color; production check on `product_684` returned the Store77 candidate in ~0.002s.
 20. re-store deterministic candidate generation now supports Oura Ring 4 for Silver, Black, Brushed Silver and Stealth by ring size; production check on `product_928/product_945/product_958/product_970` returned candidates in ~0.0-0.002s. Gold/Rose Gold are intentionally not seeded until valid re-store codes are confirmed.
-21. Product-level `Найти карточки` now enables AI competitor candidate discovery as a fallback after deterministic/search discovery returns no candidates:
-   - AI learns in-context from existing `pim_channel_links` rows with `scope=competitor_product`, `entity_type=product`, `status=confirmed`, and the same provider;
-   - AI suggestions are accepted only when the URL belongs to the expected source domain and the existing variant scorer keeps the candidate visible;
-   - AI-created rows remain `needs_review`/`candidate` and are never auto-confirmed or used for enrichment/export before moderation.
+21. Product-level `Найти карточки` now uses deterministic source search/parsing plus confirmed product-card links. Local AI candidate discovery is disabled in the active flow.
 
 Known problems:
 
@@ -224,7 +221,7 @@ Known problems:
 3. Many donor specs remain unmatched because the current info-model does not yet contain every canonical field.
 4. UI still does not show enough source-specific scan evidence when a source returns no candidates.
 5. Product-level competitor matching still needs more visible evidence for exact Store77 misses and re-store blocked/partial responses.
-6. AI candidate discovery is intentionally product-level only for now; bulk/category discovery still avoids LLM calls unless we add a bounded review queue and cost controls.
+6. Candidate discovery must stay deterministic/search-based until a separate external AI service is designed with explicit resource limits.
 
 Next tasks:
 
@@ -258,7 +255,7 @@ Status: active.
 Current state:
 
 1. All old info-models and parameter/value mappings were deleted on production on 2026-05-22 after the unified parameter-first flow was agreed. Backup: `/opt/projects/global-pim/backups/info-model-reset-20260522-123325.json`.
-2. Existing dictionaries/global attributes were intentionally preserved as normalization memory so AI can reuse canonical fields instead of creating duplicates.
+2. Existing dictionaries/global attributes were intentionally preserved as normalization history so deterministic matching can reuse canonical fields instead of creating duplicates.
 3. Info-model fields must reference global attributes, not category-local duplicates.
 4. Shared parameters such as `Встроенная память`, `Оперативная память`, `SIM`, `Цвет`, `Модель`, dimensions, OS, and dictionaries must be reused across categories.
 5. `draft_service.approve_draft` already calls `ensure_global_attribute` and collapses accepted synonyms into template attributes.
@@ -352,7 +349,7 @@ Current state:
    - critical fields are correct: `Встроенная память` -> Я.Маркет `Встроенная память` / Ozon `Встроенная память`; `Оперативная память` -> Я.Маркет `Оперативная память` / Ozon `Оперативная память`; `Количество SIM-карт` -> Я.Маркет `Количество SIM-карт` / Ozon `Число физических SIM-карт`.
 26. Protected/core fields intentionally remain without Я.Маркет characteristic binding: `SKU GT`, title, description, images/media, barcode. They must be exported through the product/export payload, not characteristic mapping.
 27. `/sources?tab=params` parameter list rows now show compact provenance chips for marketplace bindings:
-   - `AI`, `Правило`, `Память`, `Ручное`;
+   - `Автоподбор`, `Правило`, `Подтвержденная связь`, `Ручное`;
    - confidence percent is shown when available;
    - detailed reason remains in the selected-parameter inspector.
 28. `/sources?tab=params` selected-parameter actions now complete the basic decision loop:
@@ -472,7 +469,7 @@ Next tasks:
 
 1. Add more route tests for complex one-PIM-field-to-many-marketplace-field mappings and real dictionary/export-map fixtures.
 2. Add direct source-evidence snippets to value rows where competitor/raw source values differ from canonical PIM values.
-3. Show AI confidence/reason/memory source next to competitor field mapping suggestions in `/sources?tab=params`.
+3. Show deterministic confidence/reason/confirmed-link source next to competitor field mapping suggestions in `/sources?tab=params`.
 4. Browser-check inline value editing on a category with real unresolved value blockers, not only already-covered smartphone dictionaries.
 
 ## Current Closeout Checklist
@@ -480,7 +477,7 @@ Next tasks:
 These 10 items are being worked as one closeout batch before the category/export flow can be considered stable:
 
 - [x] Values: show raw source/competitor evidence next to each PIM canonical value.
-- [x] Params: show AI confidence, reason, and memory/source provenance next to AI mapping suggestions.
+- [x] Params: show deterministic confidence, reason, and confirmed-link/source provenance next to mapping suggestions.
 - [x] Values: browser-check inline value editing on a category/field with real unresolved blockers. Current production data has 0 unresolved value blockers for `iPhone 17 Pro Max`, `iPad Air 11 M3`, and `MacBook Air 13 M4`; inline editing was browser-checked on live MacBook value rows with raw evidence and save/remove controls.
 - [x] Marketplace dictionary QA: identify and mark suspicious/noisy provider dictionaries that can mislead matching.
 - [x] Tests: add coverage for complex one-PIM-field-to-many-marketplace-field mappings and provider-specific export-map fixtures.
@@ -691,7 +688,7 @@ Next fix in the category flow:
    - `/sources?tab=params&category=...&product=...` shows the route `sources -> PIM value -> provider values -> SKU export`;
    - matching fields does not itself fill a product value;
    - product value filling is visible in `/products/{product_id}?tab=attributes`;
-   - AI may write a PIM value only when source evidence exists and the value is high-confidence;
+   - automatic product value filling may write a PIM value only when source evidence exists and the value is high-confidence;
    - conflicting source values remain `нужно проверить`;
    - empty fields with evidence remain `есть кандидаты`;
    - empty fields without evidence remain `нет значения`.
@@ -718,7 +715,7 @@ Next fix in the category flow:
    - export blocker actions keep one button per fix section, but the values button opens the first concrete blocked parameter;
    - `/sources?tab=values&category=...&product=...&parameter=...` selects the matching field and shows an `Открыт блокер экспорта` focus notice;
    - production browser check on `product_70 / GT 50001` verified the Я.Маркет blocker opens `Аутентификация` directly on the values screen.
-22. Export preview and AI competitor discovery tightened:
+22. Export preview and competitor discovery tightened:
    - Ozon and Я.Маркет batch preparation replaces technical price fallback with cached marketplace-store price when it exists; if the selected store has no imported price, the row gets a warning and the real send preflight blocks the whole run instead of partially exporting another store;
    - Ozon product sync now refreshes `/v5/product/info/prices` by `offer_id` and stores the returned price row in `import_products_info`, so export can use the selected Ozon store price after marketplace hydration/import;
    - Ozon smartphone preview restores system `ТН ВЭД` attribute `22232` with dictionary value `8517130000 - Смартфоны`;
@@ -730,8 +727,7 @@ Next fix in the category flow:
    - backend export preparation now rejects empty `store_ids` for a provider target, so a missing UI selection cannot silently export to every enabled store;
    - Ozon has explicit regression coverage for product media export selection/order, matching Я.Маркет behavior;
    - product media bulk-selection copy now says it is for deletion, while the per-image `Выгружать` control and order badge define the export set.
-   - competitor discovery can use AI from confirmed product links when ordinary source discovery finds only hidden/low-confidence candidates;
-   - AI competitor suggestions are constrained to the selected competitor domain and are stored under the same discovery flow with `use_ai` preserved for background workers.
+   - competitor discovery uses confirmed product links and deterministic source parsing; active frontend requests no AI discovery flags.
 24. Production was reset to a catalog-only working baseline on 2026-06-10:
    - full pre-reset JSON gzip backup: `/opt/projects/global-pim/backups/pre-catalog-only-reset-20260610-212036.json.gz`;
    - preserved `catalog_nodes_rel` (273), `products_rel` (1091), `product_groups_rel` (105), product variants and SKU indexes;
