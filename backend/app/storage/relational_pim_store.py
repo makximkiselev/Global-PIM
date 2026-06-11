@@ -772,6 +772,26 @@ def _ensure_tables_impl() -> None:
                   ON catalog_product_registry_rel(sku_gt)
                 """
             )
+            cur.execute("ALTER TABLE products_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute("ALTER TABLE catalog_product_registry_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_organization_category
+                  ON products_rel(organization_id, category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_organization_group
+                  ON products_rel(organization_id, group_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_registry_rel_organization_category
+                  ON catalog_product_registry_rel(organization_id, category_id, title)
+                """
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS category_product_counts_rel (
@@ -966,6 +986,20 @@ def _ensure_tables_impl() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_product_group_variant_params_rel_group
                   ON product_group_variant_params_rel(group_id, position)
+                """
+            )
+            cur.execute("ALTER TABLE product_groups_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute("ALTER TABLE product_group_variant_params_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_groups_rel_organization_name
+                  ON product_groups_rel(organization_id, LOWER(name), id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_group_variant_params_rel_organization_group
+                  ON product_group_variant_params_rel(organization_id, group_id, position)
                 """
             )
             cur.execute(
@@ -4628,6 +4662,7 @@ def _normalize_product_status(value: Any) -> str:
 
 
 def _replace_products_table(doc: Dict[str, Any]) -> None:
+    org_id = _resolve_organization_id(None)
     normalized = _normalize_products_doc(doc)
     items = normalized.get("items") if isinstance(normalized.get("items"), list) else []
     rows: List[tuple[Any, ...]] = []
@@ -4675,38 +4710,39 @@ def _replace_products_table(doc: Dict[str, Any]) -> None:
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM products_rel")
-            cur.execute("DELETE FROM catalog_product_registry_rel")
-            cur.execute("DELETE FROM category_product_counts_rel")
+            cur.execute("DELETE FROM products_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM catalog_product_registry_rel WHERE organization_id = %s", [org_id])
+            if org_id == DEFAULT_ORGANIZATION_ID:
+                cur.execute("DELETE FROM category_product_counts_rel")
             if rows:
                 cur.executemany(
                     """
                     INSERT INTO products_rel (
-                      id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                      organization_id, id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
                       selected_params, feature_params, exports_enabled_json, content_json, extra_json,
                       created_at, updated_at
                     ) VALUES (
-                      %s, %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s,
                       %s, %s, %s, %s, %s,
                       %s, %s
                     )
                     """,
-                    rows,
+                    [(org_id, *row) for row in rows],
                 )
             if registry_rows:
                 cur.executemany(
                     """
                     INSERT INTO catalog_product_registry_rel (
-                      id, title, category_id, sku_pim, sku_gt, group_id, preview_url,
+                      organization_id, id, title, category_id, sku_pim, sku_gt, group_id, preview_url,
                       exports_enabled_json, updated_at
                     ) VALUES (
-                      %s, %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s, %s,
                       %s, %s
                     )
                     """,
-                    registry_rows,
+                    [(org_id, *row) for row in registry_rows],
                 )
-            if counts:
+            if counts and org_id == DEFAULT_ORGANIZATION_ID:
                 cur.executemany(
                     """
                     INSERT INTO category_product_counts_rel (
@@ -4823,6 +4859,7 @@ def save_templates_db_doc(doc: Dict[str, Any], organization_id: Optional[str] = 
 def load_products_doc() -> Dict[str, Any]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
@@ -4846,8 +4883,10 @@ def load_products_doc() -> Dict[str, Any]:
                   created_at,
                   updated_at
                 FROM products_rel
+                WHERE organization_id = %s
                 ORDER BY created_at NULLS LAST, id
-                """
+                """,
+                [org_id],
             )
             db_rows = cur.fetchall() or []
 
@@ -4905,6 +4944,7 @@ def load_products_by_group(group_id: str) -> List[Dict[str, Any]]:
 def find_product_by_sku_gt(sku_gt: str) -> Dict[str, Any]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     needle = str(sku_gt or "").strip()
     if not needle:
         return {}
@@ -4919,10 +4959,10 @@ def find_product_by_sku_gt(sku_gt: str) -> Dict[str, Any]:
                   selected_params, feature_params, exports_enabled_json, content_json, extra_json,
                   created_at, updated_at
                 FROM products_rel
-                WHERE sku_gt = %s
+                WHERE organization_id = %s AND sku_gt = %s
                 LIMIT 1
                 """,
-                [needle],
+                [org_id, needle],
             )
             row = cur.fetchone()
         if not row:
@@ -4964,20 +5004,23 @@ def _refresh_category_counts_for(category_ids: List[str]) -> None:
     safe_category_ids = [str(x or "").strip() for x in category_ids if str(x or "").strip()]
     if not safe_category_ids:
         return
+    org_id = _resolve_organization_id(None)
 
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
+            if org_id != DEFAULT_ORGANIZATION_ID:
+                return
             cur.execute("DELETE FROM category_product_counts_rel WHERE category_id = ANY(%s)", [safe_category_ids])
             cur.execute(
                 """
                 INSERT INTO category_product_counts_rel (category_id, products_count, updated_at)
                 SELECT category_id, COUNT(*), NOW()
                 FROM products_rel
-                WHERE category_id = ANY(%s)
+                WHERE organization_id = %s AND category_id = ANY(%s)
                 GROUP BY category_id
                 """,
-                [safe_category_ids],
+                [org_id, safe_category_ids],
             )
 
     _with_pg_retry(_run)
@@ -4986,6 +5029,7 @@ def _refresh_category_counts_for(category_ids: List[str]) -> None:
 def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     normalized = _normalize_product_item(item if isinstance(item, dict) else {})
     if not normalized:
         return {}
@@ -4999,21 +5043,25 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
-            cur.execute("SELECT category_id FROM products_rel WHERE id = %s", [product_id])
+            cur.execute("SELECT organization_id, category_id FROM products_rel WHERE id = %s", [product_id])
             old_row = cur.fetchone()
-            old_category_id = str((old_row or [None])[0] or "").strip()
+            existing_org_id = str((old_row or [""])[0] or "").strip()
+            if existing_org_id and existing_org_id != org_id:
+                raise ValueError("PRODUCT_ORGANIZATION_FORBIDDEN")
+            old_category_id = str((old_row or ["", None])[1] or "").strip()
             cur.execute(
                 """
                 INSERT INTO products_rel (
-                  id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                  organization_id, id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
                   selected_params, feature_params, exports_enabled_json, content_json, extra_json,
                   created_at, updated_at
                 ) VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s,
                   %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
                   %s, %s
                 )
                 ON CONFLICT (id) DO UPDATE SET
+                  organization_id = EXCLUDED.organization_id,
                   category_id = EXCLUDED.category_id,
                   product_type = EXCLUDED.product_type,
                   status = EXCLUDED.status,
@@ -5030,6 +5078,7 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
                   updated_at = EXCLUDED.updated_at
                 """,
                 [
+                    org_id,
                     product_id,
                     category_id,
                     str(normalized.get("type") or "single").strip() or "single",
@@ -5050,9 +5099,10 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
             cur.execute(
                 """
                 INSERT INTO catalog_product_registry_rel (
-                  id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                  organization_id, id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 ON CONFLICT (id) DO UPDATE SET
+                  organization_id = EXCLUDED.organization_id,
                   title = EXCLUDED.title,
                   category_id = EXCLUDED.category_id,
                   sku_pim = EXCLUDED.sku_pim,
@@ -5063,6 +5113,7 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
                   updated_at = EXCLUDED.updated_at
                 """,
                 [
+                    org_id,
                     product_id,
                     str(normalized.get("title") or "").strip(),
                     category_id,
@@ -5086,6 +5137,7 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
 def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     normalized_items = [
         normalized
         for normalized in (_normalize_product_item(item if isinstance(item, dict) else {}) for item in (items or []))
@@ -5101,7 +5153,13 @@ def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any
             product_ids = [str(item.get("id") or "").strip() for item in normalized_items if str(item.get("id") or "").strip()]
             old_category_map: Dict[str, str] = {}
             if product_ids:
-                cur.execute("SELECT id, category_id FROM products_rel WHERE id = ANY(%s)", [product_ids])
+                cur.execute(
+                    "SELECT id, organization_id FROM products_rel WHERE id = ANY(%s) AND organization_id <> %s",
+                    [product_ids, org_id],
+                )
+                if cur.fetchone():
+                    raise ValueError("PRODUCT_ORGANIZATION_FORBIDDEN")
+                cur.execute("SELECT id, category_id FROM products_rel WHERE organization_id = %s AND id = ANY(%s)", [org_id, product_ids])
                 for row in cur.fetchall() or []:
                     pid = str(row[0] or "").strip()
                     cid = str(row[1] or "").strip()
@@ -5123,6 +5181,7 @@ def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any
                     affected_categories.add(old_category_id)
                 product_rows.append(
                     [
+                        org_id,
                         product_id,
                         category_id,
                         str(normalized.get("type") or "single").strip() or "single",
@@ -5142,6 +5201,7 @@ def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any
                 )
                 registry_rows.append(
                     [
+                        org_id,
                         product_id,
                         str(normalized.get("title") or "").strip(),
                         category_id,
@@ -5157,15 +5217,16 @@ def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any
             cur.executemany(
                 """
                 INSERT INTO products_rel (
-                  id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
+                  organization_id, id, category_id, product_type, status, title, sku_pim, sku_gt, group_id,
                   selected_params, feature_params, exports_enabled_json, content_json, extra_json,
                   created_at, updated_at
                 ) VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s,
                   %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
                   %s, %s
                 )
                 ON CONFLICT (id) DO UPDATE SET
+                  organization_id = EXCLUDED.organization_id,
                   category_id = EXCLUDED.category_id,
                   product_type = EXCLUDED.product_type,
                   status = EXCLUDED.status,
@@ -5186,9 +5247,10 @@ def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any
             cur.executemany(
                 """
                 INSERT INTO catalog_product_registry_rel (
-                  id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                  organization_id, id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 ON CONFLICT (id) DO UPDATE SET
+                  organization_id = EXCLUDED.organization_id,
                   title = EXCLUDED.title,
                   category_id = EXCLUDED.category_id,
                   sku_pim = EXCLUDED.sku_pim,
@@ -5409,6 +5471,7 @@ def update_product_variant_sku(variant_id: str, sku: str) -> Dict[str, Any]:
 def delete_product_items(ids: List[str]) -> int:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     safe_ids = [str(x or "").strip() for x in ids if str(x or "").strip()]
     if not safe_ids:
         return 0
@@ -5416,16 +5479,17 @@ def delete_product_items(ids: List[str]) -> int:
     def _run() -> int:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT category_id FROM products_rel WHERE id = ANY(%s)", [safe_ids])
+            cur.execute("SELECT DISTINCT category_id FROM products_rel WHERE organization_id = %s AND id = ANY(%s)", [org_id, safe_ids])
             category_rows = cur.fetchall() or []
             affected_categories = [str(row[0] or "").strip() for row in category_rows if str(row[0] or "").strip()]
-            cur.execute("DELETE FROM catalog_product_registry_rel WHERE id = ANY(%s)", [safe_ids])
-            cur.execute("DELETE FROM catalog_product_page_rel WHERE product_id = ANY(%s)", [safe_ids])
-            cur.execute("DELETE FROM catalog_product_page_tenant_rel WHERE product_id = ANY(%s)", [safe_ids])
-            cur.execute("DELETE FROM product_marketplace_status_rel WHERE product_id = ANY(%s)", [safe_ids])
-            cur.execute("DELETE FROM product_marketplace_status_tenant_rel WHERE product_id = ANY(%s)", [safe_ids])
-            cur.execute("DELETE FROM pim_channel_links WHERE entity_type = 'product' AND entity_id = ANY(%s)", [safe_ids])
-            cur.execute("DELETE FROM products_rel WHERE id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM catalog_product_registry_rel WHERE organization_id = %s AND id = ANY(%s)", [org_id, safe_ids])
+            if org_id == DEFAULT_ORGANIZATION_ID:
+                cur.execute("DELETE FROM catalog_product_page_rel WHERE product_id = ANY(%s)", [safe_ids])
+                cur.execute("DELETE FROM product_marketplace_status_rel WHERE product_id = ANY(%s)", [safe_ids])
+            cur.execute("DELETE FROM catalog_product_page_tenant_rel WHERE organization_id = %s AND product_id = ANY(%s)", [org_id, safe_ids])
+            cur.execute("DELETE FROM product_marketplace_status_tenant_rel WHERE organization_id = %s AND product_id = ANY(%s)", [org_id, safe_ids])
+            cur.execute("DELETE FROM pim_channel_links WHERE organization_id = %s AND entity_type = 'product' AND entity_id = ANY(%s)", [org_id, safe_ids])
+            cur.execute("DELETE FROM products_rel WHERE organization_id = %s AND id = ANY(%s)", [org_id, safe_ids])
             deleted = int(cur.rowcount or 0)
         _refresh_category_counts_for(affected_categories)
         return deleted
@@ -5436,6 +5500,7 @@ def delete_product_items(ids: List[str]) -> int:
 def load_catalog_product_items() -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
 
     def _run() -> List[Dict[str, Any]]:
         conn, _, _ = _pg_connect()
@@ -5444,8 +5509,10 @@ def load_catalog_product_items() -> List[Dict[str, Any]]:
                 """
                 SELECT id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json
                 FROM catalog_product_registry_rel
+                WHERE organization_id = %s
                 ORDER BY title, id
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         out: List[Dict[str, Any]] = []
@@ -5477,6 +5544,7 @@ def query_catalog_product_items(
     limit: int | None = None,
 ) -> List[Dict[str, Any]]:
     _ensure_tables()
+    org_id = _resolve_organization_id(None)
     safe_ids = [str(x or "").strip() for x in (ids or []) if str(x or "").strip()]
     safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
     query = str(q or "").strip().lower()
@@ -5487,8 +5555,8 @@ def query_catalog_product_items(
             SELECT id, title, category_id, sku_pim, sku_gt, group_id, preview_url, exports_enabled_json
             FROM catalog_product_registry_rel
         """
-        clauses: List[str] = []
-        params: List[Any] = []
+        clauses: List[str] = ["organization_id = %s"]
+        params: List[Any] = [org_id]
         if safe_ids:
             clauses.append("id = ANY(%s)")
             params.append(safe_ids)
@@ -5540,6 +5608,7 @@ def query_products_full(
 ) -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     safe_ids = [str(x or "").strip() for x in (ids or []) if str(x or "").strip()]
     safe_category_ids = [str(x or "").strip() for x in (category_ids or []) if str(x or "").strip()]
     safe_group_ids = [str(x or "").strip() for x in (group_ids or []) if str(x or "").strip()]
@@ -5554,8 +5623,8 @@ def query_products_full(
               created_at, updated_at
             FROM products_rel
         """
-        clauses: List[str] = []
-        params: List[Any] = []
+        clauses: List[str] = ["organization_id = %s"]
+        params: List[Any] = [org_id]
         if safe_ids:
             clauses.append("id = ANY(%s)")
             params.append(safe_ids)
@@ -5611,16 +5680,20 @@ def query_products_full(
 def load_category_product_counts() -> Dict[str, int]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
 
     def _run() -> Dict[str, int]:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT category_id, products_count
-                FROM category_product_counts_rel
+                SELECT category_id, COUNT(*)
+                FROM products_rel
+                WHERE organization_id = %s
+                GROUP BY category_id
                 ORDER BY category_id
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         return {
@@ -5635,7 +5708,16 @@ def load_category_product_counts() -> Dict[str, int]:
 def load_products_count() -> int:
     _ensure_tables()
     _bootstrap_products_from_legacy()
-    return _table_count("products_rel")
+    org_id = _resolve_organization_id(None)
+
+    def _run() -> int:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM products_rel WHERE organization_id = %s", [org_id])
+            row = cur.fetchone()
+        return int((row or [0])[0] or 0)
+
+    return _with_pg_retry(_run)
 
 
 def save_category_template_resolution(rows: List[Dict[str, Any]], organization_id: Optional[str] = None) -> None:
@@ -6148,6 +6230,7 @@ def _normalize_product_groups_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _replace_product_groups_table(doc: Dict[str, Any]) -> None:
+    org_id = _resolve_organization_id(None)
     rows = _normalize_product_groups_doc(doc).get("items", [])
     group_rows = [
         (
@@ -6167,23 +6250,23 @@ def _replace_product_groups_table(doc: Dict[str, Any]) -> None:
     def _run() -> None:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM product_group_variant_params_rel")
-            cur.execute("DELETE FROM product_groups_rel")
+            cur.execute("DELETE FROM product_group_variant_params_rel WHERE organization_id = %s", [org_id])
+            cur.execute("DELETE FROM product_groups_rel WHERE organization_id = %s", [org_id])
             if group_rows:
                 cur.executemany(
                     """
-                    INSERT INTO product_groups_rel (id, name, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO product_groups_rel (organization_id, id, name, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
-                    group_rows,
+                    [(org_id, *row) for row in group_rows],
                 )
             if variant_rows:
                 cur.executemany(
                     """
-                    INSERT INTO product_group_variant_params_rel (group_id, param_id, position)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO product_group_variant_params_rel (organization_id, group_id, param_id, position)
+                    VALUES (%s, %s, %s, %s)
                     """,
-                    variant_rows,
+                    [(org_id, *row) for row in variant_rows],
                 )
 
     _with_pg_retry(_run)
@@ -6207,6 +6290,7 @@ def _bootstrap_product_groups_from_legacy() -> None:
 def load_product_groups_doc() -> Dict[str, Any]:
     _ensure_tables()
     _bootstrap_product_groups_from_legacy()
+    org_id = _resolve_organization_id(None)
 
     def _run() -> Dict[str, Any]:
         conn, _, _ = _pg_connect()
@@ -6216,9 +6300,12 @@ def load_product_groups_doc() -> Dict[str, Any]:
                 SELECT g.id, g.name, g.created_at, g.updated_at, vp.param_id
                 FROM product_groups_rel g
                 LEFT JOIN product_group_variant_params_rel vp
-                  ON vp.group_id = g.id
+                  ON vp.organization_id = g.organization_id
+                 AND vp.group_id = g.id
+                WHERE g.organization_id = %s
                 ORDER BY LOWER(g.name), g.id, vp.position, vp.param_id
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         out: Dict[str, Dict[str, Any]] = {}
@@ -6252,11 +6339,12 @@ def save_product_groups_doc(doc: Dict[str, Any]) -> None:
 def load_product_group_name_map() -> Dict[str, str]:
     _ensure_tables()
     _bootstrap_product_groups_from_legacy()
+    org_id = _resolve_organization_id(None)
 
     def _run() -> Dict[str, str]:
         conn, _, _ = _pg_connect()
         with conn.cursor() as cur:
-            cur.execute("SELECT id, name FROM product_groups_rel ORDER BY id")
+            cur.execute("SELECT id, name FROM product_groups_rel WHERE organization_id = %s ORDER BY id", [org_id])
             rows = cur.fetchall() or []
         return {
             str(row[0] or "").strip(): str(row[1] or "").strip()
@@ -6270,6 +6358,7 @@ def load_product_group_name_map() -> Dict[str, str]:
 def query_group_product_summaries(*, group_id: str = "", ungrouped_only: bool = False) -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     group_id = str(group_id or "").strip()
 
     def _run() -> List[Dict[str, Any]]:
@@ -6278,8 +6367,8 @@ def query_group_product_summaries(*, group_id: str = "", ungrouped_only: bool = 
             SELECT id, title, sku_pim, sku_gt, group_id, category_id
             FROM products_rel
         """
-        clauses: List[str] = []
-        params: List[Any] = []
+        clauses: List[str] = ["organization_id = %s"]
+        params: List[Any] = [org_id]
         if group_id:
             clauses.append("group_id = %s")
             params.append(group_id)
@@ -6310,6 +6399,7 @@ def query_group_product_summaries(*, group_id: str = "", ungrouped_only: bool = 
 def load_group_category_counts() -> Dict[str, Dict[str, int]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
 
     def _run() -> Dict[str, Dict[str, int]]:
         conn, _, _ = _pg_connect()
@@ -6318,9 +6408,10 @@ def load_group_category_counts() -> Dict[str, Dict[str, int]]:
                 """
                 SELECT group_id, category_id, COUNT(*)
                 FROM products_rel
-                WHERE COALESCE(group_id, '') <> ''
+                WHERE organization_id = %s AND COALESCE(group_id, '') <> ''
                 GROUP BY group_id, category_id
-                """
+                """,
+                [org_id],
             )
             rows = cur.fetchall() or []
         out: Dict[str, Dict[str, int]] = {}
@@ -6338,6 +6429,7 @@ def load_group_category_counts() -> Dict[str, Dict[str, int]]:
 def load_group_product_category_ids(group_id: str) -> List[str]:
     _ensure_tables()
     _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
     group_id = str(group_id or "").strip()
     if not group_id:
         return []
@@ -6349,10 +6441,10 @@ def load_group_product_category_ids(group_id: str) -> List[str]:
                 """
                 SELECT DISTINCT category_id
                 FROM products_rel
-                WHERE group_id = %s AND COALESCE(category_id, '') <> ''
+                WHERE organization_id = %s AND group_id = %s AND COALESCE(category_id, '') <> ''
                 ORDER BY category_id
                 """,
-                [group_id],
+                [org_id, group_id],
             )
             rows = cur.fetchall() or []
         return [str(row[0] or "").strip() for row in rows if str(row[0] or "").strip()]
