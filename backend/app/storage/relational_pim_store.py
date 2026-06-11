@@ -1228,6 +1228,40 @@ def _ensure_lightweight_schema_migrations() -> None:
             cur.execute("ALTER TABLE templates_tenant_rel ADD COLUMN IF NOT EXISTS meta_json JSONB NOT NULL DEFAULT '{}'::jsonb")
             cur.execute("ALTER TABLE connector_import_stores_rel ADD COLUMN IF NOT EXISTS export_enabled BOOLEAN NOT NULL DEFAULT TRUE")
             cur.execute("ALTER TABLE connector_import_stores_tenant_rel ADD COLUMN IF NOT EXISTS export_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+            cur.execute("ALTER TABLE products_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute("ALTER TABLE catalog_product_registry_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute("ALTER TABLE product_groups_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute("ALTER TABLE product_group_variant_params_rel ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT 'org_default'")
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_organization_category
+                  ON products_rel(organization_id, category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_products_rel_organization_group
+                  ON products_rel(organization_id, group_id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_catalog_product_registry_rel_organization_category
+                  ON catalog_product_registry_rel(organization_id, category_id, title)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_groups_rel_organization_name
+                  ON product_groups_rel(organization_id, LOWER(name), id)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_product_group_variant_params_rel_organization_group
+                  ON product_group_variant_params_rel(organization_id, group_id, position)
+                """
+            )
             for table_name in ("attribute_mappings_rel", "attribute_mappings_tenant_rel"):
                 cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS yandex_bindings_json JSONB NULL")
                 cur.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS ozon_bindings_json JSONB NULL")
