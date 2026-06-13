@@ -139,6 +139,10 @@ function providerTitle(provider: string): string {
   return provider;
 }
 
+function storeExportSelected(store: Store): boolean {
+  return store.enabled !== false && store.export_enabled === true;
+}
+
 function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportMissingDetail): string {
   const category = blocker.category_id || "";
   const product = blocker.product_id || "";
@@ -246,12 +250,12 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     setProviders(exportProviders);
     setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [
       provider.code,
-      (provider.import_stores || []).some((store) => store.enabled !== false && store.export_enabled !== false),
+      (provider.import_stores || []).some(storeExportSelected),
     ])));
     setSelectedStores(Object.fromEntries(exportProviders.map((provider) => [
       provider.code,
       (provider.import_stores || [])
-        .filter((store) => store.enabled !== false && store.export_enabled !== false)
+        .filter(storeExportSelected)
         .map((store) => store.id),
     ])));
   }

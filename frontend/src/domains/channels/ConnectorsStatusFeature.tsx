@@ -223,7 +223,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setStoreBusinessId("");
     setStoreClientId("");
     setStoreEnabled(true);
-    setStoreExportEnabled(true);
+    setStoreExportEnabled(false);
     setStoreNotes("");
     setStoreToken("");
     setStoreAuthMode(providerCode === "yandex_market" ? "auto" : "api-key");
@@ -239,7 +239,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     setStoreBusinessId(store.business_id || "");
     setStoreClientId(store.client_id || "");
     setStoreEnabled(!!store.enabled);
-    setStoreExportEnabled(store.export_enabled !== false);
+    setStoreExportEnabled(store.export_enabled === true);
     setStoreNotes(store.notes || "");
     setStoreToken(store.token || store.api_key || "");
     setStoreAuthMode((store.auth_mode as "auto" | "api-key" | "oauth" | "bearer") || (providerCode === "yandex_market" ? "auto" : "api-key"));
@@ -604,13 +604,13 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                         <label className="cs-storeToggle">
                           <input
                             type="checkbox"
-                            checked={store.export_enabled !== false}
+                            checked={store.export_enabled === true}
                             disabled={saving || !!runningProvider}
                             onChange={(event) => updateStoreExport(provider.code, store.id, event.target.checked)}
                           />
                           <span>
                             <strong>Экспорт</strong>
-                            <em>{store.export_enabled !== false ? "включен" : "выключен"}</em>
+                            <em>{store.export_enabled === true ? "включен" : "выключен"}</em>
                           </span>
                         </label>
                         <div className="cs-storeActions">

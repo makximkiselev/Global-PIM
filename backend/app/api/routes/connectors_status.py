@@ -215,7 +215,7 @@ def _load_state(organization_id: Optional[str] = None) -> Dict[str, Any]:
                         "token": str(raw.get("token") or "").strip(),
                         "auth_mode": auth_mode,
                         "enabled": bool(raw.get("enabled", True)),
-                        "export_enabled": bool(raw.get("export_enabled", raw.get("enabled", True))),
+                        "export_enabled": bool(raw.get("export_enabled", False)),
                         "notes": str(raw.get("notes") or "").strip(),
                         "last_check_at": raw.get("last_check_at"),
                         "last_check_status": str(raw.get("last_check_status") or "").strip() or "idle",
@@ -243,7 +243,7 @@ def _load_state(organization_id: Optional[str] = None) -> Dict[str, Any]:
                         "client_id": client_id,
                         "api_key": api_key,
                         "enabled": bool(raw.get("enabled", True)),
-                        "export_enabled": bool(raw.get("export_enabled", raw.get("enabled", True))),
+                        "export_enabled": bool(raw.get("export_enabled", False)),
                         "notes": str(raw.get("notes") or "").strip(),
                         "last_check_at": raw.get("last_check_at"),
                         "last_check_status": str(raw.get("last_check_status") or "").strip() or "idle",
@@ -684,13 +684,13 @@ class ImportStoreReq(BaseModel):
     token: Optional[str] = None
     auth_mode: Optional[str] = None
     enabled: bool = True
-    export_enabled: bool = True
+    export_enabled: bool = False
     safe_test_enabled: bool = False
     notes: Optional[str] = None
 
 
 class ImportStoreExportReq(BaseModel):
-    export_enabled: bool = True
+    export_enabled: bool = False
 
 
 @router.get("")

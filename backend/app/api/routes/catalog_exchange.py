@@ -1043,9 +1043,7 @@ def _selected_export_stores(provider: str, stores: List[Dict[str, Any]], selecte
         if not selected:
             raise HTTPException(status_code=400, detail=f"No matching stores selected for {provider}")
         return selected
-    exportable_stores = [s for s in enabled_stores if s.get("export_enabled", s.get("enabled", True)) is not False]
-    enabled = [s for s in exportable_stores if bool(s.get("enabled", True))]
-    return enabled or [{"id": "default", "title": "Все магазины"}]
+    return [s for s in enabled_stores if s.get("export_enabled") is True]
 
 
 def _effective_provider_category_id(
