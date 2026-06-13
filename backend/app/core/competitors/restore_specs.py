@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple, List, Set, Optional
+from typing import Any, Dict, Tuple, List, Set, Optional
+import ast
 import json
 import re
 from html import unescape
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 
@@ -119,7 +121,7 @@ def _abs_url(url: str, base_url: Optional[str]) -> str:
     if url.startswith("http://") or url.startswith("https://"):
         return url
     if base_url and url.startswith("/"):
-        return base_url.rstrip("/") + url
+        return urljoin(base_url, url)
     return url
 
 
@@ -134,6 +136,9 @@ _RESTORE_GALLERY_BLOCK_RE = re.compile(
     r'(?is)<div[^>]+class="[^"]*detail__gallery[^"]*"[^>]*>(.*?)</div>'
 )
 _RESTORE_RESIZE_RE = re.compile(r"(?is)/resize_cache/iblock/([^/]+)/\\d+_\\d+_[^/]+/([^/]+)$")
+_INITIAL_STATE_RE = re.compile(
+    r"(?is)window\.__INITIAL_STATE__\s*=\s*JSON\.parse\('(?P<payload>.*?)'\)\s*;"
+)
 
 # 1) src / data-src / data-original / content (og:image)
 _IMG_URL_RES = [
@@ -150,6 +155,54 @@ _IMG_PRIOR_BLOCKS = [
 ]
 
 
+def _extract_initial_state(html: str) -> Dict[str, Any]:
+    match = _INITIAL_STATE_RE.search(html or "")
+    if not match:
+        return {}
+    try:
+        payload = ast.literal_eval("'" + match.group("payload") + "'")
+        data = json.loads(payload)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _best_restore_gallery_url(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("desktop2x", "desktop", "tablet2x", "tablet", "mobile2x", "mobile", "src", "url"):
+            url = value.get(key)
+            if isinstance(url, str) and url.strip():
+                return url
+    return ""
+
+
+def _extract_initial_state_gallery_urls(html: str, base_url: Optional[str] = None, limit: int = 50) -> List[str]:
+    data = _extract_initial_state(html)
+    if not data:
+        return []
+
+    out: List[str] = []
+    seen: Set[str] = set()
+    for item in data.get("gallery") or []:
+        if not isinstance(item, dict) or item.get("isVideo"):
+            continue
+        image_url = _best_restore_gallery_url(item.get("image"))
+        url = _abs_url(_clean_text(image_url), base_url)
+        if not url:
+            continue
+        key = _norm_key(url)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(url)
+        if len(out) >= limit:
+            return out
+
+    return out
+
+
 def extract_restore_image_urls_from_html(html: str, base_url: Optional[str] = None, limit: int = 50) -> List[str]:
     """
     Достаём URL картинок (по возможности только из "галерейных" блоков, иначе - по всему html).
@@ -157,6 +210,10 @@ def extract_restore_image_urls_from_html(html: str, base_url: Optional[str] = No
     """
     if not html:
         return []
+
+    state_urls = _extract_initial_state_gallery_urls(html, base_url=base_url, limit=limit)
+    if state_urls:
+        return state_urls
 
     def _norm_img_key(url: str) -> str:
         u = url.strip()

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import tempfile
 import time
@@ -2674,6 +2675,45 @@ class AuthFlowTests(unittest.TestCase):
             images,
             [
                 "https://store77.net/upload/w247/imageCache/a/b/product-main.png",
+            ],
+        )
+
+    def test_restore_product_html_extracts_initial_state_gallery_images(self) -> None:
+        from app.core.competitors.restore_specs import extract_restore_image_urls_from_html
+
+        state = {
+            "gallery": [
+                {
+                    "image": {
+                        "desktop2x": "https://static.re-store.ru/upload/resize_cache/iblock/a/100500_800_hash/main.jpg",
+                        "desktop": "https://static.re-store.ru/upload/resize_cache/iblock/a/100500_480_hash/main.jpg",
+                    },
+                    "isVideo": False,
+                },
+                {
+                    "image": {
+                        "desktop": "/upload/resize_cache/iblock/b/100500_480_hash/second.webp",
+                    },
+                    "isVideo": False,
+                },
+                {
+                    "image": {
+                        "desktop": "https://static.re-store.ru/upload/resize_cache/iblock/c/100500_480_hash/video-poster.jpg",
+                    },
+                    "isVideo": True,
+                },
+            ]
+        }
+        payload = json.dumps(state).replace("\\", "\\\\").replace("'", "\\'")
+        html = f"<script>window.__INITIAL_STATE__ = JSON.parse('{payload}');</script>"
+
+        images = extract_restore_image_urls_from_html(html, base_url="https://re-store.ru/catalog/demo/")
+
+        self.assertEqual(
+            images,
+            [
+                "https://static.re-store.ru/upload/resize_cache/iblock/a/100500_800_hash/main.jpg",
+                "https://re-store.ru/upload/resize_cache/iblock/b/100500_480_hash/second.webp",
             ],
         )
 
