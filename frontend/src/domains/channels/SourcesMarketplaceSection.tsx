@@ -27,6 +27,7 @@ type SourcesMarketplaceSectionProps = {
 
 const SOURCES_MAPPING_CACHE_TTL_MS = 24 * 60 * 60_000;
 const SOURCES_STATIC_CACHE_TTL_MS = 24 * 60 * 60_000;
+const COMPETITOR_MATCH_PAGE_SIZE = 40;
 const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v4";
 const SOURCES_ATTR_BOOTSTRAP_CACHE_KEY = "mm_sources_attr_bootstrap_cache_v3";
 const SOURCES_ATTR_DETAILS_CACHE_PREFIX = "mm_sources_attr_details_cache_v3:";
@@ -1086,6 +1087,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorStatusFilters, setCompetitorStatusFilters] = useState<Record<string, CompetitorProductSourceStatus | "all">>({});
   const [competitorManualUrls, setCompetitorManualUrls] = useState<Record<string, string>>({});
   const [competitorManualSubmitting, setCompetitorManualSubmitting] = useState("");
+  const [competitorPage, setCompetitorPage] = useState(1);
   const [catalogPanelHidden, setCatalogPanelHidden] = useState(false);
   const [competitorModeratingId, setCompetitorModeratingId] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
@@ -2675,13 +2677,26 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   async function runCompetitorCategoryDiscovery(categoryId: string, productId?: string) {
     const current = competitorDiscovery || await loadCompetitorDiscovery(categoryId);
-    const sampleProducts = current?.category?.sample_products || [];
-    const selectedProductId = String(productId || competitorSampleProductId || sampleProducts[0]?.id || "").trim();
-    const categoryProductIds = (current?.category?.scanned_product_ids || []).slice(0, 30);
+    const selectedProductId = String(productId || competitorSampleProductId || "").trim();
+    const sourceRows = current?.sources || [];
+    const hasUnconfirmedCompetitorSource = (pid: string) => {
+      const normalizedProductId = String(pid || "").trim();
+      if (!normalizedProductId || !sourceRows.length) return true;
+      return sourceRows.some((source) => (
+        normalizeCompetitorProductStatus(source.product_statuses?.[normalizedProductId]?.status) !== "confirmed"
+      ));
+    };
+    const categoryProductIds = (current?.category?.scanned_product_ids || [])
+      .filter((id) => hasUnconfirmedCompetitorSource(id))
+      .slice(0, 30);
     const productIds = [
-      selectedProductId,
+      selectedProductId && hasUnconfirmedCompetitorSource(selectedProductId) ? selectedProductId : "",
       ...categoryProductIds,
     ].filter((id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index);
+    if (!productIds.length) {
+      setCompetitorDiscoveryError("По выбранной области уже есть подтвержденные конкурентные карточки.");
+      return;
+    }
     setCompetitorDiscoveryRunning(true);
     setCompetitorDiscoveryError("");
     setCompetitorDiscoveryRun(null);
@@ -3393,6 +3408,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     });
                                   })
                                   .sort((a, b) => a.worstRank - b.worstRank || String(a.sku_gt || a.id).localeCompare(String(b.sku_gt || b.id), "ru"));
+                                const competitorPageCount = Math.max(1, Math.ceil(filteredCompetitorRows.length / COMPETITOR_MATCH_PAGE_SIZE));
+                                const currentCompetitorPage = Math.min(Math.max(1, competitorPage), competitorPageCount);
+                                const pageStart = (currentCompetitorPage - 1) * COMPETITOR_MATCH_PAGE_SIZE;
+                                const pagedCompetitorRows = filteredCompetitorRows.slice(pageStart, pageStart + COMPETITOR_MATCH_PAGE_SIZE);
                                 const selectedSampleProduct = filteredCompetitorRows.find((item) => item.id === competitorSampleProductId)
                                   || competitorRows.find((item) => item.id === competitorSampleProductId)
                                   || null;
@@ -3476,7 +3495,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           <div className="mm-competitorTableFilters">
                                             <input
                                               value={competitorSkuQuery}
-                                              onChange={(event) => setCompetitorSkuQuery(event.target.value)}
+                                              onChange={(event) => {
+                                                setCompetitorSkuQuery(event.target.value);
+                                                setCompetitorPage(1);
+                                              }}
                                               disabled={!sampleProducts.length || competitorDiscoveryRunning}
                                               placeholder={competitorDiscoveryLoading ? "Загружаю SKU..." : "Поиск по SKU или товару"}
                                             />
@@ -3488,10 +3510,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                   <span>{source.title}</span>
                                                   <select
                                                     value={value}
-                                                    onChange={(event) => setCompetitorStatusFilters((prev) => ({
-                                                      ...prev,
-                                                      [source.code]: event.target.value as CompetitorProductSourceStatus | "all",
-                                                    }))}
+                                                    onChange={(event) => {
+                                                      setCompetitorStatusFilters((prev) => ({
+                                                        ...prev,
+                                                        [source.code]: event.target.value as CompetitorProductSourceStatus | "all",
+                                                      }));
+                                                      setCompetitorPage(1);
+                                                    }}
                                                   >
                                                     <option value="all">Все ({counts.all})</option>
                                                     <option value="none">Нет кандидата ({counts.none})</option>
@@ -3535,7 +3560,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 {sourceColumns.map((source) => (
                                                   <div key={source.code} className="mm-competitorMatchHead">{source.title}</div>
                                                 ))}
-                                                {filteredCompetitorRows.map((row) => {
+                                                {pagedCompetitorRows.map((row) => {
                                                   const active = row.id === selectedSampleProductId;
                                                   return (
                                                     <button
@@ -3566,6 +3591,32 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 <div className="mm-competitorQueueEmpty">
                                                   <strong>По фильтрам нет SKU</strong>
                                                   <span>Сбросьте статус площадки или измените поиск по SKU/наименованию.</span>
+                                                </div>
+                                              ) : null}
+                                              {filteredCompetitorRows.length > COMPETITOR_MATCH_PAGE_SIZE ? (
+                                                <div className="mm-competitorPagination">
+                                                  <span>
+                                                    {pageStart + 1}-{Math.min(pageStart + COMPETITOR_MATCH_PAGE_SIZE, filteredCompetitorRows.length)} из {filteredCompetitorRows.length}
+                                                  </span>
+                                                  <div>
+                                                    <button
+                                                      type="button"
+                                                      className="btn mm-miniBtn"
+                                                      onClick={() => setCompetitorPage((page) => Math.max(1, page - 1))}
+                                                      disabled={currentCompetitorPage <= 1}
+                                                    >
+                                                      Назад
+                                                    </button>
+                                                    <strong>{currentCompetitorPage} / {competitorPageCount}</strong>
+                                                    <button
+                                                      type="button"
+                                                      className="btn mm-miniBtn"
+                                                      onClick={() => setCompetitorPage((page) => Math.min(competitorPageCount, page + 1))}
+                                                      disabled={currentCompetitorPage >= competitorPageCount}
+                                                    >
+                                                      Дальше
+                                                    </button>
+                                                  </div>
                                                 </div>
                                               ) : null}
                                             </div>

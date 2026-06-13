@@ -5160,6 +5160,17 @@ async def _execute_discovery_run_for_current_tenant(
     links = discovery["links"]
     product_scope_ids = {str(item.get("id") or "").strip() for item in products if str(item.get("id") or "").strip()}
     _merge_relational_discovery_items(candidates, links, product_ids=product_scope_ids)
+    confirmed_pairs = {
+        (
+            str(item.get("product_id") or "").strip(),
+            str(item.get("source_id") or "").strip(),
+        )
+        for item in links.values()
+        if isinstance(item, dict)
+        and str(item.get("status") or "").strip() == "confirmed"
+        and str(item.get("product_id") or "").strip()
+        and str(item.get("source_id") or "").strip()
+    }
     started_at = now_iso()
     created_count = 0
     updated_count = 0
@@ -5234,8 +5245,17 @@ async def _execute_discovery_run_for_current_tenant(
                 "raw_candidates": raw_candidates,
             }
 
+    scan_jobs = [
+        _scan_pair(product, source)
+        for product in products
+        for source in sources
+        if (
+            str(product.get("id") or "").strip(),
+            str(source.get("id") or "").strip(),
+        ) not in confirmed_pairs
+    ]
     scan_results = await asyncio.gather(
-        *[_scan_pair(product, source) for product in products for source in sources],
+        *scan_jobs,
         return_exceptions=True,
     )
 

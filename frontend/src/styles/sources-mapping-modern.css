@@ -3742,7 +3742,7 @@
   border-radius:12px;
   background:var(--card);
   box-shadow:none;
-  overflow:hidden;
+  overflow:visible;
 }
 
 .sourcesCommandWorkbench .sourcesMappingCanvasIntro{
@@ -4692,11 +4692,13 @@
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared.csb-shell{
-  position:sticky;
-  top:72px;
-  align-self:start;
-  max-height:calc(100vh - 88px);
+  position:fixed;
+  top:12px;
+  bottom:12px;
+  width:300px;
+  max-height:none;
   overflow:hidden;
+  z-index:30;
   border:1px solid var(--line);
   border-radius:10px;
   background:var(--card);
@@ -4721,7 +4723,7 @@
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared .csb-body{
-  max-height:calc(100vh - 214px);
+  max-height:calc(100vh - 138px);
   overflow:auto;
 }
 
@@ -5474,6 +5476,41 @@
   overflow:auto;
   border-right:0;
   background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorPagination{
+  position:sticky;
+  bottom:0;
+  z-index:3;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:max-content;
+  padding:10px 12px;
+  border-top:1px solid var(--line);
+  background:rgba(255,255,255,.94);
+  backdrop-filter:saturate(120%) blur(8px);
+}
+
+.sourcesCommandWorkbench .mm-competitorPagination > span{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:760;
+}
+
+.sourcesCommandWorkbench .mm-competitorPagination > div{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorPagination strong{
+  min-width:54px;
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:850;
+  text-align:center;
 }
 
 .sourcesCommandWorkbench .mm-competitorMatchTable{
