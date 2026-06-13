@@ -1306,6 +1306,8 @@
 .tplDraftCard {
   display: grid;
   gap: 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .tplDraftHeader {
@@ -1389,10 +1391,10 @@
 
 .tplDraftAuditGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 8px;
   margin-top: 12px;
-  max-width: 1120px;
+  max-width: 100%;
 }
 
 .tplDraftAuditGrid span {
@@ -1421,6 +1423,7 @@
 .tplDraftList {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .tplDraftRow {
@@ -1432,6 +1435,7 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface-soft);
+  min-width: 0;
 }
 
 .tplDraftRow.is-accepted {
@@ -1645,6 +1649,7 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .tplDraftActions .btn.sm {
@@ -1697,6 +1702,15 @@
   .tplModelSections,
   .tplUsageGrid {
     grid-template-columns: 1fr;
+  }
+
+  .tplDraftRow {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  }
+
+  .tplDraftActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .attr-head,
