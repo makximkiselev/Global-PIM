@@ -67,6 +67,11 @@ type CompetitorSourceSummary = {
   };
 };
 
+const FALLBACK_COMPETITOR_SOURCES: CompetitorSource[] = [
+  { id: "restore", name: "re-store", domain: "re-store.ru", status: "active" },
+  { id: "store77", name: "store77", domain: "store77.net", status: "active" },
+];
+
 type ProductCompetitorResp = {
   ok: boolean;
   product_id: string;
@@ -219,6 +224,20 @@ function sourceScanTime(summary: CompetitorSourceSummary): string {
   return value ? new Date(value).toLocaleString("ru-RU") : "";
 }
 
+function emptySourceSummary(source: CompetitorSource): CompetitorSourceSummary {
+  return {
+    source_id: source.id,
+    source_name: source.name,
+    domain: source.domain,
+    status: "empty",
+    label: "Не сканировали",
+    message: "По этому источнику пока нет кандидатов для SKU.",
+    confirmed_count: 0,
+    actionable_count: 0,
+    hidden_count: 0,
+  };
+}
+
 function safeRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -335,6 +354,18 @@ export default function ProductCompetitorPanel({
   const confirmedLinks = context?.confirmed_links || [];
   const importStats = useMemo(() => competitorImportStats(productSnapshot, confirmedLinks), [productSnapshot, confirmedLinks]);
   const hasConfirmedLinks = confirmedLinks.length > 0;
+  const sourceSummaries = useMemo(() => {
+    const byId = new Map<string, CompetitorSourceSummary>();
+    for (const summary of context?.source_summaries || []) {
+      const sourceId = String(summary.source_id || "").trim();
+      if (sourceId) byId.set(sourceId, summary);
+    }
+    const sources = (context?.sources?.length ? context.sources : FALLBACK_COMPETITOR_SOURCES);
+    for (const source of sources) {
+      if (!byId.has(source.id)) byId.set(source.id, emptySourceSummary(source));
+    }
+    return Array.from(byId.values()).sort((a, b) => sourceLabel(a.source_id).localeCompare(sourceLabel(b.source_id), "ru"));
+  }, [context?.source_summaries, context?.sources]);
 
   async function loadProductSnapshot() {
     if (!productId) return;
@@ -395,7 +426,7 @@ export default function ProductCompetitorPanel({
     setEnrichNotice("");
     setRunning(true);
     try {
-      const sources = (context?.sources || []).map((source) => source.id);
+      const sources = (context?.sources?.length ? context.sources : FALLBACK_COMPETITOR_SOURCES).map((source) => source.id);
       const response = await api<RunResp>("/competitor-mapping/discovery/run", {
         method: "POST",
         body: JSON.stringify({ background: true, product_ids: [productId], sources, limit: 1 }),
@@ -563,9 +594,9 @@ export default function ProductCompetitorPanel({
           </section>
         )}
 
-        {context?.source_summaries?.length ? (
+        {sourceSummaries.length ? (
           <div className="productCompetitorSourceGrid" aria-label="Статус конкурентных источников">
-            {context.source_summaries.map((summary) => (
+            {sourceSummaries.map((summary) => (
               <div key={summary.source_id} className={`productCompetitorSourceCard is-${summary.status}`}>
                 <div className="productCompetitorSourceHead">
                   <div>

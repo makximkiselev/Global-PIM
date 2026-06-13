@@ -225,6 +225,8 @@ type CompetitorSkuStatus = {
   }>;
 };
 
+type CompetitorSearchScope = "current" | "selected" | "group" | "category";
+
 type CatalogNode = {
   id: string;
   parent_id: string | null;
@@ -1570,6 +1572,7 @@ function ProductWorkspaceFeature() {
   const [competitorSkuQuery, setCompetitorSkuQuery] = useState("");
   const [competitorSkuFilter, setCompetitorSkuFilter] = useState<"all" | CompetitorSkuStatus["tone"]>("all");
   const [competitorSelectedIds, setCompetitorSelectedIds] = useState<string[]>([]);
+  const [competitorSearchScope, setCompetitorSearchScope] = useState<CompetitorSearchScope>("current");
   const [competitorBulkRunning, setCompetitorBulkRunning] = useState(false);
   const [competitorBulkConfirming, setCompetitorBulkConfirming] = useState(false);
   const [competitorBulkEnriching, setCompetitorBulkEnriching] = useState(false);
@@ -1789,6 +1792,47 @@ function ProductWorkspaceFeature() {
   const selectedVisibleCompetitorIds = useMemo(() => {
     return filteredCompetitorIds.filter((id) => selectedCompetitorSet.has(id));
   }, [filteredCompetitorIds, selectedCompetitorSet]);
+  const competitorScopeOptions = useMemo(() => {
+    const currentId = normalizeText(selectedCompetitorItem?.id || product?.id);
+    const groupIds = competitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean);
+    const categoryId = normalizeText(product?.category_id);
+    return [
+      {
+        id: "current" as const,
+        label: "Текущий SKU",
+        count: currentId ? 1 : 0,
+        detail: normalizeText(selectedCompetitorItem?.sku_gt) || normalizeText(selectedCompetitorItem?.sku_pim) || currentId,
+        disabled: !currentId,
+      },
+      {
+        id: "selected" as const,
+        label: "Выбранные SKU",
+        count: selectedVisibleCompetitorIds.length,
+        detail: selectedVisibleCompetitorIds.length ? "только отмеченные строки" : "отметьте строки в таблице",
+        disabled: !selectedVisibleCompetitorIds.length,
+      },
+      {
+        id: "group" as const,
+        label: "Вся группа",
+        count: groupIds.length,
+        detail: "варианты одной линейки",
+        disabled: !groupIds.length,
+      },
+      {
+        id: "category" as const,
+        label: "Категория",
+        count: 0,
+        detail: categoryPath || categoryId || "категория не задана",
+        disabled: !categoryId,
+      },
+    ];
+  }, [categoryPath, competitorGroupItems, product?.category_id, product?.id, selectedCompetitorItem?.id, selectedCompetitorItem?.sku_gt, selectedCompetitorItem?.sku_pim, selectedVisibleCompetitorIds]);
+  const activeCompetitorScope = useMemo(() => {
+    return competitorScopeOptions.find((item) => item.id === competitorSearchScope && !item.disabled)
+      || competitorScopeOptions.find((item) => item.id === "current" && !item.disabled)
+      || competitorScopeOptions.find((item) => !item.disabled)
+      || competitorScopeOptions[0];
+  }, [competitorScopeOptions, competitorSearchScope]);
   const justCreated = searchParams.get("created") === "1";
   const nextAction = useMemo(() => product
     ? buildProductNextAction({ product, infoModel, features, media, channels })
@@ -2131,8 +2175,19 @@ function ProductWorkspaceFeature() {
   }
 
   async function handleRunCompetitorDiscoveryForSelected() {
-    const ids = selectedVisibleCompetitorIds;
-    if (!ids.length || competitorBulkRunning) return;
+    if (competitorBulkRunning) return;
+    const scope = activeCompetitorScope?.id || "current";
+    const currentId = normalizeText(selectedCompetitorItem?.id || product?.id);
+    const groupIds = competitorGroupItems.map((item) => normalizeText(item.id)).filter(Boolean);
+    const ids = scope === "selected"
+      ? selectedVisibleCompetitorIds
+      : scope === "group"
+        ? groupIds
+        : scope === "current" && currentId
+          ? [currentId]
+          : [];
+    const categoryId = scope === "category" ? normalizeText(product?.category_id) : "";
+    if (!ids.length && !categoryId) return;
     setCompetitorBulkRunning(true);
     setCompetitorBulkNotice("");
     setCompetitorBulkRun(null);
@@ -2141,20 +2196,28 @@ function ProductWorkspaceFeature() {
         method: "POST",
         body: JSON.stringify({
           background: true,
-          product_ids: ids,
+          ...(ids.length ? { product_ids: ids } : {}),
+          ...(categoryId ? { category_id: categoryId } : {}),
           sources: ["restore", "store77"],
-          limit: ids.length,
+          limit: categoryId ? 50 : Math.max(1, ids.length),
         }),
       });
       const status = normalizeText(response.run?.status) || "queued";
       setCompetitorBulkRun(response.run || { status });
-      setCompetitorBulkNotice(`Запущен подбор по ${ids.length} выбранным SKU. Статус: ${status}.`);
+      const scopeLabel = scope === "category"
+        ? `категории «${categoryPath || categoryId}»`
+        : scope === "group"
+          ? `${ids.length} SKU группы`
+          : scope === "selected"
+            ? `${ids.length} выбранным SKU`
+            : "текущему SKU";
+      setCompetitorBulkNotice(`Запущен подбор по ${scopeLabel}. Источники: re-store и store77. Статус: ${status}.`);
       if (!["queued", "running"].includes(status)) {
         setCompetitorBulkRunning(false);
         setReloadVersion((value) => value + 1);
       }
     } catch (err) {
-      setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось запустить подбор по SKU.");
+      setCompetitorBulkNotice(err instanceof Error ? err.message : "Не удалось запустить подбор конкурентов.");
       setCompetitorBulkRunning(false);
     }
   }
@@ -2401,6 +2464,21 @@ function ProductWorkspaceFeature() {
                       </div>
                       <div className="pn-competitorSkuToolbar">
                         <div className="pn-competitorSkuControls">
+                          <div className="pn-competitorScopePicker" aria-label="Область поиска конкурентов">
+                            {competitorScopeOptions.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className={`pn-competitorScopeOption${activeCompetitorScope?.id === option.id ? " isActive" : ""}`}
+                                onClick={() => setCompetitorSearchScope(option.id)}
+                                disabled={option.disabled}
+                              >
+                                <span>{option.label}</span>
+                                <strong>{option.id === "category" ? "ветка" : option.count}</strong>
+                                <em>{option.detail || "—"}</em>
+                              </button>
+                            ))}
+                          </div>
                           <input
                             className="pn-competitorSkuSearch"
                             value={competitorSkuQuery}
@@ -2431,9 +2509,9 @@ function ProductWorkspaceFeature() {
                             type="button"
                             className="pn-competitorSkuRun"
                             onClick={handleRunCompetitorDiscoveryForSelected}
-                            disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                            disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || Boolean(activeCompetitorScope?.disabled)}
                           >
-                            {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
+                            {competitorBulkRunning ? "Подбор идет..." : "Найти конкурентов"}
                           </button>
                           <button
                             type="button"
@@ -2458,7 +2536,7 @@ function ProductWorkspaceFeature() {
                           {allVisibleCompetitorsSelected ? "Снять выбор" : `Выбрать видимые ${filteredCompetitorIds.length}`}
                         </button>
                         <span>
-                          Выбрано {selectedVisibleCompetitorIds.length} из {filteredCompetitorIds.length}. Массовые действия применяются только к выбранным SKU.
+                          Выбрано {selectedVisibleCompetitorIds.length} из {filteredCompetitorIds.length}. Область поиска: {activeCompetitorScope?.label || "текущий SKU"}.
                         </span>
                       </div>
                       {competitorBulkNotice || competitorBulkRun ? (

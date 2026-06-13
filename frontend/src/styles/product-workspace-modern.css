@@ -2748,6 +2748,67 @@
   min-width:0;
 }
 
+.pn-competitorScopePicker{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+}
+
+.pn-competitorScopeOption{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:4px 10px;
+  align-items:center;
+  min-height:62px;
+  padding:10px 12px;
+  border:1px solid rgba(var(--line-rgb), .8);
+  border-radius:12px;
+  background:rgba(var(--card-rgb), .86);
+  color:var(--text);
+  text-align:left;
+  cursor:pointer;
+}
+
+.pn-competitorScopeOption span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+  font-weight:950;
+}
+
+.pn-competitorScopeOption strong{
+  color:var(--text);
+  font-size:12px;
+  font-weight:950;
+}
+
+.pn-competitorScopeOption em{
+  grid-column:1 / -1;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.2;
+  font-style:normal;
+  font-weight:750;
+}
+
+.pn-competitorScopeOption:hover,
+.pn-competitorScopeOption.isActive{
+  border-color:rgba(var(--brand-rgb), .48);
+  background:rgba(var(--brand-rgb), .1);
+}
+
+.pn-competitorScopeOption:disabled{
+  cursor:not-allowed;
+  opacity:.52;
+}
+
 .pn-competitorSkuFilters,
 .pn-competitorSkuActions{
   display:flex;
@@ -3292,6 +3353,10 @@
     grid-template-columns:1fr;
   }
 
+  .pn-competitorScopePicker{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
   .pn-competitorSkuControls,
   .pn-competitorSkuActions{
     flex-wrap:wrap;
@@ -3337,12 +3402,32 @@
     padding:7px 12px;
   }
 
+  .shellContentBody .productWorkspaceNextAction{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .shellContentBody .productWorkspaceNextActionText{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:8px;
+  }
+
+  .shellContentBody .productWorkspaceNextAction .btn{
+    width:100%;
+    justify-content:center;
+  }
+
   .shellContentBody .pn-competitorSkuDesk,
   .shellContentBody .pn-competitorInspectorShell{
     padding:10px;
   }
 
   .shellContentBody .pn-competitorSkuControls{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .pn-competitorScopePicker{
     grid-template-columns:1fr;
   }
 
