@@ -417,6 +417,11 @@ type CompetitorCategoryResp = {
   };
 };
 
+type CompetitorCategorySaveResp = CompetitorCategoryResp & {
+  configured?: boolean;
+  template_source_category_id?: string | null;
+};
+
 type CompetitorFieldsBatchResp = {
   ok: boolean;
   results: Record<string, { ok: boolean; fields?: string[]; fields_meta?: CompetitorFieldMeta[]; skipped?: boolean; error?: string }>;
@@ -2844,15 +2849,36 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setCompetitorLinksSaving(true);
     setCompetitorDiscoveryError("");
     try {
-      await api(`/competitor-mapping/category/${encodeURIComponent(cid)}`, {
+      const saved = await api<CompetitorCategorySaveResp>(`/competitor-mapping/category/${encodeURIComponent(cid)}`, {
         method: "PUT",
         body: JSON.stringify({ links: competitorLinks }),
       });
-      setSavedCompetitorLinks({ ...competitorLinks });
+      const savedLinks = {
+        restore: String(saved.data?.links?.restore || competitorLinks.restore || ""),
+        store77: String(saved.data?.links?.store77 || competitorLinks.store77 || ""),
+        biggeek: String(saved.data?.links?.biggeek || competitorLinks.biggeek || ""),
+      };
+      setCompetitorLinks(savedLinks);
+      setSavedCompetitorLinks(savedLinks);
+      setCompetitorStates((prev) => {
+        const current = prev?.[cid] || {};
+        return {
+          ...(prev || {}),
+          [cid]: {
+            ...current,
+            configured: Boolean(saved.configured ?? current.configured),
+            template_id: saved.template_id ?? current.template_id,
+            source_category_id: saved.template_source_category_id ?? current.source_category_id,
+            inherited: false,
+            links: savedLinks,
+            mapping_counts: current.mapping_counts || {},
+          },
+        };
+      });
       setSavedToastText("Ссылки конкурентов сохранены");
       setSavedToast(true);
-      invalidateSourcesReadCaches(cid);
-      await loadCategoriesMapping();
+      clearPersistentSourcesCache(SOURCES_CATEGORIES_CACHE_KEY);
+      categoriesMappingCache = { ts: 0, data: null };
     } catch (e) {
       setCompetitorDiscoveryError((e as Error).message || "Не удалось сохранить ссылки конкурентов");
       throw e;

@@ -4849,6 +4849,7 @@ def save_category_mapping(category_id: str, payload: Dict[str, Any]) -> Dict[str
 
     template_id, source_category_id = _resolve_template_for_category(category_id)
     current, _, _ = _get_category_row_with_fallback(category_id)
+    mapping_changed = False
     if "priority_site" in payload:
         priority_site = payload.get("priority_site")
         if priority_site is not None and priority_site not in ALLOWED_SITES:
@@ -4865,16 +4866,18 @@ def save_category_mapping(category_id: str, payload: Dict[str, Any]) -> Dict[str
             current.get("mapping_by_site") or {},
             patch,
         )
+        mapping_changed = True
     if "mapping" in payload and "mapping_by_site" not in payload:
         if not template_id:
             raise HTTPException(status_code=400, detail="No effective template for category")
         patch = payload.get("mapping") or {}
         merged = _apply_mapping_patch(template_id, (current.get("mapping_by_site") or {}).get("restore") or {}, patch)
         current["mapping_by_site"] = {"restore": merged, "store77": dict(merged)}
+        mapping_changed = True
     current["updated_at"] = now_iso()
 
     _persist_competitor_mapping_row("category", category_id, current)
-    if template_id:
+    if template_id and mapping_changed:
         _persist_ai_mapping_memory(template_id, current.get("mapping_by_site") or {}, context_type="category", context_id=category_id)
     _remove_legacy_competitor_mapping_row("category", category_id)
     cache_entry = _bootstrap_cache_entry()
