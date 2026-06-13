@@ -1895,6 +1895,12 @@ function ProductWorkspaceFeature() {
     }
     return counts;
   }, [competitorGroupItems, competitorSkuStatuses]);
+  const selectedCompetitorStatus = useMemo(() => {
+    const id = normalizeText(selectedCompetitorItem?.id);
+    return id
+      ? competitorSkuStatuses[id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const, sources: [] }
+      : { label: "не выбран", detail: "выберите SKU из таблицы", tone: "neutral" as const, sources: [] };
+  }, [competitorSkuStatuses, selectedCompetitorItem?.id]);
 
   const accessories = useMemo(() => {
     return (product?.content?.related || []).filter((item) => normalizeText(item.name) || normalizeText(item.sku) || normalizeText(item.sku_gt));
@@ -2311,158 +2317,185 @@ function ProductWorkspaceFeature() {
             {activeSection === "competitors" ? (
               <div className="pn-competitorGroupWorkspace">
                 {competitorGroupItems.length > 1 ? (
-                  <div className="pn-card pn-competitorGroupCard">
-                    <div className="pn-cardTitle">Подбор конкурентов по SKU группы</div>
-                    <div className="pn-muted pn-competitorGroupLead">
-                      Выберите SKU, затем запускайте поиск re-store/store77, подтверждайте кандидата или добавляйте точную ссылку вручную.
-                      Насыщение параметров и медиа применяется только к выбранному SKU.
-                    </div>
-                    <div className="pn-competitorSkuToolbar">
-                      <div className="pn-competitorSkuControls">
-                        <input
-                          className="pn-competitorSkuSearch"
-                          value={competitorSkuQuery}
-                          onChange={(event) => setCompetitorSkuQuery(event.target.value)}
-                          placeholder="Найти SKU, память, цвет, SIM..."
-                        />
-                        <div className="pn-competitorSkuFilters" aria-label="Фильтры готовности конкурентов">
-                          {[
-                            ["all", "Все", competitorSkuStatusCounts.all],
-                            ["neutral", "Не сканировали", competitorSkuStatusCounts.neutral],
-                            ["pending", "Кандидаты", competitorSkuStatusCounts.pending],
-                            ["active", "Подтверждено", competitorSkuStatusCounts.active],
-                            ["danger", "Проблемы", competitorSkuStatusCounts.danger],
-                          ].map(([key, label, count]) => (
-                            <button
-                              key={String(key)}
-                              type="button"
-                              className={`pn-competitorSkuFilter${competitorSkuFilter === key ? " isActive" : ""}`}
-                              onClick={() => setCompetitorSkuFilter(key as "all" | CompetitorSkuStatus["tone"])}
-                            >
-                              {label} <strong>{count}</strong>
-                            </button>
-                          ))}
+                  <div className="pn-competitorSplit">
+                    <section className="pn-card pn-competitorSkuDesk">
+                      <div className="pn-competitorDeskHead">
+                        <div>
+                          <div className="pn-cardTitle">SKU группы</div>
+                          <div className="pn-muted pn-competitorGroupLead">
+                            Выберите строки, запустите поиск re-store/store77 и разбирайте кандидатов в инспекторе справа.
+                          </div>
+                        </div>
+                        <div className="pn-competitorDeskStats" aria-label="Сводка подбора конкурентов">
+                          <span><strong>{competitorSkuStatusCounts.all}</strong> всего</span>
+                          <span><strong>{competitorSkuStatusCounts.pending}</strong> кандидаты</span>
+                          <span><strong>{competitorSkuStatusCounts.active}</strong> готово</span>
                         </div>
                       </div>
-                      <div className="pn-competitorSkuActions" aria-label="Массовые действия">
-                        <button
-                          type="button"
-                          className="pn-competitorSkuRun"
-                          onClick={handleRunCompetitorDiscoveryForSelected}
-                          disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
-                        >
-                          {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
-                        </button>
-                        <button
-                          type="button"
-                          className="pn-competitorSkuRun"
-                          onClick={handleConfirmSafeCompetitorsForSelected}
-                          disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
-                        >
-                          {competitorBulkConfirming ? "Подтверждаю..." : "Подтвердить точные"}
-                        </button>
-                        <button
-                          type="button"
-                          className="pn-competitorSkuRun"
-                          onClick={handleEnrichConfirmedCompetitorsForSelected}
-                          disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
-                        >
-                          {competitorBulkEnriching ? "Ставлю в очередь..." : "Загрузить медиа"}
-                        </button>
+                      <div className="pn-competitorSkuToolbar">
+                        <div className="pn-competitorSkuControls">
+                          <input
+                            className="pn-competitorSkuSearch"
+                            value={competitorSkuQuery}
+                            onChange={(event) => setCompetitorSkuQuery(event.target.value)}
+                            placeholder="Найти SKU, память, цвет, SIM..."
+                          />
+                          <div className="pn-competitorSkuFilters" aria-label="Фильтры готовности конкурентов">
+                            {[
+                              ["all", "Все", competitorSkuStatusCounts.all],
+                              ["neutral", "Не сканировали", competitorSkuStatusCounts.neutral],
+                              ["pending", "Кандидаты", competitorSkuStatusCounts.pending],
+                              ["active", "Подтверждено", competitorSkuStatusCounts.active],
+                              ["danger", "Проблемы", competitorSkuStatusCounts.danger],
+                            ].map(([key, label, count]) => (
+                              <button
+                                key={String(key)}
+                                type="button"
+                                className={`pn-competitorSkuFilter${competitorSkuFilter === key ? " isActive" : ""}`}
+                                onClick={() => setCompetitorSkuFilter(key as "all" | CompetitorSkuStatus["tone"])}
+                              >
+                                {label} <strong>{count}</strong>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="pn-competitorSkuActions" aria-label="Массовые действия">
+                          <button
+                            type="button"
+                            className="pn-competitorSkuRun"
+                            onClick={handleRunCompetitorDiscoveryForSelected}
+                            disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                          >
+                            {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
+                          </button>
+                          <button
+                            type="button"
+                            className="pn-competitorSkuRun"
+                            onClick={handleConfirmSafeCompetitorsForSelected}
+                            disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                          >
+                            {competitorBulkConfirming ? "Подтверждаю..." : "Подтвердить точные"}
+                          </button>
+                          <button
+                            type="button"
+                            className="pn-competitorSkuRun"
+                            onClick={handleEnrichConfirmedCompetitorsForSelected}
+                            disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                          >
+                            {competitorBulkEnriching ? "Ставлю в очередь..." : "Загрузить медиа"}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="pn-competitorSkuBulkBar">
-                      <button type="button" className="pn-competitorSkuSelectAll" onClick={toggleVisibleCompetitorSelection} disabled={!filteredCompetitorIds.length}>
-                        {allVisibleCompetitorsSelected ? "Снять выбор с видимых" : `Выбрать видимые ${filteredCompetitorIds.length}`}
-                      </button>
-                      <span>
-                        Выбрано {selectedVisibleCompetitorIds.length} из {filteredCompetitorIds.length} видимых SKU. Подбор запускается только по выбранным строкам.
-                      </span>
-                    </div>
-                    {competitorBulkNotice || competitorBulkRun ? (
-                      <div className="pn-competitorSkuNotice">
-                        <strong>{competitorBulkNotice || "Подбор конкурентов запущен."}</strong>
-                        {competitorBulkRun ? (
+                      <div className="pn-competitorSkuBulkBar">
+                        <button type="button" className="pn-competitorSkuSelectAll" onClick={toggleVisibleCompetitorSelection} disabled={!filteredCompetitorIds.length}>
+                          {allVisibleCompetitorsSelected ? "Снять выбор" : `Выбрать видимые ${filteredCompetitorIds.length}`}
+                        </button>
+                        <span>
+                          Выбрано {selectedVisibleCompetitorIds.length} из {filteredCompetitorIds.length}. Массовые действия применяются только к выбранным SKU.
+                        </span>
+                      </div>
+                      {competitorBulkNotice || competitorBulkRun ? (
+                        <div className="pn-competitorSkuNotice">
+                          <strong>{competitorBulkNotice || "Подбор конкурентов запущен."}</strong>
+                          {competitorBulkRun ? (
+                            <span>
+                              Run: {normalizeText(competitorBulkRun.id) || "—"} · статус {normalizeText(competitorBulkRun.status) || "queued"} · обработано {Number(competitorBulkRun.scanned_products_count || 0)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="pn-competitorSkuTable">
+                        <div className="pn-competitorSkuRow pn-competitorSkuHead">
                           <span>
-                            Run: {normalizeText(competitorBulkRun.id) || "—"} · статус {normalizeText(competitorBulkRun.status) || "queued"} · обработано {Number(competitorBulkRun.scanned_products_count || 0)}
+                            <input
+                              type="checkbox"
+                              checked={allVisibleCompetitorsSelected}
+                              onChange={toggleVisibleCompetitorSelection}
+                              aria-label="Выбрать все видимые SKU"
+                            />
                           </span>
+                          <span>SKU</span>
+                          <span>Название товара</span>
+                          <span>Готовность</span>
+                          <span></span>
+                        </div>
+                        {filteredCompetitorGroupItems.map((item) => {
+                          const isActive = item.id === selectedCompetitorItem?.id;
+                          const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const, sources: [] };
+                          const itemId = normalizeText(item.id);
+                          const isSelected = selectedCompetitorSet.has(itemId);
+                          const actionLabel = isActive
+                            ? "Открыт"
+                            : skuStatus.tone === "pending"
+                              ? "Разобрать"
+                              : skuStatus.tone === "active"
+                                ? "Проверить"
+                                : skuStatus.tone === "danger"
+                                  ? "Исправить"
+                                  : "Открыть";
+                          return (
+                            <div
+                              key={item.id}
+                              className={`pn-competitorSkuRow${isActive ? " isActive" : ""}`}
+                            >
+                              <span>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleCompetitorSelection(itemId)}
+                                  aria-label={`Выбрать SKU ${normalizeText(item.sku_gt) || itemId}`}
+                                />
+                              </span>
+                              <span className="pn-competitorSkuCode">{normalizeText(item.sku_gt) || normalizeText(item.sku_pim) || "—"}</span>
+                              <span className="pn-competitorSkuTitle">
+                                <strong>{normalizeText(item.title) || item.id}</strong>
+                              </span>
+                              <span className={`pn-competitorSkuReadiness is-${skuStatus.tone}`}>
+                                <strong>{skuStatus.label}</strong>
+                                {skuStatus.sources?.length ? (
+                                  <span className="pn-competitorSourceChips">
+                                    {skuStatus.sources.map((source) => (
+                                      <em key={`${item.id}-${source.id}`} className={`is-${source.tone}`}>{source.label}</em>
+                                    ))}
+                                  </span>
+                                ) : (
+                                  <em>{skuStatus.detail}</em>
+                                )}
+                              </span>
+                              <button type="button" className="pn-competitorSkuAction" onClick={() => setCompetitorProductId(item.id)}>
+                                {actionLabel}
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {!filteredCompetitorGroupItems.length ? (
+                          <div className="pn-competitorSkuEmpty">По этому фильтру SKU не найдены.</div>
                         ) : null}
                       </div>
-                    ) : null}
-                    <div className="pn-competitorSkuTable">
-                      <div className="pn-competitorSkuRow pn-competitorSkuHead">
-                        <span>
-                          <input
-                            type="checkbox"
-                            checked={allVisibleCompetitorsSelected}
-                            onChange={toggleVisibleCompetitorSelection}
-                            aria-label="Выбрать все видимые SKU"
-                          />
-                        </span>
-                        <span>SKU GT</span>
-                        <span>Товар</span>
-                        <span>Готовность</span>
-                        <span>Действие</span>
+                    </section>
+                    <aside className="pn-card pn-competitorInspectorShell" aria-label="Инспектор SKU">
+                      <div className="pn-competitorInspectorSku">
+                        <div>
+                          <span>Текущий SKU</span>
+                          <strong>{normalizeText(selectedCompetitorItem?.sku_gt) || normalizeText(selectedCompetitorItem?.sku_pim) || selectedCompetitorItem?.id || "—"}</strong>
+                          <em>{normalizeText(selectedCompetitorItem?.title) || "Выберите SKU слева"}</em>
+                        </div>
+                        <Badge tone={selectedCompetitorStatus.tone}>{selectedCompetitorStatus.label}</Badge>
                       </div>
-                      {filteredCompetitorGroupItems.map((item) => {
-                        const isActive = item.id === selectedCompetitorItem?.id;
-                        const skuStatus = competitorSkuStatuses[item.id] || { label: "не сканировали", detail: "источники еще не проверялись", tone: "neutral" as const, sources: [] };
-                        const itemId = normalizeText(item.id);
-                        const isSelected = selectedCompetitorSet.has(itemId);
-                        const actionLabel = isActive
-                          ? "Текущий SKU"
-                          : skuStatus.tone === "pending"
-                            ? "Разобрать"
-                            : skuStatus.tone === "active"
-                              ? "Проверить"
-                              : skuStatus.tone === "danger"
-                                ? "Исправить"
-                                : "Выбрать";
-                        return (
-                          <div
-                            key={item.id}
-                            className={`pn-competitorSkuRow${isActive ? " isActive" : ""}`}
-                          >
-                            <span>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleCompetitorSelection(itemId)}
-                                aria-label={`Выбрать SKU ${normalizeText(item.sku_gt) || itemId}`}
-                              />
-                            </span>
-                            <span className="pn-competitorSkuCode">{normalizeText(item.sku_gt) || normalizeText(item.sku_pim) || "—"}</span>
-                            <span className="pn-competitorSkuTitle">
-                              <strong>{normalizeText(item.title) || item.id}</strong>
-                            </span>
-                            <span className={`pn-competitorSkuReadiness is-${skuStatus.tone}`}>
-                              <strong>{skuStatus.label}</strong>
-                              {skuStatus.sources?.length ? (
-                                <span className="pn-competitorSourceChips">
-                                  {skuStatus.sources.map((source) => (
-                                    <em key={`${item.id}-${source.id}`} className={`is-${source.tone}`}>{source.label}</em>
-                                  ))}
-                                </span>
-                              ) : (
-                                <em>{skuStatus.detail}</em>
-                              )}
-                            </span>
-                            <button type="button" className="pn-competitorSkuAction" onClick={() => setCompetitorProductId(item.id)}>
-                              {actionLabel}
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {!filteredCompetitorGroupItems.length ? (
-                        <div className="pn-competitorSkuEmpty">По этому фильтру SKU не найдены.</div>
-                      ) : null}
-                    </div>
+                      <ProductCompetitorPanel
+                        productId={selectedCompetitorItem?.id || product.id}
+                        variant="compact"
+                        onEnriched={() => setReloadVersion((value) => value + 1)}
+                      />
+                    </aside>
                   </div>
                 ) : null}
-                <ProductCompetitorPanel
-                  productId={selectedCompetitorItem?.id || product.id}
-                  onEnriched={() => setReloadVersion((value) => value + 1)}
-                />
+                {competitorGroupItems.length <= 1 ? (
+                  <ProductCompetitorPanel
+                    productId={selectedCompetitorItem?.id || product.id}
+                    onEnriched={() => setReloadVersion((value) => value + 1)}
+                  />
+                ) : null}
               </div>
             ) : null}
 

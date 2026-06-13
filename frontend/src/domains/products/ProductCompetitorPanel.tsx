@@ -201,9 +201,11 @@ function sourceScanTime(summary: CompetitorSourceSummary): string {
 export default function ProductCompetitorPanel({
   productId,
   onEnriched,
+  variant = "default",
 }: {
   productId: string;
   onEnriched?: () => void | Promise<void>;
+  variant?: "default" | "compact";
 }) {
   const [context, setContext] = useState<ProductCompetitorResp | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -373,9 +375,8 @@ export default function ProductCompetitorPanel({
     void load();
   }, [productId]);
 
-  return (
-    <Card title="Конкурентные карточки">
-      <div className="productCompetitorPanel">
+  const content = (
+      <div className={`productCompetitorPanel${variant === "compact" ? " isCompact" : ""}`}>
         <div className="productCompetitorToolbar">
           <div>
             <div className="productWorkspaceMiniTitle">Сопоставление с конкурентами</div>
@@ -618,6 +619,13 @@ export default function ProductCompetitorPanel({
           </div>
         ) : null}
       </div>
+  );
+
+  if (variant === "compact") return content;
+
+  return (
+    <Card title="Конкурентные карточки">
+      {content}
     </Card>
   );
 }
