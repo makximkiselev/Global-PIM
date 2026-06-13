@@ -1826,6 +1826,41 @@ def _find_feature_for_source_name(
     return None
 
 
+def _raw_competitor_feature_code(source_id: str, spec_name: Any) -> str:
+    source_key = _source_value_key(source_id).replace(" ", "_") or "competitor"
+    spec_key = _source_value_key(spec_name).replace(" ", "_") or "field"
+    return f"raw_{source_key}_{spec_key}"[:96]
+
+
+def _raw_competitor_feature(
+    *,
+    source_id: str,
+    source_url: str,
+    spec_name: Any,
+    raw_value: Any,
+) -> Dict[str, Any]:
+    name = str(spec_name or "").strip()
+    value = str(raw_value or "").strip()
+    return {
+        "code": _raw_competitor_feature_code(source_id, name),
+        "name": name,
+        "value": value,
+        "field_layer": "raw_competitor",
+        "fill_source": "competitor_raw",
+        "locked": False,
+        "source_values": {
+            "competitor": {
+                source_id: {
+                    "raw_value": value,
+                    "resolved_value": value,
+                    "canonical_value": value,
+                    "source_url": source_url,
+                }
+            }
+        },
+    }
+
+
 def _confirmed_links_for_product(discovery: Dict[str, Any], product_id: str) -> List[Dict[str, Any]]:
     normalized_product_id = str(product_id or "").strip()
     out: List[Dict[str, Any]] = []
@@ -2440,12 +2475,18 @@ async def _merge_competitor_content_into_product(
             for normalized in _feature_lookup_keys(key):
                 if normalized:
                     feature_by_key[normalized] = feature
+    raw_feature_by_key: Dict[str, Dict[str, Any]] = {}
+    for feature in features:
+        code = str(feature.get("code") or "").strip()
+        if code.startswith("raw_"):
+            raw_feature_by_key[code] = feature
 
     source_evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
     competitors_evidence = source_evidence.get("competitors") if isinstance(source_evidence.get("competitors"), dict) else {}
 
     matched_count = 0
     unmatched_count = 0
+    raw_specs_count = 0
     enriched_sources: List[str] = []
     source_values = content.get("source_values") if isinstance(content.get("source_values"), dict) else {}
     existing_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
@@ -2514,12 +2555,51 @@ async def _merge_competitor_content_into_product(
         specs = result.get("specs") if isinstance(result.get("specs"), dict) else {}
         matched_specs: Dict[str, Any] = {}
         unmatched_specs: Dict[str, Any] = {}
+        raw_specs: Dict[str, Any] = {}
+        source_url = str((links.get(source_id) or {}).get("url") or "").strip()
+
+        def _store_raw_spec(spec_name: Any, raw_value: Any) -> None:
+            nonlocal raw_specs_count
+            raw_name = str(spec_name or "").strip()
+            raw_text_inner = str(raw_value or "").strip()
+            if not raw_name or not raw_text_inner or _is_protected_product_content_field(raw_name):
+                return
+            raw_specs[raw_name] = raw_text_inner
+            raw_code = _raw_competitor_feature_code(source_id, raw_name)
+            feature = raw_feature_by_key.get(raw_code)
+            if not feature:
+                feature = _raw_competitor_feature(
+                    source_id=source_id,
+                    source_url=source_url,
+                    spec_name=raw_name,
+                    raw_value=raw_text_inner,
+                )
+                features.append(feature)
+                raw_feature_by_key[raw_code] = feature
+                raw_specs_count += 1
+                return
+            feature["name"] = str(feature.get("name") or raw_name).strip() or raw_name
+            if not str(feature.get("value") or "").strip():
+                feature["value"] = raw_text_inner
+            feature["field_layer"] = str(feature.get("field_layer") or "raw_competitor")
+            feature["fill_source"] = str(feature.get("fill_source") or "competitor_raw")
+            feature_source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
+            competitor_values = feature_source_values.get("competitor") if isinstance(feature_source_values.get("competitor"), dict) else {}
+            competitor_values[source_id] = {
+                "raw_value": raw_text_inner,
+                "resolved_value": raw_text_inner,
+                "canonical_value": str(feature.get("value") or raw_text_inner).strip(),
+                "source_url": source_url,
+            }
+            feature_source_values["competitor"] = competitor_values
+            feature["source_values"] = feature_source_values
 
         for spec_name, raw_value in specs.items():
             normalized_name = _source_value_key(spec_name)
             raw_text = str(raw_value or "").strip()
             if not normalized_name or not raw_text:
                 continue
+            _store_raw_spec(spec_name, raw_text)
             if _is_protected_product_content_field(spec_name):
                 unmatched_specs[str(spec_name)] = raw_text
                 unmatched_count += 1
@@ -2592,7 +2672,6 @@ async def _merge_competitor_content_into_product(
                 content["description"] = description
 
         images = result.get("images") if isinstance(result.get("images"), list) else []
-        source_url = str((links.get(source_id) or {}).get("url") or "").strip()
         current_source_image_urls = {
             str((image.get("url") if isinstance(image, dict) else image) or "").strip()
             for image in images
@@ -2688,6 +2767,7 @@ async def _merge_competitor_content_into_product(
             "extracted_at": now_iso(),
             "images": result.get("images") if isinstance(result.get("images"), list) else [],
             "description": _clean_competitor_description_for_product(result.get("description")),
+            "raw_specs": raw_specs,
             "matched_specs": matched_specs,
             "unmatched_specs": unmatched_specs,
         }
@@ -2706,6 +2786,7 @@ async def _merge_competitor_content_into_product(
         "product": product,
         "matched_count": matched_count,
         "unmatched_count": unmatched_count,
+        "raw_specs_count": raw_specs_count,
         "enriched_sources": enriched_sources,
     }
 
@@ -5694,10 +5775,46 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any], backgro
 
 @router.post("/discovery/products/{product_id}/enrich")
 async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str, Any]:
+    return await _enrich_product_from_confirmed_competitors(product_id)
+
+
+def _update_product_enrich_job_phase(
+    job_id: str,
+    *,
+    phase: str,
+    message: str,
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id:
+        return
+    try:
+        job = get_pim_workflow_run(normalized_job_id, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+        if not isinstance(job, dict):
+            return
+        job.update({
+            "status": "running",
+            "phase": phase,
+            "message": message,
+            "updated_ts": monotonic(),
+        })
+        if extra:
+            job.update(extra)
+        upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+    except Exception:
+        pass
+
+
+async def _enrich_product_from_confirmed_competitors(product_id: str, *, job_id: str = "") -> Dict[str, Any]:
     normalized_product_id = str(product_id or "").strip()
     if not normalized_product_id:
         raise HTTPException(status_code=400, detail="product_id required")
 
+    _update_product_enrich_job_phase(
+        job_id,
+        phase="loading_links",
+        message="Проверяем подтвержденные ссылки конкурентов.",
+    )
     db = load_competitor_mapping_db()
     discovery = _ensure_discovery_doc(db)
     confirmed_links = _confirmed_links_for_product(discovery, normalized_product_id)
@@ -5710,6 +5827,12 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
         raise HTTPException(status_code=404, detail="Product not found")
 
     link_by_source = {str(link.get("source_id") or "").strip(): link for link in confirmed_links}
+    _update_product_enrich_job_phase(
+        job_id,
+        phase="collecting_competitor_cards",
+        message=f"Собираем карточки конкурентов: {len(confirmed_links)} ссылок.",
+        extra={"sources_count": len(confirmed_links)},
+    )
 
     async def _one(link: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         source_id = str(link.get("source_id") or "").strip()
@@ -5738,6 +5861,8 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
     extracted_pairs = await asyncio.gather(*[_one(link) for link in confirmed_links])
     extracted = {source_id: result for source_id, result in extracted_pairs if source_id}
     successful = {source_id: result for source_id, result in extracted.items() if result.get("ok")}
+    extracted_specs_count = sum(len(result.get("specs") or {}) for result in successful.values() if isinstance(result.get("specs"), dict))
+    extracted_media_count = sum(len(result.get("images") or []) for result in successful.values() if isinstance(result.get("images"), list))
     errors = [
         {
             "source_id": source_id,
@@ -5755,10 +5880,32 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
             "enriched_sources": [],
             "matched_count": 0,
             "unmatched_count": 0,
+            "raw_specs_count": 0,
+            "extracted_specs_count": 0,
+            "extracted_media_count": 0,
             "errors": errors,
         }
 
+    _update_product_enrich_job_phase(
+        job_id,
+        phase="collecting_attributes",
+        message=f"Сохраняем сырые характеристики: {extracted_specs_count}.",
+        extra={
+            "extracted_specs_count": extracted_specs_count,
+            "extracted_media_count": extracted_media_count,
+        },
+    )
     merged = await _merge_competitor_content_into_product(product, extracted=successful, links=link_by_source)
+    _update_product_enrich_job_phase(
+        job_id,
+        phase="collecting_media",
+        message=f"Сохраняем медиа: найдено {extracted_media_count}.",
+        extra={
+            "matched_count": int(merged.get("matched_count") or 0),
+            "unmatched_count": int(merged.get("unmatched_count") or 0),
+            "raw_specs_count": int(merged.get("raw_specs_count") or 0),
+        },
+    )
     saved = upsert_product_item(merged["product"])
     for source_id in successful.keys():
         link_key = f"{normalized_product_id}:{source_id}"
@@ -5775,17 +5922,34 @@ async def enrich_product_from_confirmed_competitors(product_id: str) -> Dict[str
         "enriched_sources": merged["enriched_sources"],
         "matched_count": merged["matched_count"],
         "unmatched_count": merged["unmatched_count"],
+        "raw_specs_count": merged.get("raw_specs_count") or 0,
+        "extracted_specs_count": extracted_specs_count,
+        "extracted_media_count": extracted_media_count,
         "errors": errors,
     }
 
 
 def _public_product_enrich_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    phase = str(job.get("phase") or "")
+    phase_labels = {
+        "waiting_batch": "ждет пачку",
+        "queued": "в очереди",
+        "batch_claimed": "взято в работу",
+        "loading_links": "проверяем ссылки",
+        "collecting_competitor_cards": "собираем карточки",
+        "extracting": "собираем данные",
+        "collecting_attributes": "собираем характеристики",
+        "collecting_media": "собираем медиа",
+        "completed": "готово",
+        "failed": "ошибка",
+    }
     return {
         "ok": True,
         "job_id": str(job.get("job_id") or job.get("run_id") or job.get("id") or ""),
         "product_id": str(job.get("product_id") or ""),
         "status": str(job.get("status") or "queued"),
-        "phase": str(job.get("phase") or ""),
+        "phase": phase,
+        "phase_label": phase_labels.get(phase, phase),
         "message": str(job.get("message") or ""),
         "created_at": job.get("created_at"),
         "started_at": job.get("started_at"),
@@ -5795,6 +5959,9 @@ def _public_product_enrich_job(job: Dict[str, Any]) -> Dict[str, Any]:
         "enriched_sources": job.get("enriched_sources") if isinstance(job.get("enriched_sources"), list) else [],
         "matched_count": int(job.get("matched_count") or 0),
         "unmatched_count": int(job.get("unmatched_count") or 0),
+        "raw_specs_count": int(job.get("raw_specs_count") or 0),
+        "extracted_specs_count": int(job.get("extracted_specs_count") or 0),
+        "extracted_media_count": int(job.get("extracted_media_count") or 0),
         "media_images_count": int(job.get("media_images_count") or 0),
         "errors": job.get("errors") if isinstance(job.get("errors"), list) else [],
         "error": str(job.get("error") or ""),
@@ -5896,7 +6063,7 @@ async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
     upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
     try:
         async with asyncio.timeout(110):
-            result = await enrich_product_from_confirmed_competitors(product_id)
+            result = await _enrich_product_from_confirmed_competitors(product_id, job_id=job_id)
         product = result.get("product") if isinstance(result.get("product"), dict) else {}
         content = product.get("content") if isinstance(product.get("content"), dict) else {}
         media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []
@@ -5909,6 +6076,9 @@ async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
             "enriched_sources": result.get("enriched_sources") if isinstance(result.get("enriched_sources"), list) else [],
             "matched_count": int(result.get("matched_count") or 0),
             "unmatched_count": int(result.get("unmatched_count") or 0),
+            "raw_specs_count": int(result.get("raw_specs_count") or 0),
+            "extracted_specs_count": int(result.get("extracted_specs_count") or 0),
+            "extracted_media_count": int(result.get("extracted_media_count") or 0),
             "media_images_count": len(media_images),
             "errors": result.get("errors") if isinstance(result.get("errors"), list) else [],
         })

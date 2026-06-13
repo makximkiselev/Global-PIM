@@ -235,10 +235,14 @@ type EnrichJobStatus = {
   product_id?: string;
   status?: string;
   phase?: string;
+  phase_label?: string;
   message?: string;
   enriched_sources?: string[];
   matched_count?: number;
   unmatched_count?: number;
+  raw_specs_count?: number;
+  extracted_specs_count?: number;
+  extracted_media_count?: number;
   media_images_count?: number;
   errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
   error?: string;
@@ -2669,7 +2673,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const status = String(job?.status || "").trim();
     if (!status) return "не запускался";
     if (status === "queued") return "в очереди";
-    if (status === "running") return "собирается";
+    if (status === "running") return String(job?.phase_label || "").trim() || "собирается";
     if (status === "completed") return "готово";
     if (status === "failed") return "ошибка";
     return status;
@@ -2689,10 +2693,21 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const media = Number(job.media_images_count || 0);
     const matched = Number(job.matched_count || 0);
     const unmatched = Number(job.unmatched_count || 0);
+    const rawSpecs = Number(job.raw_specs_count || 0);
+    const extractedSpecs = Number(job.extracted_specs_count || 0);
+    const extractedMedia = Number(job.extracted_media_count || 0);
     if (String(job.status) === "completed") {
-      return `медиа ${media} · параметры ${matched}/${matched + unmatched}`;
+      return `медиа ${media} · характеристики ${matched}/${matched + unmatched} · raw ${rawSpecs || extractedSpecs}`;
     }
     if (String(job.status) === "failed") return job.error || "не собрано";
+    if (String(job.status) === "running") {
+      if (String(job.phase || "") === "collecting_attributes") {
+        return extractedSpecs ? `найдено характеристик: ${extractedSpecs}` : "сохраняем сырые характеристики";
+      }
+      if (String(job.phase || "") === "collecting_media") {
+        return extractedMedia ? `найдено медиа: ${extractedMedia}` : "сохраняем медиа";
+      }
+    }
     return job.message || "ожидает batch";
   }
 
