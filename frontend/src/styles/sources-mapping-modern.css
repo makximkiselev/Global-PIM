@@ -5796,6 +5796,11 @@
   gap:10px;
 }
 
+.sourcesCommandWorkbench .mm-competitorInspectorSource.needs-manual-link{
+  border-color:rgba(239,68,68,.36);
+  background:linear-gradient(180deg, rgba(254,242,242,.92), var(--card) 78%);
+}
+
 .sourcesCommandWorkbench .mm-competitorInspectorSourceHead{
   display:flex;
   align-items:flex-start;
@@ -5840,6 +5845,30 @@
   word-break:break-all;
 }
 
+.sourcesCommandWorkbench .mm-competitorManualRequired{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  border:1px solid rgba(239,68,68,.28);
+  border-radius:10px;
+  background:#fff7f7;
+  padding:10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualRequired strong{
+  color:#991b1b;
+  font-size:12px;
+  line-height:1.2;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualRequired span{
+  color:#7f1d1d;
+  font-size:11px;
+  line-height:1.35;
+  font-weight:680;
+}
+
 .sourcesCommandWorkbench .mm-competitorManualLinkBox{
   display:grid;
   grid-template-columns:1fr auto;
@@ -5864,6 +5893,11 @@
   font:inherit;
   font-size:12px;
   font-weight:720;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorSource.needs-manual-link .mm-competitorManualLinkBox input{
+  border-color:rgba(239,68,68,.42);
+  background:#fff;
 }
 
 .sourcesCommandWorkbench .mm-competitorControlPane{

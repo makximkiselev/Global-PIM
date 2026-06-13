@@ -1120,6 +1120,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorStatusFilters, setCompetitorStatusFilters] = useState<Record<string, CompetitorProductSourceStatus | "all">>({});
   const [competitorManualUrls, setCompetitorManualUrls] = useState<Record<string, string>>({});
   const [competitorManualSubmitting, setCompetitorManualSubmitting] = useState("");
+  const [competitorManualPromptKey, setCompetitorManualPromptKey] = useState("");
   const [competitorPage, setCompetitorPage] = useState(1);
   const [catalogPanelHidden, setCatalogPanelHidden] = useState(false);
   const [competitorModeratingId, setCompetitorModeratingId] = useState("");
@@ -2709,6 +2710,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         body: JSON.stringify({ source_id: source, url }),
       });
       setCompetitorManualUrls((prev) => ({ ...prev, [urlKey]: "" }));
+      setCompetitorManualPromptKey((current) => (current === urlKey ? "" : current));
       if (selectedCatalogNode?.id) {
         await loadCompetitorDiscovery(selectedCatalogNode.id, { preferFocusedProduct: false });
       }
@@ -2943,13 +2945,29 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         method: "POST",
         body: JSON.stringify(action === "approve" ? { action } : { action, reason: "Отклонено из сопоставления категории" }),
       });
-      await loadCompetitorDiscovery(cid, { preferFocusedProduct: false, avoidProductId: pid });
+      if (action === "reject") {
+        const candidateSource = competitorDiscovery?.sources
+          ?.flatMap((source) => (source.candidate_items || []).map((candidate) => ({ sourceId: String(source.id || ""), candidate })))
+          .find((item) => item.candidate.id === id)?.sourceId || "";
+        if (pid && candidateSource) {
+          setCompetitorManualPromptKey(`${pid}:${candidateSource}`);
+          setCompetitorSampleProductId(pid);
+        }
+      }
+      await loadCompetitorDiscovery(cid, { preferFocusedProduct: false, avoidProductId: action === "reject" ? "" : pid });
     } catch (e) {
       setCompetitorDiscoveryError((e as Error).message || "Не удалось обновить карточку конкурента");
     } finally {
       setCompetitorModeratingId("");
     }
   }
+
+  useEffect(() => {
+    if (!competitorManualPromptKey) return;
+    const selector = `[data-competitor-manual-key="${CSS.escape(competitorManualPromptKey)}"]`;
+    const input = document.querySelector<HTMLInputElement>(selector);
+    input?.focus();
+  }, [competitorManualPromptKey, competitorDiscovery]);
 
   useEffect(() => {
     const categoryId = selectedCatalogNode?.id || "";
@@ -3940,8 +3958,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 const statusPayload = selectedSampleProduct?.statuses[source.code] || {};
                                                 const status = normalizeCompetitorProductStatus(statusPayload.status);
                                                 const manualKey = `${selectedSampleProductId}:${source.code}`;
+                                                const needsManualLink = status === "rejected" || competitorManualPromptKey === manualKey;
                                                 return (
-                                                  <section key={source.code} className="mm-competitorInspectorSource">
+                                                  <section key={source.code} className={`mm-competitorInspectorSource ${needsManualLink ? "needs-manual-link" : ""}`}>
                                                     <div className="mm-competitorInspectorSourceHead">
                                                       <div>
                                                         <span>{source.title}</span>
@@ -3982,9 +4001,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                         </div>
                                                       </div>
                                                     ))}
+                                                    {needsManualLink ? (
+                                                      <div className="mm-competitorManualRequired">
+                                                        <strong>Нужна корректная ссылка</strong>
+                                                        <span>Кандидат отклонен. Вставьте ссылку на точную карточку товара у этого конкурента.</span>
+                                                      </div>
+                                                    ) : null}
                                                     <div className="mm-competitorManualLinkBox">
-                                                      <span>Ручная ссылка</span>
+                                                      <span>{needsManualLink ? "Ссылка после отклонения" : "Ручная ссылка"}</span>
                                                       <input
+                                                        data-competitor-manual-key={manualKey}
                                                         value={competitorManualUrls[manualKey] || ""}
                                                         onChange={(event) => setCompetitorManualUrls((prev) => ({ ...prev, [manualKey]: event.target.value }))}
                                                         placeholder={`https://${source.domain || source.title}/...`}
