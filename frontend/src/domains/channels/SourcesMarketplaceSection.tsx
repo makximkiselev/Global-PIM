@@ -2749,6 +2749,26 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return out;
   }
 
+  function competitorProductFullyConfirmed(data: CompetitorCategoryDiscoveryResp | null, productId: string): boolean {
+    const normalizedProductId = String(productId || "").trim();
+    const sources = data?.sources || [];
+    if (!normalizedProductId || !sources.length) return false;
+    return sources.every((source) => (
+      normalizeCompetitorProductStatus(source.product_statuses?.[normalizedProductId]?.status) === "confirmed"
+    ));
+  }
+
+  function nextIncompleteCompetitorProductId(data: CompetitorCategoryDiscoveryResp | null, currentProductId: string): string {
+    const currentId = String(currentProductId || "").trim();
+    const sampleProducts = data?.category?.sample_products || [];
+    for (const product of sampleProducts) {
+      const productId = String(product.id || "").trim();
+      if (!productId || productId === currentId) continue;
+      if (!competitorProductFullyConfirmed(data, productId)) return productId;
+    }
+    return "";
+  }
+
   function normalizeCompetitorProductStatus(value: unknown): CompetitorProductSourceStatus {
     const status = String(value || "").trim();
     if (status === "confirmed" || status === "review" || status === "rejected") return status;
@@ -3107,7 +3127,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           setCompetitorSampleProductId(pid);
         }
       }
-      await loadCompetitorDiscovery(cid, { preferFocusedProduct: false, avoidProductId: action === "reject" ? "" : pid });
+      const fresh = await loadCompetitorDiscovery(cid, { preferFocusedProduct: false });
+      if (action === "approve" && pid && competitorProductFullyConfirmed(fresh, pid)) {
+        setCompetitorSampleProductId(nextIncompleteCompetitorProductId(fresh, pid));
+      } else if (pid) {
+        setCompetitorSampleProductId(pid);
+      }
     } catch (e) {
       setCompetitorDiscoveryError((e as Error).message || "Не удалось обновить карточку конкурента");
     } finally {
@@ -3814,6 +3839,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const selectedSampleProduct = filteredCompetitorRows.find((item) => item.id === competitorSampleProductId)
                                   || competitorRows.find((item) => item.id === competitorSampleProductId)
                                   || null;
+                                const selectedSampleProductComplete = selectedSampleProduct
+                                  ? sourceColumns.length > 0 && sourceColumns.every((source) => (
+                                    normalizeCompetitorProductStatus(selectedSampleProduct.statuses[source.code]?.status) === "confirmed"
+                                  ))
+                                  : true;
                                 const actionSampleProduct = selectedSampleProduct || filteredCompetitorRows[0] || competitorRows[0] || null;
                                 const selectedSampleProductId = String(selectedSampleProduct?.id || "").trim();
                                 const statusCountsBySource = Object.fromEntries(sourceColumns.map((source) => {
@@ -4046,13 +4076,22 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 ))}
                                                 {pagedCompetitorRows.map((row) => {
                                                   const active = row.id === selectedSampleProductId;
+                                                  const canSwitchToRow = active || !selectedSampleProductId || selectedSampleProductComplete;
                                                   return (
                                                     <button
                                                       key={row.id}
                                                       type="button"
-                                                      className={`mm-competitorMatchRow${active ? " isActive" : ""}`}
+                                                      className={`mm-competitorMatchRow${active ? " isActive" : ""}${!canSwitchToRow ? " isLocked" : ""}`}
                                                       style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) minmax(180px, 220px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
-                                                      onClick={() => setCompetitorSampleProductId(row.id)}
+                                                      title={!canSwitchToRow ? "Сначала подтвердите все карточки конкурентов в открытом инспекторе" : undefined}
+                                                      onClick={() => {
+                                                        if (!canSwitchToRow) {
+                                                          setCompetitorDiscoveryError("Сначала подтвердите все карточки конкурентов в открытом инспекторе.");
+                                                          return;
+                                                        }
+                                                        setCompetitorDiscoveryError("");
+                                                        setCompetitorSampleProductId(row.id);
+                                                      }}
                                                     >
                                                       <span className="mm-competitorMatchSku">{row.sku_gt || row.id}</span>
                                                       <strong>{row.title || row.id}</strong>

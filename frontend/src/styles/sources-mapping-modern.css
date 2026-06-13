@@ -5788,6 +5788,18 @@
   background:#f8fafc;
 }
 
+.sourcesCommandWorkbench .mm-competitorMatchRow.isLocked{
+  cursor:not-allowed;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchRow.isLocked:hover{
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchRow.isLocked:not(.isActive){
+  opacity:.72;
+}
+
 .sourcesCommandWorkbench .mm-competitorMatchRow > span,
 .sourcesCommandWorkbench .mm-competitorMatchRow > strong{
   display:flex;
