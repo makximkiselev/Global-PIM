@@ -4737,6 +4737,14 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
         and str(item.get("source_id") or "").strip() in ALLOWED_SITES
         and (item.get("status") in {"needs_review", "approved"} or str(item.get("url") or "").strip())
     }
+    product_has_review_candidates = {
+        str(item.get("product_id") or "").strip()
+        for item in candidates.values()
+        if isinstance(item, dict)
+        and str(item.get("product_id") or "").strip() in product_ids
+        and str(item.get("source_id") or "").strip() in ALLOWED_SITES
+        and str(item.get("status") or "").strip() == "needs_review"
+    }
 
     source_rows: List[Dict[str, Any]] = []
     for source in DISCOVERY_SOURCES:
@@ -4797,7 +4805,9 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
             grouped.values(),
             key=lambda row: (-int(row.get("products_count") or 0), -float(row.get("confidence") or 0.0), str(row.get("label") or "")),
         )[:5]
-        catalog_suggestions = await _scan_competitor_catalog_suggestions(source, category_name)
+        catalog_suggestions = []
+        if os.getenv("ENABLE_COMPETITOR_CATEGORY_LIVE_SUGGESTIONS", "0").strip().lower() in {"1", "true", "yes"}:
+            catalog_suggestions = await _scan_competitor_catalog_suggestions(source, category_name)
         known_urls = {str(item.get("url") or "").rstrip("/") for item in suggestions}
         for item in catalog_suggestions:
             if str(item.get("url") or "").rstrip("/") not in known_urls:
@@ -4854,6 +4864,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                 for item in sorted(
                     products,
                     key=lambda row: (
+                        str(row.get("id") or "").strip() not in product_has_review_candidates,
                         str(row.get("id") or "").strip() not in product_has_competitor_context,
                         str(row.get("title") or row.get("name") or ""),
                     ),

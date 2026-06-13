@@ -2551,7 +2551,25 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     };
   }, [catalogItems, catalogNodes, selectedCatalogId]);
 
-  async function loadCompetitorDiscovery(categoryId: string) {
+  function competitorReviewProductIds(data: CompetitorCategoryDiscoveryResp | null): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const source of data?.sources || []) {
+      for (const candidate of source.candidate_items || []) {
+        const productId = String(candidate.product_id || "").trim();
+        if (productId && !seen.has(productId)) {
+          seen.add(productId);
+          out.push(productId);
+        }
+      }
+    }
+    return out;
+  }
+
+  async function loadCompetitorDiscovery(
+    categoryId: string,
+    options: { preferFocusedProduct?: boolean; avoidProductId?: string } = {},
+  ) {
     const cid = String(categoryId || "").trim();
     if (!cid) return null;
     setCompetitorDiscoveryLoading(true);
@@ -2559,7 +2577,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     try {
       const data = await api<CompetitorCategoryDiscoveryResp>(`/competitor-mapping/discovery/categories/${encodeURIComponent(cid)}`);
       setCompetitorDiscovery(data);
-      syncCompetitorSampleProduct(data);
+      syncCompetitorSampleProduct(data, options);
       return data;
     } catch (e) {
       setCompetitorDiscovery(null);
@@ -2570,17 +2588,24 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
-  function syncCompetitorSampleProduct(data: CompetitorCategoryDiscoveryResp | null) {
+  function syncCompetitorSampleProduct(
+    data: CompetitorCategoryDiscoveryResp | null,
+    options: { preferFocusedProduct?: boolean; avoidProductId?: string } = {},
+  ) {
+    const preferFocusedProduct = options.preferFocusedProduct !== false;
+    const avoidProductId = String(options.avoidProductId || "").trim();
     const focusedId = String(focusedProductId || "").trim();
     const currentId = String(competitorSampleProductId || "").trim();
     const sampleProducts = data?.category?.sample_products || [];
     const sampleIds = new Set(sampleProducts.map((item) => String(item.id || "").trim()).filter(Boolean));
-    if (focusedId && sampleIds.has(focusedId)) {
+    const reviewProductIds = competitorReviewProductIds(data).filter((id) => sampleIds.has(id) && id !== avoidProductId);
+    const reviewProductSet = new Set(reviewProductIds);
+    if (preferFocusedProduct && focusedId && sampleIds.has(focusedId) && (!reviewProductIds.length || reviewProductSet.has(focusedId))) {
       if (focusedId !== currentId) setCompetitorSampleProductId(focusedId);
       return;
     }
-    if (currentId && sampleIds.has(currentId)) return;
-    const nextId = sampleProducts[0]?.id || "";
+    if (currentId && sampleIds.has(currentId) && (!reviewProductIds.length || reviewProductSet.has(currentId))) return;
+    const nextId = reviewProductIds[0] || sampleProducts.find((item) => String(item.id || "").trim() !== avoidProductId)?.id || "";
     if (nextId && nextId !== currentId) setCompetitorSampleProductId(nextId);
   }
 
@@ -2633,7 +2658,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         method: "POST",
         body: JSON.stringify(action === "approve" ? { action } : { action, reason: "Отклонено из сопоставления категории" }),
       });
-      await loadCompetitorDiscovery(cid);
+      await loadCompetitorDiscovery(cid, { preferFocusedProduct: false });
     } catch (e) {
       setCompetitorDiscoveryError((e as Error).message || "Не удалось обновить карточку конкурента");
     } finally {
@@ -2655,7 +2680,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       .then((data) => {
         if (!cancelled) {
           setCompetitorDiscovery(data);
-          syncCompetitorSampleProduct(data);
+          syncCompetitorSampleProduct(data, { preferFocusedProduct: true });
         }
       })
       .catch((e) => {
