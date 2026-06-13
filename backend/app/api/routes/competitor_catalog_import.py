@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import hashlib
+import html
 import json
 import os
 import re
@@ -30,6 +31,7 @@ MAX_PAGES_HARD_LIMIT = max(80, int(os.getenv("COMPETITOR_CATALOG_MAX_PAGES", "50
 MAX_PRODUCTS_HARD_LIMIT = max(120, int(os.getenv("COMPETITOR_CATALOG_MAX_PRODUCTS", "20000") or "20000"))
 REQUEST_TIMEOUT_SECONDS = max(12.0, float(os.getenv("COMPETITOR_CATALOG_REQUEST_TIMEOUT_SECONDS", "20") or "20"))
 USER_AGENT = "SmartPim competitor catalog importer (+https://pim.id-smart.ru)"
+RESTORE_CATEGORY_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 IMPORT_PROGRESS_SAVE_EVERY_PAGES = max(1, int(os.getenv("COMPETITOR_CATALOG_PROGRESS_SAVE_EVERY_PAGES", "5") or "5"))
 
 
@@ -98,9 +100,27 @@ def _persist_import_progress(run: dict[str, Any], products: dict[str, dict[str, 
         return
     try:
         store = _load_store()
+        old_run = store.setdefault("runs", {}).get(run["id"])
+        old_product_ids = {
+            str(item or "").strip()
+            for item in ((old_run or {}).get("product_ids") if isinstance(old_run, dict) else []) or []
+            if str(item or "").strip()
+        }
         store.setdefault("runs", {})[run["id"]] = dict(run)
         if products:
             stored_products = store.setdefault("products", {})
+            new_product_ids = {str(product.get("id") or "").strip() for product in products.values() if isinstance(product, dict)}
+            other_referenced_ids: set[str] = set()
+            for existing_run_id, existing_run in store.get("runs", {}).items():
+                if str(existing_run_id) == str(run["id"]) or not isinstance(existing_run, dict):
+                    continue
+                other_referenced_ids.update(
+                    str(item or "").strip()
+                    for item in (existing_run.get("product_ids") or [])
+                    if str(item or "").strip()
+                )
+            for stale_id in old_product_ids - new_product_ids - other_referenced_ids:
+                stored_products.pop(stale_id, None)
             for product in products.values():
                 if isinstance(product, dict) and product.get("id"):
                     stored_products[str(product["id"])] = product
@@ -129,6 +149,16 @@ def _normalize_url(url: str, base_url: str = "") -> str:
     path = parsed.path or "/"
     normalized = parsed._replace(path=path, fragment="")
     return normalized.geturl().rstrip("/")
+
+
+def _normalize_competitor_start_url(url: str) -> str:
+    normalized = _normalize_url(url)
+    parsed = urlparse(normalized)
+    host = (parsed.hostname or "").lower()
+    if host.endswith("re-store.ru") and parsed.path and not parsed.path.lower().startswith("/catalog/"):
+        if parsed.path != "/" and not parsed.path.endswith("/"):
+            return parsed._replace(path=f"{parsed.path}/").geturl()
+    return normalized
 
 
 def _normalize_url_with_fragment(url: str, base_url: str = "") -> str:
@@ -671,6 +701,118 @@ def _extract_links(page_url: str, html: str, host: str) -> list[str]:
     return out
 
 
+def _jsonish_string(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    raw = html.unescape(raw)
+    try:
+        return str(json.loads(f'"{raw}"') or "").strip()
+    except Exception:
+        return raw.replace('\\"', '"').replace("\\/", "/").strip()
+
+
+def _restore_category_slug_tokens(page_url: str) -> list[str]:
+    path_parts = [part for part in urlparse(page_url).path.lower().split("/") if part]
+    if not path_parts:
+        return []
+    slug = path_parts[-1]
+    tokens = [token for token in re.split(r"[^a-z0-9а-яё]+", slug) if len(token) > 1]
+    stop = {
+        "apple",
+        "smartfony",
+        "smartfon",
+        "telefony",
+        "catalog",
+        "products",
+        "product",
+    }
+    return [token for token in tokens if token not in stop]
+
+
+def _restore_category_product_rows(page_url: str, html_text: str, limit: int) -> list[dict[str, Any]]:
+    """
+    re-store category pages embed product objects in the first HTML response.
+    Index those objects directly; crawling every product page is slow and often
+    leaves background runs stuck before the matching table can show candidates.
+    """
+    if not html_text:
+        return []
+    parsed = urlparse(page_url)
+    if not (parsed.hostname or "").lower().endswith("re-store.ru"):
+        return []
+    if parsed.path.lower().startswith("/catalog/"):
+        return []
+
+    docs = [html_text, html_text.replace('\\"', '"').replace("\\/", "/")]
+    link_rx = re.compile(r'(?:\\?")link(?:\\?")\s*:\s*(?:\\?")(?P<link>/catalog/[^"\\]+/?)', re.IGNORECASE)
+    field_rx_cache: dict[str, re.Pattern[str]] = {}
+
+    def _last_field(fragment: str, key: str) -> str:
+        rx = field_rx_cache.get(key)
+        if rx is None:
+            rx = re.compile(rf'(?:\\?"){re.escape(key)}(?:\\?")\s*:\s*(?:\\?")(?P<value>[^"\\]*)', re.IGNORECASE | re.DOTALL)
+            field_rx_cache[key] = rx
+        values = [m.group("value") for m in rx.finditer(fragment)]
+        return _jsonish_string(values[-1]) if values else ""
+
+    def _best_image(fragment: str) -> str:
+        matches = re.findall(r'https://static\.re-store\.ru/[^"\\]+?\.(?:jpg|jpeg|png|webp)', fragment, flags=re.I)
+        return _normalize_url(_jsonish_string(matches[-1]), page_url) if matches else ""
+
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for doc in docs:
+        for match in link_rx.finditer(doc):
+            link = _jsonish_string(match.group("link"))
+            url = _normalize_url(urljoin("https://re-store.ru", link), page_url)
+            if not url or url in seen:
+                continue
+            window = doc[max(0, match.start() - 3500) : min(len(doc), match.end() + 1200)]
+            title = _last_field(window, "name")
+            sku = _last_field(window, "skuCode") or url.rstrip("/").split("/")[-1]
+            brand = _last_field(window, "brandName") or _last_field(window, "brand")
+            price = _last_field(window, "price") or _last_field(window, "marketSellerPrice")
+            if not title:
+                continue
+            seen.add(url)
+            image_url = _best_image(window)
+            rows.append(
+                {
+                    "id": _product_id_for(url),
+                    "url": url,
+                    "base_url": _normalize_url(url),
+                    "title": title[:300],
+                    "description": "",
+                    "brand": brand,
+                    "sku": sku,
+                    "price": str(price or "").strip(),
+                    "currency": "RUB" if str(price or "").strip() else "",
+                    "images": [image_url] if image_url else [],
+                    "specs": {},
+                    "spec_count": 0,
+                    "variants": [],
+                    "variant_count": 0,
+                    "source_type": "competitor_site_category_index",
+                    "confidence": 80,
+                    "updated_at": _now_iso(),
+                }
+            )
+    slug_tokens = _restore_category_slug_tokens(page_url)
+    if len(slug_tokens) >= 2:
+        filtered = [
+            row
+            for row in rows
+            if all(
+                token in _norm_for_match(f"{row.get('title') or ''} {row.get('sku') or ''} {row.get('url') or ''}")
+                for token in slug_tokens
+            )
+        ]
+        if filtered:
+            return filtered[:limit]
+    return rows[:limit]
+
+
 def _variant_title(base_title: str, variant: dict[str, Any]) -> str:
     label = _text(variant.get("label") or _variant_label_from_url(str(variant.get("url") or "")))
     if not label:
@@ -756,6 +898,22 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> str:
     return html
 
 
+async def _fetch_restore_category_html(url: str) -> str:
+    async with httpx.AsyncClient(
+        headers={
+            "User-Agent": RESTORE_CATEGORY_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+        },
+        timeout=httpx.Timeout(REQUEST_TIMEOUT_SECONDS, connect=5.0),
+        follow_redirects=True,
+        verify=False,
+    ) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.text
+
+
 def _browser_fallback_allowed(host: str) -> bool:
     normalized = str(host or "").lower()
     return normalized.endswith("store77.net") or normalized.endswith("re-store.ru") or normalized.endswith("biggeek.ru")
@@ -823,7 +981,7 @@ async def _crawl_site(
     run_id: str | None = None,
     persist_progress: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    start_url = _normalize_url(request.start_url)
+    start_url = _normalize_competitor_start_url(request.start_url)
     if not start_url:
         raise HTTPException(status_code=400, detail="BAD_START_URL")
     parsed = urlparse(start_url)
@@ -857,6 +1015,27 @@ async def _crawl_site(
         _persist_import_progress(run)
 
     async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=False) as client:
+        if host.endswith("re-store.ru") and not parsed.path.lower().startswith("/catalog/"):
+            try:
+                html_text = await _fetch_restore_category_html(start_url)
+                fast_products = _restore_category_product_rows(start_url, html_text, request.max_products)
+            except Exception as exc:
+                errors.append(f"{start_url}: {type(exc).__name__}")
+                fast_products = []
+            if fast_products:
+                products = {str(item["id"]): item for item in fast_products if item.get("id")}
+                run["status"] = "completed"
+                run["finished_at"] = _now_iso()
+                run["updated_at"] = _now_iso()
+                run["pages_scanned"] = 1
+                run["products_found"] = len(products)
+                run["errors"] = errors[:20]
+                run["product_ids"] = list(products.keys())
+                run["queued_count"] = 0
+                if persist_progress:
+                    _persist_import_progress(run, products)
+                return run, list(products.values())
+
         try:
             robots = await _fetch(client, f"{parsed.scheme}://{parsed.netloc}/robots.txt")
             if robots and not _robots_allows(robots):
@@ -1094,7 +1273,7 @@ async def _execute_catalog_import_run_safe(run_id: str, payload: dict[str, Any],
 
 @router.post("/runs")
 async def create_competitor_catalog_run(payload: CompetitorCatalogRunRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
-    start_url = _normalize_url(payload.start_url)
+    start_url = _normalize_competitor_start_url(payload.start_url)
     if not start_url:
         raise HTTPException(status_code=400, detail="BAD_START_URL")
     parsed = urlparse(start_url)
