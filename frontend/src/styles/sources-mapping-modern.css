@@ -3768,6 +3768,66 @@
   margin:12px;
   border-radius:12px;
   box-shadow:none;
+  flex-wrap:wrap;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist{
+  flex:1 1 100%;
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  margin-top:14px;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist div{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  padding:12px;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist div.isDone{
+  border-color:rgba(22, 163, 74, .28);
+  background:rgba(22, 163, 74, .06);
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist span{
+  display:inline-flex;
+  align-items:center;
+  min-height:22px;
+  border:1px solid rgba(var(--brand-rgb), .24);
+  border-radius:999px;
+  background:rgba(var(--brand-rgb), .08);
+  color:rgba(var(--brand-rgb), .96);
+  padding:0 8px;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist .isDone span{
+  border-color:rgba(22, 163, 74, .28);
+  background:rgba(22, 163, 74, .1);
+  color:#15803d;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist strong{
+  display:block;
+  margin-top:9px;
+  color:var(--text);
+  font-size:14px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelChecklist p{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.42;
+  font-weight:700;
 }
 
 .sourcesCommandWorkbench .sourcesStepBlocked{
@@ -5002,6 +5062,11 @@
   .sourcesCommandWorkbench .paramsInfoModelSetupActions .btn{
     width:100%;
     justify-content:center;
+  }
+
+  .sourcesCommandWorkbench .paramsInfoModelChecklist{
+    grid-template-columns:1fr;
+    margin-top:4px;
   }
 }
 

@@ -943,6 +943,23 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(selectedCategoryId)}`)}>Собрать модель категории</Link>
               <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить источники</Link>
             </div>
+            <div className="paramsInfoModelChecklist" aria-label="Что нужно для сопоставления параметров">
+              <div className="isDone">
+                <span>Готово</span>
+                <strong>Категории площадок связаны</strong>
+                <p>Можно брать требования Я.Маркета и Ozon для этой ветки каталога.</p>
+              </div>
+              <div>
+                <span>Нужно</span>
+                <strong>Собрать draft PIM-полей</strong>
+                <p>Система объединит поля товаров, площадок и конкурентов в предложения модели категории.</p>
+              </div>
+              <div>
+                <span>После</span>
+                <strong>Вернуться к маппингу</strong>
+                <p>Здесь появится очередь параметров: подтвердить, объединить дубли и отметить системные поля.</p>
+              </div>
+            </div>
           </div>
         ) : (
         <div className="paramsFocusLayout">
