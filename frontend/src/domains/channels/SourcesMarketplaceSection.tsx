@@ -341,7 +341,7 @@ type AttrSaveResp = {
   sources?: Record<string, any>;
 };
 
-type CompetitorSiteKey = "restore" | "store77";
+type CompetitorSiteKey = "restore" | "store77" | "biggeek";
 type CompetitorFieldMeta = {
   name: string;
   section?: string;
@@ -456,6 +456,7 @@ const MAPPING_PROVIDER_CODES = Object.keys(PROVIDER_SLOTS);
 const COMPETITOR_PROVIDER_SLOTS: Record<CompetitorSiteKey, string> = {
   restore: "re:Store",
   store77: "Store77",
+  biggeek: "Big Geek",
 };
 const COMPETITOR_PROVIDER_CODES = Object.keys(COMPETITOR_PROVIDER_SLOTS) as CompetitorSiteKey[];
 

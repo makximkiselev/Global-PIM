@@ -6,7 +6,7 @@ import EmptyState from "../../components/ui/EmptyState";
 import { api } from "../../lib/api";
 
 type CompetitorSource = {
-  id: "restore" | "store77";
+  id: string;
   name: string;
   domain: string;
   status: string;
@@ -15,7 +15,7 @@ type CompetitorSource = {
 type CompetitorCandidate = {
   id: string;
   product_id: string;
-  source_id: "restore" | "store77";
+  source_id: string;
   source_name?: string;
   url: string;
   title?: string;
@@ -44,7 +44,7 @@ type CompetitorLink = {
 };
 
 type CompetitorSourceSummary = {
-  source_id: "restore" | "store77";
+  source_id: string;
   source_name: string;
   domain: string;
   status: "confirmed" | "review" | "no_exact_match" | "scan_error" | "empty" | string;
@@ -70,6 +70,7 @@ type CompetitorSourceSummary = {
 const FALLBACK_COMPETITOR_SOURCES: CompetitorSource[] = [
   { id: "restore", name: "re-store", domain: "re-store.ru", status: "active" },
   { id: "store77", name: "store77", domain: "store77.net", status: "active" },
+  { id: "biggeek", name: "Big Geek", domain: "biggeek.ru", status: "active" },
 ];
 
 type ProductCompetitorResp = {
@@ -328,7 +329,7 @@ export default function ProductCompetitorPanel({
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState("");
   const [enrichNotice, setEnrichNotice] = useState("");
-  const [manualSource, setManualSource] = useState<"restore" | "store77">("store77");
+  const [manualSource, setManualSource] = useState<string>("store77");
   const [manualUrl, setManualUrl] = useState("");
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
@@ -793,14 +794,17 @@ export default function ProductCompetitorPanel({
             <p>Основной сценарий — нажать «Найти карточки» и выбрать кандидата. Ссылку вручную добавляем только когда все варианты отклонены.</p>
           </div>
           <div className="productCompetitorManualForm">
-            <select value={manualSource} onChange={(event) => setManualSource(event.target.value as "restore" | "store77")}>
-              <option value="store77">store77</option>
-              <option value="restore">re-store</option>
+            <select value={manualSource} onChange={(event) => setManualSource(event.target.value)}>
+              {sources.map((source) => (
+                <option key={source.id} value={source.id}>
+                  {source.name || source.id}
+                </option>
+              ))}
             </select>
             <input
               value={manualUrl}
               onChange={(event) => setManualUrl(event.target.value)}
-              placeholder={manualSource === "store77" ? "https://store77.net/..." : "https://re-store.ru/..."}
+              placeholder={sources.find((source) => source.id === manualSource)?.domain ? `https://${sources.find((source) => source.id === manualSource)?.domain}/...` : "https://..."}
             />
             <Button onClick={() => void addManualLink()} disabled={manualSubmitting || !manualUrl.trim()}>
               {manualSubmitting ? "Сохраняю…" : "Добавить"}

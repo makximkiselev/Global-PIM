@@ -19,6 +19,10 @@ type ImportRun = {
   errors: string[];
   product_ids: string[];
   limits: { max_pages: number; max_products: number };
+  queued_count?: number;
+  started_at?: string;
+  finished_at?: string;
+  error?: string;
 };
 
 type ImportedProduct = {
@@ -130,8 +134,11 @@ function parseApiError(error: unknown) {
 }
 
 function runStatusLabel(status: string) {
+  if (status === "queued") return "В очереди";
   if (status === "completed") return "Готово";
   if (status === "running") return "Идет импорт";
+  if (status === "cancel_requested") return "Останавливается";
+  if (status === "cancelled") return "Остановлен";
   if (status === "failed") return "Ошибка";
   return status || "На проверке";
 }
@@ -437,6 +444,7 @@ export default function CompetitorCatalogImportFeature() {
   const [queueFilter, setQueueFilter] = useState<ProductQueueFilter>("all");
 
   const lastRun = runs[0] || null;
+  const hasActiveRun = runs.some((run) => ["queued", "running", "cancel_requested"].includes(String(run.status || "")));
   const queueCounts = useMemo(() => {
     const counts: Record<ProductQueueFilter, number> = { all: products.length, unlinked: 0, ready: 0, applied: 0, ignored: 0 };
     for (const product of products) {
@@ -485,6 +493,14 @@ export default function CompetitorCatalogImportFeature() {
       .catch((err) => setError(parseApiError(err)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!hasActiveRun) return;
+    const timer = window.setInterval(() => {
+      loadRuns().catch((err) => setError(parseApiError(err)));
+    }, 3500);
+    return () => window.clearInterval(timer);
+  }, [hasActiveRun]);
 
   useEffect(() => {
     if (!selectedProduct?.id || selectedProduct.link?.status === "linked" || selectedProduct.link?.status === "ignored") {
@@ -577,7 +593,7 @@ export default function CompetitorCatalogImportFeature() {
         body: JSON.stringify({ name, start_url: startUrl, max_pages: maxPages, max_products: maxProducts }),
       });
       setProducts(data.products || []);
-      setSelectedId(data.products?.[0]?.id || "");
+      setSelectedId("");
       await loadRuns();
     } catch (err) {
       setError(parseApiError(err));
@@ -595,7 +611,7 @@ export default function CompetitorCatalogImportFeature() {
           <p>Сканирование сайта конкурента во внешний каталог. Найденные карточки не попадут в товары, пока их не сопоставят с нашими SKU.</p>
         </div>
         <div className="cciCommandControls">
-          <Badge tone="pending">Быстрый режим</Badge>
+          <Badge tone={hasActiveRun ? "warning" : "pending"}>{hasActiveRun ? "Идет импорт" : "Очередь импорта"}</Badge>
         </div>
       </header>
 
@@ -620,11 +636,11 @@ export default function CompetitorCatalogImportFeature() {
             <div className="cciLimitsRow">
               <label>
                 <span>Страниц</span>
-                <TextInput type="number" value={maxPages} min={1} max={80} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} />
+                <TextInput type="number" value={maxPages} min={1} max={10000} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} />
               </label>
               <label>
                 <span>Товаров</span>
-                <TextInput type="number" value={maxProducts} min={1} max={120} onChange={(event) => setMaxProducts(Number(event.target.value) || 1)} />
+                <TextInput type="number" value={maxProducts} min={1} max={50000} onChange={(event) => setMaxProducts(Number(event.target.value) || 1)} />
               </label>
             </div>
           </div>
@@ -632,7 +648,12 @@ export default function CompetitorCatalogImportFeature() {
             <Button variant="primary" type="submit" disabled={running || !startUrl.trim()}>
               {running ? "Сканирую..." : "Запустить импорт"}
             </Button>
-            {lastRun ? <span>{runStatusLabel(lastRun.status)} · {lastRun.host}</span> : null}
+            {lastRun ? (
+              <span>
+                {runStatusLabel(lastRun.status)} · {lastRun.host} · {lastRun.pages_scanned || 0} стр. · {lastRun.products_found || 0} карточек
+                {typeof lastRun.queued_count === "number" ? ` · ${lastRun.queued_count} в очереди` : ""}
+              </span>
+            ) : null}
           </div>
           {error ? <div className="cciError">{error}</div> : null}
         </form>

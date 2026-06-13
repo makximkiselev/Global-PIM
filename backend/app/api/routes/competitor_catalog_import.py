@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,12 +13,12 @@ from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.competitors.browser_fetch import fetch_html as fetch_browser_html
 from app.core.json_store import read_doc, with_lock, write_doc
-from app.core.tenant_context import current_tenant_organization_id
+from app.core.tenant_context import current_tenant_organization_id, reset_current_tenant_organization_id, set_current_tenant_organization_id
 from app.core.products.service import patch_product_service
 from app.storage.relational_pim_store import query_products_full
 
@@ -24,10 +26,11 @@ router = APIRouter(prefix="/competitor-catalog", tags=["competitor-catalog"])
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = BASE_DIR / "data"
-MAX_PAGES_HARD_LIMIT = 80
-MAX_PRODUCTS_HARD_LIMIT = 120
-REQUEST_TIMEOUT_SECONDS = 12.0
+MAX_PAGES_HARD_LIMIT = max(80, int(os.getenv("COMPETITOR_CATALOG_MAX_PAGES", "5000") or "5000"))
+MAX_PRODUCTS_HARD_LIMIT = max(120, int(os.getenv("COMPETITOR_CATALOG_MAX_PRODUCTS", "20000") or "20000"))
+REQUEST_TIMEOUT_SECONDS = max(12.0, float(os.getenv("COMPETITOR_CATALOG_REQUEST_TIMEOUT_SECONDS", "20") or "20"))
 USER_AGENT = "SmartPim competitor catalog importer (+https://pim.id-smart.ru)"
+IMPORT_PROGRESS_SAVE_EVERY_PAGES = max(1, int(os.getenv("COMPETITOR_CATALOG_PROGRESS_SAVE_EVERY_PAGES", "5") or "5"))
 
 
 class CompetitorCatalogRunRequest(BaseModel):
@@ -82,6 +85,37 @@ def _load_store() -> dict[str, Any]:
 
 def _save_store(doc: dict[str, Any]) -> None:
     write_doc(_store_path(), doc)
+
+
+def _public_run(run: dict[str, Any]) -> dict[str, Any]:
+    hidden = {"queued", "pages_seen", "errors_full"}
+    return {key: value for key, value in dict(run or {}).items() if key not in hidden}
+
+
+def _persist_import_progress(run: dict[str, Any], products: dict[str, dict[str, Any]] | None = None) -> None:
+    lock = with_lock(f"competitor_catalog_imports:{_tenant_safe_key()}")
+    if not lock.acquire(timeout=10):
+        return
+    try:
+        store = _load_store()
+        store.setdefault("runs", {})[run["id"]] = dict(run)
+        if products:
+            stored_products = store.setdefault("products", {})
+            for product in products.values():
+                if isinstance(product, dict) and product.get("id"):
+                    stored_products[str(product["id"])] = product
+        _save_store(store)
+    finally:
+        lock.release()
+
+
+def _run_cancel_requested(run_id: str) -> bool:
+    try:
+        store = _load_store()
+        run = store.get("runs", {}).get(run_id)
+        return isinstance(run, dict) and str(run.get("status") or "") == "cancel_requested"
+    except Exception:
+        return False
 
 
 def _normalize_url(url: str, base_url: str = "") -> str:
@@ -476,13 +510,19 @@ def _extract_product(page_url: str, html: str) -> dict[str, Any] | None:
     sku = _text(product_node.get("sku") if product_node else "")
     parsed_page = urlparse(page_url)
     path_parts = [part for part in parsed_page.path.split("/") if part]
+    page_host = (parsed_page.hostname or "").lower()
+    page_path = parsed_page.path.lower()
     if (
-        (parsed_page.hostname or "").lower().endswith("store77.net")
+        page_host.endswith("store77.net")
         and len(path_parts) <= 1
         and not images
         and not specs
         and not price.get("price")
     ):
+        return None
+    if page_host.endswith("biggeek.ru") and not page_path.startswith("/products/"):
+        return None
+    if page_host.endswith("re-store.ru") and not page_path.startswith("/catalog/"):
         return None
 
     signals = 0
@@ -525,6 +565,10 @@ def _score_product_link(url: str, start_url: str = "") -> int:
         score -= 5
     elif start_path and path.startswith(start_path + "/"):
         score += 10
+    if path.startswith("/products/"):
+        score += 20
+    if "/products/" in path:
+        score += 10
     for token in (
         "product",
         "products",
@@ -541,6 +585,11 @@ def _score_product_link(url: str, start_url: str = "") -> int:
         "honor",
         "xiaomi",
         "smartfon",
+        "smartfony",
+        "mobil",
+        "gadzhet",
+        "gadgets",
+        "aksessuar",
         "noutbuk",
         "planshet",
     ):
@@ -584,19 +633,37 @@ def _robots_allows(robots_text: str) -> bool:
 
 
 async def _fetch(client: httpx.AsyncClient, url: str) -> str:
-    response = await client.get(url)
-    response.raise_for_status()
+    host = (urlparse(url).hostname or "").lower()
+    try:
+        response = await client.get(url)
+        response.raise_for_status()
+    except Exception:
+        if _browser_fallback_allowed(host):
+            try:
+                html = await fetch_browser_html(url, timeout_ms=45000)
+                if html.startswith("__ERROR__:"):
+                    raise RuntimeError(html.split("\n", 1)[0].replace("__ERROR__:", "").strip("_") or "BROWSER_FETCH_ERROR")
+                return html
+            except Exception:
+                raise
+        raise
     content_type = str(response.headers.get("content-type") or "").lower()
     if "text/html" not in content_type and "xml" not in content_type and "text/plain" not in content_type and content_type:
         return ""
     html = response.text
-    host = (urlparse(url).hostname or "").lower()
     if host.endswith("store77.net") and _looks_like_store77_challenge(html):
         try:
-            return await fetch_browser_html(url, timeout_ms=12000)
+            html = await fetch_browser_html(url, timeout_ms=45000)
         except Exception:
             return html
+    if html.startswith("__ERROR__:"):
+        raise RuntimeError(html.split("\n", 1)[0].replace("__ERROR__:", "").strip("_") or "BROWSER_FETCH_ERROR")
     return html
+
+
+def _browser_fallback_allowed(host: str) -> bool:
+    normalized = str(host or "").lower()
+    return normalized.endswith("store77.net") or normalized.endswith("re-store.ru") or normalized.endswith("biggeek.ru")
 
 
 def _looks_like_store77_challenge(html: str) -> bool:
@@ -610,22 +677,57 @@ def _looks_like_store77_challenge(html: str) -> bool:
 
 async def _sitemap_urls(client: httpx.AsyncClient, start_url: str, host: str, limit: int) -> list[str]:
     sitemap_url = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}/sitemap.xml"
+    seen_sitemaps: set[str] = set()
+    out: list[str] = []
+
+    async def _read_sitemap(url: str, depth: int = 0) -> None:
+        if depth > 3 or len(out) >= limit:
+            return
+        normalized_sitemap = _normalize_url(url)
+        if not normalized_sitemap or normalized_sitemap in seen_sitemaps:
+            return
+        seen_sitemaps.add(normalized_sitemap)
+        try:
+            response = await client.get(normalized_sitemap)
+            response.raise_for_status()
+            raw = response.content
+            if normalized_sitemap.endswith(".gz"):
+                raw = gzip.decompress(raw)
+            xml = raw.decode(response.encoding or "utf-8", errors="ignore")
+        except Exception:
+            try:
+                xml = await _fetch(client, normalized_sitemap)
+            except Exception:
+                return
+        locs = re.findall(r"<loc>\s*([^<]+)\s*</loc>", xml, flags=re.I)
+        for loc in locs:
+            normalized = _normalize_url(loc)
+            if not normalized:
+                continue
+            lower = normalized.lower()
+            if lower.endswith(".xml") or lower.endswith(".xml.gz"):
+                await _read_sitemap(normalized, depth + 1)
+                if len(out) >= limit:
+                    return
+                continue
+            if _same_host(normalized, host) and normalized not in out:
+                out.append(normalized)
+                if len(out) >= limit:
+                    return
+
     try:
-        xml = await _fetch(client, sitemap_url)
+        await _read_sitemap(sitemap_url)
     except Exception:
         return []
-    urls = re.findall(r"<loc>\s*([^<]+)\s*</loc>", xml, flags=re.I)
-    out: list[str] = []
-    for url in urls:
-        normalized = _normalize_url(url)
-        if normalized and _same_host(normalized, host) and normalized not in out:
-            out.append(normalized)
-        if len(out) >= limit:
-            break
     return out
 
 
-async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+async def _crawl_site(
+    request: CompetitorCatalogRunRequest,
+    *,
+    run_id: str | None = None,
+    persist_progress: bool = False,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     start_url = _normalize_url(request.start_url)
     if not start_url:
         raise HTTPException(status_code=400, detail="BAD_START_URL")
@@ -640,6 +742,24 @@ async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, A
     queued: list[str] = [start_url]
     products: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
+    run = {
+        "id": run_id or _run_id_for(start_url),
+        "name": request.name.strip() or host,
+        "start_url": start_url,
+        "host": host,
+        "status": "running",
+        "created_at": _now_iso(),
+        "started_at": _now_iso(),
+        "updated_at": _now_iso(),
+        "pages_scanned": 0,
+        "products_found": 0,
+        "errors": [],
+        "product_ids": [],
+        "limits": {"max_pages": request.max_pages, "max_products": request.max_products},
+        "queued_count": 1,
+    }
+    if persist_progress:
+        _persist_import_progress(run)
 
     async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=False) as client:
         try:
@@ -655,6 +775,12 @@ async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, A
         queued.extend([url for url in sitemap_candidates if url not in queued])
 
         while queued and len(pages_seen) < request.max_pages and len(products) < request.max_products:
+            if _run_cancel_requested(run["id"]):
+                run["status"] = "cancelled"
+                run["updated_at"] = _now_iso()
+                if persist_progress:
+                    _persist_import_progress(run, products)
+                break
             url = queued.pop(0)
             if url in pages_seen or not _same_host(url, host):
                 continue
@@ -663,6 +789,7 @@ async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, A
                 html = await _fetch(client, url)
             except Exception as exc:
                 errors.append(f"{url}: {type(exc).__name__}")
+                run["errors"] = errors[:20]
                 await asyncio.sleep(0.08)
                 continue
             if not html:
@@ -680,22 +807,26 @@ async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, A
                 queued = next_links[:80] + queued
             elif next_links:
                 queued.extend(next_links[:40])
+            run["pages_scanned"] = len(pages_seen)
+            run["products_found"] = len(products)
+            run["product_ids"] = list(products.keys())
+            run["queued_count"] = len(queued)
+            run["updated_at"] = _now_iso()
+            if persist_progress and len(pages_seen) % IMPORT_PROGRESS_SAVE_EVERY_PAGES == 0:
+                _persist_import_progress(run, products)
             await asyncio.sleep(0.08)
 
-    run = {
-        "id": _run_id_for(start_url),
-        "name": request.name.strip() or host,
-        "start_url": start_url,
-        "host": host,
-        "status": "completed",
-        "created_at": _now_iso(),
-        "updated_at": _now_iso(),
-        "pages_scanned": len(pages_seen),
-        "products_found": len(products),
-        "errors": errors[:20],
-        "product_ids": list(products.keys()),
-        "limits": {"max_pages": request.max_pages, "max_products": request.max_products},
-    }
+    if run.get("status") != "cancelled":
+        run["status"] = "completed"
+    run["finished_at"] = _now_iso()
+    run["updated_at"] = _now_iso()
+    run["pages_scanned"] = len(pages_seen)
+    run["products_found"] = len(products)
+    run["errors"] = errors[:20]
+    run["product_ids"] = list(products.keys())
+    run["queued_count"] = len(queued)
+    if persist_progress:
+        _persist_import_progress(run, products)
     return run, list(products.values())
 
 
@@ -705,7 +836,7 @@ def list_competitor_catalog_runs() -> dict[str, Any]:
     runs = list(store.get("runs", {}).values())
     runs.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
     return {
-        "runs": runs[:30],
+        "runs": [_public_run(run) for run in runs[:30] if isinstance(run, dict)],
         "total_products": len(store.get("products", {})),
         "updated_at": max((str(row.get("updated_at") or "") for row in runs), default=None),
     }
@@ -718,7 +849,7 @@ def get_competitor_catalog_run(run_id: str) -> dict[str, Any]:
     if not isinstance(run, dict):
         raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
     products = [store.get("products", {}).get(pid) for pid in run.get("product_ids", [])]
-    return {"run": run, "products": [_public_product(p, store) for p in products if isinstance(p, dict)]}
+    return {"run": _public_run(run), "products": [_public_product(p, store) for p in products if isinstance(p, dict)]}
 
 
 @router.get("/products/{product_id}/suggestions")
@@ -834,19 +965,90 @@ def apply_competitor_product_to_pim(product_id: str, payload: CompetitorCatalogA
     }
 
 
+async def _execute_catalog_import_run_safe(run_id: str, payload: dict[str, Any], organization_id: str) -> None:
+    token = set_current_tenant_organization_id(organization_id)
+    try:
+        request = CompetitorCatalogRunRequest.model_validate(payload)
+        await _crawl_site(request, run_id=run_id, persist_progress=True)
+    except Exception as exc:
+        lock = with_lock(f"competitor_catalog_imports:{_tenant_safe_key()}")
+        if not lock.acquire(timeout=10):
+            return
+        try:
+            store = _load_store()
+            run = store.setdefault("runs", {}).get(run_id)
+            if not isinstance(run, dict):
+                run = {"id": run_id, "created_at": _now_iso()}
+            run.update(
+                {
+                    "status": "failed",
+                    "error": str(exc) or type(exc).__name__,
+                    "updated_at": _now_iso(),
+                    "finished_at": _now_iso(),
+                }
+            )
+            store["runs"][run_id] = run
+            _save_store(store)
+        finally:
+            lock.release()
+    finally:
+        reset_current_tenant_organization_id(token)
+
+
 @router.post("/runs")
-async def create_competitor_catalog_run(payload: CompetitorCatalogRunRequest) -> dict[str, Any]:
-    run, products = await _crawl_site(payload)
+async def create_competitor_catalog_run(payload: CompetitorCatalogRunRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    start_url = _normalize_url(payload.start_url)
+    if not start_url:
+        raise HTTPException(status_code=400, detail="BAD_START_URL")
+    parsed = urlparse(start_url)
+    host = parsed.hostname or ""
+    if not host:
+        raise HTTPException(status_code=400, detail="BAD_START_URL")
+    run_id = _run_id_for(start_url)
+    run = {
+        "id": run_id,
+        "name": payload.name.strip() or host,
+        "start_url": start_url,
+        "host": host,
+        "status": "queued",
+        "created_at": _now_iso(),
+        "updated_at": _now_iso(),
+        "pages_scanned": 0,
+        "products_found": 0,
+        "errors": [],
+        "product_ids": [],
+        "limits": {"max_pages": payload.max_pages, "max_products": payload.max_products},
+        "queued_count": 1,
+    }
     lock = with_lock(f"competitor_catalog_imports:{_tenant_safe_key()}")
     if not lock.acquire(timeout=10):
         raise HTTPException(status_code=423, detail="STORE_LOCKED")
     try:
         store = _load_store()
         store["runs"][run["id"]] = run
-        for product in products:
-            store["products"][product["id"]] = product
         _save_store(store)
     finally:
         lock.release()
-    store = _load_store()
-    return {"run": run, "products": [_public_product(product, store) for product in products]}
+    background_tasks.add_task(_execute_catalog_import_run_safe, run_id, payload.model_dump(), current_tenant_organization_id())
+    return {"run": _public_run(run), "products": []}
+
+
+@router.post("/runs/{run_id}/cancel")
+def cancel_competitor_catalog_run(run_id: str) -> dict[str, Any]:
+    lock = with_lock(f"competitor_catalog_imports:{_tenant_safe_key()}")
+    if not lock.acquire(timeout=10):
+        raise HTTPException(status_code=423, detail="STORE_LOCKED")
+    try:
+        store = _load_store()
+        run = store.get("runs", {}).get(run_id)
+        if not isinstance(run, dict):
+            raise HTTPException(status_code=404, detail="RUN_NOT_FOUND")
+        if str(run.get("status") or "") in {"completed", "failed", "cancelled"}:
+            return {"run": _public_run(run)}
+        run["status"] = "cancel_requested"
+        run["updated_at"] = _now_iso()
+        store["runs"][run_id] = run
+        _save_store(store)
+        return {"run": _public_run(run)}
+    finally:
+        lock.release()

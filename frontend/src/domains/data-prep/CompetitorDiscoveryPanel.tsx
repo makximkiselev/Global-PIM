@@ -8,7 +8,7 @@ import EmptyState from "../../components/ui/EmptyState";
 import { api } from "../../lib/api";
 
 type Source = {
-  id: "restore" | "store77";
+  id: string;
   name: string;
   domain: string;
   status: string;
@@ -20,7 +20,7 @@ type Candidate = {
   product_id: string;
   product_title?: string;
   product_sku?: string;
-  source_id: "restore" | "store77";
+  source_id: string;
   source_name?: string;
   url: string;
   title?: string;
@@ -77,6 +77,7 @@ function runStatusLabel(status?: string | null) {
 function sourceStrategyLabel(value?: string | null) {
   if (value === "restore") return "re-store";
   if (value === "store77") return "store77";
+  if (value === "biggeek") return "Big Geek";
   return value || "активен";
 }
 

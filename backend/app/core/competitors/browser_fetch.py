@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
 
@@ -45,56 +46,64 @@ async def fetch_html(url: str, timeout_ms: int = 45000) -> str:
             await browser.close()
             return f"__ERROR__:TIMEOUT__\n{e}"
 
-        # re-store: ждём таблицу характеристик (если отрисовывается)
-        try:
-            await page.wait_for_selector(".re-specs-table", timeout=timeout_ms // 2)
-            # дождаться рендера списка характеристик
+        host = (urlparse(url).hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if host == "store77.net" or host.endswith(".store77.net"):
+            await page.wait_for_timeout(min(8000, max(2500, timeout_ms // 5)))
+        elif host == "re-store.ru" or host.endswith(".re-store.ru"):
+            # re-store: ждём таблицу характеристик (если отрисовывается)
             try:
-                await page.wait_for_function(
-                    "document.querySelectorAll('.re-specs-table__row').length > 20",
-                    timeout=timeout_ms // 3,
-                )
+                await page.wait_for_selector(".re-specs-table", timeout=timeout_ms // 2)
+                # дождаться рендера списка характеристик
+                try:
+                    await page.wait_for_function(
+                        "document.querySelectorAll('.re-specs-table__row').length > 20",
+                        timeout=timeout_ms // 3,
+                    )
+                except Exception:
+                    pass
+
+                # прокрутка скролл-контейнера, чтобы подгрузить ленивые секции
+                prev = 0
+                stable = 0
+                for _ in range(6):
+                    count = await page.evaluate(
+                        "document.querySelectorAll('.re-specs-table__row').length"
+                    )
+                    if isinstance(count, int) and count <= prev:
+                        stable += 1
+                    else:
+                        stable = 0
+                        prev = count if isinstance(count, int) else prev
+
+                    await page.evaluate(
+                        """
+                        () => {
+                          const el = document.querySelector('[data-scroll-lock-scrollable]') ||
+                                    document.scrollingElement ||
+                                    document.documentElement;
+                          if (el) el.scrollTop = el.scrollHeight;
+                          window.scrollTo(0, document.body.scrollHeight);
+                        }
+                        """
+                    )
+                    await page.wait_for_timeout(800)
+                    if stable >= 2:
+                        break
+
+                # подождать, пока появится больше параметров
+                try:
+                    await page.wait_for_function(
+                        "document.querySelectorAll('.re-specs-table__text-property').length > 30",
+                        timeout=timeout_ms // 3,
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
-
-            # прокрутка скролл-контейнера, чтобы подгрузить ленивые секции
-            prev = 0
-            stable = 0
-            for _ in range(6):
-                count = await page.evaluate(
-                    "document.querySelectorAll('.re-specs-table__row').length"
-                )
-                if isinstance(count, int) and count <= prev:
-                    stable += 1
-                else:
-                    stable = 0
-                    prev = count if isinstance(count, int) else prev
-
-                await page.evaluate(
-                    """
-                    () => {
-                      const el = document.querySelector('[data-scroll-lock-scrollable]') ||
-                                document.scrollingElement ||
-                                document.documentElement;
-                      if (el) el.scrollTop = el.scrollHeight;
-                      window.scrollTo(0, document.body.scrollHeight);
-                    }
-                    """
-                )
-                await page.wait_for_timeout(800)
-                if stable >= 2:
-                    break
-
-            # подождать, пока появится больше параметров
-            try:
-                await page.wait_for_function(
-                    "document.querySelectorAll('.re-specs-table__text-property').length > 30",
-                    timeout=timeout_ms // 3,
-                )
-            except Exception:
-                pass
-        except Exception:
-            pass
+        else:
+            await page.wait_for_timeout(1200)
 
         html = await page.content()
         status = None

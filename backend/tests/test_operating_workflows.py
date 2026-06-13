@@ -1893,7 +1893,10 @@ class OperatingWorkflowTests(unittest.TestCase):
             fetched_urls.append(url)
             return html
 
-        with patch.object(competitor_mapping, "_fetch_store77_category_html", side_effect=fake_fetch):
+        with (
+            patch.dict(os.environ, {"COMPETITOR_DISCOVERY_LIVE_ENABLED": "1"}),
+            patch.object(competitor_mapping, "_fetch_store77_category_html", side_effect=fake_fetch),
+        ):
             candidates = asyncio.run(competitor_mapping._discover_store77_candidates(product))
 
         self.assertEqual(candidates[0]["url"], "https://store77.net/apple_iphone_17_pro_1/telefon_apple_iphone_17_pro_256gb_esim_silver/")
@@ -1938,6 +1941,32 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(candidates[0]["url"], "https://store77.net/huawei_mate_x7/telefon_huawei_mate_x7_16_512gb_black")
         self.assertEqual(candidates[0]["discovery_strategy"], "competitor_catalog_index")
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.82)
+
+    def test_biggeek_discovery_uses_imported_competitor_catalog_index(self) -> None:
+        product = {
+            "id": "product_iphone",
+            "title": "Смартфон Apple iPhone 16 Pro Max 256Gb Black Titanium",
+            "sku_gt": "50002",
+            "category_id": "phones",
+        }
+        imported_store = {
+            "products": {
+                "biggeek_iphone": {
+                    "url": "https://biggeek.ru/products/apple-iphone-16-pro-max-256gb-black-titanium",
+                    "title": "Apple iPhone 16 Pro Max 256 ГБ Black Titanium",
+                    "brand": "Apple",
+                    "images": ["https://biggeek.ru/p/iphone.jpg"],
+                }
+            }
+        }
+
+        with patch.object(competitor_catalog_import, "_load_store", return_value=imported_store):
+            candidates = asyncio.run(
+                competitor_mapping._discover_product_candidates_for_source(product, {"id": "biggeek", "name": "Big Geek"})
+            )
+
+        self.assertEqual(candidates[0]["url"], "https://biggeek.ru/products/apple-iphone-16-pro-max-256gb-black-titanium")
+        self.assertEqual(candidates[0]["discovery_strategy"], "competitor_catalog_index")
 
     def test_store77_seed_candidate_supports_iphone_17e_pink(self) -> None:
         product = {

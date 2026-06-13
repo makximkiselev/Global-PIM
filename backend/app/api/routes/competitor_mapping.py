@@ -328,6 +328,7 @@ async def _extract_competitor_content_with_retry(url: str, *, attempts: int = 2)
 ALLOWED_SITES: Dict[str, set[str]] = {
     "restore": {"re-store.ru"},
     "store77": {"store77.net"},
+    "biggeek": {"biggeek.ru"},
 }
 
 DISCOVERY_SOURCES: List[Dict[str, Any]] = [
@@ -347,6 +348,15 @@ DISCOVERY_SOURCES: List[Dict[str, Any]] = [
         "base_url": "https://store77.net",
         "status": "active",
         "parser_strategy": "store77",
+        "rate_limit": "bounded",
+    },
+    {
+        "id": "biggeek",
+        "name": "Big Geek",
+        "domain": "biggeek.ru",
+        "base_url": "https://biggeek.ru",
+        "status": "active",
+        "parser_strategy": "generic_catalog_index",
         "rate_limit": "bounded",
     },
 ]
@@ -982,6 +992,9 @@ async def _discover_product_candidates_for_source(product: Dict[str, Any], sourc
     """
     source_id = str(source.get("id") or "").strip()
     indexed_candidates = _competitor_catalog_index_candidates_for_product(product, source)
+    live_enabled = str(os.getenv("COMPETITOR_DISCOVERY_LIVE_ENABLED", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+    if not live_enabled:
+        return indexed_candidates
     if source_id == "restore":
         candidates = await _discover_restore_candidates(product)
     elif source_id == "store77":
