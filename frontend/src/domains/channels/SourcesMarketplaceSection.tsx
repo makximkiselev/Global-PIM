@@ -28,7 +28,7 @@ type SourcesMarketplaceSectionProps = {
 const SOURCES_MAPPING_CACHE_TTL_MS = 24 * 60 * 60_000;
 const SOURCES_STATIC_CACHE_TTL_MS = 24 * 60 * 60_000;
 const COMPETITOR_MATCH_PAGE_SIZE = 40;
-const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v4";
+const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v5";
 const SOURCES_ATTR_BOOTSTRAP_CACHE_KEY = "mm_sources_attr_bootstrap_cache_v3";
 const SOURCES_ATTR_DETAILS_CACHE_PREFIX = "mm_sources_attr_details_cache_v3:";
 let categoriesMappingCache: { ts: number; data: CategoriesResp | null } = { ts: 0, data: null };
@@ -132,6 +132,7 @@ type CatalogNode = {
   parent_id: string | null;
   name: string;
   position: number;
+  sku_count?: number;
 };
 
 type CategoriesResp = {
@@ -2006,7 +2007,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         : "нет";
     const hasMappedProviders = mappingLabel === "связано";
     const hasWarnProviders = mappingLabel === "частично";
-    const displayMappingLabel = mappingLabel === "нет" ? "—" : mappingLabel;
+    const skuCount = Math.max(0, Number(node.sku_count || 0));
     return (
       <div key={node.id}>
         <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
@@ -2032,10 +2033,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               <span className="csb-treeName">{node.name}</span>
             </button>
             <span
-              className={`csb-treeCount mm-treeMappingCount ${hasMappedProviders ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""} ${mappingLabel === "нет" ? "is-empty" : ""}`}
-              title={mappingLabel === "нет" ? "Не сопоставлено" : mappingLabel}
+              className={`csb-treeCount mm-treeSkuCount ${hasMappedProviders ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""}`}
+              title={`${skuCount} SKU в ветке. Сопоставление: ${mappingLabel === "нет" ? "не сопоставлено" : mappingLabel}`}
             >
-              {displayMappingLabel}
+              {skuCount} SKU
             </span>
           </div>
         </div>

@@ -35,6 +35,7 @@ from app.storage.relational_pim_store import (
     list_pim_workflow_runs,
     load_attribute_mapping_doc,
     load_attribute_value_refs_doc,
+    load_category_product_counts,
     load_catalog_nodes,
     load_category_mappings,
     query_products_full,
@@ -86,6 +87,7 @@ _ATTR_CATEGORIES_CACHE_TTL_SECONDS = float(os.getenv("ATTR_CATEGORIES_CACHE_TTL_
 _ATTR_DETAILS_CACHE_TTL_SECONDS = float(os.getenv("ATTR_DETAILS_CACHE_TTL_SECONDS", "900") or "900")
 _ATTR_BOOTSTRAP_CACHE_TTL_SECONDS = float(os.getenv("ATTR_BOOTSTRAP_CACHE_TTL_SECONDS", "900") or "900")
 _IMPORT_CATEGORIES_CACHE_TTL_SECONDS = float(os.getenv("IMPORT_CATEGORIES_CACHE_TTL_SECONDS", "900") or "900")
+_IMPORT_CATEGORIES_CACHE_SCHEMA_VERSION = "v2"
 _VALUE_DETAILS_CACHE_TTL_SECONDS = float(os.getenv("VALUE_DETAILS_CACHE_TTL_SECONDS", "900") or "900")
 _ATTR_DETAILS_CACHE_MAX_ITEMS = int(os.getenv("ATTR_DETAILS_CACHE_MAX_ITEMS", "8") or "8")
 _VALUE_DETAILS_CACHE_MAX_ITEMS = int(os.getenv("VALUE_DETAILS_CACHE_MAX_ITEMS", "8") or "8")
@@ -158,7 +160,7 @@ def _timed_cache_set(
 
 
 def _import_categories_cache_path() -> Path:
-    return CACHE_DIR / f"import_categories_snapshot_{_current_org_cache_key()}.json"
+    return CACHE_DIR / f"import_categories_snapshot_{_IMPORT_CATEGORIES_CACHE_SCHEMA_VERSION}_{_current_org_cache_key()}.json"
 
 
 def _attr_bootstrap_cache_path() -> Path:
@@ -426,6 +428,25 @@ def _catalog_parent_map(nodes: List[Dict[str, Any]]) -> Dict[str, str]:
         if nid and pid:
             parent_by_id[nid] = pid
     return parent_by_id
+
+
+def _catalog_branch_product_counts(nodes: List[Dict[str, Any]]) -> Dict[str, int]:
+    direct_counts = load_category_product_counts()
+    parent_by_id = _catalog_parent_map(nodes)
+    node_ids = {str(node.get("id") or "").strip() for node in nodes if str(node.get("id") or "").strip()}
+    branch_counts: Dict[str, int] = {node_id: 0 for node_id in node_ids}
+    for category_id, count in direct_counts.items():
+        cid = str(category_id or "").strip()
+        if not cid:
+            continue
+        value = int(count or 0)
+        seen: set[str] = set()
+        while cid and cid not in seen:
+            seen.add(cid)
+            if cid in node_ids:
+                branch_counts[cid] = branch_counts.get(cid, 0) + value
+            cid = parent_by_id.get(cid, "")
+    return branch_counts
 
 
 def _effective_provider_category_id(
@@ -2272,6 +2293,15 @@ def mapping_import_categories() -> Dict[str, Any]:
         return persisted
 
     catalog_nodes = _load_catalog_nodes()
+    branch_product_counts = _catalog_branch_product_counts(catalog_nodes)
+    catalog_nodes = [
+        {
+            **node,
+            "sku_count": branch_product_counts.get(str(node.get("id") or "").strip(), 0),
+        }
+        for node in catalog_nodes
+        if isinstance(node, dict)
+    ]
     catalog_items = _catalog_rows(catalog_nodes)
     mappings = _load_mappings()
 

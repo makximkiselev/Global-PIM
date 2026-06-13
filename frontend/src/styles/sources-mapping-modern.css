@@ -4692,11 +4692,11 @@
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared.csb-shell{
-  position:sticky;
-  top:12px;
+  position:relative;
+  top:auto;
   align-self:start;
-  max-height:calc(100vh - 24px);
-  overflow:hidden;
+  max-height:none;
+  overflow:visible;
   border:1px solid var(--line);
   border-radius:10px;
   background:var(--card);
@@ -4721,13 +4721,46 @@
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared .csb-body{
-  max-height:calc(100vh - 138px);
-  overflow:auto;
+  max-height:none;
+  overflow:visible;
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared .csb-treeNode{
   min-height:26px;
   padding-block:4px;
+}
+
+.sourcesCommandWorkbench .mm-treeSkuCount{
+  flex:0 0 auto;
+  min-width:48px;
+  justify-content:center;
+  padding:3px 6px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .mm-treeSkuCount.is-mapped{
+  border-color:rgba(16, 185, 129, 0.28);
+  background:rgba(16, 185, 129, 0.08);
+  color:#047857;
+}
+
+.sourcesCommandWorkbench .mm-treeSkuCount.is-warn{
+  border-color:rgba(245, 158, 11, 0.28);
+  background:rgba(245, 158, 11, 0.08);
+  color:#92400e;
+}
+
+.sourcesCommandWorkbench .mm-treeSkuCount.is-issue{
+  border-color:rgba(239, 68, 68, 0.3);
+  background:rgba(239, 68, 68, 0.08);
+  color:#b91c1c;
 }
 
 .sourcesCommandWorkbench .mm-detailPane{
