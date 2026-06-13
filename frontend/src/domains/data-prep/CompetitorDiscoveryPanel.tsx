@@ -80,6 +80,10 @@ function sourceStrategyLabel(value?: string | null) {
   return value || "активен";
 }
 
+function competitorTitle(candidate: Candidate): string {
+  return candidate.title || "Название карточки конкурента не распознано";
+}
+
 export default function CompetitorDiscoveryPanel() {
   const [sources, setSources] = useState<Source[]>([]);
   const [items, setItems] = useState<Candidate[]>([]);
@@ -246,7 +250,8 @@ export default function CompetitorDiscoveryPanel() {
                   label: "Товар / ссылка",
                   render: (row) => (
                     <button className="competitorDiscoveryRowButton" type="button" onClick={() => setSelectedId(row.id)}>
-                      <strong>{row.product_title || row.title || row.product_id}</strong>
+                      <strong>{row.product_title || row.product_id}</strong>
+                      <small>{competitorTitle(row)}</small>
                       <span>{row.url}</span>
                     </button>
                   ),
@@ -273,7 +278,7 @@ export default function CompetitorDiscoveryPanel() {
 
         <InspectorPanel
           title={selected ? "Найденная ссылка" : "Ссылка не выбрана"}
-          subtitle={selected ? selected.url : "Запусти поиск или выбери строку в очереди."}
+          subtitle={selected ? competitorTitle(selected) : "Запусти поиск или выбери строку в очереди."}
           className="competitorDiscoveryInspector"
           actions={
             selected?.status === "needs_review" ? (
@@ -290,6 +295,11 @@ export default function CompetitorDiscoveryPanel() {
         >
           {selected ? (
             <div className="competitorDiscoveryFacts">
+              <a className="competitorDiscoveryExternalLink" href={selected.url} target="_blank" rel="noreferrer">
+                Открыть карточку конкурента
+                <span>{selected.url}</span>
+              </a>
+              <div><span>Карточка конкурента</span><strong>{competitorTitle(selected)}</strong></div>
               <div><span>Товар</span><strong>{selected.product_title || selected.product_id}</strong></div>
               <div><span>SKU</span><strong>{selected.product_sku || "—"}</strong></div>
               <div><span>Источник</span><strong>{selected.source_name || selected.source_id}</strong></div>
