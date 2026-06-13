@@ -84,6 +84,27 @@ type ProductCompetitorResp = {
   source_summaries?: CompetitorSourceSummary[];
 };
 
+type ProductFeatureValue = {
+  code?: string;
+  name?: string;
+  value?: string;
+  values?: string[];
+  source_values?: Record<string, unknown>;
+};
+
+type ProductSnapshot = {
+  id: string;
+  content?: {
+    media_images?: Array<Record<string, unknown>>;
+    media?: Array<Record<string, unknown>>;
+    features?: ProductFeatureValue[];
+    source_values?: Record<string, unknown>;
+    source_evidence?: Record<string, unknown>;
+  };
+};
+
+type ProductResp = { product: ProductSnapshot };
+
 type DiscoveryRun = {
   id: string;
   status: string;
@@ -198,6 +219,80 @@ function sourceScanTime(summary: CompetitorSourceSummary): string {
   return value ? new Date(value).toLocaleString("ru-RU") : "";
 }
 
+function safeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function safeList<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+function competitorImportStats(product: ProductSnapshot | null, links: CompetitorLink[]) {
+  if (!links.length) {
+    return {
+      mediaCount: 0,
+      matchedCount: 0,
+      extractedCount: 0,
+      unmatchedCount: 0,
+      mediaBySource: [] as Array<{ sourceId: string; mediaCount: number; updatedAt: string }>,
+      hasEvidence: false,
+    };
+  }
+
+  const content = safeRecord(product?.content);
+  const sourceValues = safeRecord(content.source_values);
+  const sourceEvidence = safeRecord(content.source_evidence);
+  const competitorsEvidence = safeRecord(sourceEvidence.competitors);
+  const features = safeList<ProductFeatureValue>(content.features);
+  const mediaImages = safeList<Record<string, unknown>>(content.media_images).length
+    ? safeList<Record<string, unknown>>(content.media_images)
+    : safeList<Record<string, unknown>>(content.media);
+
+  const sourceIds = new Set(links.map((link) => String(link.source_id || "").trim()).filter(Boolean));
+  const sourceMedia = safeRecord(sourceValues.media_images);
+  let mediaFromConfirmedSources = 0;
+  for (const item of mediaImages) {
+    const source = String(item.source || "").trim();
+    if (sourceIds.has(source)) mediaFromConfirmedSources += 1;
+  }
+
+  let matchedFromFeatures = 0;
+  for (const feature of features) {
+    const competitorValues = safeRecord(safeRecord(feature.source_values).competitor);
+    if (Object.keys(competitorValues).some((sourceId) => sourceIds.has(sourceId))) {
+      matchedFromFeatures += 1;
+    }
+  }
+
+  let matchedFromEvidence = 0;
+  let unmatchedFromEvidence = 0;
+  for (const sourceId of sourceIds) {
+    const evidence = safeRecord(competitorsEvidence[sourceId]);
+    matchedFromEvidence += Object.keys(safeRecord(evidence.matched_specs)).length;
+    unmatchedFromEvidence += Object.keys(safeRecord(evidence.unmatched_specs)).length;
+  }
+
+  const mediaBySource = Array.from(sourceIds).map((sourceId) => {
+    const meta = safeRecord(sourceMedia[sourceId]);
+    const countFromMeta = Number(meta.count || 0);
+    const countFromItems = mediaImages.filter((item) => String(item.source || "").trim() === sourceId).length;
+    return {
+      sourceId,
+      mediaCount: Math.max(countFromMeta, countFromItems),
+      updatedAt: String(meta.updated_at || ""),
+    };
+  });
+
+  return {
+    mediaCount: mediaFromConfirmedSources,
+    matchedCount: Math.max(matchedFromFeatures, matchedFromEvidence),
+    extractedCount: matchedFromEvidence + unmatchedFromEvidence,
+    unmatchedCount: unmatchedFromEvidence,
+    mediaBySource,
+    hasEvidence: Boolean(matchedFromFeatures || matchedFromEvidence || unmatchedFromEvidence || mediaFromConfirmedSources),
+  };
+}
+
 export default function ProductCompetitorPanel({
   productId,
   onEnriched,
@@ -218,6 +313,7 @@ export default function ProductCompetitorPanel({
   const [manualUrl, setManualUrl] = useState("");
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
+  const [productSnapshot, setProductSnapshot] = useState<ProductSnapshot | null>(null);
 
   const candidates = useMemo(() => (context?.items || []).filter(isReviewCandidate), [context?.items]);
   const candidateGroups = useMemo(() => {
@@ -236,13 +332,29 @@ export default function ProductCompetitorPanel({
     () => candidates.find((item) => item.id === selectedId) || candidates[0] || null,
     [candidates, selectedId],
   );
+  const confirmedLinks = context?.confirmed_links || [];
+  const importStats = useMemo(() => competitorImportStats(productSnapshot, confirmedLinks), [productSnapshot, confirmedLinks]);
+  const hasConfirmedLinks = confirmedLinks.length > 0;
+
+  async function loadProductSnapshot() {
+    if (!productId) return;
+    try {
+      const response = await api<ProductResp>(`/products/${encodeURIComponent(productId)}?include_variants=false`);
+      setProductSnapshot(response.product || null);
+    } catch {
+      setProductSnapshot(null);
+    }
+  }
 
   async function load() {
     if (!productId) return;
     setError("");
     setLoading(true);
     try {
-      const response = await api<ProductCompetitorResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}`);
+      const [response] = await Promise.all([
+        api<ProductCompetitorResp>(`/competitor-mapping/discovery/products/${encodeURIComponent(productId)}`),
+        loadProductSnapshot(),
+      ]);
       setContext(response);
       setSelectedId((prev) => {
         if (prev && response.items.some((item) => item.id === prev)) return prev;
@@ -341,6 +453,7 @@ export default function ProductCompetitorPanel({
       setEnrichNotice(
         `Источники: ${sources}. Медиа: ${response.media_images_count || 0}. Совпало параметров: ${response.matched_count || 0}. Без пары: ${response.unmatched_count || 0}.${errorsText}`,
       );
+      await loadProductSnapshot();
       await load();
       await onEnriched?.();
     } catch (err) {
@@ -379,31 +492,76 @@ export default function ProductCompetitorPanel({
       <div className={`productCompetitorPanel${variant === "compact" ? " isCompact" : ""}`}>
         <div className="productCompetitorToolbar">
           <div>
-            <div className="productWorkspaceMiniTitle">Сопоставление с конкурентами</div>
-            <p>Найденные карточки re-store/store77 для текущего SKU. Подтверждение сохраняет связь с товаром и открывает загрузку параметров, описания и медиа.</p>
+            <div className="productWorkspaceMiniTitle">Сопоставление конкурентов</div>
+            <p>
+              {hasConfirmedLinks
+                ? "К товару уже привязаны карточки конкурентов. Ниже видно, что импортировано в карточку SKU."
+                : "Сначала найдите и подтвердите точную карточку конкурента. После подтверждения система загрузит медиа, описание и характеристики."}
+            </p>
           </div>
           <div className="productCompetitorActions">
             <Button onClick={() => void load()} disabled={loading || running}>
               Обновить
             </Button>
-            {context?.counts.confirmed_links ? (
+            {hasConfirmedLinks ? (
               <Button onClick={() => void enrichConfirmedLinks()} disabled={loading || running || enriching || !productId}>
-                {enriching ? "Загружаю…" : "Загрузить параметры и медиа"}
+                {enriching ? "Загружаю…" : importStats.hasEvidence ? "Обновить импорт" : "Загрузить данные"}
               </Button>
             ) : null}
             <Button variant="primary" onClick={() => void runDiscovery()} disabled={loading || running || !productId}>
-              {running ? "Ищу…" : "Найти карточки"}
+              {running ? "Ищу…" : hasConfirmedLinks ? "Найти еще" : "Найти карточки"}
             </Button>
           </div>
         </div>
 
         <div className="productCompetitorMetrics">
-          <div><span>Найдено</span><strong>{context?.counts.total || 0}</strong></div>
-          <div><span>На модерации</span><strong>{context?.counts.needs_review || 0}</strong></div>
-          <div><span>Подтверждено</span><strong>{context?.counts.approved || 0}</strong></div>
-          <div><span>Устарело</span><strong>{context?.counts.stale || 0}</strong></div>
-          <div><span>Готовых ссылок</span><strong>{context?.counts.confirmed_links || 0}</strong></div>
+          <div><span>Ссылки</span><strong>{confirmedLinks.length}</strong></div>
+          <div><span>Медиа</span><strong>{importStats.mediaCount}</strong></div>
+          <div><span>Выгружено хар-к</span><strong>{importStats.extractedCount}</strong></div>
+          <div><span>Сопоставлено</span><strong>{importStats.matchedCount}</strong></div>
         </div>
+
+        {hasConfirmedLinks ? (
+          <section className="productCompetitorImportSummary" aria-label="Статус импорта конкурентов">
+            <div className="productCompetitorImportHead">
+              <div>
+                <span>Статус товара</span>
+                <strong>{importStats.hasEvidence ? "Данные конкурентов загружены" : "Ссылки есть, импорт еще не запускали"}</strong>
+              </div>
+              <Badge tone={importStats.hasEvidence ? "active" : "pending"}>
+                {importStats.hasEvidence ? "ок" : "нужно загрузить"}
+              </Badge>
+            </div>
+            <div className="productCompetitorImportRows">
+              {confirmedLinks.map((link) => {
+                const sourceId = String(link.source_id || "").trim();
+                const mediaMeta = importStats.mediaBySource.find((item) => item.sourceId === sourceId);
+                return (
+                  <a key={`${sourceId}-${link.url}`} href={link.url} target="_blank" rel="noreferrer" className="productCompetitorImportRow">
+                    <span>{sourceLabel(sourceId)}</span>
+                    <strong>{link.url}</strong>
+                    <em>{mediaMeta?.mediaCount || 0} медиа · {confirmedLinkTime(link)}</em>
+                  </a>
+                );
+              })}
+            </div>
+            <div className="productCompetitorImportFoot">
+              <span>Без сопоставления: <strong>{importStats.unmatchedCount}</strong></span>
+              <span>Повторный импорт обновит медиа и источники характеристик.</span>
+            </div>
+          </section>
+        ) : (
+          <section className="productCompetitorMatchPrompt" aria-label="Нужно сопоставить товар с конкурентом">
+            <div>
+              <span>Следующий шаг</span>
+              <strong>Подобрать карточку конкурента</strong>
+              <p>Запустите поиск здесь, в сопоставлении. Источники данных должны только хранить список сайтов, откуда можно вытягивать данные.</p>
+            </div>
+            <Button variant="primary" onClick={() => void runDiscovery()} disabled={loading || running || !productId}>
+              {running ? "Ищу…" : "Подобрать карточки"}
+            </Button>
+          </section>
+        )}
 
         {context?.source_summaries?.length ? (
           <div className="productCompetitorSourceGrid" aria-label="Статус конкурентных источников">
@@ -577,9 +735,7 @@ export default function ProductCompetitorPanel({
               </div>
             ) : null}
           </div>
-        ) : (
-          <EmptyState title="Карточки пока не найдены" description="Запустите поиск по re-store и store77 для этого SKU." />
-        )}
+        ) : null}
 
         <details className="productCompetitorManual">
           <summary>
@@ -606,7 +762,7 @@ export default function ProductCompetitorPanel({
           </div>
         </details>
 
-        {context?.confirmed_links.length ? (
+        {variant !== "compact" && context?.confirmed_links.length ? (
           <div className="productCompetitorConfirmed">
             <div className="productWorkspaceMiniTitle">Подтвержденные ссылки</div>
             {context.confirmed_links.map((link) => (

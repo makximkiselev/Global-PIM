@@ -2504,8 +2504,17 @@ function ProductWorkspaceFeature() {
                             <div
                               key={item.id}
                               className={`pn-competitorSkuRow${isActive ? " isActive" : ""}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setCompetitorProductId(item.id)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  setCompetitorProductId(item.id);
+                                }
+                              }}
                             >
-                              <span>
+                              <span onClick={(event) => event.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
@@ -2529,7 +2538,14 @@ function ProductWorkspaceFeature() {
                                   <em>{skuStatus.detail}</em>
                                 )}
                               </span>
-                              <button type="button" className="pn-competitorSkuAction" onClick={() => setCompetitorProductId(item.id)}>
+                              <button
+                                type="button"
+                                className="pn-competitorSkuAction"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setCompetitorProductId(item.id);
+                                }}
+                              >
                                 {actionLabel}
                               </button>
                             </div>
