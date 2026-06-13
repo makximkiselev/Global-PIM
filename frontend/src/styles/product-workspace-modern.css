@@ -2904,7 +2904,7 @@
 
 .pn-competitorSkuRow{
   display:grid;
-  grid-template-columns:28px 104px minmax(360px, 1fr) minmax(150px, 200px) 0;
+  grid-template-columns:28px 104px minmax(360px, 1fr) minmax(150px, 200px);
   align-items:center;
   gap:10px;
   min-width:650px;
@@ -2952,6 +2952,10 @@
   font-weight:950;
   letter-spacing:.04em;
   text-transform:uppercase;
+}
+
+.pn-competitorSkuHead > span:nth-child(5){
+  display:none;
 }
 
 .pn-competitorSkuCode{
@@ -3055,19 +3059,7 @@
 }
 
 .pn-competitorSkuAction{
-  border:1px solid rgba(var(--line-rgb), .86);
-  display:inline-flex;
-  justify-content:center;
-  align-items:center;
-  min-height:32px;
-  width:100%;
-  cursor:pointer;
-  border-radius:10px;
-  background:rgba(var(--card-rgb), .95);
-  color:var(--text);
-  padding:0 10px;
-  font-size:11px;
-  font-weight:950;
+  display:none;
 }
 
 .pn-competitorSkuEmpty{
@@ -3315,6 +3307,7 @@
 
   .pn-competitorSkuRow{
     grid-template-columns:28px 90px minmax(0, 1fr);
+    min-width:0;
   }
 
   .pn-competitorSkuRow > span:nth-child(4),
@@ -3347,6 +3340,10 @@
   .shellContentBody .pn-competitorSkuDesk,
   .shellContentBody .pn-competitorInspectorShell{
     padding:10px;
+  }
+
+  .shellContentBody .pn-competitorSkuControls{
+    grid-template-columns:1fr;
   }
 
   .shellContentBody .pn-competitorSkuFilters,
