@@ -3265,11 +3265,11 @@
 
 .shellContentBody .productListTable th:nth-child(1){ width:36px; }
 .shellContentBody .productListTable th:nth-child(2){ width:30%; }
-.shellContentBody .productListTable th:nth-child(3){ width:15%; }
-.shellContentBody .productListTable th:nth-child(4){ width:11%; }
+.shellContentBody .productListTable th:nth-child(3){ width:14%; }
+.shellContentBody .productListTable th:nth-child(4){ width:10%; }
 .shellContentBody .productListTable th:nth-child(5){ width:16%; }
-.shellContentBody .productListTable th:nth-child(6){ width:104px; }
-.shellContentBody .productListTable th:nth-child(7){ width:82px; }
+.shellContentBody .productListTable th:nth-child(6){ width:116px; }
+.shellContentBody .productListTable th:nth-child(7){ width:112px; }
 
 .shellContentBody .productListTable th,
 .shellContentBody .productListTable td{
@@ -3356,12 +3356,13 @@
 
 .shellContentBody .productListChannels{
   display:grid;
-  grid-template-columns:repeat(2, minmax(64px, 1fr));
+  grid-template-columns:minmax(0, 1fr);
   gap:4px;
+  min-width:0;
 }
 
 .shellContentBody .productListChannelBadge{
-  justify-content:center;
+  justify-content:space-between;
   gap:4px;
   min-height:24px;
   width:auto;
@@ -3387,6 +3388,7 @@
 
 .shellContentBody .productListRowAction{
   min-height:28px;
+  width:100%;
   border:1px solid var(--line);
   border-radius:999px;
   background:var(--surface-2);
@@ -3395,6 +3397,7 @@
   box-shadow:none;
   font-size:10px;
   font-weight:900;
+  white-space:nowrap;
 }
 
 .shellContentBody .productListOpenLink{

@@ -318,7 +318,7 @@
 .productListTable th:nth-child(3){ min-width:200px; width:17%; }
 .productListTable th:nth-child(4){ min-width:140px; width:11%; }
 .productListTable th:nth-child(5){ min-width:210px; width:18%; }
-.productListTable th:nth-child(6){ min-width:140px; width:140px; }
+.productListTable th:nth-child(6){ min-width:116px; width:116px; }
 .productListTable th:nth-child(7){ min-width:112px; width:112px; }
 
 .productListTitleCell{
@@ -460,7 +460,7 @@
 
 .productListChannels{
   display:grid;
-  grid-template-columns:repeat(2, minmax(64px, 1fr));
+  grid-template-columns:minmax(0, 1fr);
   align-items:stretch;
   gap:5px;
   min-width:0;
@@ -469,7 +469,7 @@
 .productListChannelBadge{
   display:inline-flex;
   align-items:center;
-  justify-content:center;
+  justify-content:space-between;
   gap:5px;
   min-height:24px;
   min-width:0;
@@ -522,6 +522,7 @@
 
 .productListRowAction{
   min-height:28px;
+  width:100%;
   padding:0 10px;
   border:1px solid var(--line);
   background:var(--surface-2);
@@ -529,6 +530,7 @@
   box-shadow:none;
   font-size:11px;
   font-weight:900;
+  white-space:nowrap;
 }
 
 .productListRowAction:hover{
