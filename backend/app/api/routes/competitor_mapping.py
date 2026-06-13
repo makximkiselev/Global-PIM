@@ -350,7 +350,6 @@ DISCOVERY_SOURCES: List[Dict[str, Any]] = [
     },
 ]
 
-DISCOVERY_SAMPLE_PRODUCT_LIMIT = 250
 _COMPETITOR_MAPPING_SCOPE = "competitor_mapping"
 _COMPETITOR_MAPPING_META_PROVIDER = "__meta"
 _COMPETITOR_DISCOVERY_WORKFLOW = "competitor_discovery"
@@ -3976,12 +3975,12 @@ def _catalog_descendant_ids(category_id: str) -> List[str]:
     return out
 
 
-def _product_ids_for_category_scope(category_id: str, limit: int = 250) -> Tuple[List[Dict[str, Any]], set[str]]:
+def _product_ids_for_category_scope(category_id: str, limit: Optional[int] = None) -> Tuple[List[Dict[str, Any]], set[str]]:
     category_ids = set(_catalog_descendant_ids(category_id) or [str(category_id or "").strip()])
     category_ids.discard("")
     products = query_products_full(category_ids=sorted(category_ids)) if category_ids else []
     items = [item for item in products if isinstance(item, dict)]
-    limited = items[: max(1, int(limit or 250))]
+    limited = items[: max(1, int(limit))] if limit is not None else items
     product_ids = {str(item.get("id") or "").strip() for item in limited if str(item.get("id") or "").strip()}
     return limited, product_ids
 
@@ -4916,7 +4915,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                         str(row.get("id") or "").strip() not in product_has_competitor_context,
                         str(row.get("title") or row.get("name") or ""),
                     ),
-                )[:DISCOVERY_SAMPLE_PRODUCT_LIMIT]
+                )
                 if str(item.get("id") or "").strip()
             ],
         },
