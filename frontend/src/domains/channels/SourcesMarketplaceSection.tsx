@@ -215,6 +215,7 @@ type CompetitorProductStatus = {
   rejected_count?: number;
   candidate_items?: CompetitorDiscoveryCandidate[];
   link_items?: CompetitorDiscoveryCandidate[];
+  enrich_job?: EnrichJobStatus | null;
 };
 
 type CompetitorDiscoveryRun = {
@@ -228,6 +229,29 @@ type CompetitorDiscoveryRun = {
 };
 
 type CompetitorDiscoveryRunResp = { ok: boolean; run: CompetitorDiscoveryRun };
+type EnrichJobStatus = {
+  ok?: boolean;
+  job_id?: string;
+  product_id?: string;
+  status?: string;
+  phase?: string;
+  message?: string;
+  enriched_sources?: string[];
+  matched_count?: number;
+  unmatched_count?: number;
+  media_images_count?: number;
+  errors?: Array<{ source_id?: string; error?: string; retryable?: boolean }>;
+  error?: string;
+};
+type EnrichBatchResp = {
+  ok: boolean;
+  jobs?: EnrichJobStatus[];
+  queued_count?: number;
+  skipped?: Array<{ product_id?: string; reason?: string }>;
+};
+type CompetitorCatalogRunResp = {
+  run?: { id?: string; status?: string; products_found?: number; pages_scanned?: number };
+};
 
 type CompetitorCategoryDiscoveryResp = {
   ok: boolean;
@@ -1022,10 +1046,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrDetailsLoading, setAttrDetailsLoading] = useState(false);
   const [attrDetails, setAttrDetails] = useState<AttrDetailsResp | null>(null);
   const [competitorTemplateFields, setCompetitorTemplateFields] = useState<CompetitorCategoryResp["master_fields"]>([]);
-  const [competitorLinks, setCompetitorLinks] = useState<Record<CompetitorSiteKey, string>>({ restore: "", store77: "" });
-  const [competitorMappingBySite, setCompetitorMappingBySite] = useState<Record<CompetitorSiteKey, Record<string, string>>>({ restore: {}, store77: {} });
-  const [competitorFieldMetaBySite, setCompetitorFieldMetaBySite] = useState<Record<CompetitorSiteKey, CompetitorFieldMeta[]>>({ restore: [], store77: [] });
-  const [competitorFieldsBySite, setCompetitorFieldsBySite] = useState<Record<CompetitorSiteKey, string[]>>({ restore: [], store77: [] });
+  const [competitorLinks, setCompetitorLinks] = useState<Record<CompetitorSiteKey, string>>({ restore: "", store77: "", biggeek: "" });
+  const [competitorMappingBySite, setCompetitorMappingBySite] = useState<Record<CompetitorSiteKey, Record<string, string>>>({ restore: {}, store77: {}, biggeek: {} });
+  const [competitorFieldMetaBySite, setCompetitorFieldMetaBySite] = useState<Record<CompetitorSiteKey, CompetitorFieldMeta[]>>({ restore: [], store77: [], biggeek: [] });
+  const [competitorFieldsBySite, setCompetitorFieldsBySite] = useState<Record<CompetitorSiteKey, string[]>>({ restore: [], store77: [], biggeek: [] });
   const [attrDetailsError, setAttrDetailsError] = useState("");
   const [attrDetailsErrorCode, setAttrDetailsErrorCode] = useState("");
   const [attrRows, setAttrRows] = useState<AttrRow[]>([]);
@@ -1092,6 +1116,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorPage, setCompetitorPage] = useState(1);
   const [catalogPanelHidden, setCatalogPanelHidden] = useState(false);
   const [competitorModeratingId, setCompetitorModeratingId] = useState("");
+  const [competitorLinksSaving, setCompetitorLinksSaving] = useState(false);
+  const [competitorIndexing, setCompetitorIndexing] = useState(false);
+  const [competitorIndexNotice, setCompetitorIndexNotice] = useState("");
+  const [competitorEnriching, setCompetitorEnriching] = useState(false);
+  const [competitorEnrichNotice, setCompetitorEnrichNotice] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
   const [attrCacheHydratedFor, setAttrCacheHydratedFor] = useState("");
@@ -1372,10 +1401,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   async function loadCompetitorDetails(categoryId: string) {
     if (!categoryId) {
       setCompetitorTemplateFields([]);
-      setCompetitorLinks({ restore: "", store77: "" });
-      setCompetitorMappingBySite({ restore: {}, store77: {} });
-      setCompetitorFieldMetaBySite({ restore: [], store77: [] });
-      setCompetitorFieldsBySite({ restore: [], store77: [] });
+      setCompetitorLinks({ restore: "", store77: "", biggeek: "" });
+      setCompetitorMappingBySite({ restore: {}, store77: {}, biggeek: {} });
+      setCompetitorFieldMetaBySite({ restore: [], store77: [], biggeek: [] });
+      setCompetitorFieldsBySite({ restore: [], store77: [], biggeek: [] });
       return;
     }
 
@@ -1383,10 +1412,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const links = {
       restore: String(data?.data?.links?.restore || ""),
       store77: String(data?.data?.links?.store77 || ""),
+      biggeek: String(data?.data?.links?.biggeek || ""),
     };
     const mappingBySite = {
       restore: { ...(((data?.data?.mapping_by_site || {}).restore || data?.data?.mapping || {}) as Record<string, string>) },
       store77: { ...(((data?.data?.mapping_by_site || {}).store77 || {}) as Record<string, string>) },
+      biggeek: { ...(((data?.data?.mapping_by_site || {}).biggeek || {}) as Record<string, string>) },
     };
 
     setCompetitorTemplateFields(Array.isArray(data.master_fields) ? data.master_fields : []);
@@ -1394,18 +1425,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setCompetitorMappingBySite(mappingBySite);
 
     const cacheKey = `competitor.fields.${categoryId}`;
-    let cachedFields = { restore: [], store77: [] } as Record<CompetitorSiteKey, string[]>;
-    let cachedMeta = { restore: [], store77: [] } as Record<CompetitorSiteKey, CompetitorFieldMeta[]>;
+    let cachedFields = { restore: [], store77: [], biggeek: [] } as Record<CompetitorSiteKey, string[]>;
+    let cachedMeta = { restore: [], store77: [], biggeek: [] } as Record<CompetitorSiteKey, CompetitorFieldMeta[]>;
     try {
       const raw = window.localStorage.getItem(cacheKey);
       const parsed = raw ? JSON.parse(raw) : null;
       cachedFields = {
         restore: Array.isArray(parsed?.restore) ? parsed.restore : [],
         store77: Array.isArray(parsed?.store77) ? parsed.store77 : [],
+        biggeek: Array.isArray(parsed?.biggeek) ? parsed.biggeek : [],
       };
       cachedMeta = {
         restore: Array.isArray(parsed?.meta?.restore) ? parsed.meta.restore : [],
         store77: Array.isArray(parsed?.meta?.store77) ? parsed.meta.store77 : [],
+        biggeek: Array.isArray(parsed?.meta?.biggeek) ? parsed.meta.biggeek : [],
       };
     } catch {
       // ignore cache parse issues
@@ -1414,16 +1447,18 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setCompetitorFieldsBySite(cachedFields);
     setCompetitorFieldMetaBySite(cachedMeta);
 
-    const hasSavedLinks = !!links.restore.trim() || !!links.store77.trim();
-    const hasCachedFields = cachedMeta.restore.length + cachedMeta.store77.length + cachedFields.restore.length + cachedFields.store77.length > 0;
+    const hasSavedLinks = COMPETITOR_PROVIDER_CODES.some((site) => !!links[site].trim());
+    const hasCachedFields = COMPETITOR_PROVIDER_CODES.some((site) => (
+      cachedMeta[site].length + cachedFields[site].length > 0
+    ));
     if (!hasSavedLinks || hasCachedFields) return;
 
     const fieldsResp = await api<CompetitorFieldsBatchResp>("/competitor-mapping/competitor-fields-batch", {
       method: "POST",
       body: JSON.stringify({ links }),
     });
-    const nextFields: Record<CompetitorSiteKey, string[]> = { restore: [], store77: [] };
-    const nextMeta: Record<CompetitorSiteKey, CompetitorFieldMeta[]> = { restore: [], store77: [] };
+    const nextFields: Record<CompetitorSiteKey, string[]> = { restore: [], store77: [], biggeek: [] };
+    const nextMeta: Record<CompetitorSiteKey, CompetitorFieldMeta[]> = { restore: [], store77: [], biggeek: [] };
     for (const site of COMPETITOR_PROVIDER_CODES) {
       const item = fieldsResp?.results?.[site];
       if (item?.ok) {
@@ -1434,7 +1469,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setCompetitorFieldsBySite(nextFields);
     setCompetitorFieldMetaBySite(nextMeta);
     try {
-      window.localStorage.setItem(cacheKey, JSON.stringify({ restore: nextFields.restore, store77: nextFields.store77, meta: nextMeta }));
+      window.localStorage.setItem(cacheKey, JSON.stringify({
+        restore: nextFields.restore,
+        store77: nextFields.store77,
+        biggeek: nextFields.biggeek,
+        meta: nextMeta,
+      }));
     } catch {
       // ignore storage errors
     }
@@ -2116,18 +2156,22 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const counts = state?.mapping_counts || {};
     const hasRestore = !!String(links.restore || "").trim();
     const hasStore77 = !!String(links.store77 || "").trim();
+    const hasBiggeek = !!String(links.biggeek || "").trim();
     const mappedRestore = Number(counts.restore || 0);
     const mappedStore77 = Number(counts.store77 || 0);
+    const mappedBiggeek = Number(counts.biggeek || 0);
+    const hasAnyLink = hasRestore || hasStore77 || hasBiggeek;
     const configured = !!state?.configured;
     const inheritedFrom = state?.inherited && state.source_category_id ? String(state.source_category_id) : "";
     return {
       configured,
       inheritedFrom,
-      statusLabel: configured ? "Готово" : hasRestore || hasStore77 ? "Нужно сопоставить поля" : "Нужно подобрать",
-      statusClass: configured ? "isOwn" : hasRestore || hasStore77 ? "isInherit" : "isEmpty",
+      statusLabel: configured ? "Готово" : hasAnyLink ? "Нужно сопоставить поля" : "Нужно подобрать",
+      statusClass: configured ? "isOwn" : hasAnyLink ? "isInherit" : "isEmpty",
       sites: [
         { code: "restore" as CompetitorSiteKey, title: "re-store", hasLink: hasRestore, mappedCount: mappedRestore },
         { code: "store77" as CompetitorSiteKey, title: "store77", hasLink: hasStore77, mappedCount: mappedStore77 },
+        { code: "biggeek" as CompetitorSiteKey, title: "Big Geek", hasLink: hasBiggeek, mappedCount: mappedBiggeek },
       ],
     };
   }
@@ -2613,6 +2657,37 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return "confirmed";
   }
 
+  function competitorEnrichStatusLabel(job?: EnrichJobStatus | null): string {
+    const status = String(job?.status || "").trim();
+    if (!status) return "не запускался";
+    if (status === "queued") return "в очереди";
+    if (status === "running") return "собирается";
+    if (status === "completed") return "готово";
+    if (status === "failed") return "ошибка";
+    return status;
+  }
+
+  function competitorEnrichStatusClass(job?: EnrichJobStatus | null): string {
+    const status = String(job?.status || "").trim();
+    if (status === "queued") return "is-review";
+    if (status === "running") return "is-review";
+    if (status === "completed") return "is-confirmed";
+    if (status === "failed") return "is-rejected";
+    return "is-none";
+  }
+
+  function competitorEnrichProgressLabel(job?: EnrichJobStatus | null): string {
+    if (!job?.status) return "—";
+    const media = Number(job.media_images_count || 0);
+    const matched = Number(job.matched_count || 0);
+    const unmatched = Number(job.unmatched_count || 0);
+    if (String(job.status) === "completed") {
+      return `медиа ${media} · параметры ${matched}/${matched + unmatched}`;
+    }
+    if (String(job.status) === "failed") return job.error || "не собрано";
+    return job.message || "ожидает batch";
+  }
+
   async function addManualCompetitorLink(productId: string, sourceId: string) {
     const pid = String(productId || "").trim();
     const source = String(sourceId || "").trim();
@@ -2634,6 +2709,106 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setCompetitorDiscoveryError((e as Error).message || "Не удалось добавить ссылку конкурента");
     } finally {
       setCompetitorManualSubmitting("");
+    }
+  }
+
+  async function saveCompetitorCategoryLinks(categoryId: string) {
+    const cid = String(categoryId || "").trim();
+    if (!cid) return;
+    setCompetitorLinksSaving(true);
+    setCompetitorDiscoveryError("");
+    try {
+      await api(`/competitor-mapping/category/${encodeURIComponent(cid)}`, {
+        method: "PUT",
+        body: JSON.stringify({ links: competitorLinks }),
+      });
+      invalidateSourcesReadCaches(cid);
+      await loadCategoriesMapping();
+    } catch (e) {
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось сохранить ссылки конкурентов");
+      throw e;
+    } finally {
+      setCompetitorLinksSaving(false);
+    }
+  }
+
+  async function runCompetitorIndexAndMatch(categoryId: string, productId?: string) {
+    const cid = String(categoryId || "").trim();
+    if (!cid) return;
+    const savedLinks = Object.entries(competitorLinks)
+      .map(([site, url]) => ({ site, url: String(url || "").trim() }))
+      .filter((item) => item.url);
+    if (!savedLinks.length) {
+      setCompetitorDiscoveryError("Добавьте хотя бы одну ссылку на категорию конкурента.");
+      return;
+    }
+    setCompetitorIndexing(true);
+    setCompetitorIndexNotice("Сохраняю ссылки и запускаю легкий индекс конкурентов...");
+    setCompetitorDiscoveryError("");
+    try {
+      await saveCompetitorCategoryLinks(cid);
+      let startedRuns = 0;
+      for (const item of savedLinks) {
+        try {
+          await api<CompetitorCatalogRunResp>("/competitor-catalog/runs", {
+            method: "POST",
+            body: JSON.stringify({
+              name: `${sourceProviderLabel(item.site)} · ${selectedCatalogNode?.name || cid}`,
+              start_url: item.url,
+              max_pages: 180,
+              max_products: 900,
+            }),
+          });
+          startedRuns += 1;
+        } catch (e) {
+          setCompetitorDiscoveryError((prev) => prev || ((e as Error).message || `Не удалось запустить индекс ${item.site}`));
+        }
+      }
+      setCompetitorIndexNotice(
+        startedRuns
+          ? `Индекс запущен по ${startedRuns} источникам. Matcher уже использует сохраненный индекс и обновит кандидатов.`
+          : "Ссылки сохранены, но индекс не запустился. Проверьте URL источников.",
+      );
+      await runCompetitorCategoryDiscovery(cid, productId, { forceCategoryScope: true });
+    } finally {
+      setCompetitorIndexing(false);
+    }
+  }
+
+  function rowHasConfirmedCompetitor(row: { statuses?: Record<string, CompetitorProductStatus> }) {
+    return Object.values(row.statuses || {}).some((status) => normalizeCompetitorProductStatus(status.status) === "confirmed");
+  }
+
+  async function sendConfirmedCompetitorsToEnrichment(rows: Array<{ id: string; statuses?: Record<string, CompetitorProductStatus> }>) {
+    const productIds = rows
+      .filter((row) => rowHasConfirmedCompetitor(row))
+      .filter((row) => {
+        const currentJob = Object.values(row.statuses || {}).map((status) => status.enrich_job).find(Boolean);
+        const jobStatus = String(currentJob?.status || "");
+        return !["queued", "running"].includes(jobStatus);
+      })
+      .map((row) => row.id)
+      .filter(Boolean);
+    if (!productIds.length) {
+      setCompetitorEnrichNotice("Нет подтвержденных товаров для отправки или они уже находятся в очереди.");
+      return;
+    }
+    setCompetitorEnriching(true);
+    setCompetitorEnrichNotice("Ставлю подтвержденные товары в batch-очередь насыщения...");
+    setCompetitorDiscoveryError("");
+    try {
+      const response = await api<EnrichBatchResp>("/competitor-mapping/discovery/product-enrich/jobs/batch", {
+        method: "POST",
+        body: JSON.stringify({ product_ids: productIds, limit: productIds.length }),
+      });
+      setCompetitorEnrichNotice(`В очередь насыщения отправлено: ${response.queued_count || response.jobs?.length || 0}.`);
+      if (selectedCatalogNode?.id) {
+        await loadCompetitorDiscovery(selectedCatalogNode.id, { preferFocusedProduct: false });
+      }
+    } catch (e) {
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось отправить товары на насыщение");
+    } finally {
+      setCompetitorEnriching(false);
     }
   }
 
@@ -2677,9 +2852,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (currentId) setCompetitorSampleProductId("");
   }
 
-  async function runCompetitorCategoryDiscovery(categoryId: string, productId?: string) {
+  async function runCompetitorCategoryDiscovery(
+    categoryId: string,
+    productId?: string,
+    options: { forceCategoryScope?: boolean } = {},
+  ) {
     const current = competitorDiscovery || await loadCompetitorDiscovery(categoryId);
-    const selectedProductId = String(productId || competitorSampleProductId || "").trim();
+    const selectedProductId = options.forceCategoryScope ? "" : String(productId || competitorSampleProductId || "").trim();
     const sourceRows = current?.sources || [];
     const hasUnconfirmedCompetitorSource = (pid: string) => {
       const normalizedProductId = String(pid || "").trim();
@@ -2708,7 +2887,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         body: JSON.stringify({
           background: false,
           category_id: categoryId,
-          sources: ["restore", "store77"],
+          sources: COMPETITOR_PROVIDER_CODES,
           product_ids: productIds,
           limit: Math.max(1, productIds.length || 30),
         }),
@@ -2777,6 +2956,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       cancelled = true;
     };
   }, [selectedCatalogNode?.id, mainTab, importTab, shouldLoadCompetitorDiscovery]);
+
+  useEffect(() => {
+    const categoryId = selectedCatalogNode?.id || "";
+    if (!categoryId || !competitorDiscovery) return;
+    const hasActiveEnrichment = (competitorDiscovery.sources || []).some((source) => (
+      Object.values(source.product_statuses || {}).some((status) => ["queued", "running"].includes(String(status.enrich_job?.status || "")))
+    ));
+    if (!hasActiveEnrichment && !competitorEnriching) return;
+    const timer = window.setInterval(() => {
+      void loadCompetitorDiscovery(categoryId, { preferFocusedProduct: false });
+    }, 3500);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCatalogNode?.id, competitorDiscovery, competitorEnriching]);
 
   const selectedCatalogMappedDescendants = useMemo(() => {
     if (!selectedCatalogNode) return [];
@@ -3366,7 +3559,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 ]
                                   .filter((source, index, arr) => source.code && arr.findIndex((item) => item.code === source.code) === index)
                                   .sort((a, b) => {
-                                    const knownOrder = new Map([["store77", 0], ["restore", 1]]);
+                                    const knownOrder = new Map([["store77", 0], ["restore", 1], ["biggeek", 2]]);
                                     const aOrder = knownOrder.get(a.code) ?? 10;
                                     const bOrder = knownOrder.get(b.code) ?? 10;
                                     return aOrder - bOrder || a.title.localeCompare(b.title, "ru");
@@ -3395,7 +3588,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   const rowStatuses = Object.values(statuses).map((status) => normalizeCompetitorProductStatus(status.status));
                                   const worstRank = Math.min(...rowStatuses.map(competitorStatusRank));
                                   const aggregateStatus = aggregateCompetitorStatus(rowStatuses);
-                                  return { ...product, id, statuses, worstRank, aggregateStatus };
+                                  const enrichJob = Object.values(statuses).map((status) => status.enrich_job).find(Boolean) || null;
+                                  return { ...product, id, statuses, worstRank, aggregateStatus, enrichJob };
                                 });
                                 const filteredCompetitorRows = competitorRows
                                   .filter((product) => {
@@ -3427,6 +3621,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   return [source.code, counts];
                                 }));
                                 const branchProductCount = Number(competitorDiscovery?.category?.products_count || 0);
+                                const confirmedRows = competitorRows.filter((row) => rowHasConfirmedCompetitor(row));
+                                const enrichQueuedCount = competitorRows.filter((row) => String(row.enrichJob?.status || "") === "queued").length;
+                                const enrichRunningCount = competitorRows.filter((row) => String(row.enrichJob?.status || "") === "running").length;
+                                const enrichCompletedCount = competitorRows.filter((row) => String(row.enrichJob?.status || "") === "completed").length;
+                                const enrichFailedCount = competitorRows.filter((row) => String(row.enrichJob?.status || "") === "failed").length;
                                 const selectedSampleLabel = selectedSampleProduct
                                   ? `${selectedSampleProduct.sku_gt ? `${selectedSampleProduct.sku_gt} · ` : ""}${selectedSampleProduct.title || selectedSampleProduct.id}`
                                   : competitorDiscoveryLoading
@@ -3460,11 +3659,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         <button
                                           type="button"
                                           className="btn btn-primary mm-miniBtn"
-                                          onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
-                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !actionSampleProduct}
-                                          title={!actionSampleProduct ? "Сначала выберите категорию, где есть SKU в ветке" : undefined}
+                                          onClick={() => void runCompetitorIndexAndMatch(selectedCatalogNode.id, selectedSampleProduct?.id)}
+                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || competitorIndexing || competitorLinksSaving || !branchProductCount}
+                                          title={!branchProductCount ? "Сначала выберите категорию, где есть SKU в ветке" : undefined}
                                         >
-                                          {competitorDiscoveryRunning ? "Подбираю..." : "Подобрать карточки"}
+                                          {competitorDiscoveryRunning || competitorIndexing ? "Сопоставляю..." : "Сопоставить"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn mm-miniBtn"
+                                          onClick={() => void sendConfirmedCompetitorsToEnrichment(competitorRows)}
+                                          disabled={competitorEnriching || !confirmedRows.length}
+                                        >
+                                          {competitorEnriching ? "Отправляю..." : "Отправить на насыщение"}
                                         </button>
                                         {selectedSampleProduct ? (
                                           <Link className="btn mm-miniBtn mm-ghostBtn" to={orgPath(`/products/${encodeURIComponent(selectedSampleProduct.id)}`)}>
@@ -3475,6 +3682,23 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     </div>
                                       <div className="mm-lineContent">
                                         <div className="mm-competitorMatchTableWorkspace">
+                                          <div className="mm-competitorCategoryLinks" aria-label="Ссылки категорий конкурентов">
+                                            {sourceColumns.map((source) => (
+                                              <label key={source.code} className="mm-competitorCategoryLinkBox">
+                                                <span>{source.title}</span>
+                                                <input
+                                                  value={competitorLinks[source.code as CompetitorSiteKey] || ""}
+                                                  onChange={(event) => setCompetitorLinks((prev) => ({
+                                                    ...prev,
+                                                    [source.code]: event.target.value,
+                                                  }))}
+                                                  placeholder={`https://${source.domain || source.title}/...`}
+                                                  disabled={competitorIndexing || competitorLinksSaving}
+                                                />
+                                              </label>
+                                            ))}
+                                          </div>
+
                                           <div className="mm-competitorQueueSummary" aria-label="Сводка конкурентного сопоставления">
                                             <div>
                                               <span>SKU в ветке</span>
@@ -3489,10 +3713,31 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                               <strong>{competitorConfirmedTotal}</strong>
                                             </div>
                                             <div>
+                                              <span>Готово к насыщению</span>
+                                              <strong>{confirmedRows.length}</strong>
+                                            </div>
+                                            <div>
+                                              <span>Импорт</span>
+                                              <strong>{enrichRunningCount ? `${enrichRunningCount} в работе` : enrichQueuedCount ? `${enrichQueuedCount} в очереди` : `${enrichCompletedCount} готово`}</strong>
+                                            </div>
+                                            <div>
                                               <span>Статус</span>
                                               <strong>{competitorDiscoveryRunning ? "Скан" : competitorDiscoveryLoading ? "Загрузка" : competitorStatusText}</strong>
                                             </div>
                                           </div>
+
+                                          {competitorIndexNotice ? (
+                                            <div className="mm-competitorRunNotice isRunning">
+                                              <strong>Индекс конкурентов</strong>
+                                              <span>{competitorIndexNotice}</span>
+                                            </div>
+                                          ) : null}
+                                          {competitorEnrichNotice ? (
+                                            <div className={`mm-competitorRunNotice ${enrichFailedCount ? "hasError" : enrichRunningCount || enrichQueuedCount ? "isRunning" : "isDone"}`}>
+                                              <strong>Насыщение</strong>
+                                              <span>{competitorEnrichNotice}</span>
+                                            </div>
+                                          ) : null}
 
                                           <div className="mm-competitorTableFilters">
                                             <input
@@ -3554,11 +3799,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                             <div className="mm-competitorMatchTableWrap">
                                               <div
                                                 className="mm-competitorMatchTable"
-                                                style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
+                                                style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) minmax(180px, 220px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
                                               >
                                                 <div className="mm-competitorMatchHead">SKU</div>
                                                 <div className="mm-competitorMatchHead">Наименование товара</div>
                                                 <div className="mm-competitorMatchHead">Статус</div>
+                                                <div className="mm-competitorMatchHead">Импорт</div>
                                                 {sourceColumns.map((source) => (
                                                   <div key={source.code} className="mm-competitorMatchHead">{source.title}</div>
                                                 ))}
@@ -3569,13 +3815,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                       key={row.id}
                                                       type="button"
                                                       className={`mm-competitorMatchRow${active ? " isActive" : ""}`}
-                                                      style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
+                                                      style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) minmax(180px, 220px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
                                                       onClick={() => setCompetitorSampleProductId(row.id)}
                                                     >
                                                       <span className="mm-competitorMatchSku">{row.sku_gt || row.id}</span>
                                                       <strong>{row.title || row.id}</strong>
                                                       <span className={`mm-competitorStatusPill is-${row.aggregateStatus}`}>
                                                         {competitorStatusLabel(row.aggregateStatus)}
+                                                      </span>
+                                                      <span className="mm-competitorImportCell">
+                                                        <b className={`mm-competitorStatusPill ${competitorEnrichStatusClass(row.enrichJob)}`}>
+                                                          {competitorEnrichStatusLabel(row.enrichJob)}
+                                                        </b>
+                                                        <small>{competitorEnrichProgressLabel(row.enrichJob)}</small>
                                                       </span>
                                                       {sourceColumns.map((source) => {
                                                         const status = normalizeCompetitorProductStatus(row.statuses[source.code]?.status);

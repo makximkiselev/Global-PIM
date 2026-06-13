@@ -2119,6 +2119,40 @@ def _product_source_scan_evidence(product: Dict[str, Any], source_id: str) -> Di
     return evidence
 
 
+def _latest_product_enrich_jobs(product_ids: set[str]) -> Dict[str, Dict[str, Any]]:
+    normalized_ids = {str(item or "").strip() for item in product_ids if str(item or "").strip()}
+    if not normalized_ids:
+        return {}
+    try:
+        jobs = list_pim_workflow_runs(
+            workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW,
+            statuses=["queued", "running", "completed", "failed"],
+            limit=max(200, len(normalized_ids) * 4),
+        )
+    except Exception:
+        return {}
+
+    def job_order(job: Dict[str, Any]) -> tuple[str, float]:
+        updated_raw = job.get("updated_ts") or job.get("created_ts") or 0
+        try:
+            updated = float(updated_raw)
+        except Exception:
+            updated = 0.0
+        return (str(job.get("finished_at") or job.get("started_at") or job.get("created_at") or ""), updated)
+
+    latest: Dict[str, Dict[str, Any]] = {}
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        product_id = str(job.get("product_id") or "").strip()
+        if product_id not in normalized_ids:
+            continue
+        current = latest.get(product_id)
+        if current is None or job_order(job) >= job_order(current):
+            latest[product_id] = _public_product_enrich_job(job)
+    return latest
+
+
 def _product_discovery_source_summaries(
     product_id: str,
     candidates: List[Dict[str, Any]],
@@ -4501,8 +4535,8 @@ def _apply_mapping_patch(template_id: str, current: Dict[str, Any], patch_in: An
 def _normalize_mapping_by_site(template_id: str, mapping_in: Any) -> Dict[str, Dict[str, str]]:
     if mapping_in is None or not isinstance(mapping_in, dict):
         raise HTTPException(status_code=400, detail="mapping_by_site must be an object")
-    out: Dict[str, Dict[str, str]] = {"restore": {}, "store77": {}}
-    for site in ("restore", "store77"):
+    out: Dict[str, Dict[str, str]] = {site: {} for site in ALLOWED_SITES.keys()}
+    for site in ALLOWED_SITES.keys():
         cur = mapping_in.get(site)
         if isinstance(cur, dict):
             out[site] = _normalize_mapping_full(template_id, cur)
@@ -4513,15 +4547,14 @@ def _apply_mapping_patch_by_site(template_id: str, current: Any, patch_in: Any) 
     if patch_in is None or not isinstance(patch_in, dict):
         raise HTTPException(status_code=400, detail="mapping_by_site must be an object")
 
-    cur_restore = {}
-    cur_store = {}
+    current_by_site: Dict[str, Dict[str, Any]] = {site: {} for site in ALLOWED_SITES.keys()}
     if isinstance(current, dict):
-        cur_restore = current.get("restore") if isinstance(current.get("restore"), dict) else {}
-        cur_store = current.get("store77") if isinstance(current.get("store77"), dict) else {}
+        for site in ALLOWED_SITES.keys():
+            current_by_site[site] = current.get(site) if isinstance(current.get(site), dict) else {}
 
     next_map = {
-        "restore": _apply_mapping_patch(template_id, cur_restore, patch_in.get("restore") or {}),
-        "store77": _apply_mapping_patch(template_id, cur_store, patch_in.get("store77") or {}),
+        site: _apply_mapping_patch(template_id, current_by_site.get(site) or {}, patch_in.get(site) or {})
+        for site in ALLOWED_SITES.keys()
     }
     return next_map
 
@@ -4581,7 +4614,7 @@ def _get_category_row_with_fallback(category_id: str) -> Tuple[Dict[str, Any], O
     template_id, source_category_id = _resolve_template_for_category(category_id)
     if relational_row:
         return relational_row, template_id, source_category_id
-    if any((row.get("links") or {}).values()) or any((row.get("mapping_by_site") or {}).get(site) for site in ("restore", "store77")):
+    if any((row.get("links") or {}).values()) or any((row.get("mapping_by_site") or {}).get(site) for site in ALLOWED_SITES.keys()):
         return row, template_id, source_category_id
     if template_id:
         relational_template_row = _relational_competitor_mapping_row("template", template_id)
@@ -4805,6 +4838,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
     candidates = discovery.get("candidates") if isinstance(discovery.get("candidates"), dict) else {}
     links = discovery.get("links") if isinstance(discovery.get("links"), dict) else {}
     _merge_relational_discovery_items(candidates, links, product_ids=product_ids)
+    enrich_jobs_by_product = _latest_product_enrich_jobs(product_ids)
     category_name = str(node.get("name") or "").strip()
     product_has_competitor_context = {
         str(item.get("product_id") or "").strip()
@@ -4885,6 +4919,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                 "confirmed_count": len(pid_links),
                 "candidates_count": len(pid_review_candidates),
                 "rejected_count": len(pid_rejected_candidates),
+                "enrich_job": enrich_jobs_by_product.get(pid),
                 "candidate_items": sorted(
                     pid_review_candidates,
                     key=lambda row: (
@@ -5596,11 +5631,6 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any], background_ta
     if action == "approve":
         _approve_competitor_candidate(candidates, links, candidate_id, reviewed_at=reviewed_at)
         candidate = candidates.get(candidate_id, candidate)
-        enrich_job = _queue_product_enrich_job(
-            str(candidate.get("product_id") or product_id_for_merge or "").strip(),
-            background_tasks,
-            message="Конкурентная карточка подтверждена. Товар поставлен в batch-очередь насыщения.",
-        )
     else:
         candidate["status"] = "rejected"
         candidate["reviewed_at"] = reviewed_at
@@ -5663,11 +5693,7 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any], backgro
         candidates[candidate_id] = candidate
         _persist_competitor_channel_candidate(candidate)
     _save_competitor_mapping_runs_only(db)
-    enrich_job = _queue_product_enrich_job(
-        normalized_product_id,
-        background_tasks,
-        message="Конкурентная ссылка добавлена вручную. Товар поставлен в batch-очередь насыщения.",
-    )
+    enrich_job: Dict[str, Any] = {}
     return {"ok": True, "link": confirmed_link, "links": links, "enrich_job": enrich_job or None}
 
 

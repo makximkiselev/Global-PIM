@@ -5407,9 +5407,52 @@
 
 .sourcesCommandWorkbench .mm-competitorQueueSummary{
   display:grid;
-  grid-template-columns:repeat(4, minmax(0,1fr));
+  grid-template-columns:repeat(6, minmax(0,1fr));
   border-bottom:1px solid var(--line);
   background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinks{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(220px, 1fr));
+  gap:10px;
+  padding:12px;
+  border-bottom:1px solid var(--line);
+  background:#fbfbfc;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinkBox{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinkBox span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinkBox input{
+  width:100%;
+  min-height:36px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  color:var(--text);
+  padding:0 10px;
+  font:inherit;
+  font-size:12px;
+  font-weight:760;
+  outline:none;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinkBox input:focus{
+  border-color:rgba(var(--brand-rgb), .55);
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb), .10);
 }
 
 .sourcesCommandWorkbench .mm-competitorQueueSummary > div{
@@ -5596,6 +5639,25 @@
   border-right:1px solid var(--line);
 }
 
+.sourcesCommandWorkbench .mm-competitorMatchRow > .mm-competitorImportCell{
+  align-items:flex-start;
+  justify-content:center;
+  flex-direction:column;
+  gap:5px;
+}
+
+.sourcesCommandWorkbench .mm-competitorImportCell small{
+  display:block;
+  width:100%;
+  overflow:hidden;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:720;
+  line-height:1.25;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
 .sourcesCommandWorkbench .mm-competitorMatchSku{
   color:var(--muted);
   font-size:12px;
@@ -5643,6 +5705,12 @@
   border-color:rgba(239,68,68,.28);
   background:rgba(239,68,68,.08);
   color:#b42318;
+}
+
+.sourcesCommandWorkbench .mm-competitorStatusPill.is-none{
+  border-color:var(--line);
+  background:#f8fafc;
+  color:var(--muted);
 }
 
 .sourcesCommandWorkbench .mm-competitorInspectorBackdrop{
