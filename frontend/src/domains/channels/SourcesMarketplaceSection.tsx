@@ -28,7 +28,7 @@ type SourcesMarketplaceSectionProps = {
 const SOURCES_MAPPING_CACHE_TTL_MS = 24 * 60 * 60_000;
 const SOURCES_STATIC_CACHE_TTL_MS = 24 * 60 * 60_000;
 const COMPETITOR_MATCH_PAGE_SIZE = 40;
-const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v5";
+const SOURCES_CATEGORIES_CACHE_KEY = "mm_sources_categories_cache_v6";
 const SOURCES_ATTR_BOOTSTRAP_CACHE_KEY = "mm_sources_attr_bootstrap_cache_v3";
 const SOURCES_ATTR_DETAILS_CACHE_PREFIX = "mm_sources_attr_details_cache_v3:";
 let categoriesMappingCache: { ts: number; data: CategoriesResp | null } = { ts: 0, data: null };
@@ -135,6 +135,26 @@ type CatalogNode = {
   sku_count?: number;
 };
 
+type MarketplaceHydrationJob = {
+  ok?: boolean;
+  job_id?: string;
+  catalog_category_id?: string;
+  provider?: string;
+  provider_category_id?: string;
+  status?: string;
+  phase?: string;
+  message?: string;
+  created_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  products_count?: number;
+  updated_products?: number;
+  stores_count?: number;
+  summary?: Array<Record<string, unknown>>;
+  errors?: Array<Record<string, unknown>>;
+  error?: string;
+};
+
 type CategoriesResp = {
   ok: boolean;
   catalog_nodes?: CatalogNode[];
@@ -164,6 +184,7 @@ type CategoriesResp = {
     links?: Partial<Record<CompetitorSiteKey, string>>;
     mapping_counts?: Partial<Record<CompetitorSiteKey, number>>;
   }>;
+  marketplace_hydration_jobs?: Record<string, Record<string, MarketplaceHydrationJob>>;
 };
 
 type MappingIssue = {
@@ -409,11 +430,7 @@ type LinkResp = {
   cleared_catalog_category_ids?: string[];
   preserved_template_category_ids?: string[];
   mappings?: Record<string, Record<string, string>>;
-  marketplace_hydration_job?: {
-    job_id?: string;
-    status?: string;
-    message?: string;
-  } | null;
+  marketplace_hydration_job?: MarketplaceHydrationJob | null;
 };
 
 type ClearDescendantBindingsResp = {
@@ -1119,6 +1136,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
   const [bindingStates, setBindingStates] = useState<CategoriesResp["binding_states"]>({});
   const [competitorStates, setCompetitorStates] = useState<CategoriesResp["competitor_states"]>({});
+  const [marketplaceHydrationJobs, setMarketplaceHydrationJobs] = useState<CategoriesResp["marketplace_hydration_jobs"]>({});
   const [competitorDiscovery, setCompetitorDiscovery] = useState<CompetitorCategoryDiscoveryResp | null>(null);
   const [competitorDiscoveryLoading, setCompetitorDiscoveryLoading] = useState(false);
   const [competitorDiscoveryRunning, setCompetitorDiscoveryRunning] = useState(false);
@@ -1191,6 +1209,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setMappings(data.mappings || {});
       setBindingStates(data.binding_states || {});
       setCompetitorStates(data.competitor_states || {});
+      setMarketplaceHydrationJobs(data.marketplace_hydration_jobs || {});
       return data;
     }
     const persisted = loadPersistentSourcesCache<CategoriesResp>(SOURCES_CATEGORIES_CACHE_KEY, SOURCES_MAPPING_CACHE_TTL_MS);
@@ -1204,6 +1223,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setMappings(persisted.mappings || {});
       setBindingStates(persisted.binding_states || {});
       setCompetitorStates(persisted.competitor_states || {});
+      setMarketplaceHydrationJobs(persisted.marketplace_hydration_jobs || {});
       return persisted;
     }
     setLoading(true);
@@ -1220,6 +1240,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       setMappings(data.mappings || {});
       setBindingStates(data.binding_states || {});
       setCompetitorStates(data.competitor_states || {});
+      setMarketplaceHydrationJobs(data.marketplace_hydration_jobs || {});
       return data;
     } catch (e) {
       setErr((e as Error).message || "Ошибка загрузки");
@@ -2167,6 +2188,49 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     };
   }
 
+  function marketplaceHydrationJobFor(nodeId: string, providerCode: string): MarketplaceHydrationJob | null {
+    let cur = nodeId;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const job = marketplaceHydrationJobs?.[cur]?.[providerCode];
+      if (job) {
+        return {
+          ...job,
+          catalog_category_id: String(job.catalog_category_id || cur),
+        };
+      }
+      cur = parentById.get(cur) || "";
+    }
+    return null;
+  }
+
+  function marketplaceHydrationStatus(job: MarketplaceHydrationJob | null): { label: string; detail: string; tone: "idle" | "active" | "ok" | "warn" | "error" } | null {
+    if (!job) return null;
+    const status = String(job.status || "").trim();
+    const phase = String(job.phase || "").trim();
+    const updated = Number(job.updated_products || 0);
+    const products = Number(job.products_count || 0);
+    const errors = Array.isArray(job.errors) ? job.errors.length : 0;
+    if (status === "queued") {
+      return { label: "Импорт площадки: в очереди", detail: String(job.message || "Ожидает обработки."), tone: "active" };
+    }
+    if (status === "running") {
+      const phaseLabel = phase === "collecting_products" ? "собираем SKU" : phase === "syncing_marketplace" ? "загружаем данные" : "в работе";
+      return { label: `Импорт площадки: ${phaseLabel}`, detail: String(job.message || "Данные карточек подтягиваются из площадки."), tone: "active" };
+    }
+    if (status === "completed") {
+      const detail = errors
+        ? `Обновлено SKU: ${updated}. Ошибок магазинов: ${errors}.`
+        : `Обновлено SKU: ${updated}${products && updated <= products ? ` из ${products}` : ""}.`;
+      return { label: errors ? "Импорт площадки: с предупреждениями" : "Импорт площадки: завершен", detail, tone: errors ? "warn" : "ok" };
+    }
+    if (status === "failed") {
+      return { label: "Импорт площадки: ошибка", detail: String(job.error || job.message || "Не удалось загрузить данные площадки."), tone: "error" };
+    }
+    return { label: "Импорт площадки", detail: String(job.message || "Статус импорта данных площадки."), tone: "idle" };
+  }
+
   function competitorSourceMeta(nodeId: string) {
     const state = competitorStates?.[nodeId] || null;
     const links = state?.links || {};
@@ -2282,6 +2346,29 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       });
       invalidateSourcesReadCaches(catalogCategoryId);
       setMappings(res.mappings || {});
+      if (res.marketplace_hydration_job) {
+        const job = res.marketplace_hydration_job;
+        const jobCatalogId = String(job.catalog_category_id || catalogCategoryId);
+        const jobProvider = String(job.provider || providerCode);
+        const nextJobs = {
+          ...(marketplaceHydrationJobs || {}),
+          [jobCatalogId]: {
+            ...((marketplaceHydrationJobs || {})[jobCatalogId] || {}),
+            [jobProvider]: job,
+          },
+        };
+        setMarketplaceHydrationJobs(nextJobs);
+        categoriesMappingCache = categoriesMappingCache.data
+          ? {
+              ts: Date.now(),
+              data: {
+                ...categoriesMappingCache.data,
+                mappings: res.mappings || categoriesMappingCache.data.mappings,
+                marketplace_hydration_jobs: nextJobs,
+              },
+            }
+          : categoriesMappingCache;
+      }
       await loadMappingIssues();
       if (importTab === "features") {
         await loadAttrBootstrap().catch(() => null);
@@ -3387,10 +3474,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                           <div className="mm-catBindingStrip">
                             {displayProviders.map((prov) => {
                               const binding = categoryBindingMeta(selectedCatalogNode.id, prov.code);
+                              const hydrationStatus = marketplaceHydrationStatus(marketplaceHydrationJobFor(selectedCatalogNode.id, prov.code));
                               return (
-                                <div key={`${selectedCatalogNode.id}-${prov.code}-summary`} className={`mm-catBindingPill is-${binding.state}`}>
+                                <div key={`${selectedCatalogNode.id}-${prov.code}-summary`} className={`mm-catBindingPill is-${binding.state} ${hydrationStatus ? `hasHydration is-${hydrationStatus.tone}` : ""}`}>
                                   <span className="mm-catBindingProvider">{prov.title}</span>
-                                  <span className="mm-catBindingValue">{binding.label}</span>
+                                  <span className="mm-catBindingValue">{hydrationStatus ? hydrationStatus.label.replace("Импорт площадки: ", "") : binding.label}</span>
                                 </div>
                               );
                             })}
@@ -3483,6 +3571,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const mainDisabled = !canOpen;
                                 const mappedCat = effectiveId ? providerCategoryById[prov.code]?.[effectiveId] : null;
                                 const mp = splitPath(mappedCat?.path || mappedCat?.name || "");
+                                const hydrationStatus = marketplaceHydrationStatus(marketplaceHydrationJobFor(selectedCatalogNode.id, prov.code));
                                 const statusLabel = directId
                                   ? hasIssue
                                     ? "Требует перевыбора"
@@ -3502,6 +3591,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         </div>
                                       </div>
                                     </div>
+                                    {hydrationStatus ? (
+                                      <div className={`mm-marketplaceHydrationStatus is-${hydrationStatus.tone}`}>
+                                        <span>{hydrationStatus.label}</span>
+                                        <small>{hydrationStatus.detail}</small>
+                                      </div>
+                                    ) : null}
                                     <div className="mm-providerActionsBar">
                                       <div className="mm-providerActionBtns">
                                         <button
@@ -3710,6 +3805,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const runFinished = competitorDiscoveryRun && !["queued", "running"].includes(competitorDiscoveryRun.status);
                                 const runCreated = Number(competitorDiscoveryRun?.created_count || 0) + Number(competitorDiscoveryRun?.updated_count || 0);
                                 const runHasErrors = Number(competitorDiscoveryRun?.errors_count || 0) > 0;
+                                const marketplaceImportStatuses = MAPPING_PROVIDER_CODES
+                                  .map((providerCode) => ({
+                                    providerCode,
+                                    title: PROVIDER_SLOTS[providerCode] || providerCode,
+                                    status: marketplaceHydrationStatus(marketplaceHydrationJobFor(selectedCatalogNode.id, providerCode)),
+                                  }))
+                                  .filter((item) => item.status);
                                 return (
                                   <div className={`mm-providerDetailCard mm-competitorSourceCard ${competitorMeta.configured ? "is-ready" : "is-missing"}`}>
                                     <div className="mm-competitorHeader mm-competitorHeaderQueue">
@@ -3749,6 +3851,18 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                         ) : null}
                                       </div>
                                     </div>
+                                    {marketplaceImportStatuses.length ? (
+                                      <div className="mm-marketplaceImportStrip" aria-label="Статус импорта площадок">
+                                        <span className="mm-marketplaceImportStripLabel">Импорт площадок</span>
+                                        {marketplaceImportStatuses.map((item) => (
+                                          <div key={`competitor-marketplace-import-${item.providerCode}`} className={`mm-marketplaceImportPill is-${item.status?.tone || "idle"}`}>
+                                            <strong>{item.title}</strong>
+                                            <span>{item.status?.label.replace("Импорт площадки: ", "")}</span>
+                                            {item.status?.detail ? <small>{item.status.detail}</small> : null}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
                                       <div className="mm-lineContent">
                                         <div className="mm-competitorMatchTableWorkspace">
                                           <div className="mm-competitorCategoryLinks" aria-label="Ссылки категорий конкурентов">

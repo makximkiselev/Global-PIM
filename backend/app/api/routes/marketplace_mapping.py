@@ -120,6 +120,25 @@ def _current_org_cache_key() -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "_", current_tenant_organization_id()) or "default"
 
 
+def _latest_marketplace_hydration_jobs(limit: int = 200) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    latest: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for job in list_pim_workflow_runs(workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW, limit=limit):
+        category_id = str(job.get("catalog_category_id") or "").strip()
+        provider = str(job.get("provider") or "").strip()
+        if not category_id or provider not in MAPPING_PROVIDERS:
+            continue
+        latest.setdefault(category_id, {})
+        if provider not in latest[category_id]:
+            latest[category_id][provider] = _public_marketplace_hydration_job(job)
+    return latest
+
+
+def _with_marketplace_hydration_jobs(payload: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(payload)
+    out["marketplace_hydration_jobs"] = _latest_marketplace_hydration_jobs()
+    return out
+
+
 def _cache_entry(cache: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     return cache.setdefault(_current_org_cache_key(), {"ts": 0.0, "payload": None})
 
@@ -2290,12 +2309,12 @@ def mapping_import_categories() -> Dict[str, Any]:
     cached = cache_entry.get("payload")
     cached_ts = float(cache_entry.get("ts") or 0.0)
     if cached and now - cached_ts < _IMPORT_CATEGORIES_CACHE_TTL_SECONDS:
-        return cached
+        return _with_marketplace_hydration_jobs(cached)
     persisted = _persistent_cache_read(_import_categories_cache_path(), _IMPORT_CATEGORIES_CACHE_TTL_SECONDS)
     if persisted:
         cache_entry["ts"] = now
         cache_entry["payload"] = persisted
-        return persisted
+        return _with_marketplace_hydration_jobs(persisted)
 
     catalog_nodes = _load_catalog_nodes()
     branch_product_counts = _catalog_branch_product_counts(catalog_nodes)
@@ -2343,7 +2362,7 @@ def mapping_import_categories() -> Dict[str, Any]:
     cache_entry["ts"] = now
     cache_entry["payload"] = payload
     _persistent_cache_write(_import_categories_cache_path(), payload)
-    return payload
+    return _with_marketplace_hydration_jobs(payload)
 
 
 @router.get("/import/categories/bootstrap")

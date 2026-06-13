@@ -478,6 +478,26 @@
   background: color-mix(in srgb, var(--panel) 94%, var(--surface));
 }
 
+.sourcesMappingPage .mm-catBindingPill.hasHydration{
+  border-color:color-mix(in srgb, var(--accent) 32%, var(--line));
+  background:color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+
+.sourcesMappingPage .mm-catBindingPill.hasHydration.is-ok{
+  border-color:color-mix(in srgb, #16a34a 38%, var(--line));
+  background:color-mix(in srgb, #16a34a 8%, var(--panel));
+}
+
+.sourcesMappingPage .mm-catBindingPill.hasHydration.is-warn{
+  border-color:color-mix(in srgb, #f59e0b 38%, var(--line));
+  background:color-mix(in srgb, #f59e0b 8%, var(--panel));
+}
+
+.sourcesMappingPage .mm-catBindingPill.hasHydration.is-error{
+  border-color:color-mix(in srgb, #dc2626 38%, var(--line));
+  background:color-mix(in srgb, #dc2626 8%, var(--panel));
+}
+
 .sourcesMappingPage .mm-detailContent {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -5268,6 +5288,117 @@
 .sourcesCommandWorkbench .mm-providerState{
   width:max-content;
   margin-top:6px;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.25;
+  font-weight:780;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus span{
+  color:var(--text);
+  font-weight:920;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus small{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.3;
+  font-weight:720;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus.is-active{
+  border-color:color-mix(in srgb, var(--accent) 42%, var(--line));
+  background:color-mix(in srgb, var(--accent) 9%, var(--surface));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus.is-ok{
+  border-color:color-mix(in srgb, #16a34a 42%, var(--line));
+  background:color-mix(in srgb, #16a34a 8%, var(--surface));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus.is-warn{
+  border-color:color-mix(in srgb, #f59e0b 44%, var(--line));
+  background:color-mix(in srgb, #f59e0b 9%, var(--surface));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceHydrationStatus.is-error{
+  border-color:color-mix(in srgb, #dc2626 44%, var(--line));
+  background:color-mix(in srgb, #dc2626 8%, var(--surface));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportStrip{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:color-mix(in srgb, var(--surface-2) 76%, var(--panel));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportStripLabel{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:920;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  max-width:100%;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel);
+  color:var(--text);
+  font-size:12px;
+  line-height:1.2;
+  font-weight:760;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill strong{
+  font-weight:950;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill small{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:720;
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill.is-active{
+  border-color:color-mix(in srgb, var(--accent) 42%, var(--line));
+  background:color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill.is-ok{
+  border-color:color-mix(in srgb, #16a34a 42%, var(--line));
+  background:color-mix(in srgb, #16a34a 8%, var(--panel));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill.is-warn{
+  border-color:color-mix(in srgb, #f59e0b 42%, var(--line));
+  background:color-mix(in srgb, #f59e0b 8%, var(--panel));
+}
+
+.sourcesCommandWorkbench .mm-marketplaceImportPill.is-error{
+  border-color:color-mix(in srgb, #dc2626 42%, var(--line));
+  background:color-mix(in srgb, #dc2626 8%, var(--panel));
 }
 
 .sourcesCommandWorkbench .mm-providerActionBtns{
