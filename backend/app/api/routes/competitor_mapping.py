@@ -818,7 +818,7 @@ def _discovery_products(product_ids: Optional[List[str]] = None, limit: int = 50
     # Larger crawls must run as background jobs.
     requested_limit = max(1, int(limit or 3))
     if ids:
-        return items[: min(requested_limit, 50)]
+        return items[: min(requested_limit, len(ids))]
     return items[: min(requested_limit, 3)]
 
 

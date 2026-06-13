@@ -1829,15 +1829,15 @@ class AuthFlowTests(unittest.TestCase):
         self.assertGreaterEqual(candidates[0]["confidence_score"], 0.78)
 
     def test_discovery_products_does_not_truncate_explicit_category_ids_to_three(self) -> None:
-        products = [{"id": f"product_{idx}", "title": f"Product {idx}"} for idx in range(10)]
+        products = [{"id": f"product_{idx}", "title": f"Product {idx}"} for idx in range(75)]
 
         with patch.object(competitor_mapping_routes, "query_products_full", return_value=products) as query_mock:
             selected = competitor_mapping_routes._discovery_products(
                 product_ids=[item["id"] for item in products],
-                limit=10,
+                limit=75,
             )
 
-        self.assertEqual(len(selected), 10)
+        self.assertEqual(len(selected), 75)
         query_mock.assert_called_once_with(ids=[item["id"] for item in products])
 
     def test_store77_discovery_skips_browser_when_category_route_is_unknown(self) -> None:

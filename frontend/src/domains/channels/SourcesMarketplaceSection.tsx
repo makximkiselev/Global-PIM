@@ -2790,7 +2790,6 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           const pagesScanned = statuses.reduce((sum, item) => sum + Number(item?.run?.pages_scanned || 0), 0);
           setCompetitorIndexNotice(`Индексирую категории конкурентов: ${pagesScanned} стр., ${productsFound} карточек найдено.`);
           if (!active.length) break;
-          if (productsFound > 0 && attempt >= 3) break;
         }
       }
       setCompetitorIndexNotice("Индекс конкурентов готов. Запускаю сопоставление SKU по найденным карточкам.");
