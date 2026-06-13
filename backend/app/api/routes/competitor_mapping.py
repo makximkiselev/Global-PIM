@@ -4878,11 +4878,6 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
         for item in source_candidates:
             if item.get("status") != "needs_review":
                 continue
-            product = product_by_id.get(str(item.get("product_id") or "").strip())
-            if product:
-                score, _ = _confidence_for_candidate(product, str(item.get("title") or ""), str(item.get("sku") or ""))
-                if score < 0.78:
-                    continue
             review_candidates.append(item)
 
         product_statuses: Dict[str, Dict[str, Any]] = {}

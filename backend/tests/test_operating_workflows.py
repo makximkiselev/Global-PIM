@@ -1369,6 +1369,45 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(len(result["category"]["sample_products"]), 12)
         self.assertEqual(result["category"]["sample_products"][-1]["sku_gt"], "GT11")
 
+    def test_competitor_discovery_category_keeps_persisted_review_candidates_visible(self) -> None:
+        product = {
+            "id": "product_1",
+            "title": "Смартфон Apple iPhone 17 Pro Max 256Gb eSIM Orange (Global)",
+            "sku_gt": "52461",
+            "category_id": "cat-phone",
+        }
+        db = {
+            "discovery": {
+                "candidates": {
+                    "cand_restore": {
+                        "id": "cand_restore",
+                        "product_id": "product_1",
+                        "source_id": "restore",
+                        "url": "https://re-store.ru/catalog/apple/iphone/product-1/",
+                        "title": "Apple iPhone 17 Pro Max 256GB Orange",
+                        "status": "needs_review",
+                        "confidence_score": 0.82,
+                    },
+                },
+                "links": {},
+            }
+        }
+
+        with (
+            patch.object(competitor_mapping, "_catalog_node_by_id", return_value={"id": "cat-phone", "name": "iPhone 17 Pro Max"}),
+            patch.object(competitor_mapping, "_product_ids_for_category_scope", return_value=([deepcopy(product)], {"product_1"})),
+            patch.object(competitor_mapping, "load_competitor_mapping_db", return_value=deepcopy(db)),
+            patch.object(competitor_mapping, "_merge_relational_discovery_items", return_value=None),
+            patch.object(competitor_mapping, "_confidence_for_candidate", return_value=(0.2, ["strict recalculation would hide it"])),
+        ):
+            result = asyncio.run(competitor_mapping.discovery_category_context("cat-phone"))
+
+        by_source = {item["id"]: item for item in result["sources"]}
+        restore = by_source["restore"]
+        self.assertEqual(restore["needs_review_count"], 1)
+        self.assertEqual(restore["product_statuses"]["product_1"]["status"], "review")
+        self.assertEqual(restore["product_statuses"]["product_1"]["candidates_count"], 1)
+
     def test_latest_catalog_export_run_filters_by_category(self) -> None:
         runs_doc = {
             "runs": {
