@@ -722,26 +722,95 @@ function ProductBulkActionBar({
 }
 
 function ProductCatalogScope({
+  nodes,
   rootCategories,
   subCategories,
   parentCategoryId,
   subCategoryId,
-  activeCategoryName,
   total,
   onParentChange,
   onSubChange,
+  onCategorySelect,
   onClear,
 }: {
+  nodes: CatalogNode[];
   rootCategories: Array<{ id: string; name: string }>;
   subCategories: Array<{ id: string; path: string }>;
   parentCategoryId: string;
   subCategoryId: string;
-  activeCategoryName: string;
   total: number;
   onParentChange: (id: string) => void;
   onSubChange: (id: string) => void;
+  onCategorySelect: (rootId: string, nodeId: string) => void;
   onClear: () => void;
 }) {
+  const activeCategoryId = subCategoryId || parentCategoryId;
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(rootCategories.map((category) => category.id).slice(0, 3)));
+
+  const treeData = useMemo(() => {
+    const byId = new Map<string, CatalogNode>();
+    const children = new Map<string, CatalogNode[]>();
+    for (const node of nodes) {
+      const id = String(node.id || "").trim();
+      if (!id) continue;
+      byId.set(id, node);
+      const parentId = String(node.parent_id || "").trim();
+      const bucket = children.get(parentId) || [];
+      bucket.push(node);
+      children.set(parentId, bucket);
+    }
+    for (const bucket of children.values()) {
+      bucket.sort((left, right) => {
+        if ((left.position || 0) !== (right.position || 0)) return (left.position || 0) - (right.position || 0);
+        return (left.name || "").localeCompare(right.name || "", "ru");
+      });
+    }
+    return { byId, children };
+  }, [nodes]);
+
+  useEffect(() => {
+    if (!activeCategoryId) return;
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      let node = treeData.byId.get(activeCategoryId);
+      const seen = new Set<string>();
+      while (node && !seen.has(node.id)) {
+        seen.add(node.id);
+        next.add(node.id);
+        const parentId = String(node.parent_id || "").trim();
+        if (parentId) next.add(parentId);
+        node = parentId ? treeData.byId.get(parentId) : undefined;
+      }
+      return next;
+    });
+  }, [activeCategoryId, treeData.byId]);
+
+  const visibleTreeRows = useMemo(() => {
+    const rows: Array<{ node: CatalogNode; depth: number; hasChildren: boolean; rootId: string }> = [];
+    const walk = (node: CatalogNode, depth: number, rootId: string) => {
+      const children = treeData.children.get(node.id) || [];
+      rows.push({ node, depth, hasChildren: children.length > 0, rootId });
+      if (!expandedIds.has(node.id)) return;
+      for (const child of children) walk(child, depth + 1, rootId);
+    };
+    for (const root of treeData.children.get("") || []) walk(root, 0, root.id);
+    return rows;
+  }, [expandedIds, treeData.children]);
+
+  useEffect(() => {
+    if (expandedIds.size || !rootCategories.length) return;
+    setExpandedIds(new Set(rootCategories.map((category) => category.id).slice(0, 3)));
+  }, [expandedIds.size, rootCategories]);
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <aside className="productListCatalogPane">
       <div className="productListCatalogHead">
@@ -782,33 +851,41 @@ function ProductCatalogScope({
           <span>Весь каталог</span>
           <span className="productListCatalogNodeCount">{total}</span>
         </button>
-        {rootCategories.slice(0, 14).map((category) => (
-          <button
-            key={category.id}
-            type="button"
-            className={`productListCatalogNode${parentCategoryId === category.id && !subCategoryId ? " isActive" : ""}`}
-            onClick={() => onParentChange(category.id)}
-          >
-            <span>{category.name}</span>
-            <span className="productListCatalogNodeCount">›</span>
-          </button>
-        ))}
-        {subCategories.length ? (
-          <div className="productListCatalogSubtree">
-            <div className="productListCatalogSubhead">{activeCategoryName || "Подкатегории"}</div>
-            {subCategories.slice(0, 18).map((category) => (
+        {visibleTreeRows.map(({ node, depth, hasChildren, rootId }) => {
+          const isActive = activeCategoryId === node.id;
+          const isExpanded = expandedIds.has(node.id);
+          return (
+            <div
+              key={node.id}
+              className={`productListCatalogTreeRow${isActive ? " isActive" : ""}`}
+              style={{ ["--depth" as never]: depth }}
+            >
+              {hasChildren ? (
+                <button
+                  type="button"
+                  className={`productListCatalogCaret${isExpanded ? " isExpanded" : ""}`}
+                  onClick={() => toggleExpanded(node.id)}
+                  aria-label={isExpanded ? "Свернуть категорию" : "Раскрыть категорию"}
+                >
+                  ›
+                </button>
+              ) : (
+                <span className="productListCatalogCaretSpacer" aria-hidden />
+              )}
               <button
-                key={category.id}
                 type="button"
-                className={`productListCatalogNode isSub${subCategoryId === category.id ? " isActive" : ""}`}
-                onClick={() => onSubChange(category.id)}
+                className="productListCatalogNode"
+                onClick={() => onCategorySelect(rootId, depth === 0 ? "" : node.id)}
+                title={node.name}
               >
-                <span>{category.path.split("/").map((part) => part.trim()).filter(Boolean).pop() || category.path}</span>
-                <span className="productListCatalogNodeCount">›</span>
+                <span>{node.name}</span>
+                <span className="productListCatalogNodeCount">
+                  {hasChildren ? (isExpanded ? "−" : "+") : (node.products_count || "")}
+                </span>
               </button>
-            ))}
-          </div>
-        ) : null}
+            </div>
+          );
+        })}
       </div>
     </aside>
   );
@@ -1347,14 +1424,15 @@ export default function ProductListFeature() {
         <>
           <div className="productListWorkspace">
             <ProductCatalogScope
+              nodes={nodes}
               rootCategories={rootCategories}
               subCategories={subCategories}
               parentCategoryId={parentCategoryId}
               subCategoryId={subCategoryId}
-              activeCategoryName={activeCategory?.name || ""}
               total={total}
               onParentChange={(id) => updateFilters({ parent: id, sub: "", page: 1 })}
               onSubChange={(id) => updateFilters({ sub: id, page: 1 })}
+              onCategorySelect={(rootId, nodeId) => updateFilters({ parent: rootId, sub: nodeId, page: 1 })}
               onClear={() => updateFilters({ parent: "", sub: "", page: 1 })}
             />
 
