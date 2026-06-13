@@ -1086,6 +1086,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorStatusFilters, setCompetitorStatusFilters] = useState<Record<string, CompetitorProductSourceStatus | "all">>({});
   const [competitorManualUrls, setCompetitorManualUrls] = useState<Record<string, string>>({});
   const [competitorManualSubmitting, setCompetitorManualSubmitting] = useState("");
+  const [catalogPanelHidden, setCatalogPanelHidden] = useState(false);
   const [competitorModeratingId, setCompetitorModeratingId] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
@@ -2658,21 +2659,18 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     data: CompetitorCategoryDiscoveryResp | null,
     options: { preferFocusedProduct?: boolean; avoidProductId?: string } = {},
   ) {
-    const preferFocusedProduct = options.preferFocusedProduct !== false;
     const avoidProductId = String(options.avoidProductId || "").trim();
-    const focusedId = String(focusedProductId || "").trim();
     const currentId = String(competitorSampleProductId || "").trim();
     const sampleProducts = data?.category?.sample_products || [];
     const sampleIds = new Set(sampleProducts.map((item) => String(item.id || "").trim()).filter(Boolean));
     const reviewProductIds = competitorReviewProductIds(data).filter((id) => sampleIds.has(id) && id !== avoidProductId);
-    const reviewProductSet = new Set(reviewProductIds);
-    if (preferFocusedProduct && focusedId && sampleIds.has(focusedId) && (!reviewProductIds.length || reviewProductSet.has(focusedId))) {
-      if (focusedId !== currentId) setCompetitorSampleProductId(focusedId);
+    if (avoidProductId) {
+      const nextId = reviewProductIds[0] || "";
+      setCompetitorSampleProductId(nextId);
       return;
     }
-    if (currentId && sampleIds.has(currentId) && (!reviewProductIds.length || reviewProductSet.has(currentId))) return;
-    const nextId = reviewProductIds[0] || sampleProducts.find((item) => String(item.id || "").trim() !== avoidProductId)?.id || "";
-    if (nextId && nextId !== currentId) setCompetitorSampleProductId(nextId);
+    if (currentId && sampleIds.has(currentId)) return;
+    if (currentId) setCompetitorSampleProductId("");
   }
 
   async function runCompetitorCategoryDiscovery(categoryId: string, productId?: string) {
@@ -2713,9 +2711,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     }
   }
 
-  async function moderateCompetitorCandidate(categoryId: string, candidateId: string, action: "approve" | "reject") {
+  async function moderateCompetitorCandidate(categoryId: string, candidateId: string, action: "approve" | "reject", productId?: string) {
     const cid = String(categoryId || "").trim();
     const id = String(candidateId || "").trim();
+    const pid = String(productId || competitorSampleProductId || "").trim();
     if (!cid || !id) return;
     setCompetitorModeratingId(id);
     setCompetitorDiscoveryError("");
@@ -2724,7 +2723,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         method: "POST",
         body: JSON.stringify(action === "approve" ? { action } : { action, reason: "Отклонено из сопоставления категории" }),
       });
-      await loadCompetitorDiscovery(cid, { preferFocusedProduct: false });
+      await loadCompetitorDiscovery(cid, { preferFocusedProduct: false, avoidProductId: pid });
     } catch (e) {
       setCompetitorDiscoveryError((e as Error).message || "Не удалось обновить карточку конкурента");
     } finally {
@@ -3068,30 +3067,38 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               {!displayProviders.length ? (
                 <div className="empty-state">Нет площадок для сопоставления.</div>
               ) : (
-                <div className="mm-workspace">
-                  <CategorySidebar
-                    className="mm-treePane mm-treePaneShared"
-                    title="Каталог"
-                    hint="Структура каталога"
-                    searchValue={catalogQuery}
-                    onSearchChange={setCatalogQuery}
-                    searchPlaceholder="Быстрый поиск"
-                    controls={
-                      <button className="btn sm" type="button" onClick={hasExpandedNodes ? () => setTreeExpanded({}) : () => {
-                        const next: Record<string, boolean> = {};
-                        for (const [parentId, children] of childrenByParent.entries()) {
-                          if (parentId && children.length > 0) next[parentId] = true;
-                        }
-                        setTreeExpanded(next);
-                      }}>
-                        {hasExpandedNodes ? "Свернуть" : "Развернуть"}
-                      </button>
-                    }
-                  >
-                    <div className="csb-tree">
-                      {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
-                    </div>
-                  </CategorySidebar>
+                <>
+                <div className="mm-catalogVisibilityBar">
+                  <button className="btn sm" type="button" onClick={() => setCatalogPanelHidden((value) => !value)}>
+                    {catalogPanelHidden ? "Показать каталог" : "Скрыть каталог"}
+                  </button>
+                </div>
+                <div className={`mm-workspace${catalogPanelHidden ? " isCatalogHidden" : ""}`}>
+                  {!catalogPanelHidden ? (
+                    <CategorySidebar
+                      className="mm-treePane mm-treePaneShared"
+                      title="Каталог"
+                      hint="Структура каталога"
+                      searchValue={catalogQuery}
+                      onSearchChange={setCatalogQuery}
+                      searchPlaceholder="Быстрый поиск"
+                      controls={
+                        <button className="btn sm" type="button" onClick={hasExpandedNodes ? () => setTreeExpanded({}) : () => {
+                          const next: Record<string, boolean> = {};
+                          for (const [parentId, children] of childrenByParent.entries()) {
+                            if (parentId && children.length > 0) next[parentId] = true;
+                          }
+                          setTreeExpanded(next);
+                        }}>
+                          {hasExpandedNodes ? "Свернуть" : "Развернуть"}
+                        </button>
+                      }
+                    >
+                      <div className="csb-tree">
+                        {(childrenByParent.get("") || []).filter((n) => isTreeNodeVisible(n.id)).map((root) => renderCatalogTreeRows(root, 0))}
+                      </div>
+                    </CategorySidebar>
+                  ) : null}
 
                   <div className="mm-detailPane">
                     <div className="mm-paneHead">
@@ -3388,9 +3395,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   .sort((a, b) => a.worstRank - b.worstRank || String(a.sku_gt || a.id).localeCompare(String(b.sku_gt || b.id), "ru"));
                                 const selectedSampleProduct = filteredCompetitorRows.find((item) => item.id === competitorSampleProductId)
                                   || competitorRows.find((item) => item.id === competitorSampleProductId)
-                                  || filteredCompetitorRows[0]
-                                  || competitorRows[0]
                                   || null;
+                                const actionSampleProduct = selectedSampleProduct || filteredCompetitorRows[0] || competitorRows[0] || null;
                                 const selectedSampleProductId = String(selectedSampleProduct?.id || "").trim();
                                 const statusCountsBySource = Object.fromEntries(sourceColumns.map((source) => {
                                   const counts = { all: competitorRows.length, none: 0, confirmed: 0, review: 0, rejected: 0 };
@@ -3434,8 +3440,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           type="button"
                                           className="btn btn-primary mm-miniBtn"
                                           onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
-                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
-                                          title={!selectedSampleProduct ? "Сначала выберите категорию, где есть SKU в ветке" : undefined}
+                                          disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !actionSampleProduct}
+                                          title={!actionSampleProduct ? "Сначала выберите категорию, где есть SKU в ветке" : undefined}
                                         >
                                           {competitorDiscoveryRunning ? "Подбираю..." : "Подобрать карточки"}
                                         </button>
@@ -3517,7 +3523,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           ) : null}
                                           {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
 
-                                          <div className="mm-competitorTableLayout">
+                                          <div className={`mm-competitorTableLayout${selectedSampleProduct ? "" : " isInspectorHidden"}`}>
                                             <div className="mm-competitorMatchTableWrap">
                                               <div
                                                 className="mm-competitorMatchTable"
@@ -3564,6 +3570,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                               ) : null}
                                             </div>
 
+                                            {selectedSampleProduct ? (
                                             <aside className="mm-competitorInspectorDrawer" aria-label="Инспектор конкурентных карточек">
                                               <div className="mm-competitorInspectorHead">
                                                 <span>SKU</span>
@@ -3614,7 +3621,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                           <button
                                                             type="button"
                                                             className="btn btn-primary mm-miniBtn"
-                                                            onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve")}
+                                                            onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve", selectedSampleProductId)}
                                                             disabled={competitorModeratingId === candidate.id}
                                                           >
                                                             Подтвердить
@@ -3622,7 +3629,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                           <button
                                                             type="button"
                                                             className="btn mm-miniBtn mm-ghostBtn"
-                                                            onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject")}
+                                                            onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject", selectedSampleProductId)}
                                                             disabled={competitorModeratingId === candidate.id}
                                                           >
                                                             Отклонить
@@ -3656,6 +3663,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 </button>
                                               ) : null}
                                             </aside>
+                                            ) : null}
                                           </div>
                                         </div>
                                       </div>
@@ -3679,6 +3687,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     )}
                   </div>
                 </div>
+                </>
               )}
               </div>
             </div>

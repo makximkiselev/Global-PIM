@@ -4673,9 +4673,30 @@
   grid-template-columns:300px minmax(0,1fr) !important;
   gap:8px;
   min-height:min(760px, calc(100vh - 132px));
+  align-items:start;
+}
+
+.sourcesCommandWorkbench .mm-workspace.isCatalogHidden{
+  grid-template-columns:minmax(0,1fr) !important;
+}
+
+.sourcesCommandWorkbench .mm-catalogVisibilityBar{
+  display:flex;
+  justify-content:flex-start;
+  margin:0 0 8px;
+}
+
+.sourcesCommandWorkbench .mm-catalogVisibilityBar .btn{
+  min-height:32px;
+  border-radius:8px;
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared.csb-shell{
+  position:sticky;
+  top:72px;
+  align-self:start;
+  max-height:calc(100vh - 88px);
+  overflow:hidden;
   border:1px solid var(--line);
   border-radius:10px;
   background:var(--card);
@@ -4697,6 +4718,11 @@
 
 .sourcesCommandWorkbench .mm-treePaneShared .csb-search{
   min-height:34px;
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared .csb-body{
+  max-height:calc(100vh - 214px);
+  overflow:auto;
 }
 
 .sourcesCommandWorkbench .mm-treePaneShared .csb-treeNode{
@@ -5438,8 +5464,13 @@
 .sourcesCommandWorkbench .mm-competitorTableLayout{
   display:grid;
   grid-template-columns:minmax(0, 1fr) minmax(360px, 420px);
+  align-items:start;
   min-height:0;
   flex:1;
+}
+
+.sourcesCommandWorkbench .mm-competitorTableLayout.isInspectorHidden{
+  grid-template-columns:minmax(0, 1fr);
 }
 
 .sourcesCommandWorkbench .mm-competitorMatchTableWrap{
@@ -5447,6 +5478,10 @@
   overflow:auto;
   border-right:1px solid var(--line);
   background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorTableLayout.isInspectorHidden .mm-competitorMatchTableWrap{
+  border-right:0;
 }
 
 .sourcesCommandWorkbench .mm-competitorMatchTable{
@@ -5551,11 +5586,14 @@
 }
 
 .sourcesCommandWorkbench .mm-competitorInspectorDrawer{
+  position:sticky;
+  top:72px;
+  align-self:start;
   display:flex;
   flex-direction:column;
   gap:10px;
   min-width:0;
-  max-height:min(640px, calc(100vh - 250px));
+  max-height:calc(100vh - 88px);
   overflow:auto;
   padding:12px;
   background:#fbfbfc;
