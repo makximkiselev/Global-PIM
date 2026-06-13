@@ -1294,16 +1294,16 @@
 }
 
 .sourcesMappingPage .mm-competitorCandidate strong {
-  overflow: hidden;
   color: var(--text);
   font-size: 12px;
   font-weight: 900;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
-.sourcesMappingPage .mm-competitorCandidate em {
+.sourcesMappingPage .mm-competitorCandidate em,
+.sourcesMappingPage .mm-competitorCandidateUrl {
   overflow: hidden;
   color: var(--muted);
   font-size: 11px;
@@ -1311,6 +1311,15 @@
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sourcesMappingPage .mm-competitorCandidateUrl {
+  text-decoration: none;
+}
+
+.sourcesMappingPage .mm-competitorCandidateUrl:hover {
+  color: var(--brand);
+  text-decoration: underline;
 }
 
 .sourcesMappingPage .mm-competitorCandidate small {
@@ -5829,13 +5838,28 @@
   font-size:13px;
   font-weight:750;
   line-height:1.25;
+  overflow-wrap:anywhere;
+  white-space:normal;
 }
 
-.sourcesCommandWorkbench .mm-competitorCandidate em{
+.sourcesCommandWorkbench .mm-competitorCandidate em,
+.sourcesCommandWorkbench .mm-competitorCandidateUrl{
   color:var(--text-soft);
   font-size:11px;
   font-style:normal;
   font-weight:650;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateUrl{
+  text-decoration:none;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateUrl:hover{
+  color:var(--brand-strong);
+  text-decoration:underline;
 }
 
 .sourcesCommandWorkbench .mm-competitorCandidate small{

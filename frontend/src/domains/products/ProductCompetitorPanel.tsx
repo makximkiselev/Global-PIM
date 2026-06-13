@@ -674,22 +674,37 @@ export default function ProductCompetitorPanel({
                     </div>
                     <div className="productCompetitorCarousel">
                       {group.items.map((candidate) => (
-                        <button
+                        <article
                           key={candidate.id}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           className={`productCompetitorCandidate${selected?.id === candidate.id ? " isActive" : ""}`}
                           onClick={() => setSelectedId(candidate.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedId(candidate.id);
+                            }
+                          }}
                         >
                           <span>
                             <strong>{candidate.title || candidate.url}</strong>
-                            <em>{candidate.url}</em>
+                            <a
+                              className="productCompetitorCandidateUrl"
+                              href={candidate.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {candidate.url}
+                            </a>
                           </span>
                           <span className="productCompetitorCandidateMeta">
                             <b>{scoreLabel(candidate)}</b>
                             <small>{simProfileLabel(candidate.candidate_sim_profile)}</small>
                             <Badge tone={statusTone(candidate.status)}>{statusLabel(candidate.status)}</Badge>
                           </span>
-                        </button>
+                        </article>
                       ))}
                     </div>
                   </section>

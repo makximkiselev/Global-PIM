@@ -1933,15 +1933,27 @@
   font-size:13px;
   line-height:1.25;
   font-weight:850;
+  white-space:normal;
+  overflow-wrap:anywhere;
 }
 
 .productCompetitorCandidate em,
+.productCompetitorCandidateUrl,
 .productCompetitorUrl{
   color:var(--muted);
   font-size:12px;
   line-height:1.35;
   font-style:normal;
   word-break:break-all;
+}
+
+.productCompetitorCandidateUrl{
+  text-decoration:none;
+}
+
+.productCompetitorCandidateUrl:hover{
+  color:rgba(var(--brand-rgb), .96);
+  text-decoration:underline;
 }
 
 .productCompetitorCandidateMeta{

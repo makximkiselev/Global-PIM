@@ -1,3 +1,28 @@
+function readableErrorMessage(status: number, text: string): string {
+  const raw = String(text || "").trim();
+  if (!raw) return `HTTP ${status}`;
+
+  try {
+    const parsed = JSON.parse(raw);
+    const detail = parsed?.detail || parsed?.message || parsed?.error;
+    if (typeof detail === "string" && detail.trim()) return detail.trim();
+  } catch {
+    // Plain text or an upstream HTML error page.
+  }
+
+  const withoutTags = raw.replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (status === 504 || /gateway time-?out/i.test(withoutTags)) {
+    return "Источник или сервер не ответил вовремя. Повторите поиск позже.";
+  }
+  if (withoutTags) return withoutTags.slice(0, 240);
+  return `HTTP ${status}`;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = path.startsWith("/api") ? path : `/api${path}`;
 
@@ -20,7 +45,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       throw new Error("AUTH_REQUIRED");
     }
     const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
+    throw new Error(readableErrorMessage(res.status, text));
   }
 
   // если вдруг 204

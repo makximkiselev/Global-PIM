@@ -3481,7 +3481,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                     <div className="mm-competitorCandidateMain">
                                                       <b>{source.name}</b>
                                                       <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
-                                                      <em>{compactCompetitorUrl(candidate.url || "")}</em>
+                                                      {candidate.url ? (
+                                                        <a className="mm-competitorCandidateUrl" href={candidate.url} target="_blank" rel="noreferrer">
+                                                          {compactCompetitorUrl(candidate.url || "")}
+                                                        </a>
+                                                      ) : (
+                                                        <em>Ссылка не найдена</em>
+                                                      )}
                                                     </div>
                                                     <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</small>
                                                     <div className="mm-competitorCandidateActions">
