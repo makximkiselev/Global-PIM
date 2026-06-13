@@ -1047,6 +1047,23 @@ export default function ProductGroupsFeature() {
                   </button>
                   <Link className="btn" to={orgPath("/catalog")}>Открыть каталог</Link>
                 </div>
+                <div className="pg-emptySelectionGuide" aria-label="Как работать с группами SKU">
+                  <div>
+                    <span>01</span>
+                    <strong>Выберите линейку</strong>
+                    <p>Группа объединяет похожие SKU: память, цвет, SIM и комплектацию удобнее проверять рядом.</p>
+                  </div>
+                  <div>
+                    <span>02</span>
+                    <strong>Проверьте факты</strong>
+                    <p>Общие параметры можно применить ко всей группе, отличия остаются только у конкретных товаров.</p>
+                  </div>
+                  <div>
+                    <span>03</span>
+                    <strong>Доведите до экспорта</strong>
+                    <p>После проверки откройте SKU, источники, медиа и выгрузку выбранных товаров группы.</p>
+                  </div>
+                </div>
               </div>
             ) : (
               <>
