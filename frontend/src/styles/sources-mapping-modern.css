@@ -5777,6 +5777,30 @@
   gap:5px;
 }
 
+.sourcesCommandWorkbench .mm-competitorMatchRow > .mm-competitorSourceCell{
+  align-items:flex-start;
+  justify-content:center;
+  flex-direction:column;
+  gap:5px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceUrl{
+  display:block;
+  width:100%;
+  overflow:hidden;
+  color:var(--accent);
+  font-size:11px;
+  font-weight:780;
+  line-height:1.25;
+  text-decoration:none;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceUrl:hover{
+  text-decoration:underline;
+}
+
 .sourcesCommandWorkbench .mm-competitorImportCell small{
   display:block;
   width:100%;

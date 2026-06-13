@@ -4013,10 +4013,27 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                         <small>{competitorEnrichProgressLabel(row.enrichJob)}</small>
                                                       </span>
                                                       {sourceColumns.map((source) => {
-                                                        const status = normalizeCompetitorProductStatus(row.statuses[source.code]?.status);
+                                                        const statusPayload = row.statuses[source.code] || {};
+                                                        const status = normalizeCompetitorProductStatus(statusPayload.status);
+                                                        const link = (statusPayload.link_items || [])[0];
+                                                        const linkUrl = String(link?.url || "").trim();
                                                         return (
-                                                          <span key={`${row.id}-${source.code}`} className={`mm-competitorStatusPill is-${status}`}>
-                                                            {competitorStatusLabel(status)}
+                                                          <span key={`${row.id}-${source.code}`} className="mm-competitorSourceCell">
+                                                            <span className={`mm-competitorStatusPill is-${status}`}>
+                                                              {competitorStatusLabel(status)}
+                                                            </span>
+                                                            {linkUrl ? (
+                                                              <a
+                                                                className="mm-competitorSourceUrl"
+                                                                href={linkUrl}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                onClick={(event) => event.stopPropagation()}
+                                                                title={linkUrl}
+                                                              >
+                                                                {compactCompetitorUrl(linkUrl)}
+                                                              </a>
+                                                            ) : null}
                                                           </span>
                                                         );
                                                       })}

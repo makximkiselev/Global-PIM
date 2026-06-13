@@ -2041,6 +2041,35 @@ def _approve_competitor_candidate(
     return confirmed_link
 
 
+def _persist_product_competitor_link(link: Dict[str, Any]) -> None:
+    product_id = str(link.get("product_id") or "").strip()
+    source_id = str(link.get("source_id") or "").strip()
+    url = str(link.get("url") or "").strip()
+    if not product_id or source_id not in ALLOWED_SITES or not url:
+        return
+    try:
+        products = query_products_full(ids=[product_id], limit=1)
+        product = products[0] if products else {}
+        if not isinstance(product, dict) or not product.get("id"):
+            return
+        content = product.get("content") if isinstance(product.get("content"), dict) else {}
+        competitor_links = content.get("competitor_links") if isinstance(content.get("competitor_links"), dict) else {}
+        competitor_links[source_id] = {
+            "source_id": source_id,
+            "url": url,
+            "status": "confirmed",
+            "confirmed_at": link.get("confirmed_at"),
+            "last_checked_at": link.get("last_checked_at"),
+            "candidate_id": link.get("candidate_id"),
+            "source": link.get("source") or "mapping",
+        }
+        content["competitor_links"] = competitor_links
+        product["content"] = content
+        upsert_product_item(product)
+    except Exception:
+        return
+
+
 def _candidate_confidence_score(candidate: Dict[str, Any]) -> float:
     try:
         return max(0.0, min(1.0, float(candidate.get("confidence_score") or 0.0)))
@@ -5705,7 +5734,9 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any], background_ta
     reviewed_at = now_iso()
     enrich_job: Dict[str, Any] = {}
     if action == "approve":
-        _approve_competitor_candidate(candidates, links, candidate_id, reviewed_at=reviewed_at)
+        confirmed_link = _approve_competitor_candidate(candidates, links, candidate_id, reviewed_at=reviewed_at)
+        if isinstance(confirmed_link, dict):
+            _persist_product_competitor_link(confirmed_link)
         candidate = candidates.get(candidate_id, candidate)
     else:
         candidate["status"] = "rejected"
@@ -5753,6 +5784,7 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any], backgro
     }
     links[link_key] = confirmed_link
     _persist_competitor_channel_link(confirmed_link)
+    _persist_product_competitor_link(confirmed_link)
     for candidate_id, candidate in list(candidates.items()):
         if not isinstance(candidate, dict):
             continue
