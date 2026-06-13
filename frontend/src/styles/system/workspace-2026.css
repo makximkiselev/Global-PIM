@@ -5610,7 +5610,7 @@
   width:100%;
   max-width:var(--workspace-max);
   margin:0 auto;
-  padding:18px 22px 32px;
+  padding:18px 22px 24px;
   color:var(--text);
 }
 
@@ -5619,9 +5619,9 @@
   align-items:center;
   justify-content:space-between;
   gap:16px;
-  min-height:104px;
-  margin:0 0 12px;
-  padding:18px;
+  min-height:82px;
+  margin:0 0 10px;
+  padding:16px 18px;
   border:1px solid var(--line);
   border-radius:12px;
   background:var(--card);
@@ -5659,105 +5659,70 @@
 }
 
 .shellContentBody .routeLoadingPulse{
-  width:44px;
-  height:44px;
+  width:36px;
+  height:36px;
   flex:0 0 auto;
   border:1px solid rgba(var(--brand-rgb),.18);
-  border-radius:12px;
+  border-radius:10px;
   background:linear-gradient(135deg, rgba(var(--brand-rgb),.16), rgba(20,184,166,.14));
   animation:routeLoadingPulse 1.3s ease-in-out infinite alternate;
 }
 
-.shellContentBody .routeLoadingGrid{
-  display:grid;
-  grid-template-columns:280px minmax(0, 1fr);
-  gap:12px;
-}
-
-.shellContentBody .routeLoadingPanel{
-  min-width:0;
-  border:1px solid var(--line);
-  border-radius:12px;
-  background:var(--card);
-}
-
-.shellContentBody .routeLoadingSidebar{
-  display:grid;
-  gap:12px;
-  align-content:start;
-  padding:14px;
-}
-
-.shellContentBody .routeLoadingMain{
-  display:grid;
-  gap:12px;
-  padding:14px;
-}
-
-.shellContentBody .routeLoadingLine,
-.shellContentBody .routeLoadingButton,
-.shellContentBody .routeLoadingMetrics span,
-.shellContentBody .routeLoadingRows span{
-  display:block;
-  overflow:hidden;
-  border-radius:999px;
-  background:linear-gradient(90deg, rgba(var(--text-rgb),.06), rgba(var(--text-rgb),.12), rgba(var(--text-rgb),.06));
-  background-size:220% 100%;
-  animation:routeLoadingShimmer 1.35s linear infinite;
-}
-
-.shellContentBody .routeLoadingLine{
-  width:82%;
-  height:12px;
-}
-
-.shellContentBody .routeLoadingLine.isTitle{
-  width:58%;
-  height:18px;
-  margin-bottom:8px;
-}
-
-.shellContentBody .routeLoadingLine.isShort{
-  width:44%;
-}
-
-.shellContentBody .routeLoadingLine.isWide{
-  width:min(520px, 100%);
-  height:34px;
-  border-radius:10px;
-}
-
-.shellContentBody .routeLoadingMetrics{
+.shellContentBody .routeLoadingSteps{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:10px;
 }
 
-.shellContentBody .routeLoadingMetrics span{
-  height:72px;
+.shellContentBody .routeLoadingStep{
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr);
+  column-gap:10px;
+  row-gap:2px;
+  align-items:start;
+  min-width:0;
+  border:1px solid var(--line);
   border-radius:12px;
+  background:var(--card);
+  padding:14px;
 }
 
-.shellContentBody .routeLoadingToolbar{
-  display:grid;
-  grid-template-columns:minmax(0, 1fr) 112px 112px;
-  gap:10px;
-  align-items:center;
+.shellContentBody .routeLoadingStep span{
+  grid-row:1 / 3;
+  display:inline-grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  border:1px solid rgba(var(--brand-rgb),.22);
+  border-radius:9px;
+  background:rgba(var(--brand-rgb),.08);
+  color:var(--brand);
+  font-size:11px;
+  font-weight:950;
 }
 
-.shellContentBody .routeLoadingButton{
-  height:34px;
-  border-radius:10px;
+.shellContentBody .routeLoadingStep strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+  line-height:1.2;
 }
 
-.shellContentBody .routeLoadingRows{
-  display:grid;
-  gap:8px;
+.shellContentBody .routeLoadingStep p{
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+  line-height:1.35;
 }
 
-.shellContentBody .routeLoadingRows span{
-  height:52px;
-  border-radius:10px;
+.shellContentBody .routeLoadingStep.isActive{
+  border-color:rgba(var(--brand-rgb),.28);
+  background:
+    linear-gradient(90deg, rgba(var(--brand-rgb),.05), rgba(var(--text-rgb),.05), rgba(var(--brand-rgb),.05)),
+    var(--card);
+  background-size:220% 100%;
+  animation:routeLoadingShimmer 1.35s linear infinite;
 }
 
 @keyframes routeLoadingShimmer{
@@ -5771,9 +5736,7 @@
 }
 
 @media (width<=980px){
-  .shellContentBody .routeLoadingGrid,
-  .shellContentBody .routeLoadingToolbar,
-  .shellContentBody .routeLoadingMetrics{
+  .shellContentBody .routeLoadingSteps{
     grid-template-columns:1fr;
   }
 

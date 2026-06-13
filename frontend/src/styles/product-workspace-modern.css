@@ -1005,6 +1005,155 @@
   line-height:1;
 }
 
+.productWorkspaceDocuments{
+  display:grid;
+  grid-template-columns:minmax(0, 1.35fr) minmax(320px, .65fr);
+  gap:16px;
+}
+
+.productWorkspaceDocumentsPanel{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:16px;
+}
+
+.productWorkspaceDocumentsHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:14px;
+}
+
+.productWorkspaceDocumentsHead h2{
+  margin:0 0 4px;
+  color:var(--text);
+  font-size:18px;
+  line-height:1.2;
+  letter-spacing:0;
+}
+
+.productWorkspaceDocumentsHead p{
+  max-width:680px;
+  margin:0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+}
+
+.productWorkspaceFilePick{
+  position:relative;
+  flex:0 0 auto;
+  overflow:hidden;
+  cursor:pointer;
+}
+
+.productWorkspaceFilePick input{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+}
+
+.productWorkspaceFilePick.isDisabled{
+  opacity:.65;
+  pointer-events:none;
+}
+
+.productWorkspaceDocumentList{
+  display:grid;
+  gap:10px;
+}
+
+.productWorkspaceDocumentRow{
+  display:grid;
+  grid-template-columns:48px minmax(0, 1fr) auto;
+  align-items:center;
+  gap:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface);
+  padding:12px;
+}
+
+.productWorkspaceDocumentIcon{
+  display:grid;
+  place-items:center;
+  width:48px;
+  height:48px;
+  border:1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius:12px;
+  background:color-mix(in srgb, var(--accent) 10%, var(--card));
+  color:var(--accent-strong);
+  font-size:11px;
+  font-weight:950;
+}
+
+.productWorkspaceDocumentMeta{
+  display:grid;
+  min-width:0;
+  gap:5px;
+}
+
+.productWorkspaceDocumentMeta input{
+  min-width:0;
+  width:100%;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  font-size:14px;
+  font-weight:850;
+  line-height:1.25;
+  outline:none;
+}
+
+.productWorkspaceDocumentMeta input:focus{
+  color:var(--accent-strong);
+}
+
+.productWorkspaceDocumentMeta span{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+
+.productWorkspaceDocumentMeta code{
+  min-width:0;
+  color:var(--muted);
+  font-family:inherit;
+  font-size:11px;
+  line-height:1.35;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.productWorkspaceDocumentActions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.productWorkspaceRichContentPanel{
+  background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--card)), var(--card));
+}
+
+.productWorkspaceRichContentPreview{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface);
+  padding:14px;
+  color:var(--text);
+  font-size:13px;
+  font-weight:700;
+  line-height:1.45;
+  white-space:pre-wrap;
+}
+
 .productWorkspaceEmptyActions{
   display:flex;
   align-items:center;
@@ -2897,6 +3046,43 @@
     min-width:0;
     min-height:28px;
     border-radius:8px;
+  }
+
+  .shellContentBody .productWorkspaceDocuments{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .productWorkspaceDocumentsPanel{
+    padding:12px;
+  }
+
+  .shellContentBody .productWorkspaceDocumentsHead{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .shellContentBody .productWorkspaceFilePick{
+    width:100%;
+    justify-content:center;
+  }
+
+  .shellContentBody .productWorkspaceDocumentRow{
+    grid-template-columns:40px minmax(0, 1fr);
+    align-items:start;
+  }
+
+  .shellContentBody .productWorkspaceDocumentIcon{
+    width:40px;
+    height:40px;
+    border-radius:10px;
+    font-size:10px;
+  }
+
+  .shellContentBody .productWorkspaceDocumentActions{
+    grid-column:1 / -1;
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 
   .shellContentBody .productWorkspaceTableWrap{

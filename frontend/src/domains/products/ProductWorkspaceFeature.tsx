@@ -105,7 +105,7 @@ type ProductContent = {
   media_images?: ProductMedia[];
   media_videos?: ProductMedia[];
   media_cover?: ProductMedia[];
-  documents?: { name?: string; url?: string }[];
+  documents?: { name?: string; url?: string; size?: number; content_type?: string }[];
   analogs?: ProductRelation[];
   related?: ProductRelation[];
 };
@@ -248,6 +248,7 @@ type SectionId =
   | "channels"
   | "competitors"
   | "validation"
+  | "documents"
   | "relations"
   | "analogs"
   | "accessories"
@@ -261,6 +262,7 @@ const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "channels", label: "Площадки", meta: "вывод и альтернативы" },
   { id: "competitors", label: "Конкуренты", meta: "поиск и насыщение" },
   { id: "media", label: "Медиа", meta: "выбор и порядок" },
+  { id: "documents", label: "Документы", meta: "PDF и rich-content" },
   { id: "validation", label: "Валидация", meta: "ошибки перед экспортом" },
   { id: "relations", label: "Связи", meta: "аналоги и комплекты" },
   { id: "variants", label: "Варианты", meta: "группа SKU" },
@@ -276,6 +278,7 @@ const PRODUCT_NAV_ITEMS: Array<{ id: SectionId; label: string; meta: string }> =
   { id: "sources", label: "Источники данных", meta: "импорт и Excel" },
   { id: "competitors", label: "Конкуренты", meta: "поиск и насыщение" },
   { id: "media", label: "Медиа", meta: "выбор и порядок" },
+  { id: "documents", label: "Документы", meta: "PDF и rich-content" },
 ];
 
 function sectionFromTab(value: string | null): SectionId {
@@ -284,6 +287,7 @@ function sectionFromTab(value: string | null): SectionId {
   if (tab === "description") return "overview";
   if (tab === "platforms" || tab === "marketplaces") return "channels";
   if (tab === "competitor" || tab === "competitors" || tab === "competitor_links" || tab === "links") return "competitors";
+  if (tab === "analogs" || tab === "related" || tab === "accessories") return "relations";
   if (SECTION_IDS.has(tab as SectionId)) return tab as SectionId;
   return "overview";
 }
@@ -1060,6 +1064,147 @@ function ProductSourcesWorkbench({ features, categoryId, productId }: { features
   );
 }
 
+function formatFileSize(size?: number): string {
+  const value = Number(size || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} КБ`;
+  return `${(value / 1024 / 1024).toFixed(value > 10 * 1024 * 1024 ? 0 : 1)} МБ`;
+}
+
+function ProductDocumentsWorkbench({
+  product,
+  saving,
+  notice,
+  onSaveContent,
+  onNotice,
+}: {
+  product: ProductData;
+  saving: boolean;
+  notice: string;
+  onSaveContent: (content: ProductContent, successMessage: string) => Promise<void>;
+  onNotice: (message: string) => void;
+}) {
+  const documents = Array.isArray(product.content?.documents) ? product.content?.documents || [] : [];
+  const richContentFeature = (product.content?.features || []).find((feature) => featureIdentity(feature.field_layer) === "rich_content");
+  const richValue = richContentFeature ? featureValue(richContentFeature) : "";
+
+  async function uploadDocuments(files: FileList | null) {
+    if (!files?.length || saving) return;
+    const form = new FormData();
+    Array.from(files).forEach((file) => form.append("files", file));
+    const response = await fetch(`/api/products/uploads?kind=documents&product_id=${encodeURIComponent(product.id)}`, {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || "Не удалось загрузить документы.");
+    }
+    const data = await response.json();
+    const uploaded = Array.isArray(data?.items) ? data.items : [];
+    const nextDocuments = [
+      ...documents,
+      ...uploaded.map((item) => ({
+        name: normalizeText(item.name) || "Документ",
+        url: normalizeText(item.url),
+        size: Number(item.size || 0) || undefined,
+        content_type: normalizeText(item.content_type) || undefined,
+      })).filter((item) => item.url),
+    ];
+    await onSaveContent({ ...(product.content || {}), documents: nextDocuments }, "Документы загружены и сохранены.");
+  }
+
+  function renameDocument(index: number, name: string) {
+    const nextDocuments = documents.map((item, itemIndex) => (itemIndex === index ? { ...item, name } : item));
+    void onSaveContent({ ...(product.content || {}), documents: nextDocuments }, "Название документа сохранено.");
+  }
+
+  function removeDocument(index: number) {
+    const nextDocuments = documents.filter((_, itemIndex) => itemIndex !== index);
+    void onSaveContent({ ...(product.content || {}), documents: nextDocuments }, "Документ удален из карточки товара.");
+  }
+
+  return (
+    <div className="productWorkspaceDocuments">
+      <section className="productWorkspaceDocumentsPanel">
+        <div className="productWorkspaceDocumentsHead">
+          <div>
+            <h2>PDF и документы товара</h2>
+            <p>Документы хранятся отдельно от параметров. Они используются для выгрузки сертификатов, инструкций и PDF на площадки.</p>
+          </div>
+          <label className={`btn primary productWorkspaceFilePick${saving ? " isDisabled" : ""}`}>
+            Загрузить файлы
+            <input
+              type="file"
+              multiple
+              disabled={saving}
+              onChange={async (event) => {
+                try {
+                  await uploadDocuments(event.currentTarget.files);
+                } catch (err) {
+                  onNotice(err instanceof Error ? err.message : "Не удалось загрузить документы.");
+                } finally {
+                  event.currentTarget.value = "";
+                }
+              }}
+            />
+          </label>
+        </div>
+        {notice ? <Alert tone={notice.includes("Не удалось") || notice.includes("UPLOAD") ? "error" : "success"}>{notice}</Alert> : null}
+        {documents.length ? (
+          <div className="productWorkspaceDocumentList">
+            {documents.map((document, index) => (
+              <article key={`${document.url || "document"}-${index}`} className="productWorkspaceDocumentRow">
+                <div className="productWorkspaceDocumentIcon">PDF</div>
+                <div className="productWorkspaceDocumentMeta">
+                  <input
+                    defaultValue={normalizeText(document.name)}
+                    placeholder="Название документа"
+                    disabled={saving}
+                    onBlur={(event) => {
+                      const nextName = event.target.value;
+                      if (nextName !== normalizeText(document.name)) renameDocument(index, nextName);
+                    }}
+                  />
+                  <span>{normalizeText(document.content_type) || "document"} {formatFileSize(document.size) ? `· ${formatFileSize(document.size)}` : ""}</span>
+                  <code>{normalizeText(document.url) || "URL не задан"}</code>
+                </div>
+                <div className="productWorkspaceDocumentActions">
+                  {normalizeText(document.url) ? (
+                    <a className="btn" href={toRenderableMediaUrl(document.url || "")} target="_blank" rel="noreferrer">Открыть</a>
+                  ) : null}
+                  <Button disabled={saving} onClick={() => removeDocument(index)}>Удалить</Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="Документы пока не добавлены"
+            description="Загрузите PDF, инструкции или сертификаты. Эти файлы не должны превращаться в параметры инфо-модели."
+          />
+        )}
+      </section>
+
+      <section className="productWorkspaceDocumentsPanel productWorkspaceRichContentPanel">
+        <div className="productWorkspaceDocumentsHead">
+          <div>
+            <h2>Rich-content</h2>
+            <p>Это отдельный контентный блок для будущей верстки. В параметры он не попадает.</p>
+          </div>
+          <Badge tone={richValue ? "active" : "neutral"}>{richValue ? "есть значение" : "пока пусто"}</Badge>
+        </div>
+        {richValue ? (
+          <div className="productWorkspaceRichContentPreview">{richValue}</div>
+        ) : (
+          <div className="productWorkspaceEmptyNote">Редактор rich-content будет отдельным рабочим экраном, чтобы не смешивать верстку с характеристиками SKU.</div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function ProductValidationWorkbench({
   features,
   media,
@@ -1416,6 +1561,8 @@ function ProductWorkspaceFeature() {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [mediaSaving, setMediaSaving] = useState(false);
   const [mediaNotice, setMediaNotice] = useState("");
+  const [documentsSaving, setDocumentsSaving] = useState(false);
+  const [documentsNotice, setDocumentsNotice] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
 
@@ -1676,6 +1823,27 @@ function ProductWorkspaceFeature() {
       setMediaNotice(err instanceof Error ? err.message : "Не удалось сохранить медиа.");
     } finally {
       setMediaSaving(false);
+    }
+  }
+
+  async function saveProductContent(nextContent: ProductContent, successMessage: string) {
+    if (!product) return;
+    const optimisticProduct = { ...product, content: nextContent };
+    setProduct(optimisticProduct);
+    setDocumentsSaving(true);
+    setDocumentsNotice("");
+    try {
+      const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: nextContent }),
+      });
+      setProduct(response.product || optimisticProduct);
+      setDocumentsNotice(successMessage);
+    } catch (err) {
+      setProduct(product);
+      setDocumentsNotice(err instanceof Error ? err.message : "Не удалось сохранить данные товара.");
+    } finally {
+      setDocumentsSaving(false);
     }
   }
 
@@ -2378,6 +2546,18 @@ function ProductWorkspaceFeature() {
                     )}
                   />
                 )}
+              </Card>
+            ) : null}
+
+            {activeSection === "documents" ? (
+              <Card title="Документы и rich-content">
+                <ProductDocumentsWorkbench
+                  product={product}
+                  saving={documentsSaving}
+                  notice={documentsNotice}
+                  onSaveContent={saveProductContent}
+                  onNotice={setDocumentsNotice}
+                />
               </Card>
             ) : null}
 

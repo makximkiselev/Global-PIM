@@ -34,39 +34,28 @@ function RouteLoader() {
     <section className="routeLoadingShell" role="status" aria-live="polite" aria-label="Загрузка рабочей области">
       <div className="routeLoadingHeader">
         <div>
-          <span className="routeLoadingEyebrow">Рабочая область</span>
-          <strong>Загружаем данные</strong>
-          <p>Подготавливаем каталог, фильтры и таблицы.</p>
+          <span className="routeLoadingEyebrow">Рабочий экран</span>
+          <strong>Открываем модуль</strong>
+          <p>Подключаем контекст организации и данные текущего сценария.</p>
         </div>
         <span className="routeLoadingPulse" />
       </div>
-      <div className="routeLoadingGrid">
-        <aside className="routeLoadingPanel routeLoadingSidebar">
-          <span className="routeLoadingLine isTitle" />
-          <span className="routeLoadingLine" />
-          <span className="routeLoadingLine" />
-          <span className="routeLoadingLine isShort" />
-          <span className="routeLoadingLine" />
-        </aside>
-        <main className="routeLoadingPanel routeLoadingMain">
-          <div className="routeLoadingMetrics">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="routeLoadingToolbar">
-            <span className="routeLoadingLine isWide" />
-            <span className="routeLoadingButton" />
-            <span className="routeLoadingButton" />
-          </div>
-          <div className="routeLoadingRows">
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-        </main>
+      <div className="routeLoadingSteps" aria-label="Что загружается">
+        <div className="routeLoadingStep isActive">
+          <span>01</span>
+          <strong>Модуль</strong>
+          <p>Загружаем экран и компоненты.</p>
+        </div>
+        <div className="routeLoadingStep">
+          <span>02</span>
+          <strong>Контекст</strong>
+          <p>Проверяем организацию и права.</p>
+        </div>
+        <div className="routeLoadingStep">
+          <span>03</span>
+          <strong>Данные</strong>
+          <p>Готовим таблицы, связи и действия.</p>
+        </div>
       </div>
     </section>
   );
