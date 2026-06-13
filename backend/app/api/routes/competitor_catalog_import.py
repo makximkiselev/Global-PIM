@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.competitors.browser_fetch import fetch_html as fetch_browser_html
 from app.core.json_store import read_doc, with_lock, write_doc
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.products.service import patch_product_service
@@ -473,6 +474,16 @@ def _extract_product(page_url: str, html: str) -> dict[str, Any] | None:
     if isinstance(brand, dict):
         brand = brand.get("name")
     sku = _text(product_node.get("sku") if product_node else "")
+    parsed_page = urlparse(page_url)
+    path_parts = [part for part in parsed_page.path.split("/") if part]
+    if (
+        (parsed_page.hostname or "").lower().endswith("store77.net")
+        and len(path_parts) <= 1
+        and not images
+        and not specs
+        and not price.get("price")
+    ):
+        return None
 
     signals = 0
     if product_node:
@@ -506,10 +517,33 @@ def _extract_product(page_url: str, html: str) -> dict[str, Any] | None:
     }
 
 
-def _score_product_link(url: str) -> int:
+def _score_product_link(url: str, start_url: str = "") -> int:
     path = urlparse(url).path.lower()
     score = 0
-    for token in ("product", "products", "catalog", "item", "sku", "p/", "iphone", "samsung", "smartfon", "noutbuk", "planshet"):
+    start_path = urlparse(start_url).path.lower().rstrip("/")
+    if start_path and path.rstrip("/") == start_path:
+        score -= 5
+    elif start_path and path.startswith(start_path + "/"):
+        score += 10
+    for token in (
+        "product",
+        "products",
+        "catalog",
+        "item",
+        "sku",
+        "p/",
+        "telefon",
+        "telefony",
+        "iphone",
+        "samsung",
+        "huawei",
+        "mate",
+        "honor",
+        "xiaomi",
+        "smartfon",
+        "noutbuk",
+        "planshet",
+    ):
         if token in path:
             score += 1
     if re.search(r"[-_/](\d{4,}|[a-z0-9]{8,})(?:/|$)", path):
@@ -555,7 +589,23 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> str:
     content_type = str(response.headers.get("content-type") or "").lower()
     if "text/html" not in content_type and "xml" not in content_type and "text/plain" not in content_type and content_type:
         return ""
-    return response.text
+    html = response.text
+    host = (urlparse(url).hostname or "").lower()
+    if host.endswith("store77.net") and _looks_like_store77_challenge(html):
+        try:
+            return await fetch_browser_html(url, timeout_ms=12000)
+        except Exception:
+            return html
+    return html
+
+
+def _looks_like_store77_challenge(html: str) -> bool:
+    sample = str(html or "")[:20000].lower()
+    if not sample:
+        return False
+    if "noindex, noarchive" in sample and "data:image/gif" in sample and "gorizontal-vertikal" in sample:
+        return True
+    return "__jhash_" in sample or "__jua_" in sample
 
 
 async def _sitemap_urls(client: httpx.AsyncClient, start_url: str, host: str, limit: int) -> list[str]:
@@ -591,7 +641,7 @@ async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, A
     products: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
 
-    async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=headers, timeout=timeout, follow_redirects=True, verify=False) as client:
         try:
             robots = await _fetch(client, f"{parsed.scheme}://{parsed.netloc}/robots.txt")
             if robots and not _robots_allows(robots):
@@ -621,10 +671,15 @@ async def _crawl_site(request: CompetitorCatalogRunRequest) -> tuple[dict[str, A
             if product:
                 products[product["id"]] = product
             links = _extract_links(url, html, host)
-            links.sort(key=_score_product_link, reverse=True)
+            links.sort(key=lambda link: _score_product_link(link, start_url), reverse=True)
+            next_links: list[str] = []
             for link in links:
-                if link not in pages_seen and link not in queued:
-                    queued.append(link)
+                if link not in pages_seen and link not in queued and link not in next_links:
+                    next_links.append(link)
+            if next_links and not product:
+                queued = next_links[:80] + queued
+            elif next_links:
+                queued.extend(next_links[:40])
             await asyncio.sleep(0.08)
 
     run = {

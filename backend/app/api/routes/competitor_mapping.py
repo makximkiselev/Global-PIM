@@ -40,6 +40,7 @@ from app.storage.json_store import (
 from app.storage.relational_pim_store import (
     get_pim_workflow_run,
     list_pim_channel_links,
+    list_pim_workflow_runs,
     query_products_full,
     upsert_pim_channel_link,
     upsert_pim_workflow_run,
@@ -744,6 +745,58 @@ def _normalize_candidate(product: Dict[str, Any], source: Dict[str, Any], raw: D
     }
 
 
+def _competitor_catalog_index_candidates_for_product(product: Dict[str, Any], source: Dict[str, Any]) -> List[Dict[str, Any]]:
+    source_id = str(source.get("id") or "").strip()
+    if source_id not in ALLOWED_SITES:
+        return []
+    try:
+        from app.api.routes import competitor_catalog_import as competitor_catalog_routes
+
+        store = competitor_catalog_routes._load_store()
+    except Exception:
+        return []
+    products = store.get("products") if isinstance(store.get("products"), dict) else {}
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in products.values():
+        if not isinstance(row, dict):
+            continue
+        url = str(row.get("url") or "").strip()
+        if not url or url in seen or detect_site(url) != source_id:
+            continue
+        title = str(row.get("title") or "").strip()
+        brand = str(row.get("brand") or "").strip()
+        sku = str(row.get("sku") or "").strip()
+        if source_id == "store77":
+            score, reasons = _store77_review_confidence_for_candidate(product, title, sku=sku, brand=brand)
+        else:
+            score, reasons = _confidence_for_candidate(product, title, sku=sku, brand=brand)
+            if score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+                score, reasons = _near_miss_confidence_for_candidate(product, title, sku=sku, brand=brand)
+            if score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+                score, reasons = _manual_review_confidence_for_candidate(product, title, sku=sku, brand=brand)
+        if score < _VISIBLE_DISCOVERY_CONFIDENCE_SCORE:
+            continue
+        seen.add(url)
+        images = row.get("images") if isinstance(row.get("images"), list) else []
+        out.append(
+            {
+                "url": url,
+                "title": title,
+                "brand": brand,
+                "sku": sku,
+                "price": str(row.get("price") or "").strip() or None,
+                "image_url": str(images[0] or "").strip() if images else "",
+                "confidence_score": min(0.97, max(float(score), 0.82)),
+                "confidence_reasons": [*reasons, "найдено в импортированном каталоге конкурента"],
+                "discovery_strategy": "competitor_catalog_index",
+                "match_group_key": _model_memory_color_group_key(f"{brand} {title}"),
+            }
+        )
+    out.sort(key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
+    return out[:5]
+
+
 def _discovery_products(product_ids: Optional[List[str]] = None, limit: int = 50) -> List[Dict[str, Any]]:
     ids = [str(item or "").strip() for item in (product_ids or []) if str(item or "").strip()]
     products = query_products_full(ids=ids) if ids else query_products_full()
@@ -928,17 +981,26 @@ async def _discover_product_candidates_for_source(product: Dict[str, Any], sourc
     Site-specific search crawling returns candidate product URLs with evidence.
     """
     source_id = str(source.get("id") or "").strip()
+    indexed_candidates = _competitor_catalog_index_candidates_for_product(product, source)
     if source_id == "restore":
         candidates = await _discover_restore_candidates(product)
     elif source_id == "store77":
         candidates = await _discover_store77_candidates(product)
     else:
         candidates = []
-    visible_candidates = [
-        candidate for candidate in candidates
-        if float(candidate.get("confidence_score") or 0.0) >= _VISIBLE_DISCOVERY_CONFIDENCE_SCORE
-    ]
-    return candidates
+    merged: List[Dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for candidate in [*indexed_candidates, *candidates]:
+        if not isinstance(candidate, dict):
+            continue
+        url = str(candidate.get("url") or "").strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        merged.append(candidate)
+        if len(merged) >= 5:
+            break
+    return sorted(merged, key=lambda item: float(item.get("confidence_score") or 0), reverse=True)
 
 
 def _query_terms_for_product(product: Dict[str, Any]) -> List[str]:
@@ -5446,8 +5508,41 @@ def discovery_run_status(run_id: str) -> Dict[str, Any]:
     return {"ok": True, "run": run}
 
 
+def _queue_product_enrich_job(product_id: str, background_tasks: BackgroundTasks, *, message: str = "Насыщение товара поставлено в очередь.") -> Dict[str, Any]:
+    normalized_product_id = str(product_id or "").strip()
+    if not normalized_product_id:
+        return {}
+    try:
+        active_jobs = list_pim_workflow_runs(
+            workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW,
+            statuses=["queued", "running"],
+            limit=100,
+        )
+        for job in active_jobs:
+            if str(job.get("product_id") or "").strip() == normalized_product_id:
+                return _public_product_enrich_job(job)
+    except Exception:
+        pass
+    job_id = f"competitor_enrich_{hashlib.sha1((normalized_product_id + ':' + now_iso()).encode('utf-8')).hexdigest()[:20]}"
+    job = {
+        "id": job_id,
+        "run_id": job_id,
+        "job_id": job_id,
+        "product_id": normalized_product_id,
+        "status": "queued",
+        "phase": "queued",
+        "message": message,
+        "created_at": now_iso(),
+        "created_ts": monotonic(),
+        "updated_ts": monotonic(),
+    }
+    upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+    background_tasks.add_task(_run_product_enrich_job, job_id, normalized_product_id)
+    return _public_product_enrich_job(job)
+
+
 @router.post("/discovery/candidates/{candidate_id}/moderate")
-def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def moderate_candidate(candidate_id: str, payload: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, Any]:
     action = str(payload.get("action") or "").strip().lower()
     if action not in {"approve", "reject"}:
         raise HTTPException(status_code=400, detail="action must be approve or reject")
@@ -5468,9 +5563,15 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
         candidate = candidates.get(candidate_id, candidate)
 
     reviewed_at = now_iso()
+    enrich_job: Dict[str, Any] = {}
     if action == "approve":
         _approve_competitor_candidate(candidates, links, candidate_id, reviewed_at=reviewed_at)
         candidate = candidates.get(candidate_id, candidate)
+        enrich_job = _queue_product_enrich_job(
+            str(candidate.get("product_id") or product_id_for_merge or "").strip(),
+            background_tasks,
+            message="Конкурентная карточка подтверждена. Насыщаю товар параметрами, описанием и медиа.",
+        )
     else:
         candidate["status"] = "rejected"
         candidate["reviewed_at"] = reviewed_at
@@ -5480,11 +5581,11 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any]) -> Dict[str, 
     if action != "approve":
         _persist_competitor_channel_candidate(candidate)
     _save_competitor_mapping_runs_only(db)
-    return {"ok": True, "candidate": candidate, "links": links}
+    return {"ok": True, "candidate": candidate, "links": links, "enrich_job": enrich_job or None}
 
 
 @router.post("/discovery/products/{product_id}/links")
-def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def add_manual_competitor_link(product_id: str, payload: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, Any]:
     normalized_product_id = str(product_id or "").strip()
     if not normalized_product_id:
         raise HTTPException(status_code=400, detail="product_id required")
@@ -5533,7 +5634,12 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any]) -> Dict
         candidates[candidate_id] = candidate
         _persist_competitor_channel_candidate(candidate)
     _save_competitor_mapping_runs_only(db)
-    return {"ok": True, "link": confirmed_link, "links": links}
+    enrich_job = _queue_product_enrich_job(
+        normalized_product_id,
+        background_tasks,
+        message="Конкурентная ссылка добавлена вручную. Насыщаю товар параметрами, описанием и медиа.",
+    )
+    return {"ok": True, "link": confirmed_link, "links": links, "enrich_job": enrich_job or None}
 
 
 @router.post("/discovery/products/{product_id}/enrich")

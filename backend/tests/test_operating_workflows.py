@@ -6,12 +6,12 @@ import unittest
 from copy import deepcopy
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.api.routes import catalog_exchange, competitor_mapping, marketplace_mapping, ozon_market, product_groups, products, templates, yandex_market
+from app.api.routes import catalog_exchange, competitor_catalog_import, competitor_mapping, marketplace_mapping, ozon_market, product_groups, products, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
 from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
@@ -977,6 +977,26 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(saved_jobs[-1]["matched_count"], 3)
         self.assertEqual(saved_jobs[-1]["media_images_count"], 1)
 
+    def test_product_enrich_job_queue_reuses_active_job(self) -> None:
+        tasks = BackgroundTasks()
+        active_job = {
+            "id": "job_existing",
+            "job_id": "job_existing",
+            "run_id": "job_existing",
+            "product_id": "product_1",
+            "status": "running",
+        }
+
+        with (
+            patch.object(competitor_mapping, "list_pim_workflow_runs", return_value=[active_job]),
+            patch.object(competitor_mapping, "upsert_pim_workflow_run") as upsert,
+        ):
+            job = competitor_mapping._queue_product_enrich_job("product_1", tasks)
+
+        self.assertEqual(job["job_id"], "job_existing")
+        self.assertEqual(len(tasks.tasks), 0)
+        upsert.assert_not_called()
+
     def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
         req = CatalogImportRunReq.model_validate(
             {
@@ -1880,6 +1900,44 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertIn("apple_iphone_17_pro_1", fetched_urls[0])
         self.assertEqual(len(fetched_urls), 1)
         self.assertTrue(all("/product/product_" not in item["url"] for item in candidates))
+
+    def test_store77_discovery_uses_imported_competitor_catalog_index(self) -> None:
+        product = {
+            "id": "product_huawei",
+            "title": "Смартфон Huawei Mate X7 512Gb Black",
+            "sku_gt": "70001",
+            "category_id": "phones",
+        }
+        imported_store = {
+            "products": {
+                "store77_huawei_black": {
+                    "url": "https://store77.net/huawei_mate_x7/telefon_huawei_mate_x7_16_512gb_black",
+                    "title": "Телефон Huawei Mate X7 16/512 ГБ цвет: черный (Black)",
+                    "brand": "Huawei",
+                    "sku": "",
+                    "price": "107360",
+                    "images": ["https://store77.net/upload/huawei-black.jpg"],
+                },
+                "store77_wrong": {
+                    "url": "https://store77.net/apple_iphone_17/telefon_apple_iphone_17_256gb_black",
+                    "title": "Телефон Apple iPhone 17 256Gb Black",
+                    "brand": "Apple",
+                    "images": [],
+                },
+            }
+        }
+
+        with (
+            patch.object(competitor_catalog_import, "_load_store", return_value=imported_store),
+            patch.object(competitor_mapping, "_discover_store77_candidates", return_value=[]),
+        ):
+            candidates = asyncio.run(
+                competitor_mapping._discover_product_candidates_for_source(product, {"id": "store77", "name": "store77"})
+            )
+
+        self.assertEqual(candidates[0]["url"], "https://store77.net/huawei_mate_x7/telefon_huawei_mate_x7_16_512gb_black")
+        self.assertEqual(candidates[0]["discovery_strategy"], "competitor_catalog_index")
+        self.assertGreaterEqual(candidates[0]["confidence_score"], 0.82)
 
     def test_store77_seed_candidate_supports_iphone_17e_pink(self) -> None:
         product = {
