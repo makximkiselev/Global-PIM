@@ -52,6 +52,18 @@ function isLocalCompetitorMediaUrl(url: unknown): boolean {
   return value.includes("/api/uploads/media_images/") && value.includes("/competitors/");
 }
 
+function isManagedUploadUrl(url: unknown): boolean {
+  const value = String(url || "").trim();
+  if (!value) return false;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://pim.id-smart.ru";
+    const parsed = new URL(value, base);
+    return parsed.pathname.startsWith("/api/uploads/");
+  } catch {
+    return value.startsWith("/api/uploads/");
+  }
+}
+
 function mediaPathIdentity(url: unknown): string {
   const value = String(url || "").trim();
   if (!value) return "";
@@ -70,6 +82,11 @@ function mediaItemIdentity(item: ProductMedia): string {
     return primary;
   }
   return String(item.external_url || item.source_image_url || item.url || "").trim().toLowerCase();
+}
+
+function filterMediaByIdentity(items: ProductMedia[] | undefined, identity: string): ProductMedia[] {
+  if (!identity) return items || [];
+  return (items || []).filter((item) => mediaItemIdentity(item) !== identity);
 }
 
 function hasUsableExternalMediaUrl(item: ProductMedia): boolean {
@@ -1880,6 +1897,56 @@ function ProductWorkspaceFeature() {
     void saveMediaImages(orderedMedia);
   }
 
+  async function deleteMediaItem(index: number) {
+    if (!product) return;
+    const target = media[index];
+    if (!target) return;
+
+    const identity = mediaItemIdentity(target);
+    const nextMedia = media.filter((_, itemIndex) => itemIndex !== index);
+    const currentContent = product.content || {};
+    const nextContent: ProductContent = {
+      ...currentContent,
+      media_cover: filterMediaByIdentity(currentContent.media_cover, identity),
+      media_images: nextMedia.map((item, itemIndex) => ({
+        ...item,
+        order: itemIndex,
+        export_order: item.export_order ?? itemIndex,
+      })),
+      media: nextMedia.map((item, itemIndex) => ({
+        ...item,
+        order: itemIndex,
+        export_order: item.export_order ?? itemIndex,
+      })),
+    };
+
+    if (isManagedUploadUrl(target.url)) {
+      try {
+        await api(`/products/uploads?url=${encodeURIComponent(target.url)}`, { method: "DELETE" });
+      } catch {
+        // The card reference is still removed even if an old S3 object is already missing.
+      }
+    }
+
+    const optimisticProduct = { ...product, content: nextContent };
+    setProduct(optimisticProduct);
+    setMediaSaving(true);
+    setMediaNotice("");
+    try {
+      const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: nextContent }),
+      });
+      setProduct(response.product || optimisticProduct);
+      setMediaNotice("Медиа удалено из карточки товара.");
+    } catch (err) {
+      setProduct(product);
+      setMediaNotice(err instanceof Error ? err.message : "Не удалось удалить медиа.");
+    } finally {
+      setMediaSaving(false);
+    }
+  }
+
   function excludeReviewMediaFromExport() {
     const nextMedia = media.map((item) => (
       isMediaWaitingForReview(item) ? { ...item, selected: false } : item
@@ -2560,6 +2627,15 @@ function ProductWorkspaceFeature() {
                                 ↓
                               </Button>
                             </div>
+                            <Button
+                              className="productWorkspaceMediaDeleteButton"
+                              variant="danger"
+                              disabled={mediaSaving}
+                              aria-label={`Удалить ${mediaDisplayCaption(item, index) || `фото ${index + 1}`}`}
+                              onClick={() => void deleteMediaItem(index)}
+                            >
+                              Удалить
+                            </Button>
                           </div>
                         </article>
                       ))}
