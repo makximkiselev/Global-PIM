@@ -11,10 +11,11 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.ai_runtime import ai_enabled, require_ai_enabled
+from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, write_doc, with_lock
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.value_mapping import normalize_value_key, provider_export_value_details
@@ -57,6 +58,8 @@ from app.core.master_templates import (
     is_base_field_name,
     split_template_attrs,
 )
+from app.api.routes.yandex_market import OfferCardsSyncReq, sync_offer_cards
+from app.api.routes.ozon_market import OzonProductsSyncReq, sync_product_statuses
 
 router = APIRouter(prefix="/marketplaces/mapping", tags=["marketplace-mapping"])
 
@@ -94,6 +97,8 @@ _VALUE_DETAILS_CACHE_MAX_ITEMS = int(os.getenv("VALUE_DETAILS_CACHE_MAX_ITEMS", 
 _AI_MATCH_OLLAMA_TIMEOUT_SECONDS = float(os.getenv("AI_MATCH_OLLAMA_TIMEOUT_SECONDS", "90.0") or "90.0")
 _AI_MATCH_OLLAMA_CHUNK_SIZE = int(os.getenv("AI_MATCH_OLLAMA_CHUNK_SIZE", "12") or "12")
 _ATTR_DETAILS_CACHE_SCHEMA_VERSION = "v2"
+_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW = "marketplace_category_product_hydration"
+_MARKETPLACE_PRODUCT_HYDRATION_LIMIT = max(1, int(os.getenv("MARKETPLACE_PRODUCT_HYDRATION_LIMIT", "250") or "250"))
 
 
 def _ai_match_timeout_seconds() -> float:
@@ -3989,8 +3994,227 @@ def _build_competitor_states(catalog_nodes: List[Dict[str, Any]], catalog_items:
     return out
 
 
+def _store_secret_value(store: Dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = str(store.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _category_branch_ids(catalog_id: str) -> List[str]:
+    nodes = _load_catalog_nodes()
+    _, children_by_parent = _tree_maps(nodes)
+    ids = [catalog_id, *_descendant_ids(catalog_id, children_by_parent)]
+    seen: set[str] = set()
+    out: List[str] = []
+    for cid in ids:
+        safe = str(cid or "").strip()
+        if safe and safe not in seen:
+            seen.add(safe)
+            out.append(safe)
+    return out
+
+
+def _product_ids_for_category_branch(catalog_id: str, *, limit: int = _MARKETPLACE_PRODUCT_HYDRATION_LIMIT) -> List[str]:
+    rows = query_products_full(
+        category_ids=_category_branch_ids(catalog_id),
+        limit=max(1, int(limit or _MARKETPLACE_PRODUCT_HYDRATION_LIMIT)),
+    )
+    out: List[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        pid = str(row.get("id") or "").strip()
+        if pid and pid not in seen:
+            seen.add(pid)
+            out.append(pid)
+    return out
+
+
+def _public_marketplace_hydration_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "job_id": str(job.get("job_id") or job.get("run_id") or job.get("id") or ""),
+        "catalog_category_id": str(job.get("catalog_category_id") or ""),
+        "provider": str(job.get("provider") or ""),
+        "provider_category_id": str(job.get("provider_category_id") or ""),
+        "status": str(job.get("status") or "queued"),
+        "phase": str(job.get("phase") or ""),
+        "message": str(job.get("message") or ""),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "products_count": int(job.get("products_count") or 0),
+        "updated_products": int(job.get("updated_products") or 0),
+        "stores_count": int(job.get("stores_count") or 0),
+        "summary": job.get("summary") if isinstance(job.get("summary"), list) else [],
+        "errors": job.get("errors") if isinstance(job.get("errors"), list) else [],
+        "error": str(job.get("error") or ""),
+    }
+
+
+def _queue_marketplace_product_hydration_job(
+    *,
+    catalog_id: str,
+    provider: str,
+    provider_category_id: str,
+    background_tasks: BackgroundTasks,
+) -> Dict[str, Any]:
+    if provider not in {"yandex_market", "ozon"} or not provider_category_id:
+        return {}
+    for job in list_pim_workflow_runs(workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW, statuses=["queued", "running"], limit=100):
+        if (
+            str(job.get("catalog_category_id") or "") == catalog_id
+            and str(job.get("provider") or "") == provider
+            and str(job.get("provider_category_id") or "") == provider_category_id
+        ):
+            return _public_marketplace_hydration_job(job)
+    job_id = f"marketplace_hydration_{uuid4().hex}"
+    organization_id = str(current_tenant_organization_id() or "").strip()
+    job = {
+        "id": job_id,
+        "run_id": job_id,
+        "job_id": job_id,
+        "catalog_category_id": catalog_id,
+        "provider": provider,
+        "provider_category_id": provider_category_id,
+        "organization_id": organization_id,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Импорт данных площадки поставлен в очередь.",
+        "created_at": _now_iso(),
+        "created_ts": time.time(),
+        "updated_ts": time.time(),
+    }
+    upsert_pim_workflow_run(job, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+    background_tasks.add_task(_run_marketplace_product_hydration_job, job_id, organization_id)
+    return _public_marketplace_hydration_job(job)
+
+
+async def _run_marketplace_product_hydration_job(job_id: str, organization_id: str = "") -> None:
+    tenant_token = None
+    if organization_id:
+        from app.core.tenant_context import reset_current_tenant_organization_id, set_current_tenant_organization_id
+
+        tenant_token = set_current_tenant_organization_id(organization_id)
+    try:
+        job = get_pim_workflow_run(job_id, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+        if not isinstance(job, dict):
+            return
+        catalog_id = str(job.get("catalog_category_id") or "").strip()
+        provider = str(job.get("provider") or "").strip()
+        product_ids = _product_ids_for_category_branch(catalog_id)
+        job.update({
+            "status": "running",
+            "phase": "collecting_products",
+            "message": f"Нашли SKU в ветке: {len(product_ids)}.",
+            "started_at": job.get("started_at") or _now_iso(),
+            "products_count": len(product_ids),
+            "updated_ts": time.time(),
+        })
+        upsert_pim_workflow_run(job, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+        if not product_ids:
+            job.update({
+                "status": "completed",
+                "phase": "completed",
+                "message": "В ветке нет товаров для импорта данных площадки.",
+                "finished_at": _now_iso(),
+                "updated_ts": time.time(),
+            })
+            upsert_pim_workflow_run(job, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+            return
+
+        connectors = ConnectorsStateReadAdapter()
+        stores = [store for store in connectors.import_stores(provider) if isinstance(store, dict) and bool(store.get("enabled", True))]
+        summary: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+        updated_total = 0
+        job.update({
+            "phase": "syncing_marketplace",
+            "message": f"Импортируем карточные данные из {provider}: {len(stores)} магазинов.",
+            "stores_count": len(stores),
+            "updated_ts": time.time(),
+        })
+        upsert_pim_workflow_run(job, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+        for store in stores:
+            store_id = str(store.get("id") or "").strip()
+            store_title = str(store.get("title") or store_id).strip()
+            try:
+                if provider == "yandex_market":
+                    token = _store_secret_value(store, "token", "access_token", "api_key")
+                    business_id = _store_secret_value(store, "business_id")
+                    if not token or not business_id:
+                        errors.append({"store_id": store_id, "provider": provider, "error": "YANDEX_STORE_CREDENTIALS_MISSING"})
+                        continue
+                    result = await sync_offer_cards(OfferCardsSyncReq(
+                        product_ids=product_ids,
+                        limit=len(product_ids),
+                        token=token,
+                        business_id=business_id,
+                        auth_mode=str(store.get("auth_mode") or "auto"),
+                        store_id=store_id,
+                        store_title=store_title,
+                        include_offer_mappings=True,
+                        apply_to_products=True,
+                        overwrite_existing=False,
+                    ))
+                elif provider == "ozon":
+                    api_key = _store_secret_value(store, "api_key", "token", "access_token")
+                    client_id = _store_secret_value(store, "client_id")
+                    if not api_key or not client_id:
+                        errors.append({"store_id": store_id, "provider": provider, "error": "OZON_STORE_CREDENTIALS_MISSING"})
+                        continue
+                    result = await sync_product_statuses(OzonProductsSyncReq(
+                        product_ids=product_ids,
+                        limit=len(product_ids),
+                        token=api_key,
+                        client_id=client_id,
+                        store_id=store_id,
+                        store_title=store_title,
+                    ))
+                else:
+                    continue
+                updated = int(result.get("updated_products") or 0) if isinstance(result, dict) else 0
+                updated_total += updated
+                summary.append({
+                    "store_id": store_id,
+                    "store_title": store_title,
+                    "provider": provider,
+                    "count": int(result.get("count") or 0) if isinstance(result, dict) else 0,
+                    "matched_products": int(result.get("matched_products") or 0) if isinstance(result, dict) else 0,
+                    "updated_products": updated,
+                })
+            except Exception as exc:
+                errors.append({"store_id": store_id, "provider": provider, "error": str(exc)[:500]})
+        job.update({
+            "status": "completed" if summary or not errors else "failed",
+            "phase": "completed_with_errors" if errors else "completed",
+            "message": f"Импорт данных площадки завершен. Обновлено SKU: {updated_total}.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "summary": summary,
+            "errors": errors,
+            "updated_products": updated_total,
+        })
+        upsert_pim_workflow_run(job, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+    except Exception as exc:
+        job = get_pim_workflow_run(job_id, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW) or {"id": job_id, "run_id": job_id, "job_id": job_id}
+        job.update({
+            "status": "failed",
+            "phase": "failed",
+            "message": "Импорт данных площадки не завершился.",
+            "finished_at": _now_iso(),
+            "updated_ts": time.time(),
+            "error": f"{exc.__class__.__name__}: {str(exc).strip()}"[:500],
+        })
+        upsert_pim_workflow_run(job, workflow=_MARKETPLACE_PRODUCT_HYDRATION_WORKFLOW)
+    finally:
+        if tenant_token is not None:
+            reset_current_tenant_organization_id(tenant_token)
+
+
 @router.post("/import/categories/link")
-def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
+def mapping_link_category(req: LinkCategoryReq, background_tasks: BackgroundTasks) -> Dict[str, Any]:
     catalog_id = str(req.catalog_category_id or "").strip()
     provider = str(req.provider or "").strip()
     provider_category_id = str(req.provider_category_id or "").strip()
@@ -4085,6 +4309,13 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
     finally:
         lock.release()
 
+    marketplace_hydration_job = _queue_marketplace_product_hydration_job(
+        catalog_id=catalog_id,
+        provider=provider,
+        provider_category_id=provider_category_id,
+        background_tasks=background_tasks,
+    ) if provider_category_id else {}
+
     return {
         "ok": True,
         "catalog_category_id": catalog_id,
@@ -4092,6 +4323,7 @@ def mapping_link_category(req: LinkCategoryReq) -> Dict[str, Any]:
         "provider_category_id": provider_category_id or None,
         "cleared_catalog_category_ids": sorted(set(cleared_catalog_ids)),
         "mappings": items,
+        "marketplace_hydration_job": marketplace_hydration_job or None,
     }
 
 

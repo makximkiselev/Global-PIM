@@ -409,6 +409,11 @@ type LinkResp = {
   cleared_catalog_category_ids?: string[];
   preserved_template_category_ids?: string[];
   mappings?: Record<string, Record<string, string>>;
+  marketplace_hydration_job?: {
+    job_id?: string;
+    status?: string;
+    message?: string;
+  } | null;
 };
 
 type ClearDescendantBindingsResp = {
@@ -2282,7 +2287,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         await loadAttrBootstrap().catch(() => null);
       }
       if (closeModal) setModalOpen(false);
-      setSavedToastText("Сопоставление сохранено");
+      setSavedToastText(res.marketplace_hydration_job ? "Сопоставление сохранено, импорт данных площадки запущен" : "Сопоставление сохранено");
       setSavedToast(true);
     } catch (e) {
       const raw = (e as Error).message || "Ошибка сохранения связи";
