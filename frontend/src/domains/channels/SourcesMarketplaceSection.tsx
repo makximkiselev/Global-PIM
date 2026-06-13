@@ -1080,6 +1080,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [attrDetails, setAttrDetails] = useState<AttrDetailsResp | null>(null);
   const [competitorTemplateFields, setCompetitorTemplateFields] = useState<CompetitorCategoryResp["master_fields"]>([]);
   const [competitorLinks, setCompetitorLinks] = useState<Record<CompetitorSiteKey, string>>({ restore: "", store77: "", biggeek: "" });
+  const [savedCompetitorLinks, setSavedCompetitorLinks] = useState<Record<CompetitorSiteKey, string>>({ restore: "", store77: "", biggeek: "" });
   const [competitorMappingBySite, setCompetitorMappingBySite] = useState<Record<CompetitorSiteKey, Record<string, string>>>({ restore: {}, store77: {}, biggeek: {} });
   const [competitorFieldMetaBySite, setCompetitorFieldMetaBySite] = useState<Record<CompetitorSiteKey, CompetitorFieldMeta[]>>({ restore: [], store77: [], biggeek: [] });
   const [competitorFieldsBySite, setCompetitorFieldsBySite] = useState<Record<CompetitorSiteKey, string[]>>({ restore: [], store77: [], biggeek: [] });
@@ -1440,6 +1441,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     if (!categoryId) {
       setCompetitorTemplateFields([]);
       setCompetitorLinks({ restore: "", store77: "", biggeek: "" });
+      setSavedCompetitorLinks({ restore: "", store77: "", biggeek: "" });
       setCompetitorMappingBySite({ restore: {}, store77: {}, biggeek: {} });
       setCompetitorFieldMetaBySite({ restore: [], store77: [], biggeek: [] });
       setCompetitorFieldsBySite({ restore: [], store77: [], biggeek: [] });
@@ -1460,6 +1462,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
     setCompetitorTemplateFields(Array.isArray(data.master_fields) ? data.master_fields : []);
     setCompetitorLinks(links);
+    setSavedCompetitorLinks(links);
     setCompetitorMappingBySite(mappingBySite);
 
     const cacheKey = `competitor.fields.${categoryId}`;
@@ -1778,6 +1781,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const competitorProvidersForUi = useMemo(
     () => COMPETITOR_PROVIDER_CODES.filter((code) => !!COMPETITOR_PROVIDER_SLOTS[code]),
     []
+  );
+
+  const competitorLinksDirty = useMemo(
+    () => COMPETITOR_PROVIDER_CODES.some((code) => (
+      String(competitorLinks[code] || "").trim() !== String(savedCompetitorLinks[code] || "").trim()
+    )),
+    [competitorLinks, savedCompetitorLinks]
   );
 
   const sourceProvidersForUi = useMemo(
@@ -2838,6 +2848,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         method: "PUT",
         body: JSON.stringify({ links: competitorLinks }),
       });
+      setSavedCompetitorLinks({ ...competitorLinks });
+      setSavedToastText("Ссылки конкурентов сохранены");
+      setSavedToast(true);
       invalidateSourcesReadCaches(cid);
       await loadCategoriesMapping();
     } catch (e) {
@@ -3866,6 +3879,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       <div className="mm-lineContent">
                                         <div className="mm-competitorMatchTableWorkspace">
                                           <div className="mm-competitorCategoryLinks" aria-label="Ссылки категорий конкурентов">
+                                            <div className="mm-competitorCategoryLinksHead">
+                                              <div>
+                                                <strong>Ссылки на разделы конкурентов</strong>
+                                                <span>{competitorLinksDirty ? "Есть несохраненные изменения" : "Ссылки сохранены"}</span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                className="btn mm-miniBtn"
+                                                onClick={() => void saveCompetitorCategoryLinks(selectedCatalogNode.id)}
+                                                disabled={competitorLinksSaving || competitorIndexing || !competitorLinksDirty}
+                                              >
+                                                {competitorLinksSaving ? "Сохраняю..." : "Сохранить ссылки"}
+                                              </button>
+                                            </div>
                                             {sourceColumns.map((source) => (
                                               <label key={source.code} className="mm-competitorCategoryLinkBox">
                                                 <span>{source.title}</span>

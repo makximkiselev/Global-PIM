@@ -5552,6 +5552,34 @@
   background:#fbfbfc;
 }
 
+.sourcesCommandWorkbench .mm-competitorCategoryLinksHead{
+  grid-column:1 / -1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding-bottom:2px;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinksHead > div{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinksHead strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:950;
+}
+
+.sourcesCommandWorkbench .mm-competitorCategoryLinksHead span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:760;
+}
+
 .sourcesCommandWorkbench .mm-competitorCategoryLinkBox{
   display:flex;
   flex-direction:column;
