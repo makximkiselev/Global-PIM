@@ -208,6 +208,25 @@ def _auth_headers(token: str, mode: str) -> Dict[str, str]:
     return {"Api-Key": token}
 
 
+def _yandex_errors_text(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    errors = body.get("errors")
+    if not isinstance(errors, list):
+        return ""
+    parts = []
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        code = str(error.get("code") or "").strip()
+        message = str(error.get("message") or "").strip()
+        if code and message:
+            parts.append(f"{code}: {message}")
+        elif code or message:
+            parts.append(code or message)
+    return "; ".join(parts)
+
+
 def _guess_auth_modes(token: str, requested_mode: str = "auto") -> List[str]:
     raw = str(token or "").strip()
     requested = str(requested_mode or "").strip().lower() or "auto"
@@ -235,6 +254,51 @@ def _guess_auth_modes(token: str, requested_mode: str = "auto") -> List[str]:
         return [requested] + [x for x in preferred if x != requested] + [x for x in fallbacks if x != requested and x not in preferred]
     # Explicit mode conflicts with token shape: keep requested as fallback, but try the compatible mode first.
     return preferred + ([requested] if requested not in preferred else []) + [x for x in fallbacks if x != requested and x not in preferred]
+
+
+def _campaign_business_id(campaign: Dict[str, Any]) -> str:
+    business = campaign.get("business") if isinstance(campaign.get("business"), dict) else {}
+    return str((business or {}).get("id") or "").strip()
+
+
+def _campaign_summary(campaigns: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    for campaign in campaigns:
+        if not isinstance(campaign, dict):
+            continue
+        business = campaign.get("business") if isinstance(campaign.get("business"), dict) else {}
+        out.append(
+            {
+                "business_id": str((business or {}).get("id") or "").strip(),
+                "business_name": str((business or {}).get("name") or "").strip(),
+                "campaign_id": str(campaign.get("id") or "").strip(),
+                "campaign_name": str(campaign.get("domain") or "").strip(),
+                "placement_type": str(campaign.get("placementType") or "").strip(),
+                "api_availability": str(campaign.get("apiAvailability") or "").strip(),
+            }
+        )
+    return out
+
+
+async def _probe_yandex_campaigns(*, client: httpx.AsyncClient, token: str, mode: str) -> Dict[str, Any]:
+    headers = {
+        **_auth_headers(token, mode),
+        "Accept": "application/json",
+    }
+    res = await client.get(
+        f"{YANDEX_API_BASE}/v2/campaigns",
+        params={"limit": 100},
+        headers=headers,
+    )
+    body = res.json() if res.content else {}
+    campaigns = body.get("campaigns") if isinstance(body, dict) and isinstance(body.get("campaigns"), list) else []
+    return {
+        "ok": res.is_success,
+        "status_code": res.status_code,
+        "body": body,
+        "campaigns": [x for x in campaigns if isinstance(x, dict)],
+        "error": _yandex_errors_text(body) or res.text[:400],
+    }
 
 
 def _to_str_id(v: Any) -> str:
@@ -404,13 +468,42 @@ async def probe_store_access(*, token: str, business_id: str, auth_mode: str = "
     modes = _guess_auth_modes(token, auth_mode)
     last_error = ""
     for mode in modes:
-        headers = {
-            **_auth_headers(token, mode),
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
+                campaigns_probe = await _probe_yandex_campaigns(client=client, token=token, mode=mode)
+                if not campaigns_probe["ok"]:
+                    last_error = f"[{mode}] GET /v2/campaigns {campaigns_probe['status_code']}: {campaigns_probe['error']}"
+                    continue
+
+                campaigns = campaigns_probe["campaigns"]
+                matched_campaigns = [x for x in campaigns if _campaign_business_id(x) == business_id]
+                available_businesses = sorted({x["business_id"] for x in _campaign_summary(campaigns) if x.get("business_id")})
+                if campaigns and not matched_campaigns:
+                    available_hint = ", ".join(available_businesses[:12]) or "нет доступных businessId"
+                    last_error = (
+                        f"[{mode}] YANDEX_BUSINESS_ID_NOT_ACCESSIBLE: введенный businessId {business_id} "
+                        f"не найден среди доступных ключу кабинетов. Доступные businessId: {available_hint}"
+                    )
+                    continue
+
+                unavailable = [
+                    x
+                    for x in matched_campaigns
+                    if str(x.get("apiAvailability") or "").strip()
+                    and str(x.get("apiAvailability") or "").strip() != "AVAILABLE"
+                ]
+                if unavailable:
+                    statuses = ", ".join(
+                        sorted({str(x.get("apiAvailability") or "").strip() for x in unavailable if str(x.get("apiAvailability") or "").strip()})
+                    )
+                    last_error = f"[{mode}] YANDEX_API_NOT_AVAILABLE: API кабинета {business_id} недоступно для магазина: {statuses}"
+                    continue
+
+                headers = {
+                    **_auth_headers(token, mode),
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                }
                 res = await client.post(
                     f"{YANDEX_API_BASE}/v2/businesses/{business_id}/offer-cards",
                     params={"limit": 1},
@@ -423,7 +516,10 @@ async def probe_store_access(*, token: str, business_id: str, auth_mode: str = "
                     "ok": True,
                     "auth_mode": mode,
                     "business_id": business_id,
-                    "details": body.get("result") if isinstance(body, dict) else {},
+                    "details": {
+                        "campaigns": _campaign_summary(matched_campaigns or campaigns),
+                        "offer_cards": body.get("result") if isinstance(body, dict) else {},
+                    },
                 }
             if (
                 res.status_code == 400
@@ -439,9 +535,19 @@ async def probe_store_access(*, token: str, business_id: str, auth_mode: str = "
                     "ok": True,
                     "auth_mode": mode,
                     "business_id": business_id,
-                    "details": {"probe": "authorized", "validation": "offerIds-required"},
+                    "details": {
+                        "probe": "authorized",
+                        "validation": "offerIds-required",
+                        "campaigns": _campaign_summary(matched_campaigns or campaigns),
+                    },
                 }
-            last_error = f"[{mode}] {res.status_code}: {res.text[:400]}"
+            api_error = _yandex_errors_text(body)
+            if res.status_code == 403:
+                api_error = (
+                    f"{api_error or 'Access denied'}. Проверьте, что API-Key выдан для кабинета {business_id} "
+                    "и имеет доступ offers-and-cards-management или all-methods."
+                )
+            last_error = f"[{mode}] POST /v2/businesses/{business_id}/offer-cards {res.status_code}: {api_error or res.text[:400]}"
         except HTTPException:
             raise
         except Exception as e:
