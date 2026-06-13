@@ -204,6 +204,17 @@ type CompetitorDiscoveryCandidate = {
   confidence_reasons?: string[];
 };
 
+type CompetitorProductSourceStatus = "none" | "confirmed" | "review" | "rejected";
+
+type CompetitorProductStatus = {
+  status?: CompetitorProductSourceStatus | string;
+  confirmed_count?: number;
+  candidates_count?: number;
+  rejected_count?: number;
+  candidate_items?: CompetitorDiscoveryCandidate[];
+  link_items?: CompetitorDiscoveryCandidate[];
+};
+
 type CompetitorDiscoveryRun = {
   id: string;
   status: string;
@@ -235,6 +246,7 @@ type CompetitorCategoryDiscoveryResp = {
     needs_review_count: number;
     candidate_items?: CompetitorDiscoveryCandidate[];
     link_items?: CompetitorDiscoveryCandidate[];
+    product_statuses?: Record<string, CompetitorProductStatus>;
     suggestions: CompetitorCategorySuggestion[];
     fallback_search?: CompetitorCategorySuggestion | null;
   }>;
@@ -1071,6 +1083,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorDiscoveryRun, setCompetitorDiscoveryRun] = useState<CompetitorDiscoveryRun | null>(null);
   const [competitorSampleProductId, setCompetitorSampleProductId] = useState("");
   const [competitorSkuQuery, setCompetitorSkuQuery] = useState("");
+  const [competitorStatusFilters, setCompetitorStatusFilters] = useState<Record<string, CompetitorProductSourceStatus | "all">>({});
+  const [competitorManualUrls, setCompetitorManualUrls] = useState<Record<string, string>>({});
+  const [competitorManualSubmitting, setCompetitorManualSubmitting] = useState("");
   const [competitorModeratingId, setCompetitorModeratingId] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
@@ -2566,6 +2581,57 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return out;
   }
 
+  function normalizeCompetitorProductStatus(value: unknown): CompetitorProductSourceStatus {
+    const status = String(value || "").trim();
+    if (status === "confirmed" || status === "review" || status === "rejected") return status;
+    return "none";
+  }
+
+  function competitorStatusLabel(status: CompetitorProductSourceStatus): string {
+    if (status === "confirmed") return "подтверждено";
+    if (status === "review") return "на модерации";
+    if (status === "rejected") return "отклонено";
+    return "нет кандидата";
+  }
+
+  function competitorStatusRank(status: CompetitorProductSourceStatus): number {
+    if (status === "review") return 0;
+    if (status === "rejected") return 1;
+    if (status === "none") return 2;
+    return 3;
+  }
+
+  function aggregateCompetitorStatus(statuses: CompetitorProductSourceStatus[]): CompetitorProductSourceStatus {
+    if (statuses.includes("review")) return "review";
+    if (statuses.includes("rejected")) return "rejected";
+    if (statuses.includes("none")) return "none";
+    return "confirmed";
+  }
+
+  async function addManualCompetitorLink(productId: string, sourceId: string) {
+    const pid = String(productId || "").trim();
+    const source = String(sourceId || "").trim();
+    const urlKey = `${pid}:${source}`;
+    const url = String(competitorManualUrls[urlKey] || "").trim();
+    if (!pid || !source || !url) return;
+    setCompetitorManualSubmitting(urlKey);
+    setCompetitorDiscoveryError("");
+    try {
+      await api(`/competitor-mapping/discovery/products/${encodeURIComponent(pid)}/links`, {
+        method: "POST",
+        body: JSON.stringify({ source_id: source, url }),
+      });
+      setCompetitorManualUrls((prev) => ({ ...prev, [urlKey]: "" }));
+      if (selectedCatalogNode?.id) {
+        await loadCompetitorDiscovery(selectedCatalogNode.id, { preferFocusedProduct: false });
+      }
+    } catch (e) {
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось добавить ссылку конкурента");
+    } finally {
+      setCompetitorManualSubmitting("");
+    }
+  }
+
   async function loadCompetitorDiscovery(
     categoryId: string,
     options: { preferFocusedProduct?: boolean; avoidProductId?: string } = {},
@@ -3258,82 +3324,81 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const competitorConfirmedTotal = discoverySources.reduce((sum, source) => sum + Number(source.confirmed_count || 0), 0);
                                 const competitorNeedsReviewTotal = discoverySources.reduce((sum, source) => sum + Number(source.needs_review_count || 0), 0);
                                 const sampleProducts = competitorDiscovery?.category?.sample_products || [];
-                                const selectedSampleProduct = sampleProducts.find((item) => item.id === competitorSampleProductId) || sampleProducts[0] || null;
-                                const selectedSampleProductId = String(selectedSampleProduct?.id || "").trim();
+                                const sourceColumns = [
+                                  ...discoverySources.map((source) => ({
+                                    code: String(source.id || ""),
+                                    title: source.name || String(source.id || ""),
+                                    domain: source.domain || "",
+                                    source,
+                                  })),
+                                  ...competitorMeta.sites
+                                    .filter((site) => !discoverySources.some((source) => String(source.id) === site.code))
+                                    .map((site) => ({
+                                      code: site.code,
+                                      title: site.title,
+                                      domain: site.title,
+                                      source: null,
+                                    })),
+                                ]
+                                  .filter((source, index, arr) => source.code && arr.findIndex((item) => item.code === source.code) === index)
+                                  .sort((a, b) => {
+                                    const knownOrder = new Map([["store77", 0], ["restore", 1]]);
+                                    const aOrder = knownOrder.get(a.code) ?? 10;
+                                    const bOrder = knownOrder.get(b.code) ?? 10;
+                                    return aOrder - bOrder || a.title.localeCompare(b.title, "ru");
+                                  });
                                 const competitorSkuQueryNorm = qnorm(competitorSkuQuery);
-                                const matchedSampleProducts = competitorSkuQueryNorm
-                                  ? sampleProducts.filter((product) => {
-                                      const haystack = qnorm(`${product.sku_gt || ""} ${product.title || ""} ${product.id || ""}`);
-                                      return haystack.includes(competitorSkuQueryNorm);
-                                    })
-                                  : sampleProducts;
-                                const visibleSampleProducts = selectedSampleProduct
-                                  ? [
-                                      selectedSampleProduct,
-                                      ...matchedSampleProducts.filter((product) => product.id !== selectedSampleProduct.id),
-                                    ].slice(0, competitorSkuQueryNorm ? 24 : 6)
-                                  : matchedSampleProducts.slice(0, competitorSkuQueryNorm ? 24 : 6);
-                                const productCandidates = discoverySources.flatMap((source) =>
-                                  (source.candidate_items || [])
-                                    .filter((candidate) => !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId)
-                                    .slice(0, 3)
-                                    .map((candidate) => ({ source, candidate })),
-                                );
-                                const competitorSourceRows = competitorMeta.sites.map((site) => {
-                                  const discoverySource = discoverySources.find((source) => String(source.id) === site.code);
-                                  const confirmedCount = Number(discoverySource?.confirmed_count || 0);
-                                  const needsReviewCount = Number(discoverySource?.needs_review_count || 0);
-                                  const candidatesCount = Number(discoverySource?.candidates_count || 0);
-                                  const selectedCount = (discoverySource?.candidate_items || []).filter((candidate) => (
-                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
-                                  )).length;
-                                  const isLinked = site.hasLink || confirmedCount > 0;
-                                  const hasCandidates = candidatesCount > 0 || needsReviewCount > 0;
+                                const sourceStatusForProduct = (source: typeof sourceColumns[number], productId: string): CompetitorProductStatus => {
+                                  const direct = source.source?.product_statuses?.[productId];
+                                  if (direct) return direct;
+                                  const linkItems = (source.source?.link_items || []).filter((item) => String(item.product_id || "").trim() === productId);
+                                  const candidateItems = (source.source?.candidate_items || []).filter((item) => String(item.product_id || "").trim() === productId);
                                   return {
-                                    ...site,
-                                    isLinked,
-                                    hasCandidates,
-                                    className: isLinked ? "is-linked" : hasCandidates ? "is-review" : "is-empty",
-                                    label: isLinked
-                                      ? `${Math.max(site.mappedCount, confirmedCount)} подтверждено`
-                                      : hasCandidates
-                                        ? `${selectedCount ? `${selectedCount} для SKU · ` : ""}${needsReviewCount || candidatesCount} на проверке`
-                                        : "нет кандидатов",
+                                    status: linkItems.length ? "confirmed" : candidateItems.length ? "review" : "none",
+                                    confirmed_count: linkItems.length,
+                                    candidates_count: candidateItems.length,
+                                    rejected_count: 0,
+                                    candidate_items: candidateItems,
+                                    link_items: linkItems,
                                   };
+                                };
+                                const competitorRows = sampleProducts.map((product) => {
+                                  const id = String(product.id || "").trim();
+                                  const statuses = Object.fromEntries(sourceColumns.map((source) => [
+                                    source.code,
+                                    sourceStatusForProduct(source, id),
+                                  ]));
+                                  const rowStatuses = Object.values(statuses).map((status) => normalizeCompetitorProductStatus(status.status));
+                                  const worstRank = Math.min(...rowStatuses.map(competitorStatusRank));
+                                  const aggregateStatus = aggregateCompetitorStatus(rowStatuses);
+                                  return { ...product, id, statuses, worstRank, aggregateStatus };
                                 });
-                                const sourceDiagnostics = competitorSourceRows.map((site) => {
-                                  const discoverySource = discoverySources.find((source) => String(source.id) === site.code);
-                                  const selectedCandidates = (discoverySource?.candidate_items || []).filter((candidate) => (
-                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
-                                  ));
-                                  const selectedLinks = (discoverySource?.link_items || []).filter((candidate) => (
-                                    !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId
-                                  ));
-                                  const sourceErrors = (competitorDiscoveryRun?.errors || []).filter((item) => String(item.source_id || "") === site.code);
-                                  const firstError = sourceErrors[0]?.error || sourceErrors[0]?.warning || "";
-                                  let text = "Источник готов к подбору точной карточки.";
-                                  let tone = "isNeutral";
-                                  if (selectedLinks.length) {
-                                    text = "Для выбранного SKU уже есть подтвержденная карточка.";
-                                    tone = "isReady";
-                                  } else if (selectedCandidates.length) {
-                                    text = "Есть кандидаты для выбранного SKU, требуется модерация.";
-                                    tone = "isReview";
-                                  } else if (firstError) {
-                                    text = `Последний запуск: ${firstError}`;
-                                    tone = "isError";
-                                  } else if ((discoverySource?.candidate_items || []).length) {
-                                    text = "Кандидаты есть по другим SKU ветки, но не по выбранному SKU.";
-                                    tone = "isReview";
-                                  } else if (competitorDiscoveryRun && !competitorDiscoveryRunning) {
-                                    text = "После последнего скана точного кандидата для выбранного SKU нет.";
-                                    tone = "isEmpty";
-                                  } else if (site.hasCandidates || site.isLinked) {
-                                    text = site.label;
-                                    tone = site.isLinked ? "isReady" : "isReview";
+                                const filteredCompetitorRows = competitorRows
+                                  .filter((product) => {
+                                    if (competitorSkuQueryNorm) {
+                                      const haystack = qnorm(`${product.sku_gt || ""} ${product.title || ""} ${product.id || ""}`);
+                                      if (!haystack.includes(competitorSkuQueryNorm)) return false;
+                                    }
+                                    return sourceColumns.every((source) => {
+                                      const filter = competitorStatusFilters[source.code] || "all";
+                                      if (filter === "all") return true;
+                                      return normalizeCompetitorProductStatus(product.statuses[source.code]?.status) === filter;
+                                    });
+                                  })
+                                  .sort((a, b) => a.worstRank - b.worstRank || String(a.sku_gt || a.id).localeCompare(String(b.sku_gt || b.id), "ru"));
+                                const selectedSampleProduct = filteredCompetitorRows.find((item) => item.id === competitorSampleProductId)
+                                  || competitorRows.find((item) => item.id === competitorSampleProductId)
+                                  || filteredCompetitorRows[0]
+                                  || competitorRows[0]
+                                  || null;
+                                const selectedSampleProductId = String(selectedSampleProduct?.id || "").trim();
+                                const statusCountsBySource = Object.fromEntries(sourceColumns.map((source) => {
+                                  const counts = { all: competitorRows.length, none: 0, confirmed: 0, review: 0, rejected: 0 };
+                                  for (const row of competitorRows) {
+                                    counts[normalizeCompetitorProductStatus(row.statuses[source.code]?.status)] += 1;
                                   }
-                                  return { ...site, text, tone };
-                                });
+                                  return [source.code, counts];
+                                }));
                                 const branchProductCount = Number(competitorDiscovery?.category?.products_count || 0);
                                 const selectedSampleLabel = selectedSampleProduct
                                   ? `${selectedSampleProduct.sku_gt ? `${selectedSampleProduct.sku_gt} · ` : ""}${selectedSampleProduct.title || selectedSampleProduct.id}`
@@ -3382,7 +3447,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       </div>
                                     </div>
                                       <div className="mm-lineContent">
-                                        <div className="mm-competitorWorkspace2026 mm-competitorQueueWorkspace">
+                                        <div className="mm-competitorMatchTableWorkspace">
                                           <div className="mm-competitorQueueSummary" aria-label="Сводка конкурентного сопоставления">
                                             <div>
                                               <span>SKU в ветке</span>
@@ -3402,167 +3467,199 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                             </div>
                                           </div>
 
-                                          <div className="mm-competitorQueueLayout">
-                                            <div className="mm-competitorControlPane mm-competitorSkuQueuePane">
-                                              <div className="mm-competitorSkuCard">
-                                                <div className="mm-competitorPanelLabel">SKU для подбора</div>
-                                                <strong>{selectedSkuCode}</strong>
-                                                <p>{selectedSkuTitle}</p>
-                                                <div className="mm-competitorSkuPicker">
-                                                  <input
-                                                    id={`competitor-sku-${selectedCatalogNode.id}`}
-                                                    value={competitorSkuQuery}
-                                                    onChange={(event) => setCompetitorSkuQuery(event.target.value)}
-                                                    disabled={!sampleProducts.length || competitorDiscoveryRunning}
-                                                    placeholder={competitorDiscoveryLoading ? "Загружаю SKU..." : "Найти SKU в ветке"}
-                                                  />
-                                                  <div className="mm-competitorSkuList" role="listbox" aria-label="SKU выбранной ветки">
-                                                    {visibleSampleProducts.length ? visibleSampleProducts.map((product) => {
-                                                      const active = product.id === selectedSampleProduct?.id;
-                                                      return (
-                                                        <button
-                                                          key={product.id}
-                                                          type="button"
-                                                          className={active ? "isActive" : ""}
-                                                          onClick={() => setCompetitorSampleProductId(product.id)}
-                                                          disabled={competitorDiscoveryRunning}
-                                                        >
-                                                          <span>{product.sku_gt || product.id}</span>
-                                                          <strong>{product.title || product.id}</strong>
-                                                        </button>
-                                                      );
-                                                    }) : (
-                                                      <div className="mm-competitorSkuEmpty">
-                                                        {sampleProducts.length ? "По этому запросу SKU не найдены" : "В выбранной ветке пока нет SKU"}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                  {!competitorSkuQueryNorm && sampleProducts.length > visibleSampleProducts.length ? (
-                                                    <div className="mm-competitorSkuListHint">
-                                                      Показаны первые {visibleSampleProducts.length} SKU из {sampleProducts.length}. Для точного выбора используйте поиск по SKU или названию.
-                                                    </div>
-                                                  ) : null}
-                                                </div>
-                                              </div>
-                                              <div className="mm-competitorSourceQueue">
-                                                <div className="mm-competitorPaneHead">
-                                                  <strong>Источники</strong>
-                                                  <span>Карточки конкурентов</span>
-                                                </div>
-                                                {competitorSourceRows.map((site) => (
-                                                  <div key={site.code} className={`mm-competitorSourceItem mm-competitorSourceRow ${site.className}`}>
-                                                    <div>
-                                                      <strong>{site.title}</strong>
-                                                      <span>{sourceDiagnostics.find((item) => item.code === site.code)?.text || site.label}</span>
-                                                    </div>
-                                                    <b>{site.label}</b>
-                                                  </div>
-                                                ))}
-                                              </div>
+                                          <div className="mm-competitorTableFilters">
+                                            <input
+                                              value={competitorSkuQuery}
+                                              onChange={(event) => setCompetitorSkuQuery(event.target.value)}
+                                              disabled={!sampleProducts.length || competitorDiscoveryRunning}
+                                              placeholder={competitorDiscoveryLoading ? "Загружаю SKU..." : "Поиск по SKU или товару"}
+                                            />
+                                            {sourceColumns.map((source) => {
+                                              const value = competitorStatusFilters[source.code] || "all";
+                                              const counts = statusCountsBySource[source.code] || { all: 0, none: 0, confirmed: 0, review: 0, rejected: 0 };
+                                              return (
+                                                <label key={source.code}>
+                                                  <span>{source.title}</span>
+                                                  <select
+                                                    value={value}
+                                                    onChange={(event) => setCompetitorStatusFilters((prev) => ({
+                                                      ...prev,
+                                                      [source.code]: event.target.value as CompetitorProductSourceStatus | "all",
+                                                    }))}
+                                                  >
+                                                    <option value="all">Все ({counts.all})</option>
+                                                    <option value="none">Нет кандидата ({counts.none})</option>
+                                                    <option value="review">На модерации ({counts.review})</option>
+                                                    <option value="confirmed">Подтверждено ({counts.confirmed})</option>
+                                                    <option value="rejected">Отклонено ({counts.rejected})</option>
+                                                  </select>
+                                                </label>
+                                              );
+                                            })}
+                                          </div>
 
-                                              {competitorDiscoveryRun ? (
-                                                <div className={`mm-competitorRunNotice ${runHasErrors ? "hasError" : runFinished ? "isDone" : "isRunning"}`}>
-                                                  <strong>
-                                                    {competitorDiscoveryRun.status === "queued"
-                                                      ? "Запуск поставлен в очередь"
-                                                      : competitorDiscoveryRun.status === "running"
-                                                        ? "Сканирование выполняется"
-                                                        : runHasErrors
-                                                          ? "Сканирование завершилось с предупреждениями"
-                                                          : "Сканирование завершено"}
-                                                  </strong>
-                                                  <span>
-                                                    Проверено SKU: {competitorDiscoveryRun.scanned_products_count || 0}. Создано/обновлено кандидатов: {runCreated}.
-                                                    {runHasErrors ? " Часть источников не ответила, можно повторить запуск." : ""}
-                                                  </span>
+                                          {competitorDiscoveryRun ? (
+                                            <div className={`mm-competitorRunNotice ${runHasErrors ? "hasError" : runFinished ? "isDone" : "isRunning"}`}>
+                                              <strong>
+                                                {competitorDiscoveryRun.status === "queued"
+                                                  ? "Запуск поставлен в очередь"
+                                                  : competitorDiscoveryRun.status === "running"
+                                                    ? "Сканирование выполняется"
+                                                    : runHasErrors
+                                                      ? "Сканирование завершилось с предупреждениями"
+                                                      : "Сканирование завершено"}
+                                              </strong>
+                                              <span>
+                                                Проверено SKU: {competitorDiscoveryRun.scanned_products_count || 0}. Создано/обновлено кандидатов: {runCreated}.
+                                                {runHasErrors ? " Часть источников не ответила, можно повторить запуск." : ""}
+                                              </span>
+                                            </div>
+                                          ) : null}
+                                          {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
+
+                                          <div className="mm-competitorTableLayout">
+                                            <div className="mm-competitorMatchTableWrap">
+                                              <div
+                                                className="mm-competitorMatchTable"
+                                                style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
+                                              >
+                                                <div className="mm-competitorMatchHead">SKU</div>
+                                                <div className="mm-competitorMatchHead">Наименование товара</div>
+                                                <div className="mm-competitorMatchHead">Статус</div>
+                                                {sourceColumns.map((source) => (
+                                                  <div key={source.code} className="mm-competitorMatchHead">{source.title}</div>
+                                                ))}
+                                                {filteredCompetitorRows.map((row) => {
+                                                  const active = row.id === selectedSampleProductId;
+                                                  return (
+                                                    <button
+                                                      key={row.id}
+                                                      type="button"
+                                                      className={`mm-competitorMatchRow${active ? " isActive" : ""}`}
+                                                      style={{ gridTemplateColumns: `96px minmax(320px, 1fr) minmax(132px, 160px) repeat(${Math.max(1, sourceColumns.length)}, minmax(132px, 160px))` }}
+                                                      onClick={() => setCompetitorSampleProductId(row.id)}
+                                                    >
+                                                      <span className="mm-competitorMatchSku">{row.sku_gt || row.id}</span>
+                                                      <strong>{row.title || row.id}</strong>
+                                                      <span className={`mm-competitorStatusPill is-${row.aggregateStatus}`}>
+                                                        {competitorStatusLabel(row.aggregateStatus)}
+                                                      </span>
+                                                      {sourceColumns.map((source) => {
+                                                        const status = normalizeCompetitorProductStatus(row.statuses[source.code]?.status);
+                                                        return (
+                                                          <span key={`${row.id}-${source.code}`} className={`mm-competitorStatusPill is-${status}`}>
+                                                            {competitorStatusLabel(status)}
+                                                          </span>
+                                                        );
+                                                      })}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                              {!filteredCompetitorRows.length ? (
+                                                <div className="mm-competitorQueueEmpty">
+                                                  <strong>По фильтрам нет SKU</strong>
+                                                  <span>Сбросьте статус площадки или измените поиск по SKU/наименованию.</span>
                                                 </div>
                                               ) : null}
-
-                                              {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Ищем карточки конкурентов для выбранного SKU...</div> : null}
-                                              {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
                                             </div>
 
-                                            <div className="mm-competitorCandidatePane mm-competitorCandidateQueuePane">
-                                              <div className="mm-competitorSuggestionsHead">
-                                                <div>
-                                                  <strong>Очередь кандидатов</strong>
-                                                  <span>{productCandidates.length ? `${productCandidates.length} карточки ждут решения` : "Нет карточек на проверке"}</span>
-                                                </div>
-                                                <span>Проверяйте модель, память, цвет и SIM.</span>
+                                            <aside className="mm-competitorInspectorDrawer" aria-label="Инспектор конкурентных карточек">
+                                              <div className="mm-competitorInspectorHead">
+                                                <span>SKU</span>
+                                                <strong>{selectedSkuCode}</strong>
+                                                <p>{selectedSkuTitle}</p>
                                               </div>
-                                              <div className="mm-competitorCandidateList mm-competitorCandidateTable">
-                                                {productCandidates.length ? (
-                                                  <div className="mm-competitorCandidateHeader">
-                                                    <span>Карточка</span>
-                                                    <span>Матч</span>
-                                                    <span>Действия</span>
-                                                  </div>
-                                                ) : null}
-                                                {productCandidates.map(({ source, candidate }) => (
-                                                  <div
-                                                    key={`${source.id}-${candidate.id}`}
-                                                    className="mm-competitorCandidate mm-competitorCandidateRow"
-                                                  >
-                                                    <div className="mm-competitorCandidateMain">
-                                                      <b>{source.name}</b>
-                                                      <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
-                                                      {candidate.url ? (
-                                                        <a className="mm-competitorCandidateUrl" href={candidate.url} target="_blank" rel="noreferrer">
-                                                          {compactCompetitorUrl(candidate.url || "")}
-                                                        </a>
-                                                      ) : (
-                                                        <em>Ссылка не найдена</em>
-                                                      )}
+                                              <button
+                                                type="button"
+                                                className="btn btn-primary mm-miniBtn"
+                                                onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
+                                                disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
+                                              >
+                                                {competitorDiscoveryRunning ? "Подбираю..." : "Подобрать карточки"}
+                                              </button>
+                                              {selectedSampleProduct ? (
+                                                <Link className="btn mm-miniBtn mm-ghostBtn" to={orgPath(`/products/${encodeURIComponent(selectedSampleProduct.id)}`)}>
+                                                  Открыть SKU
+                                                </Link>
+                                              ) : null}
+
+                                              {sourceColumns.map((source) => {
+                                                const statusPayload = selectedSampleProduct?.statuses[source.code] || {};
+                                                const status = normalizeCompetitorProductStatus(statusPayload.status);
+                                                const manualKey = `${selectedSampleProductId}:${source.code}`;
+                                                return (
+                                                  <section key={source.code} className="mm-competitorInspectorSource">
+                                                    <div className="mm-competitorInspectorSourceHead">
+                                                      <div>
+                                                        <span>{source.title}</span>
+                                                        <strong>{competitorStatusLabel(status)}</strong>
+                                                      </div>
+                                                      <b className={`mm-competitorStatusPill is-${status}`}>{competitorStatusLabel(status)}</b>
                                                     </div>
-                                                    <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</small>
-                                                    <div className="mm-competitorCandidateActions">
-                                                      <a href={candidate.url || "#"} target="_blank" rel="noreferrer">Открыть</a>
+                                                    {(statusPayload.link_items || []).map((link) => (
+                                                      <a key={`${source.code}-${link.url}`} className="mm-competitorConfirmedLink" href={link.url || "#"} target="_blank" rel="noreferrer">
+                                                        <span>Подтвержденная ссылка</span>
+                                                        <strong>{compactCompetitorUrl(link.url || "")}</strong>
+                                                      </a>
+                                                    ))}
+                                                    {(statusPayload.candidate_items || []).map((candidate) => (
+                                                      <div key={candidate.id} className="mm-competitorInspectorCandidate">
+                                                        <div>
+                                                          <span>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</span>
+                                                          <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
+                                                          {candidate.url ? <a href={candidate.url} target="_blank" rel="noreferrer">{compactCompetitorUrl(candidate.url)}</a> : null}
+                                                        </div>
+                                                        <div className="mm-competitorCandidateActions">
+                                                          <button
+                                                            type="button"
+                                                            className="btn btn-primary mm-miniBtn"
+                                                            onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve")}
+                                                            disabled={competitorModeratingId === candidate.id}
+                                                          >
+                                                            Подтвердить
+                                                          </button>
+                                                          <button
+                                                            type="button"
+                                                            className="btn mm-miniBtn mm-ghostBtn"
+                                                            onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject")}
+                                                            disabled={competitorModeratingId === candidate.id}
+                                                          >
+                                                            Отклонить
+                                                          </button>
+                                                        </div>
+                                                      </div>
+                                                    ))}
+                                                    <div className="mm-competitorManualLinkBox">
+                                                      <span>Ручная ссылка</span>
+                                                      <input
+                                                        value={competitorManualUrls[manualKey] || ""}
+                                                        onChange={(event) => setCompetitorManualUrls((prev) => ({ ...prev, [manualKey]: event.target.value }))}
+                                                        placeholder={`https://${source.domain || source.title}/...`}
+                                                        disabled={!selectedSampleProductId || competitorManualSubmitting === manualKey}
+                                                      />
                                                       <button
                                                         type="button"
-                                                        className="btn btn-primary mm-miniBtn"
-                                                        onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve")}
-                                                        disabled={competitorModeratingId === candidate.id}
+                                                        className="btn mm-miniBtn"
+                                                        onClick={() => void addManualCompetitorLink(selectedSampleProductId, source.code)}
+                                                        disabled={!selectedSampleProductId || !String(competitorManualUrls[manualKey] || "").trim() || competitorManualSubmitting === manualKey}
                                                       >
-                                                        Подтвердить
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        className="btn mm-miniBtn mm-ghostBtn"
-                                                        onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject")}
-                                                        disabled={competitorModeratingId === candidate.id}
-                                                      >
-                                                        Отклонить
+                                                        {competitorManualSubmitting === manualKey ? "Сохраняю..." : "Добавить ссылку"}
                                                       </button>
                                                     </div>
-                                                  </div>
-                                                ))}
-                                                {productCandidates.length === 0 ? (
-                                                  <div className="mm-competitorQueueEmpty">
-                                                    <strong>Кандидатов для выбранного SKU нет</strong>
-                                                    <span>
-                                                      Запустите подбор или откройте SKU и добавьте точную ссылку вручную. После подтверждения карточки данные конкурента пойдут в параметры, описание и медиа.
-                                                    </span>
-                                                    <button
-                                                      type="button"
-                                                      className="btn btn-primary mm-miniBtn"
-                                                      onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
-                                                      disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
-                                                    >
-                                                      Подобрать карточки
-                                                    </button>
-                                                  </div>
-                                                ) : null}
-                                              </div>
+                                                  </section>
+                                                );
+                                              })}
                                               {competitorMeta.inheritedFrom ? (
                                                 <button type="button" className="mm-aggLink" onClick={() => revealCatalogNode(competitorMeta.inheritedFrom)}>
                                                   Наследуется от категории: {splitPath(pathById.get(competitorMeta.inheritedFrom) || competitorMeta.inheritedFrom).node}
                                                 </button>
                                               ) : null}
-                                            </div>
+                                            </aside>
                                           </div>
                                         </div>
                                       </div>
-                                    </div>
+                                  </div>
                                 );
                               })() : null}
                             </div>

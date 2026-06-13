@@ -4774,6 +4774,53 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                     continue
             review_candidates.append(item)
 
+        product_statuses: Dict[str, Dict[str, Any]] = {}
+        for product_id in sorted(product_ids):
+            pid = str(product_id or "").strip()
+            if not pid:
+                continue
+            pid_links = [
+                dict(item)
+                for item in source_links
+                if str(item.get("product_id") or "").strip() == pid
+            ]
+            pid_review_candidates = [
+                dict(item)
+                for item in review_candidates
+                if str(item.get("product_id") or "").strip() == pid
+            ]
+            pid_rejected_candidates = [
+                dict(item)
+                for item in source_candidates
+                if str(item.get("product_id") or "").strip() == pid
+                and str(item.get("status") or "").strip() == "rejected"
+            ]
+            if pid_links:
+                status = "confirmed"
+            elif pid_review_candidates:
+                status = "review"
+            elif pid_rejected_candidates:
+                status = "rejected"
+            else:
+                status = "none"
+            product_statuses[pid] = {
+                "status": status,
+                "confirmed_count": len(pid_links),
+                "candidates_count": len(pid_review_candidates),
+                "rejected_count": len(pid_rejected_candidates),
+                "candidate_items": sorted(
+                    pid_review_candidates,
+                    key=lambda row: (
+                        -float(row.get("confidence_score") or 0),
+                        str(row.get("title") or row.get("url") or ""),
+                    ),
+                )[:5],
+                "link_items": sorted(
+                    pid_links,
+                    key=lambda row: str(row.get("confirmed_at") or row.get("last_checked_at") or ""),
+                )[:3],
+            }
+
         grouped: Dict[str, Dict[str, Any]] = {}
         for item in [*review_candidates, *source_links]:
             url = str(item.get("url") or "").strip()
@@ -4843,6 +4890,7 @@ async def discovery_category_context(category_id: str) -> Dict[str, Any]:
                         str(row.get("confirmed_at") or row.get("last_checked_at") or ""),
                     ),
                 )[:20],
+                "product_statuses": product_statuses,
                 "suggestions": suggestions,
                 "fallback_search": fallback_search,
             }

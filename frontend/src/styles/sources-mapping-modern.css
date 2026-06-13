@@ -5339,6 +5339,13 @@
   background:var(--card);
 }
 
+.sourcesCommandWorkbench .mm-competitorMatchTableWorkspace{
+  display:flex;
+  flex-direction:column;
+  min-height:min(640px, calc(100vh - 250px));
+  background:var(--card);
+}
+
 .sourcesCommandWorkbench .mm-competitorQueueSummary{
   display:grid;
   grid-template-columns:repeat(4, minmax(0,1fr));
@@ -5383,6 +5390,288 @@
   grid-template-columns:minmax(420px, .9fr) minmax(0, 1.1fr);
   min-height:0;
   flex:1;
+}
+
+.sourcesCommandWorkbench .mm-competitorTableFilters{
+  display:grid;
+  grid-template-columns:minmax(260px, 1fr);
+  grid-auto-columns:minmax(180px, max-content);
+  grid-auto-flow:column;
+  gap:10px;
+  align-items:end;
+  padding:12px;
+  border-bottom:1px solid var(--line);
+  background:#fbfbfc;
+  overflow:auto;
+}
+
+.sourcesCommandWorkbench .mm-competitorTableFilters input,
+.sourcesCommandWorkbench .mm-competitorTableFilters select{
+  width:100%;
+  min-height:36px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  color:var(--text);
+  padding:0 10px;
+  font:inherit;
+  font-size:12px;
+  font-weight:750;
+  outline:none;
+}
+
+.sourcesCommandWorkbench .mm-competitorTableFilters label{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  min-width:180px;
+}
+
+.sourcesCommandWorkbench .mm-competitorTableFilters label span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorTableLayout{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(360px, 420px);
+  min-height:0;
+  flex:1;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchTableWrap{
+  min-width:0;
+  overflow:auto;
+  border-right:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchTable{
+  display:grid;
+  min-width:max-content;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchHead{
+  position:sticky;
+  top:0;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  min-height:38px;
+  padding:0 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchRow{
+  display:grid;
+  grid-column:1 / -1;
+  align-items:stretch;
+  width:100%;
+  min-width:max-content;
+  border:0;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+  color:var(--text);
+  padding:0;
+  text-align:left;
+  cursor:pointer;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchRow:hover,
+.sourcesCommandWorkbench .mm-competitorMatchRow.isActive{
+  background:#f8fafc;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchRow > span,
+.sourcesCommandWorkbench .mm-competitorMatchRow > strong{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  min-height:46px;
+  padding:8px 12px;
+  border-right:1px solid var(--line);
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchSku{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorMatchRow > strong{
+  color:var(--text);
+  font-size:12px;
+  font-weight:760;
+  line-height:1.25;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+.sourcesCommandWorkbench .mm-competitorStatusPill{
+  align-self:center;
+  width:max-content;
+  max-width:100%;
+  min-height:26px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--text-soft);
+  padding:5px 9px;
+  font-size:11px;
+  font-weight:850;
+  line-height:1.1;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .mm-competitorStatusPill.is-review{
+  border-color:rgba(var(--brand-rgb), .28);
+  background:rgba(var(--brand-rgb), .10);
+  color:var(--brand-strong);
+}
+
+.sourcesCommandWorkbench .mm-competitorStatusPill.is-confirmed{
+  border-color:rgba(34,197,94,.28);
+  background:rgba(34,197,94,.10);
+  color:#16753b;
+}
+
+.sourcesCommandWorkbench .mm-competitorStatusPill.is-rejected{
+  border-color:rgba(239,68,68,.28);
+  background:rgba(239,68,68,.08);
+  color:#b42318;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorDrawer{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:0;
+  max-height:min(640px, calc(100vh - 250px));
+  overflow:auto;
+  padding:12px;
+  background:#fbfbfc;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorHead,
+.sourcesCommandWorkbench .mm-competitorInspectorSource{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  padding:12px;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorHead span,
+.sourcesCommandWorkbench .mm-competitorInspectorSourceHead span,
+.sourcesCommandWorkbench .mm-competitorManualLinkBox span,
+.sourcesCommandWorkbench .mm-competitorConfirmedLink span,
+.sourcesCommandWorkbench .mm-competitorInspectorCandidate span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorHead strong{
+  display:block;
+  margin-top:4px;
+  color:var(--text);
+  font-size:18px;
+  line-height:1.1;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorHead p{
+  margin:6px 0 0;
+  color:var(--text-soft);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorSource{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorSourceHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorSourceHead strong{
+  display:block;
+  margin-top:3px;
+  font-size:13px;
+  line-height:1.2;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorConfirmedLink,
+.sourcesCommandWorkbench .mm-competitorInspectorCandidate{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  padding:10px;
+  text-decoration:none;
+}
+
+.sourcesCommandWorkbench .mm-competitorConfirmedLink strong,
+.sourcesCommandWorkbench .mm-competitorInspectorCandidate strong{
+  color:var(--text);
+  font-size:12px;
+  line-height:1.25;
+  font-weight:780;
+  overflow-wrap:anywhere;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorCandidate a,
+.sourcesCommandWorkbench .mm-competitorConfirmedLink strong{
+  color:var(--brand-strong);
+  font-size:11px;
+  line-height:1.35;
+  word-break:break-all;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualLinkBox{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:end;
+  border-top:1px solid var(--line);
+  padding-top:10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualLinkBox span{
+  grid-column:1 / -1;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualLinkBox input{
+  min-width:0;
+  min-height:34px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  padding:0 10px;
+  color:var(--text);
+  font:inherit;
+  font-size:12px;
+  font-weight:720;
 }
 
 .sourcesCommandWorkbench .mm-competitorControlPane{
