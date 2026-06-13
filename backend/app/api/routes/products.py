@@ -534,7 +534,7 @@ def products_delete_upload(url: str = Query(...)):
     try:
         delete_object(relative)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="UPLOAD_NOT_FOUND")
+        return {"ok": True, "deleted": raw_url, "already_missing": True}
     except ObjectStorageError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

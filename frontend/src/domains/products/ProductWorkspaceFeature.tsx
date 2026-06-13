@@ -1581,6 +1581,7 @@ function ProductWorkspaceFeature() {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [mediaSaving, setMediaSaving] = useState(false);
   const [mediaNotice, setMediaNotice] = useState("");
+  const [selectedMediaIndexes, setSelectedMediaIndexes] = useState<number[]>([]);
   const [documentsSaving, setDocumentsSaving] = useState(false);
   const [documentsNotice, setDocumentsNotice] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1763,6 +1764,9 @@ function ProductWorkspaceFeature() {
     () => media.filter((item) => item.selected !== false && isMediaWaitingForReview(item)).length,
     [media],
   );
+  useEffect(() => {
+    setSelectedMediaIndexes((current) => current.filter((index) => index >= 0 && index < media.length));
+  }, [media.length]);
   const categoryPath = useMemo(() => buildCategoryPath(nodes, product?.category_id), [nodes, product?.category_id]);
   const competitorGroupItems = useMemo(() => {
     if (!product || !normalizeText(product.group_id)) return [];
@@ -1941,17 +1945,20 @@ function ProductWorkspaceFeature() {
     void saveMediaImages(orderedMedia);
   }
 
-  async function deleteMediaItem(index: number) {
+  async function deleteMediaIndexes(indexes: number[]) {
     if (!product) return;
-    const target = media[index];
-    if (!target) return;
+    const uniqueIndexes = Array.from(new Set(indexes))
+      .filter((index) => index >= 0 && index < media.length)
+      .sort((a, b) => a - b);
+    if (!uniqueIndexes.length) return;
 
-    const identity = mediaItemIdentity(target);
-    const nextMedia = media.filter((_, itemIndex) => itemIndex !== index);
+    const targets = uniqueIndexes.map((index) => media[index]).filter(Boolean);
+    const identities = new Set(targets.map((item) => mediaItemIdentity(item)).filter(Boolean));
+    const nextMedia = media.filter((_, itemIndex) => !uniqueIndexes.includes(itemIndex));
     const currentContent = product.content || {};
     const nextContent: ProductContent = {
       ...currentContent,
-      media_cover: filterMediaByIdentity(currentContent.media_cover, identity),
+      media_cover: (currentContent.media_cover || []).filter((item) => !identities.has(mediaItemIdentity(item))),
       media_images: nextMedia.map((item, itemIndex) => ({
         ...item,
         order: itemIndex,
@@ -1964,31 +1971,54 @@ function ProductWorkspaceFeature() {
       })),
     };
 
-    if (isManagedUploadUrl(target.url)) {
-      try {
-        await api(`/products/uploads?url=${encodeURIComponent(target.url)}`, { method: "DELETE" });
-      } catch {
-        // The card reference is still removed even if an old S3 object is already missing.
-      }
-    }
-
     const optimisticProduct = { ...product, content: nextContent };
     setProduct(optimisticProduct);
     setMediaSaving(true);
     setMediaNotice("");
     try {
+      await Promise.allSettled(
+        targets
+          .map((item) => item.url)
+          .filter((url) => isManagedUploadUrl(url))
+          .map((url) => api(`/products/uploads?url=${encodeURIComponent(url)}`, { method: "DELETE" }))
+      );
       const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}`, {
         method: "PATCH",
         body: JSON.stringify({ content: nextContent }),
       });
       setProduct(response.product || optimisticProduct);
-      setMediaNotice("Медиа удалено из карточки товара.");
+      setSelectedMediaIndexes((current) => current.filter((index) => !uniqueIndexes.includes(index)));
+      setMediaNotice(uniqueIndexes.length === 1 ? "Медиа удалено из карточки товара." : `Удалено медиа: ${uniqueIndexes.length}.`);
     } catch (err) {
       setProduct(product);
       setMediaNotice(err instanceof Error ? err.message : "Не удалось удалить медиа.");
     } finally {
       setMediaSaving(false);
     }
+  }
+
+  async function deleteMediaItem(index: number) {
+    await deleteMediaIndexes([index]);
+  }
+
+  async function deleteSelectedMedia() {
+    await deleteMediaIndexes(selectedMediaIndexes);
+  }
+
+  function toggleMediaSelection(index: number, checked: boolean) {
+    setSelectedMediaIndexes((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(index);
+      } else {
+        next.delete(index);
+      }
+      return Array.from(next).sort((a, b) => a - b);
+    });
+  }
+
+  function toggleAllMediaSelection(checked: boolean) {
+    setSelectedMediaIndexes(checked ? media.map((_, index) => index) : []);
   }
 
   function excludeReviewMediaFromExport() {
@@ -2667,6 +2697,25 @@ function ProductWorkspaceFeature() {
                     <div className="productWorkspaceMediaHint">
                       <span>В экспорт уйдут только отмеченные изображения, в порядке слева направо.</span>
                       <div className="productWorkspaceMediaHintActions">
+                        <label className="productWorkspaceMediaSelectAll">
+                          <input
+                            type="checkbox"
+                            checked={media.length > 0 && selectedMediaIndexes.length === media.length}
+                            disabled={mediaSaving}
+                            onChange={(event) => toggleAllMediaSelection(event.target.checked)}
+                          />
+                          <span>Выбрать все</span>
+                        </label>
+                        {selectedMediaIndexes.length ? (
+                          <Button
+                            className="productWorkspaceMediaBulkDeleteButton"
+                            variant="danger"
+                            disabled={mediaSaving}
+                            onClick={() => void deleteSelectedMedia()}
+                          >
+                            Удалить выбранные ({selectedMediaIndexes.length})
+                          </Button>
+                        ) : null}
                         {selectedReviewMediaCount ? (
                           <Button
                             className="productWorkspaceMediaReviewButton"
@@ -2682,7 +2731,18 @@ function ProductWorkspaceFeature() {
                     {mediaNotice ? <Alert tone={mediaNotice.includes("Не удалось") ? "error" : "success"}>{mediaNotice}</Alert> : null}
                     <div className="productWorkspaceMediaGrid">
                       {media.map((item, index) => (
-                        <article key={item.url} className={`productWorkspaceMediaCard${item.selected === false ? " isDisabled" : ""}`}>
+                        <article
+                          key={item.url}
+                          className={`productWorkspaceMediaCard${item.selected === false ? " isDisabled" : ""}${selectedMediaIndexes.includes(index) ? " isSelected" : ""}`}
+                        >
+                          <label className="productWorkspaceMediaCardCheck">
+                            <input
+                              type="checkbox"
+                              checked={selectedMediaIndexes.includes(index)}
+                              disabled={mediaSaving}
+                              onChange={(event) => toggleMediaSelection(index, event.target.checked)}
+                            />
+                          </label>
                           <img src={mediaDisplayUrl(item)} alt={mediaDisplayCaption(item, index) || product.title} loading="lazy" />
                           <div className="productWorkspaceMediaMeta">
                             <strong>{mediaDisplayCaption(item, index)}</strong>

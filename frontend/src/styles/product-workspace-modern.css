@@ -911,15 +911,68 @@
   font-size:12px;
 }
 
+.productWorkspaceMediaSelectAll{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:var(--text);
+  font-size:12px;
+  font-weight:850;
+}
+
+.productWorkspaceMediaSelectAll input{
+  width:16px;
+  height:16px;
+  margin:0;
+  accent-color:var(--accent);
+}
+
+.productWorkspaceMediaBulkDeleteButton{
+  min-height:30px;
+  padding:6px 10px;
+  border-color:rgba(185, 28, 28, .18);
+  color:#991b1b;
+  background:rgba(254, 242, 242, .92);
+  font-size:12px;
+}
+
 .productWorkspaceMediaCard{
+  position:relative;
   overflow:hidden;
   border:1px solid rgba(var(--line-rgb), .7);
   border-radius:18px;
   background:rgba(var(--surface-rgb), .8);
 }
 
+.productWorkspaceMediaCard.isSelected{
+  border-color:rgba(var(--accent-rgb), .72);
+  box-shadow:0 0 0 2px rgba(var(--accent-rgb), .14);
+}
+
 .productWorkspaceMediaCard.isDisabled{
   opacity:.58;
+}
+
+.productWorkspaceMediaCardCheck{
+  position:absolute;
+  top:10px;
+  left:10px;
+  z-index:2;
+  display:grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  border:1px solid rgba(var(--line-rgb), .72);
+  border-radius:10px;
+  background:rgba(var(--surface-rgb), .94);
+  box-shadow:0 8px 20px rgba(15, 23, 42, .12);
+}
+
+.productWorkspaceMediaCardCheck input{
+  width:16px;
+  height:16px;
+  margin:0;
+  accent-color:var(--accent);
 }
 
 .productWorkspaceMediaCard img{
