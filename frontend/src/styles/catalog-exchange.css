@@ -1116,10 +1116,39 @@
   background:#fff;
 }
 
+.cx-storeRowChoice{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:28px;
+  border:1px solid rgba(185,199,227,.55);
+  border-radius:999px;
+  background:#fff;
+  color:#77849d;
+  padding:0 9px;
+}
+
+.cx-storeRowChoice em{
+  font-size:10px;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.04em;
+  line-height:1;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
 .cx-storeRow.isActive .cx-storeRowState{
   border-color:#16a34a;
   background:#16a34a;
   box-shadow:0 0 0 3px rgba(22, 163, 74, .14);
+}
+
+.cx-storeRow.isActive .cx-storeRowChoice{
+  border-color:rgba(22, 163, 74, .28);
+  background:#ecfdf3;
+  color:#15803d;
 }
 
 .cx-storeRow.isDisabled .cx-storeRowState{
@@ -2162,6 +2191,18 @@
 
   .shellContentBody .cx-workspaceMain{
     gap:10px;
+  }
+
+  .shellContentBody .cx-targetCardHead{
+    display:grid;
+    grid-template-columns:1fr;
+    align-items:start;
+  }
+
+  .shellContentBody .cx-targetCardHead .badge{
+    justify-self:start;
+    max-width:100%;
+    white-space:normal;
   }
 
   .shellContentBody .cx-sourceBoard,

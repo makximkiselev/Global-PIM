@@ -752,12 +752,15 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                                   disabled={storeDisabled || storeSaving}
                                   onChange={(e) => void updateStoreExport(provider.code, store.id, e.target.checked)}
                                 />
-                                <span>
-                                  <strong>{store.title}</strong>
-                                  <em>{storeSaving ? "сохраняю выбор..." : store.id}</em>
-                                </span>
+                              <span>
+                                <strong>{store.title}</strong>
+                                <em>{storeSaving ? "сохраняю выбор..." : store.id}</em>
                               </span>
-                              <span className="cx-storeRowState" aria-hidden="true" />
+                            </span>
+                              <span className="cx-storeRowChoice">
+                                <span className="cx-storeRowState" aria-hidden="true" />
+                                <em>{current.has(store.id) && !storeDisabled ? "В выгрузке" : "Не выбрано"}</em>
+                              </span>
                             </label>
                           );
                         })}
