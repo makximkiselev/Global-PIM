@@ -131,6 +131,19 @@ def _normalize_url(url: str, base_url: str = "") -> str:
     return normalized.geturl().rstrip("/")
 
 
+def _normalize_url_with_fragment(url: str, base_url: str = "") -> str:
+    value = str(url or "").strip()
+    if base_url:
+        value = urljoin(base_url, value)
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    path = parsed.path or "/"
+    normalized = parsed._replace(path=path)
+    out = normalized.geturl()
+    return out if parsed.fragment else out.rstrip("/")
+
+
 def _same_host(url: str, host: str) -> bool:
     return (urlparse(url).hostname or "").lower() == host.lower()
 
@@ -454,6 +467,42 @@ def _flatten_image(value: Any) -> list[str]:
     return out
 
 
+def _is_biggeek_product_url(url: str) -> bool:
+    parsed = urlparse(str(url or ""))
+    return (parsed.hostname or "").lower().endswith("biggeek.ru") and parsed.path.lower().startswith("/products/")
+
+
+def _variant_label_from_url(url: str) -> str:
+    fragment = _text(urlparse(str(url or "")).fragment)
+    if not fragment:
+        return ""
+    label = fragment.replace("_i_", " + ").replace("_", " ").replace("-", " ")
+    label = label.replace("esim", "eSIM").replace("nano sim", "nano SIM")
+    return _text(label)
+
+
+def _extract_biggeek_variants(page_url: str, soup: BeautifulSoup) -> list[dict[str, Any]]:
+    if not _is_biggeek_product_url(page_url):
+        return []
+    page_parsed = urlparse(page_url)
+    base_path = page_parsed.path.rstrip("/")
+    variants: dict[str, dict[str, Any]] = {}
+    for anchor in soup.find_all("a", href=True):
+        url = _normalize_url_with_fragment(anchor.get("href"), page_url)
+        if not url or not _is_biggeek_product_url(url):
+            continue
+        parsed = urlparse(url)
+        if parsed.path.rstrip("/") != base_path or not parsed.fragment:
+            continue
+        label = _text(anchor.get_text(" ", strip=True)) or _variant_label_from_url(url)
+        variants[parsed.fragment] = {
+            "key": parsed.fragment,
+            "label": label or parsed.fragment,
+            "url": url,
+        }
+    return list(variants.values())[:40]
+
+
 def _extract_price(product_node: dict[str, Any], soup: BeautifulSoup) -> dict[str, Any]:
     offers = product_node.get("offers") if isinstance(product_node, dict) else {}
     if isinstance(offers, list):
@@ -539,9 +588,12 @@ def _extract_product(page_url: str, html: str) -> dict[str, Any] | None:
     if signals < 3:
         return None
 
+    variants = _extract_biggeek_variants(page_url, soup)
+
     return {
         "id": _product_id_for(page_url),
         "url": page_url,
+        "base_url": _normalize_url(page_url),
         "title": title[:300],
         "description": description[:1000],
         "brand": _text(brand),
@@ -551,6 +603,8 @@ def _extract_product(page_url: str, html: str) -> dict[str, Any] | None:
         "images": images,
         "specs": specs,
         "spec_count": len(specs),
+        "variants": variants,
+        "variant_count": len(variants),
         "source_type": "competitor_site",
         "confidence": min(100, signals * 16),
         "updated_at": _now_iso(),
@@ -614,6 +668,47 @@ def _extract_links(page_url: str, html: str, host: str) -> list[str]:
             continue
         if url not in out:
             out.append(url)
+    return out
+
+
+def _variant_title(base_title: str, variant: dict[str, Any]) -> str:
+    label = _text(variant.get("label") or _variant_label_from_url(str(variant.get("url") or "")))
+    if not label:
+        return base_title
+    normalized_title = _norm_for_match(base_title)
+    normalized_label = _norm_for_match(label)
+    if normalized_label and normalized_label in normalized_title:
+        return base_title
+    return f"{base_title} {label}".strip()
+
+
+def _expand_product_variants(product: dict[str, Any]) -> list[dict[str, Any]]:
+    variants = product.get("variants") if isinstance(product.get("variants"), list) else []
+    if not variants:
+        return []
+    out: list[dict[str, Any]] = []
+    for variant in variants:
+        if not isinstance(variant, dict):
+            continue
+        url = _normalize_url_with_fragment(str(variant.get("url") or ""))
+        key = _text(variant.get("key") or urlparse(url).fragment)
+        if not url or not key:
+            continue
+        title = _variant_title(str(product.get("title") or ""), variant)
+        out.append(
+            {
+                **product,
+                "id": _product_id_for(url),
+                "url": url,
+                "base_url": product.get("base_url") or _normalize_url(str(product.get("url") or "")),
+                "title": title[:300],
+                "is_variant": True,
+                "variant_key": key,
+                "variant_label": _text(variant.get("label")) or _variant_label_from_url(url),
+                "source_type": "competitor_site_variant",
+                "updated_at": _now_iso(),
+            }
+        )
     return out
 
 
@@ -797,6 +892,8 @@ async def _crawl_site(
             product = _extract_product(url, html)
             if product:
                 products[product["id"]] = product
+                for variant_product in _expand_product_variants(product):
+                    products[variant_product["id"]] = variant_product
             links = _extract_links(url, html, host)
             links.sort(key=lambda link: _score_product_link(link, start_url), reverse=True)
             next_links: list[str] = []

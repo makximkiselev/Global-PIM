@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from time import monotonic
+from time import monotonic, time
 from typing import Any, Dict, Optional, List, Tuple, Set
 from urllib.parse import quote, quote_plus, urljoin, urlparse
 
@@ -70,6 +70,9 @@ _store77_category_html_cache: Dict[str, Tuple[float, str]] = {}
 _AI_SPEC_ACTIONS = {"map_existing", "create_attribute", "ignore"}
 _AI_MAPPING_MEMORY_SCOPE = "ai_mapping_memory"
 _COMPETITOR_PRODUCT_ENRICH_WORKFLOW = "competitor_product_enrich"
+_COMPETITOR_ENRICH_BATCH_DELAY_SECONDS = max(0.0, float(os.getenv("COMPETITOR_ENRICH_BATCH_DELAY_SECONDS", "45") or "45"))
+_COMPETITOR_ENRICH_BATCH_SIZE = max(1, int(os.getenv("COMPETITOR_ENRICH_BATCH_SIZE", "8") or "8"))
+_COMPETITOR_ENRICH_BATCH_CONCURRENCY = max(1, int(os.getenv("COMPETITOR_ENRICH_BATCH_CONCURRENCY", "2") or "2"))
 _AI_PRODUCT_MAPPING_SPEC_LIMIT = max(4, int(os.getenv("AI_PRODUCT_MAPPING_SPEC_LIMIT", "6") or "6"))
 _AI_PRODUCT_MAPPING_TIMEOUT_SECONDS = max(30.0, float(os.getenv("AI_PRODUCT_MAPPING_TIMEOUT_SECONDS", "120") or "120"))
 _AI_TEMPLATE_MAPPING_SPEC_LIMIT = max(6, int(os.getenv("AI_TEMPLATE_MAPPING_SPEC_LIMIT", "8") or "8"))
@@ -5521,7 +5524,14 @@ def discovery_run_status(run_id: str) -> Dict[str, Any]:
     return {"ok": True, "run": run}
 
 
-def _queue_product_enrich_job(product_id: str, background_tasks: BackgroundTasks, *, message: str = "Насыщение товара поставлено в очередь.") -> Dict[str, Any]:
+def _queue_product_enrich_job(
+    product_id: str,
+    background_tasks: BackgroundTasks,
+    *,
+    message: str = "Насыщение товара поставлено в batch-очередь.",
+    delay_seconds: Optional[float] = None,
+    schedule_batch: bool = True,
+) -> Dict[str, Any]:
     normalized_product_id = str(product_id or "").strip()
     if not normalized_product_id:
         return {}
@@ -5537,20 +5547,26 @@ def _queue_product_enrich_job(product_id: str, background_tasks: BackgroundTasks
     except Exception:
         pass
     job_id = f"competitor_enrich_{hashlib.sha1((normalized_product_id + ':' + now_iso()).encode('utf-8')).hexdigest()[:20]}"
+    delay = _COMPETITOR_ENRICH_BATCH_DELAY_SECONDS if delay_seconds is None else max(0.0, float(delay_seconds or 0.0))
+    organization_id = str(current_tenant_organization_id() or "").strip()
     job = {
         "id": job_id,
         "run_id": job_id,
         "job_id": job_id,
         "product_id": normalized_product_id,
         "status": "queued",
-        "phase": "queued",
+        "phase": "waiting_batch" if delay > 0 else "queued",
         "message": message,
+        "organization_id": organization_id,
         "created_at": now_iso(),
         "created_ts": monotonic(),
         "updated_ts": monotonic(),
+        "not_before_ts": time() + delay,
+        "batch_delay_seconds": delay,
     }
     upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
-    background_tasks.add_task(_run_product_enrich_job, job_id, normalized_product_id)
+    if schedule_batch:
+        background_tasks.add_task(_run_pending_product_enrich_batch_after_delay, organization_id, delay)
     return _public_product_enrich_job(job)
 
 
@@ -5583,7 +5599,7 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any], background_ta
         enrich_job = _queue_product_enrich_job(
             str(candidate.get("product_id") or product_id_for_merge or "").strip(),
             background_tasks,
-            message="Конкурентная карточка подтверждена. Насыщаю товар параметрами, описанием и медиа.",
+            message="Конкурентная карточка подтверждена. Товар поставлен в batch-очередь насыщения.",
         )
     else:
         candidate["status"] = "rejected"
@@ -5650,7 +5666,7 @@ def add_manual_competitor_link(product_id: str, payload: Dict[str, Any], backgro
     enrich_job = _queue_product_enrich_job(
         normalized_product_id,
         background_tasks,
-        message="Конкурентная ссылка добавлена вручную. Насыщаю товар параметрами, описанием и медиа.",
+        message="Конкурентная ссылка добавлена вручную. Товар поставлен в batch-очередь насыщения.",
     )
     return {"ok": True, "link": confirmed_link, "links": links, "enrich_job": enrich_job or None}
 
@@ -5753,6 +5769,8 @@ def _public_product_enrich_job(job: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": job.get("created_at"),
         "started_at": job.get("started_at"),
         "finished_at": job.get("finished_at"),
+        "not_before_ts": job.get("not_before_ts"),
+        "batch_delay_seconds": float(job.get("batch_delay_seconds") or 0),
         "enriched_sources": job.get("enriched_sources") if isinstance(job.get("enriched_sources"), list) else [],
         "matched_count": int(job.get("matched_count") or 0),
         "unmatched_count": int(job.get("unmatched_count") or 0),
@@ -5760,6 +5778,84 @@ def _public_product_enrich_job(job: Dict[str, Any]) -> Dict[str, Any]:
         "errors": job.get("errors") if isinstance(job.get("errors"), list) else [],
         "error": str(job.get("error") or ""),
     }
+
+
+def _product_enrich_job_due_ts(job: Dict[str, Any]) -> float:
+    try:
+        return float(job.get("not_before_ts") or 0.0)
+    except Exception:
+        return 0.0
+
+
+async def _run_pending_product_enrich_batch_after_delay(organization_id: str, delay_seconds: float = 0.0) -> None:
+    delay = max(0.0, float(delay_seconds or 0.0))
+    if delay > 0:
+        await asyncio.sleep(delay)
+    await _run_pending_product_enrich_batch(organization_id=organization_id)
+
+
+async def _run_pending_product_enrich_batch(
+    *,
+    organization_id: str = "",
+    limit: Optional[int] = None,
+    concurrency: Optional[int] = None,
+) -> Dict[str, Any]:
+    tenant_token = None
+    normalized_org_id = str(organization_id or "").strip()
+    if normalized_org_id:
+        tenant_token = set_current_tenant_organization_id(normalized_org_id)
+    try:
+        now_ts = time()
+        batch_limit = max(1, int(limit or _COMPETITOR_ENRICH_BATCH_SIZE))
+        jobs = list_pim_workflow_runs(
+            workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW,
+            statuses=["queued"],
+            limit=max(batch_limit * 5, 50),
+        )
+        ready_jobs: List[Dict[str, Any]] = []
+        seen_products: Set[str] = set()
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            product_id = str(job.get("product_id") or "").strip()
+            if not product_id or product_id in seen_products:
+                continue
+            if _product_enrich_job_due_ts(job) > now_ts:
+                continue
+            seen_products.add(product_id)
+            ready_jobs.append(job)
+        ready_jobs.sort(key=lambda row: (_product_enrich_job_due_ts(row), str(row.get("created_at") or "")))
+        selected = ready_jobs[:batch_limit]
+        for job in selected:
+            job.update({
+                "status": "running",
+                "phase": "batch_claimed",
+                "message": "Товар взят в batch насыщения.",
+                "batch_claimed_at": now_iso(),
+                "updated_ts": monotonic(),
+            })
+            upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
+        worker_limit = max(1, int(concurrency or _COMPETITOR_ENRICH_BATCH_CONCURRENCY))
+        semaphore = asyncio.Semaphore(worker_limit)
+
+        async def _run_one(job: Dict[str, Any]) -> None:
+            async with semaphore:
+                await _run_product_enrich_job(
+                    str(job.get("job_id") or job.get("run_id") or job.get("id") or ""),
+                    str(job.get("product_id") or ""),
+                )
+
+        if selected:
+            await asyncio.gather(*[_run_one(job) for job in selected])
+        return {
+            "ok": True,
+            "claimed_count": len(selected),
+            "batch_size": batch_limit,
+            "concurrency": worker_limit,
+        }
+    finally:
+        if tenant_token is not None:
+            reset_current_tenant_organization_id(tenant_token)
 
 
 async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
@@ -5812,22 +5908,12 @@ async def start_product_enrich_job(product_id: str, background_tasks: Background
     normalized_product_id = str(product_id or "").strip()
     if not normalized_product_id:
         raise HTTPException(status_code=400, detail="product_id required")
-    job_id = f"competitor_enrich_{hashlib.sha1((normalized_product_id + ':' + now_iso()).encode('utf-8')).hexdigest()[:20]}"
-    job = {
-        "id": job_id,
-        "run_id": job_id,
-        "job_id": job_id,
-        "product_id": normalized_product_id,
-        "status": "queued",
-        "phase": "queued",
-        "message": "Насыщение товара поставлено в очередь.",
-        "created_at": now_iso(),
-        "created_ts": monotonic(),
-        "updated_ts": monotonic(),
-    }
-    upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
-    background_tasks.add_task(_run_product_enrich_job, job_id, normalized_product_id)
-    return _public_product_enrich_job(job)
+    return _queue_product_enrich_job(
+        normalized_product_id,
+        background_tasks,
+        message="Насыщение товара запущено вручную.",
+        delay_seconds=0,
+    )
 
 
 @router.post("/discovery/product-enrich/jobs/batch")
@@ -5857,22 +5943,20 @@ async def start_product_enrich_batch_jobs(payload: Dict[str, Any], background_ta
         if not confirmed_links:
             skipped.append({"product_id": product_id, "reason": "no_confirmed_links"})
             continue
-        job_id = f"competitor_enrich_{hashlib.sha1((product_id + ':' + now_iso()).encode('utf-8')).hexdigest()[:20]}"
-        job = {
-            "id": job_id,
-            "run_id": job_id,
-            "job_id": job_id,
-            "product_id": product_id,
-            "status": "queued",
-            "phase": "queued",
-            "message": "Насыщение товара поставлено в очередь.",
-            "created_at": now_iso(),
-            "created_ts": monotonic(),
-            "updated_ts": monotonic(),
-        }
-        upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
-        background_tasks.add_task(_run_product_enrich_job, job_id, product_id)
+        job = _queue_product_enrich_job(
+            product_id,
+            background_tasks,
+            message="Товар поставлен в batch-очередь насыщения.",
+            delay_seconds=0,
+            schedule_batch=False,
+        )
         jobs.append(_public_product_enrich_job(job))
+    if jobs:
+        background_tasks.add_task(
+            _run_pending_product_enrich_batch_after_delay,
+            str(current_tenant_organization_id() or "").strip(),
+            0,
+        )
     return {
         "ok": True,
         "jobs": jobs,
@@ -5888,6 +5972,24 @@ def product_enrich_job_status(job_id: str) -> Dict[str, Any]:
     if not job:
         raise HTTPException(status_code=404, detail="PRODUCT_ENRICH_JOB_NOT_FOUND")
     return _public_product_enrich_job(job)
+
+
+@router.post("/discovery/product-enrich/jobs/run-pending")
+async def run_pending_product_enrich_jobs(payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    payload = payload if isinstance(payload, dict) else {}
+    try:
+        limit = int(payload.get("limit") or _COMPETITOR_ENRICH_BATCH_SIZE)
+    except Exception:
+        limit = _COMPETITOR_ENRICH_BATCH_SIZE
+    try:
+        concurrency = int(payload.get("concurrency") or _COMPETITOR_ENRICH_BATCH_CONCURRENCY)
+    except Exception:
+        concurrency = _COMPETITOR_ENRICH_BATCH_CONCURRENCY
+    return await _run_pending_product_enrich_batch(
+        organization_id=str(current_tenant_organization_id() or "").strip(),
+        limit=max(1, min(limit, 50)),
+        concurrency=max(1, min(concurrency, 6)),
+    )
 
 
 @router.post("/discovery/products/{product_id}/ai-suggestions")

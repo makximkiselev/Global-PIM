@@ -997,6 +997,53 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual(len(tasks.tasks), 0)
         upsert.assert_not_called()
 
+    def test_product_enrich_job_queue_delays_batch_processing(self) -> None:
+        tasks = BackgroundTasks()
+        saved_jobs: list[dict] = []
+
+        with (
+            patch.object(competitor_mapping, "list_pim_workflow_runs", return_value=[]),
+            patch.object(competitor_mapping, "upsert_pim_workflow_run", side_effect=lambda row, workflow=None: saved_jobs.append(deepcopy(row)) or row),
+            patch.object(competitor_mapping, "current_tenant_organization_id", return_value="org_test"),
+            patch.object(competitor_mapping, "now_iso", return_value="2026-06-13T10:00:00+00:00"),
+            patch.object(competitor_mapping, "time", return_value=1000.0),
+        ):
+            job = competitor_mapping._queue_product_enrich_job("product_1", tasks, delay_seconds=30)
+
+        self.assertEqual(job["status"], "queued")
+        self.assertEqual(job["phase"], "waiting_batch")
+        self.assertEqual(job["not_before_ts"], 1030.0)
+        self.assertEqual(saved_jobs[0]["organization_id"], "org_test")
+        self.assertEqual(saved_jobs[0]["batch_delay_seconds"], 30.0)
+        self.assertEqual(len(tasks.tasks), 1)
+
+    def test_biggeek_product_variants_are_indexed_as_separate_cards(self) -> None:
+        html = """
+        <html>
+          <head>
+            <script type="application/ld+json">
+              {"@type":"Product","name":"Смартфон Apple iPhone 17 256 ГБ черный","image":["https://biggeek.ru/i.jpg"],"offers":{"price":"99990","priceCurrency":"RUB"}}
+            </script>
+          </head>
+          <body>
+            <h1>Смартфон Apple iPhone 17 256 ГБ черный</h1>
+            <a href="/products/smartfon-apple-iphone-17-256-gb-cernyj-black#esim">eSIM</a>
+            <a href="/products/smartfon-apple-iphone-17-256-gb-cernyj-black#nano-sim_i_esim">nano SIM + eSIM</a>
+          </body>
+        </html>
+        """
+        product = competitor_catalog_import._extract_product(
+            "https://biggeek.ru/products/smartfon-apple-iphone-17-256-gb-cernyj-black",
+            html,
+        )
+
+        self.assertIsNotNone(product)
+        variants = competitor_catalog_import._expand_product_variants(product or {})
+        self.assertEqual(product["variant_count"], 2)
+        self.assertEqual({item["variant_key"] for item in variants}, {"esim", "nano-sim_i_esim"})
+        self.assertTrue(all(item["is_variant"] for item in variants))
+        self.assertTrue(any("nano SIM" in item["title"] for item in variants))
+
     def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
         req = CatalogImportRunReq.model_validate(
             {
