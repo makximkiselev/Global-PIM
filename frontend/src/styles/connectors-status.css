@@ -394,7 +394,7 @@ a.cs-actionItem:hover{
 
 .cs-storeListHead{
   display:grid;
-  grid-template-columns:minmax(220px, 1.1fr) minmax(160px, .85fr) minmax(240px, 1.25fr) minmax(120px, .55fr) minmax(230px, .9fr);
+  grid-template-columns:minmax(200px, 1fr) minmax(150px, .75fr) minmax(220px, 1fr) minmax(220px, .95fr) minmax(210px, .8fr);
   gap:12px;
   padding:10px 12px;
   border-bottom:1px solid rgba(226, 232, 240, .9);
@@ -408,7 +408,7 @@ a.cs-actionItem:hover{
 
 .cs-storeCard{
   display:grid;
-  grid-template-columns:minmax(220px, 1.1fr) minmax(160px, .85fr) minmax(240px, 1.25fr) minmax(120px, .55fr) minmax(230px, .9fr);
+  grid-template-columns:minmax(200px, 1fr) minmax(150px, .75fr) minmax(220px, 1fr) minmax(220px, .95fr) minmax(210px, .8fr);
   align-items:center;
   gap:12px;
   min-width:0;
@@ -477,6 +477,99 @@ a.cs-actionItem:hover{
   font-style:normal;
   font-weight:700;
   line-height:1.35;
+}
+
+.cs-storeExportToggle{
+  display:grid;
+  grid-template-columns:42px minmax(0, 1fr);
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  border:1px solid rgba(226, 232, 240, .95);
+  border-radius:14px;
+  padding:9px;
+  background:#fbfcff;
+  cursor:pointer;
+  transition:border-color .16s ease, background .16s ease, opacity .16s ease;
+}
+
+.cs-storeExportToggle input{
+  position:absolute;
+  inline-size:1px;
+  block-size:1px;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+}
+
+.cs-storeExportToggle i{
+  position:relative;
+  display:block;
+  width:42px;
+  height:24px;
+  border:1px solid rgba(148, 163, 184, .72);
+  border-radius:999px;
+  background:#e5e7eb;
+  transition:background .16s ease, border-color .16s ease;
+}
+
+.cs-storeExportToggle i::after{
+  content:"";
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:16px;
+  height:16px;
+  border-radius:999px;
+  background:#fff;
+  box-shadow:0 3px 8px rgba(15, 23, 42, .18);
+  transition:transform .16s ease;
+}
+
+.cs-storeExportToggle span{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+
+.cs-storeExportToggle strong{
+  color:var(--text);
+  font-size:12px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.cs-storeExportToggle em{
+  color:var(--muted);
+  font-size:10px;
+  font-style:normal;
+  font-weight:760;
+  line-height:1.25;
+}
+
+.cs-storeExportToggle.isOn{
+  border-color:rgba(34, 197, 94, .34);
+  background:#f0fdf4;
+}
+
+.cs-storeExportToggle.isOn i{
+  border-color:rgba(34, 197, 94, .42);
+  background:#16a34a;
+}
+
+.cs-storeExportToggle.isOn i::after{
+  transform:translateX(18px);
+}
+
+.cs-storeExportToggle:has(input:focus-visible){
+  box-shadow:0 0 0 4px rgba(37, 99, 235, .12);
+}
+
+.cs-storeExportToggle:has(input:disabled){
+  cursor:not-allowed;
+  opacity:.58;
 }
 
 .cs-storeMeta{
@@ -1062,13 +1155,15 @@ a.cs-actionItem:hover{
 }
 
 .cs-storeToggle,
+.cs-storeExportToggle,
 .cs-storeAccess,
 .cs-offerBox{
   border:1px solid var(--line);
   background:var(--surface-2);
 }
 
-.cs-storeToggle{
+.cs-storeToggle,
+.cs-storeExportToggle{
   border-radius:8px;
 }
 

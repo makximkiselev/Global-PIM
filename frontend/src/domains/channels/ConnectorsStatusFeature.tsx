@@ -601,16 +601,18 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                             </>
                           )}
                         </dl>
-                        <label className="cs-storeToggle">
+                        <label className={`cs-storeExportToggle ${store.export_enabled === true ? "isOn" : "isOff"}`}>
                           <input
                             type="checkbox"
+                            role="switch"
                             checked={store.export_enabled === true}
                             disabled={saving || !!runningProvider}
                             onChange={(event) => updateStoreExport(provider.code, store.id, event.target.checked)}
                           />
+                          <i aria-hidden="true" />
                           <span>
-                            <strong>Экспорт</strong>
-                            <em>{store.export_enabled === true ? "включен" : "выключен"}</em>
+                            <strong>{store.export_enabled === true ? "Доступен для выгрузки" : "Не участвует в выгрузке"}</strong>
+                            <em>{store.export_enabled === true ? "можно выбрать на экране экспорта" : "не появится как цель экспорта"}</em>
                           </span>
                         </label>
                         <div className="cs-storeActions">
