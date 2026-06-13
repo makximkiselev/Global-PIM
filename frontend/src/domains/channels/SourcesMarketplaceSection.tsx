@@ -250,7 +250,14 @@ type EnrichBatchResp = {
   skipped?: Array<{ product_id?: string; reason?: string }>;
 };
 type CompetitorCatalogRunResp = {
-  run?: { id?: string; status?: string; products_found?: number; pages_scanned?: number };
+  run?: {
+    id?: string;
+    status?: string;
+    products_found?: number;
+    pages_scanned?: number;
+    queued_count?: number;
+    errors?: string[];
+  };
 };
 
 type CompetitorCategoryDiscoveryResp = {
@@ -2748,17 +2755,20 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     try {
       await saveCompetitorCategoryLinks(cid);
       let startedRuns = 0;
+      const runIds: string[] = [];
       for (const item of savedLinks) {
         try {
-          await api<CompetitorCatalogRunResp>("/competitor-catalog/runs", {
+          const response = await api<CompetitorCatalogRunResp>("/competitor-catalog/runs", {
             method: "POST",
             body: JSON.stringify({
               name: `${sourceProviderLabel(item.site)} · ${selectedCatalogNode?.name || cid}`,
               start_url: item.url,
-              max_pages: 180,
-              max_products: 900,
+              max_pages: 420,
+              max_products: 1600,
             }),
           });
+          const runId = String(response.run?.id || "").trim();
+          if (runId) runIds.push(runId);
           startedRuns += 1;
         } catch (e) {
           setCompetitorDiscoveryError((prev) => prev || ((e as Error).message || `Не удалось запустить индекс ${item.site}`));
@@ -2769,6 +2779,21 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           ? `Индекс запущен по ${startedRuns} источникам. Matcher уже использует сохраненный индекс и обновит кандидатов.`
           : "Ссылки сохранены, но индекс не запустился. Проверьте URL источников.",
       );
+      if (runIds.length) {
+        for (let attempt = 0; attempt < 36; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2500));
+          const statuses = await Promise.all(runIds.map((runId) => (
+            api<CompetitorCatalogRunResp>(`/competitor-catalog/runs/${encodeURIComponent(runId)}`).catch(() => null)
+          )));
+          const active = statuses.filter((item) => item && !["completed", "failed", "cancelled"].includes(String(item.run?.status || "")));
+          const productsFound = statuses.reduce((sum, item) => sum + Number(item?.run?.products_found || 0), 0);
+          const pagesScanned = statuses.reduce((sum, item) => sum + Number(item?.run?.pages_scanned || 0), 0);
+          setCompetitorIndexNotice(`Индексирую категории конкурентов: ${pagesScanned} стр., ${productsFound} карточек найдено.`);
+          if (!active.length) break;
+          if (productsFound > 0 && attempt >= 3) break;
+        }
+      }
+      setCompetitorIndexNotice("Индекс конкурентов готов. Запускаю сопоставление SKU по найденным карточкам.");
       await runCompetitorCategoryDiscovery(cid, productId, { forceCategoryScope: true });
     } finally {
       setCompetitorIndexing(false);
@@ -2869,7 +2894,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     };
     const categoryProductIds = (current?.category?.scanned_product_ids || [])
       .filter((id) => hasUnconfirmedCompetitorSource(id))
-      .slice(0, 30);
+      .slice(0, options.forceCategoryScope ? 250 : 30);
     const productIds = [
       selectedProductId && hasUnconfirmedCompetitorSource(selectedProductId) ? selectedProductId : "",
       ...categoryProductIds,
@@ -2889,7 +2914,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
           category_id: categoryId,
           sources: COMPETITOR_PROVIDER_CODES,
           product_ids: productIds,
-          limit: Math.max(1, productIds.length || 30),
+          limit: Math.max(1, productIds.length || (options.forceCategoryScope ? 250 : 30)),
         }),
       });
       setCompetitorDiscoveryRun(response.run);
