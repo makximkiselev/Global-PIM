@@ -103,7 +103,9 @@ require_cmd ssh
 require_cmd rsync
 require_cmd curl
 if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
-  require_cmd expect
+  if ! command -v sshpass >/dev/null 2>&1; then
+    require_cmd expect
+  fi
 fi
 
 require_file "${ROOT_DIR}/backend/app/requirements.txt"
@@ -127,14 +129,17 @@ ssh_run() {
   local remote_cmd="$1"
   local remote_shell_cmd
   remote_shell_cmd="bash -lc $(shell_quote "${remote_cmd}")"
-  if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
+  if [[ -n "${APP_SERVER_PASSWORD}" ]] && command -v sshpass >/dev/null 2>&1; then
+    SSHPASS="${APP_SERVER_PASSWORD}" sshpass -e \
+      ssh -p "${APP_SERVER_PORT}" -o StrictHostKeyChecking=no "${SSH_TARGET}" "${remote_shell_cmd}"
+  elif [[ -n "${APP_SERVER_PASSWORD}" ]]; then
     APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD}" \
     APP_SERVER_PORT="${APP_SERVER_PORT}" \
     SSH_TARGET="${SSH_TARGET}" \
     REMOTE_CMD="${remote_shell_cmd}" \
     expect <<'EXPECT'
       set timeout -1
-      spawn {*}[list ssh -p $env(APP_SERVER_PORT) -o StrictHostKeyChecking=no $env(SSH_TARGET) $env(REMOTE_CMD)]
+      spawn {*}[list ssh -n -p $env(APP_SERVER_PORT) -o StrictHostKeyChecking=no $env(SSH_TARGET) $env(REMOTE_CMD)]
       expect {
         -re "(?i)password:" { send -- "$env(APP_SERVER_PASSWORD)\r"; exp_continue }
         eof
@@ -143,14 +148,17 @@ ssh_run() {
       exit [lindex $result 3]
 EXPECT
   else
-    ssh -p "${APP_SERVER_PORT}" "${SSH_TARGET}" "${remote_shell_cmd}"
+    ssh -n -p "${APP_SERVER_PORT}" "${SSH_TARGET}" "${remote_shell_cmd}"
   fi
 }
 
 scp_run() {
   local source_path="$1"
   local target_path="$2"
-  if [[ -n "${APP_SERVER_PASSWORD}" ]]; then
+  if [[ -n "${APP_SERVER_PASSWORD}" ]] && command -v sshpass >/dev/null 2>&1; then
+    SSHPASS="${APP_SERVER_PASSWORD}" sshpass -e \
+      scp -q -P "${APP_SERVER_PORT}" -o StrictHostKeyChecking=no "${source_path}" "${SSH_TARGET}:${target_path}"
+  elif [[ -n "${APP_SERVER_PASSWORD}" ]]; then
     APP_SERVER_PASSWORD="${APP_SERVER_PASSWORD}" \
     APP_SERVER_PORT="${APP_SERVER_PORT}" \
     SSH_TARGET="${SSH_TARGET}" \

@@ -71,7 +71,7 @@ SYSTEM_ROLES: List[Dict[str, Any]] = [
     {
         "id": "role_editor",
         "code": "editor",
-        "name": "Контент-менеджер",
+        "name": "Редактор",
         "description": "Работает с товарами, шаблонами и источниками.",
         "pages": [
             "dashboard",
@@ -615,9 +615,11 @@ def _effective_codes(roles: Iterable[Dict[str, Any]], field: str) -> Set[str]:
 
 
 def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]], session: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    pages = sorted(_effective_codes(roles, "pages"))
-    actions = sorted(_effective_codes(roles, "actions"))
     current_org_id = _normalize_text((session or {}).get("current_organization_id"))
+    db = load_auth_base_db()
+    effective_roles = _roles_for_session_organization(db, user, roles, session)
+    pages = sorted(_effective_codes(effective_roles, "pages"))
+    actions = sorted(_effective_codes(effective_roles, "actions"))
     org_ctx = load_user_session_context(user, roles, current_organization_id=current_org_id)
     return {
         "authenticated": True,
@@ -627,7 +629,7 @@ def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]], session: 
             "email": user.get("email"),
             "name": user.get("name"),
             "is_active": bool(user.get("is_active", True)),
-            "role_ids": user.get("role_ids") or [],
+            "role_ids": [str(role.get("id") or "") for role in effective_roles if str(role.get("id") or "").strip()],
             "pages": pages,
             "actions": actions,
         },
@@ -648,7 +650,7 @@ def session_payload(user: Dict[str, Any], roles: List[Dict[str, Any]], session: 
                 "actions": role.get("actions") or [],
                 "is_system": bool(role.get("is_system")),
             }
-            for role in roles
+            for role in effective_roles
         ],
         "catalog": list_permission_catalog(),
     }
@@ -678,6 +680,59 @@ def _resolve_roles(db: Dict[str, Any], role_ids: Iterable[Any]) -> List[Dict[str
     return out
 
 
+def _role_code_for_membership_role(membership_role: Any) -> str:
+    normalized = _normalize_text(membership_role).lower()
+    if normalized in {"org_owner", "owner"}:
+        return "owner"
+    if normalized in {"org_admin", "admin"}:
+        return "admin"
+    if normalized in {"org_editor", "editor"}:
+        return "editor"
+    return "viewer"
+
+
+def _roles_for_session_organization(
+    db: Dict[str, Any],
+    user: Optional[Dict[str, Any]],
+    base_roles: List[Dict[str, Any]],
+    session: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    if not isinstance(user, dict):
+        return []
+    current_org_id = _normalize_text((session or {}).get("current_organization_id"))
+    if not current_org_id:
+        return base_roles
+    try:
+        org_ctx = load_user_session_context(user, base_roles, current_organization_id=current_org_id)
+    except Exception:
+        return base_roles
+    current_org = org_ctx.get("current_organization") if isinstance(org_ctx, dict) else None
+    if not isinstance(current_org, dict) or _normalize_text(current_org.get("id")) != current_org_id:
+        return base_roles
+    role_code = _role_code_for_membership_role(current_org.get("membership_role"))
+    roles_map = db.get("roles") if isinstance(db.get("roles"), dict) else {}
+    role = next(
+        (
+            candidate
+            for candidate in roles_map.values()
+            if isinstance(candidate, dict) and _normalize_text(candidate.get("code")).lower() == role_code
+        ),
+        None,
+    )
+    return [role] if isinstance(role, dict) else base_roles
+
+
+def _default_session_organization_id(user: Optional[Dict[str, Any]], base_roles: List[Dict[str, Any]]) -> str:
+    if not isinstance(user, dict):
+        return ""
+    try:
+        org_ctx = load_user_session_context(user, base_roles)
+    except Exception:
+        return ""
+    current_org = org_ctx.get("current_organization") if isinstance(org_ctx, dict) else None
+    return _normalize_text((current_org or {}).get("id")) if isinstance(current_org, dict) else ""
+
+
 def build_auth_context(
     db: Dict[str, Any],
     user: Optional[Dict[str, Any]],
@@ -686,7 +741,8 @@ def build_auth_context(
 ) -> AuthContext:
     if not isinstance(user, dict):
         return AuthContext(None, [], set(), set(), session_id=session_id, session=session)
-    roles = _resolve_roles(db, user.get("role_ids") or [])
+    base_roles = _resolve_roles(db, user.get("role_ids") or [])
+    roles = _roles_for_session_organization(db, user, base_roles, session)
     return AuthContext(
         user=user,
         roles=roles,
@@ -844,12 +900,17 @@ def admin_reset_password(user_id: str, new_password: Optional[str] = None) -> Di
 
 def create_session(user_id: str, current_organization_id: Optional[str] = None) -> str:
     sessions = _load_auth_sessions()
+    db = load_auth_base_db()
+    users = db.get("users") if isinstance(db.get("users"), dict) else {}
+    user = users.get(str(user_id or ""))
+    base_roles = _resolve_roles(db, user.get("role_ids") or []) if isinstance(user, dict) else []
+    organization_id = _normalize_text(current_organization_id) or _default_session_organization_id(user, base_roles)
     token = secrets.token_urlsafe(32)
     token_hash = _hash_session_token(token)
     sessions[token_hash] = {
         "id": token_hash,
         "user_id": user_id,
-        "current_organization_id": _normalize_text(current_organization_id),
+        "current_organization_id": organization_id,
         "created_at": _iso(),
         "last_seen_at": _iso(),
         "expires_at": _iso(_now() + timedelta(days=SESSION_TTL_DAYS)),
@@ -903,6 +964,13 @@ def auth_from_request(request: Request) -> AuthContext:
     user = users.get(str(session.get("user_id") or ""))
     if not isinstance(user, dict) or not bool(user.get("is_active", True)):
         return AuthContext(None, [], set(), set())
+    if not _normalize_text(session.get("current_organization_id")):
+        base_roles = _resolve_roles(db, user.get("role_ids") or [])
+        default_org_id = _default_session_organization_id(user, base_roles)
+        if default_org_id:
+            session["current_organization_id"] = default_org_id
+            sessions[token_hash] = session
+            _save_auth_sessions(sessions)
     if _should_touch_session(str(session.get("last_seen_at") or "")):
         session["last_seen_at"] = _iso()
         sessions[token_hash] = session

@@ -7,16 +7,15 @@ import {
 } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useOrgPath } from "../../app/orgRoutes";
-import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Alert from "../../components/ui/Alert";
 import EmptyState from "../../components/ui/EmptyState";
 import DataToolbar from "../../components/data/DataToolbar";
-import InspectorPanel from "../../components/data/InspectorPanel";
 import TextInput from "../../components/ui/TextInput";
 import Select from "../../components/ui/Select";
+import SideSheet from "../../components/ui/SideSheet";
 import { api } from "../../lib/api";
 
 type ProductItem = {
@@ -25,6 +24,8 @@ type ProductItem = {
   name?: string;
   category_id: string;
   category_path?: string;
+  preview_url?: string;
+  sku_pim?: string;
   sku_gt?: string;
   group_id?: string;
   group_name?: string;
@@ -181,14 +182,18 @@ function withProductExportHref(productIds: string[]) {
   return `/catalog/exchange?${params.toString()}`;
 }
 
-function sourcesMappingHref(categoryId?: string | null, tab = "params") {
+function sourcesMappingHref(categoryId?: string | null, tab = "params", productId?: string | null) {
   const id = String(categoryId || "").trim();
-  return id ? `/sources?tab=${encodeURIComponent(tab)}&category=${encodeURIComponent(id)}` : `/sources?tab=${encodeURIComponent(tab)}`;
+  const params = new URLSearchParams({ tab });
+  if (id) params.set("category", id);
+  const product = String(productId || "").trim();
+  if (product) params.set("product", product);
+  return `/sources?${params.toString()}`;
 }
 
 function templateHref(product: ProductItem) {
   const sourceCategoryId = String(product.effective_template_source_category_id || product.category_id || "").trim();
-  return sourcesMappingHref(sourceCategoryId, "params");
+  return sourcesMappingHref(sourceCategoryId, "sources", product.id);
 }
 
 function getProductNextStep(product: ProductItem): {
@@ -204,11 +209,11 @@ function getProductNextStep(product: ProductItem): {
 
   if (!hasTemplate) {
     return {
-      title: "Нет инфо-модели",
+      title: "Нет модели категории",
       detail: "Сначала соберите параметры категории",
       tone: "danger",
       href: templateHref(product),
-      cta: "Собрать",
+      cta: "Собрать модель",
     };
   }
 
@@ -221,7 +226,7 @@ function getProductNextStep(product: ProductItem): {
       title: "Проверить площадки",
       detail: missing ? `Не готово: ${missing}` : "Есть незакрытые связи",
       tone: "pending",
-      href: sourcesMappingHref(product.category_id, "params"),
+      href: sourcesMappingHref(product.category_id, "sources", product.id),
       cta: "Сопоставить",
     };
   }
@@ -358,7 +363,7 @@ function ProductListSummaryStrip({
   const items = [
     { label: "Всего SKU", value: total, meta: loading ? "обновляется" : `${rows.length} на странице` },
     { label: "Требуют работы", value: needsWork, meta: "модель, каналы или экспорт" },
-    { label: "Без инфо-модели", value: noTemplate, meta: "сначала сопоставить параметры" },
+    { label: "Без модели категории", value: noTemplate, meta: "сначала сопоставить параметры" },
     { label: "Нет готовых каналов", value: withoutChannels, meta: "Я.Маркет / Ozon" },
     { label: "Готовы", value: ready, meta: "можно проверять экспорт" },
     { label: "Выбрано", value: selectedCount, meta: selectedCount ? "доступны массовые действия" : "выбор через чекбоксы" },
@@ -368,9 +373,11 @@ function ProductListSummaryStrip({
     <div className="productListSummaryStrip" aria-label="Сводка очереди товаров">
       {items.map((item) => (
         <div key={item.label} className="productListSummaryItem">
-          <div className="productListSummaryLabel">{item.label}</div>
           <div className="productListSummaryValue">{item.value}</div>
-          <div className="productListSummaryMeta">{item.meta}</div>
+          <div className="productListSummaryCopy">
+            <div className="productListSummaryLabel">{item.label}</div>
+            <div className="productListSummaryMeta">{item.meta}</div>
+          </div>
         </div>
       ))}
     </div>
@@ -410,16 +417,19 @@ function ProductChannelsCell({ product }: { product: ProductItem }) {
 
   return (
     <div className="productListChannels">
-      {channels.map((channel) => (
-        <span
-          key={channel.label}
-          className={`productListChannelBadge productListChannelBadge--${channel.tone}`}
-          title={`${channel.label}: ${channel.detail}`}
-        >
-          <span>{channel.label}</span>
-          <small>{channel.detail}</small>
-        </span>
-      ))}
+      {channels.map((channel) => {
+        const compactLabel = channel.label === "Я.Маркет" ? "Маркет" : channel.label;
+        return (
+          <span
+            key={channel.label}
+            className={`productListChannelBadge productListChannelBadge--${channel.tone}`}
+            title={`${channel.label}: ${channel.detail}`}
+          >
+            <span>{compactLabel}</span>
+            <small>{channel.tone === "good" ? "ok" : "нет"}</small>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -428,26 +438,18 @@ function ProductListInspector({
   product,
   selectedCount,
   onClearSelection,
+  open,
+  onClose,
 }: {
   product: ProductItem | null;
   selectedCount: number;
   onClearSelection: () => void;
+  open: boolean;
+  onClose: () => void;
 }) {
   const orgPath = useOrgPath();
   if (!product) {
-    return (
-      <InspectorPanel
-        title="Инспектор товара"
-        subtitle="Выбери строку слева, чтобы увидеть контекст SKU и быстрые действия."
-      >
-        <div className="productListInspectorEmpty">
-          <div className="productListInspectorLabel">Сейчас ничего не выбрано</div>
-          <div className="productListInspectorText">
-            Инспектор показывает readiness, связи по каналам и быстрый переход в полный Product Workspace.
-          </div>
-        </div>
-      </InspectorPanel>
-    );
+    return null;
   }
 
   const title = String(product.title || product.name || "").trim() || product.id;
@@ -459,18 +461,16 @@ function ProductListInspector({
   const templateSourceCategoryId = String(product.effective_template_source_category_id || "").trim();
 
   return (
-    <InspectorPanel
-      title="Инспектор товара"
-      subtitle={selectedCount > 1 ? `В выборе ${selectedCount} SKU` : "Контекст выбранного SKU"}
-      actions={
-        selectedCount > 1 ? (
-          <Button onClick={onClearSelection}>Сбросить выбор</Button>
-        ) : null
-      }
+    <SideSheet
+      open={open}
+      onClose={onClose}
+      eyebrow="Карточка SKU"
+      title={sku}
+      subtitle={title}
+      className="productListInspectorOverlay"
     >
       <div className="productListInspectorStack">
         <div className="productListInspectorHero">
-          <div className="productListInspectorSku">{sku}</div>
           <div className="productListInspectorTitle">{title}</div>
           <div className="productListInspectorCategory">{product.category_path || "Категория не определена"}</div>
         </div>
@@ -480,7 +480,9 @@ function ProductListInspector({
           <div className="productListInspectorStatusRow">
             <ProductReadinessBadge product={product} />
             {group ? <Badge tone="neutral">Группа: {group}</Badge> : <Badge tone="neutral">Без группы</Badge>}
+            {selectedCount > 1 ? <Badge tone="neutral">В выборе {selectedCount}</Badge> : null}
           </div>
+          {selectedCount > 1 ? <Button onClick={onClearSelection}>Сбросить выбор</Button> : null}
         </div>
 
         <div className="productListInspectorSection">
@@ -523,7 +525,7 @@ function ProductListInspector({
           </Link>
         </div>
       </div>
-    </InspectorPanel>
+    </SideSheet>
   );
 }
 
@@ -564,12 +566,11 @@ function ProductListTable({
                 />
               </th>
               <th>Товар</th>
-              <th>Следующий шаг</th>
               <th>Категория</th>
-              <th>Инфо-модель</th>
-              <th>Семейство</th>
-              <th>Площадки</th>
-              <th className="productListActionCol">Действие</th>
+              <th>Группа</th>
+              <th>Готовность</th>
+              <th>Каналы</th>
+              <th className="productListActionCol"></th>
             </tr>
           </thead>
           <tbody>
@@ -578,10 +579,9 @@ function ProductListTable({
                   <tr key={`sk-${index}`} className="productListRow productListRowSkeleton">
                     <td><span className="productListSkeleton productListSkeletonCheck" /></td>
                     <td><span className="productListSkeleton productListSkeletonTitle" /></td>
-                    <td><span className="productListSkeleton productListSkeletonBadge" /></td>
                     <td><span className="productListSkeleton productListSkeletonMeta" /></td>
                     <td><span className="productListSkeleton productListSkeletonMeta" /></td>
-                    <td><span className="productListSkeleton productListSkeletonMeta" /></td>
+                    <td><span className="productListSkeleton productListSkeletonChannels" /></td>
                     <td><span className="productListSkeleton productListSkeletonChannels" /></td>
                     <td><span className="productListSkeleton productListSkeletonAction" /></td>
                   </tr>
@@ -612,9 +612,13 @@ function ProductListTable({
                       <td>
                         <div className="productListTitleCell">
                           <div className="productListThumbWrap">
-                            <div className="productListThumb productListThumbEmpty" aria-hidden="true">
-                              SKU
-                            </div>
+                            {product.preview_url ? (
+                              <img className="productListThumb" src={product.preview_url} alt="" loading="lazy" />
+                            ) : (
+                              <div className="productListThumb productListThumbEmpty" aria-hidden="true">
+                                SKU
+                              </div>
+                            )}
                           </div>
                           <div className="productListTitleMeta">
                             <Link
@@ -629,35 +633,10 @@ function ProductListTable({
                         </div>
                       </td>
                       <td>
-                        <div className="productListNextStep">
-                          <Badge tone={nextStep.tone}>{nextStep.title}</Badge>
-                          <div>{nextStep.detail}</div>
-                        </div>
-                      </td>
-                      <td>
                         <div className="productListCategoryCell">
                           <div className="productListCellMeta isStrong">{category.primary}</div>
                           {category.secondary ? <div className="productListCellSubtle">{category.secondary}</div> : null}
                         </div>
-                      </td>
-                      <td>
-                        {templateName ? (
-                          <Link
-                            className="productListInlineLink"
-                            to={orgPath(templateHref(product))}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {templateName}
-                          </Link>
-                        ) : (
-                          <Link
-                            className="productListMissingLink"
-                            to={orgPath(templateHref(product))}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            Собрать модель
-                          </Link>
-                        )}
                       </td>
                       <td>
                         <div className="productListGroupCell">
@@ -666,11 +645,32 @@ function ProductListTable({
                         </div>
                       </td>
                       <td>
+                        <div className="productListReadinessCell">
+                          <ProductReadinessBadge product={product} />
+                          <div className="productListNextStep">
+                            <strong>{nextStep.title}</strong>
+                            <div>{nextStep.detail}</div>
+                          </div>
+                          {templateName ? (
+                            <Link
+                              className="productListInlineLink"
+                              to={orgPath(templateHref(product))}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {templateName}
+                            </Link>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>
                         <ProductChannelsCell product={product} />
                       </td>
                       <td className="productListActionCol" onClick={(event) => event.stopPropagation()}>
                         <Link className="btn productListRowAction" to={orgPath(nextStep.href)}>
                           {nextStep.cta}
+                        </Link>
+                        <Link className="productListOpenLink" to={orgPath(`/products/${encodeURIComponent(product.id)}`)}>
+                          Открыть
                         </Link>
                       </td>
                     </tr>
@@ -721,6 +721,99 @@ function ProductBulkActionBar({
   );
 }
 
+function ProductCatalogScope({
+  rootCategories,
+  subCategories,
+  parentCategoryId,
+  subCategoryId,
+  activeCategoryName,
+  total,
+  onParentChange,
+  onSubChange,
+  onClear,
+}: {
+  rootCategories: Array<{ id: string; name: string }>;
+  subCategories: Array<{ id: string; path: string }>;
+  parentCategoryId: string;
+  subCategoryId: string;
+  activeCategoryName: string;
+  total: number;
+  onParentChange: (id: string) => void;
+  onSubChange: (id: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <aside className="productListCatalogPane">
+      <div className="productListCatalogHead">
+        <div>
+          <strong>Каталог</strong>
+          <span>{total} SKU в текущем срезе</span>
+        </div>
+        {(parentCategoryId || subCategoryId) ? (
+          <button type="button" className="btn ghost" onClick={onClear}>Сброс</button>
+        ) : null}
+      </div>
+
+      <div className="productListCatalogControls">
+        <Select value={parentCategoryId} onChange={(event) => onParentChange(event.target.value)}>
+          <option value="">Все разделы</option>
+          {rootCategories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </Select>
+        <Select value={subCategoryId} disabled={!parentCategoryId} onChange={(event) => onSubChange(event.target.value)}>
+          <option value="">Вся ветка</option>
+          {subCategories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.path}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div className="productListCatalogTree">
+        <button
+          type="button"
+          className={`productListCatalogNode${!parentCategoryId ? " isActive" : ""}`}
+          onClick={onClear}
+        >
+          <span>Весь каталог</span>
+          <span className="productListCatalogNodeCount">{total}</span>
+        </button>
+        {rootCategories.slice(0, 14).map((category) => (
+          <button
+            key={category.id}
+            type="button"
+            className={`productListCatalogNode${parentCategoryId === category.id && !subCategoryId ? " isActive" : ""}`}
+            onClick={() => onParentChange(category.id)}
+          >
+            <span>{category.name}</span>
+            <span className="productListCatalogNodeCount">›</span>
+          </button>
+        ))}
+        {subCategories.length ? (
+          <div className="productListCatalogSubtree">
+            <div className="productListCatalogSubhead">{activeCategoryName || "Подкатегории"}</div>
+            {subCategories.slice(0, 18).map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                className={`productListCatalogNode isSub${subCategoryId === category.id ? " isActive" : ""}`}
+                onClick={() => onSubChange(category.id)}
+              >
+                <span>{category.path.split("/").map((part) => part.trim()).filter(Boolean).pop() || category.path}</span>
+                <span className="productListCatalogNodeCount">›</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
 export default function ProductListFeature() {
   const [searchParams, setSearchParams] = useSearchParams();
   const orgPath = useOrgPath();
@@ -736,7 +829,10 @@ export default function ProductListFeature() {
   const [searchDraft, setSearchDraft] = useState(searchParams.get("q") || "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteSaving, setBulkDeleteSaving] = useState(false);
 
   const query = searchParams.get("q") || "";
   const deferredSearchDraft = useDeferredValue(searchDraft);
@@ -829,6 +925,7 @@ export default function ProductListFeature() {
           category_path: buildCategoryPath(nodeById, categoryId),
           sku_pim: String(item.sku_pim || "").trim(),
           sku_gt: String(item.sku_gt || "").trim(),
+          preview_url: String(item.preview_url || "").trim(),
           group_id: String(item.group_id || "").trim(),
           group_name: String(item.group_id || "").trim(),
           marketplace_statuses: {},
@@ -949,7 +1046,7 @@ export default function ProductListFeature() {
           if (controller.signal.aborted) return;
           setProducts([]);
           const fallbackMessage = fallbackError instanceof DOMException && fallbackError.name === "AbortError"
-            ? "Каталог отвечает слишком долго. Попробуй обновить страницу или проверить backend read-model."
+            ? "Каталог отвечает слишком долго. Попробуй обновить страницу или проверить очередь товаров."
             : (fallbackError as Error).message || (error as Error).message || "Не удалось загрузить очередь товаров";
           setLoadError(fallbackMessage);
         }
@@ -1049,10 +1146,12 @@ export default function ProductListFeature() {
       return current.filter((item) => item !== id);
     });
     setSelectedProductId(id);
+    setInspectorOpen(true);
   }
 
   function handleSelectOnly(id: string) {
     setSelectedProductId(id);
+    setInspectorOpen(true);
   }
 
   function handleToggleAll(checked: boolean) {
@@ -1064,11 +1163,10 @@ export default function ProductListFeature() {
     setSelectedIds([]);
   }
 
-  async function deleteSelectedProducts() {
+  async function confirmDeleteSelectedProducts() {
     if (!selectedIds.length) return;
-    const ok = window.confirm(`Удалить выбранные товары безвозвратно? SKU: ${selectedIds.length}`);
-    if (!ok) return;
     setLoadError("");
+    setBulkDeleteSaving(true);
     try {
       await api("/catalog/products/bulk-delete", {
         method: "POST",
@@ -1076,9 +1174,12 @@ export default function ProductListFeature() {
       });
       setSelectedIds([]);
       setSelectedProductId(null);
+      setBulkDeleteOpen(false);
       setRefreshToken((value) => value + 1);
     } catch (error) {
       setLoadError((error as Error).message || "Не удалось удалить товары");
+    } finally {
+      setBulkDeleteSaving(false);
     }
   }
 
@@ -1097,7 +1198,7 @@ export default function ProductListFeature() {
       {loadError ? <Alert tone="error">{loadError}</Alert> : null}
       {!loadError && isFallbackMode ? (
         <Alert tone="info">
-          Расширенный read-model очереди не ответил вовремя. Показан базовый список SKU без полного channel/template enrichment.
+          Расширенный список товаров не ответил вовремя. Показан базовый список SKU без полной проверки каналов и моделей категорий.
         </Alert>
       ) : null}
 
@@ -1111,7 +1212,7 @@ export default function ProductListFeature() {
       <DataToolbar
         className="productListToolbar"
         title="Фильтры очереди"
-        subtitle="Оставь на экране только SKU, по которым нужно принять решение."
+        subtitle="Оставьте на экране только SKU, по которым нужно принять решение."
         actions={
           hasActiveFilters ? (
             <Button
@@ -1215,7 +1316,7 @@ export default function ProductListFeature() {
       {products.length === 0 && !loading ? (
         <EmptyState
           title="Товары не найдены"
-          description="Попробуй сменить режим очереди или снять часть фильтров. Страница должна оставаться рабочим входом в SKU даже при пустом результате."
+          description="Попробуйте сменить режим очереди или снять часть фильтров. Страница должна оставаться рабочим входом в SKU даже при пустом результате."
           action={
             hasActiveFilters ? (
               <Button
@@ -1243,9 +1344,20 @@ export default function ProductListFeature() {
           }
         />
       ) : (
-        <WorkspaceFrame
-          className="productListWorkspace"
-          main={
+        <>
+          <div className="productListWorkspace">
+            <ProductCatalogScope
+              rootCategories={rootCategories}
+              subCategories={subCategories}
+              parentCategoryId={parentCategoryId}
+              subCategoryId={subCategoryId}
+              activeCategoryName={activeCategory?.name || ""}
+              total={total}
+              onParentChange={(id) => updateFilters({ parent: id, sub: "", page: 1 })}
+              onSubChange={(id) => updateFilters({ sub: id, page: 1 })}
+              onClear={() => updateFilters({ parent: "", sub: "", page: 1 })}
+            />
+
             <div className="productListMainStack">
               <Card className="productListTableCard">
                 <div className="productListTableHead">
@@ -1283,19 +1395,43 @@ export default function ProductListFeature() {
                 selectedIds={selectedIds}
                 categoryId={activeCategoryId}
                 onClear={() => setSelectedIds([])}
-                onDelete={() => void deleteSelectedProducts()}
+                onDelete={() => setBulkDeleteOpen(true)}
               />
             </div>
-          }
-          inspector={
-            <ProductListInspector
-              product={selectedProduct}
-              selectedCount={selectedIds.length}
-              onClearSelection={() => setSelectedIds([])}
-            />
-          }
-        />
+          </div>
+          <ProductListInspector
+            product={selectedProduct}
+            selectedCount={selectedIds.length}
+            onClearSelection={() => setSelectedIds([])}
+            open={inspectorOpen}
+            onClose={() => setInspectorOpen(false)}
+          />
+        </>
       )}
+      {bulkDeleteOpen ? (
+        <div className="modalBackdrop" role="presentation" onMouseDown={() => !bulkDeleteSaving && setBulkDeleteOpen(false)}>
+          <div className="modalCard modalCardCompact" role="dialog" aria-modal="true" aria-labelledby="bulk-delete-products-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div className="modalTitle" id="bulk-delete-products-title">Удалить выбранные SKU</div>
+                <div className="modalSubtitle">
+                  Выбранные товары уйдут из каталога, групп, рабочих привязок и очереди выгрузки. Действие нельзя отменить.
+                </div>
+              </div>
+            </div>
+            <div className="productListDeleteSummary">
+              <strong>{selectedIds.length}</strong>
+              <span>SKU в выборе</span>
+            </div>
+            <div className="productListModalActions">
+              <Button onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleteSaving}>Отмена</Button>
+              <Button variant="danger" onClick={() => void confirmDeleteSelectedProducts()} disabled={bulkDeleteSaving || !selectedIds.length}>
+                {bulkDeleteSaving ? "Удаляем..." : "Удалить SKU"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -111,11 +111,75 @@ type MediaItem = {
   selected?: boolean;
   export_order?: number;
   external_url?: string;
+  source_image_url?: string;
   source?: string;
   status?: string;
   source_product_id?: string;
   [key: string]: unknown;
 };
+
+function isLocalCompetitorMediaUrl(url: unknown): boolean {
+  const value = String(url || "");
+  return value.includes("/api/uploads/media_images/") && value.includes("/competitors/");
+}
+
+function mediaPathIdentity(url: unknown): string {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://pim.id-smart.ru";
+    const parsed = new URL(value, base);
+    return parsed.pathname.toLowerCase();
+  } catch {
+    return value.toLowerCase();
+  }
+}
+
+function mediaItemIdentity(item: MediaItem): string {
+  const primary = mediaPathIdentity(item.url);
+  if (primary.includes("/api/uploads/media_images/") && primary.includes("/competitors/")) {
+    return primary;
+  }
+  return String(item.external_url || item.source_image_url || item.url || "").trim().toLowerCase();
+}
+
+function hasUsableExternalMediaUrl(item: MediaItem): boolean {
+  const external = String(item.external_url || item.source_image_url || "").trim();
+  return !!external && !isLocalCompetitorMediaUrl(external);
+}
+
+function shouldPreferExternalMediaUrl(item: MediaItem): boolean {
+  const primary = String(item.url || "").trim();
+  const external = String(item.external_url || item.source_image_url || "").trim();
+  const source = String(item.source || "").toLowerCase();
+  return !!primary && isLocalCompetitorMediaUrl(primary) && hasUsableExternalMediaUrl(item) && (source.includes("restore") || external.includes("re-store.ru"));
+}
+
+function mediaDisplayCaption(item: MediaItem, index: number): string {
+  const caption = String(item.caption || "").trim();
+  if (!caption) return "";
+  const normalized = caption.toLowerCase();
+  const looksTechnical =
+    normalized.startsWith("media_images_") ||
+    normalized.includes("/api/uploads/") ||
+    /^image[_-]?\d+\.(jpe?g|png|webp|avif)$/i.test(caption);
+  if (looksTechnical) return "";
+  return caption || `Фото ${index + 1}`;
+}
+
+function mediaItemQuality(item: MediaItem): number {
+  return (shouldPreferExternalMediaUrl(item) ? 10 : 0) + (item.selected === false ? 0 : 1);
+}
+
+function mediaDisplayUrl(item: MediaItem | null | undefined): string {
+  if (!item) return "";
+  const primary = String(item.url || "").trim();
+  const external = String(item.external_url || item.source_image_url || "").trim();
+  if (shouldPreferExternalMediaUrl(item)) {
+    return toRenderableMediaUrl(external);
+  }
+  return toRenderableMediaUrl(primary || external);
+}
 
 type ProductContent = {
   description: string;
@@ -337,9 +401,9 @@ function mergeContent(base: ProductContent, patch: Partial<ProductContent>): Pro
   };
 }
 
-function normalizeMediaItems(list: any): { url: string; caption?: string }[] {
+function normalizeMediaItems(list: any): MediaItem[] {
   if (!Array.isArray(list)) return [];
-  return list
+  const normalized = list
     .map((x) => {
       if (!x || typeof x !== "object") return null;
       const url = String((x as any).url || "").trim();
@@ -353,6 +417,25 @@ function normalizeMediaItems(list: any): { url: string; caption?: string }[] {
       return item;
     })
     .filter(Boolean) as MediaItem[];
+  const out: MediaItem[] = [];
+  const byKey = new Map<string, number>();
+  for (const item of normalized) {
+    const key = mediaItemIdentity(item);
+    if (!key) {
+      out.push(item);
+      continue;
+    }
+    const existingIndex = byKey.get(key);
+    if (existingIndex == null) {
+      byKey.set(key, out.length);
+      out.push(item);
+      continue;
+    }
+    if (mediaItemQuality(item) > mediaItemQuality(out[existingIndex])) {
+      out[existingIndex] = { ...out[existingIndex], ...item };
+    }
+  }
+  return out;
 }
 
 function normalizeContent(raw: Partial<ProductContent> | null | undefined): ProductContent {
@@ -470,6 +553,7 @@ export default function ProductFeature() {
   const [imageModalIndex, setImageModalIndex] = useState<number | null>(null);
   const [competitorModalKey, setCompetitorModalKey] = useState<"restore" | "store77" | null>(null);
   const [competitorModalValue, setCompetitorModalValue] = useState("");
+  const [productConfirmAction, setProductConfirmAction] = useState<"archive" | "delete" | null>(null);
   const [heroImageIndex, setHeroImageIndex] = useState(0);
   const [groupItemPreviewUrls, setGroupItemPreviewUrls] = useState<Record<string, string>>({});
   const [pendingDelete, setPendingDelete] = useState<
@@ -1304,8 +1388,6 @@ export default function ProductFeature() {
 
   async function moveToArchive() {
     if (!productId || !product) return;
-    const ok = window.confirm("Перевести товар в архив?");
-    if (!ok) return;
     setSaving(true);
     setErr(null);
     try {
@@ -1321,6 +1403,7 @@ export default function ProductFeature() {
       });
       setProduct(res.product);
       setStatus("archived");
+      setProductConfirmAction(null);
     } catch (e) {
       setErr((e as Error).message || "Ошибка перевода в архив");
     } finally {
@@ -1330,8 +1413,6 @@ export default function ProductFeature() {
 
   async function deleteProduct() {
     if (!productId || !product) return;
-    const ok = window.confirm("Удалить товар безвозвратно? Это уберет SKU из каталога, групп и рабочих привязок.");
-    if (!ok) return;
     setSaving(true);
     setErr(null);
     try {
@@ -1395,10 +1476,10 @@ export default function ProductFeature() {
           <Link className="pn-editBtn" to={orgPath("/catalog")}>
             ← Каталог
           </Link>
-          <button className="pn-cancelBtn" type="button" onClick={moveToArchive} disabled={saving || status === "archived"}>
+          <button className="pn-cancelBtn" type="button" onClick={() => setProductConfirmAction("archive")} disabled={saving || status === "archived"}>
             В архив
           </button>
-          <button className="pn-cancelBtn" type="button" onClick={deleteProduct} disabled={saving}>
+          <button className="pn-cancelBtn" type="button" onClick={() => setProductConfirmAction("delete")} disabled={saving}>
             Удалить
           </button>
           <button className="pn-saveBtn" onClick={onSave} disabled={saving}>
@@ -1424,7 +1505,7 @@ export default function ProductFeature() {
             onClick={currentHeroImage?.url ? () => setImageModalIndex(heroImageIndex) : undefined}
           >
             {currentHeroImage?.url ? (
-              <img src={toRenderableMediaUrl(currentHeroImage.url)} alt={currentHeroImage.caption || "media"} />
+              <img src={mediaDisplayUrl(currentHeroImage)} alt={mediaDisplayCaption(currentHeroImage, heroImageIndex) || "Фото товара"} />
             ) : (
               <div className="pn-mediaPlaceholder">Нет изображений</div>
             )}
@@ -1460,9 +1541,9 @@ export default function ProductFeature() {
                 type="button"
                 className={`pn-mediaThumb ${idx === heroImageIndex ? "isActive" : ""}`}
                 onClick={() => setHeroImageIndex(idx)}
-                title={m.caption || `Фото ${idx + 1}`}
+                title={mediaDisplayCaption(m, idx) || `Фото ${idx + 1}`}
               >
-                <img src={toRenderableMediaUrl(m.url)} alt={m.caption || `Фото ${idx + 1}`} />
+                <img src={mediaDisplayUrl(m)} alt={mediaDisplayCaption(m, idx) || `Фото ${idx + 1}`} />
               </button>
             ))}
           </div>
@@ -1700,7 +1781,7 @@ export default function ProductFeature() {
               <div className="pn-muted pn-variantLead">
                 Группа товара:{" "}
                 {product.group_id ? (
-                  <Link to={orgPath(`/catalog/groups?group=${encodeURIComponent(product.group_id)}`)} style={{ textDecoration: "underline" }}>
+                  <Link className="pn-underlinedLink" to={orgPath(`/catalog/groups?group=${encodeURIComponent(product.group_id)}`)}>
                     {groupName || product.group_id}
                   </Link>
                 ) : (
@@ -1713,7 +1794,7 @@ export default function ProductFeature() {
                   <div className="pn-listRow pn-variantFiltersGrid">
                     {selectedVariantParamDefs.map((def) => (
                       <div key={def.id}>
-                        <div className="pn-label" style={{ marginBottom: 4 }}>
+                        <div className="pn-label pn-variantFilterLabel">
                           {def.name}
                         </div>
                         <select
@@ -1735,7 +1816,7 @@ export default function ProductFeature() {
               )}
 
               <div className="pn-variantList pn-variantTable">
-                <div className="pn-variantRow pn-variantHead" style={{ gridTemplateColumns: "260px 1fr 88px" }}>
+                <div className="pn-variantRow pn-variantHead pn-variantRowGrid">
                   <div>Артикулы</div>
                   <div>Наименование</div>
                   <div />
@@ -1745,8 +1826,7 @@ export default function ProductFeature() {
                   return (
                     <div
                       key={it.id}
-                      className={`pn-variantRow ${!isCurrent ? "pn-variantRowClickable" : ""} ${isCurrent ? "isCurrent" : ""}`}
-                      style={{ gridTemplateColumns: "260px 1fr 88px" }}
+                      className={`pn-variantRow pn-variantRowGrid ${!isCurrent ? "pn-variantRowClickable" : ""} ${isCurrent ? "isCurrent" : ""}`}
                       role={isCurrent ? undefined : "link"}
                       tabIndex={isCurrent ? -1 : 0}
                       onClick={isCurrent ? undefined : () => navigate(orgPath(`/products/${encodeURIComponent(it.id)}`))}
@@ -1771,7 +1851,7 @@ export default function ProductFeature() {
                         )}
                         <div className="pn-muted">{toSkuLine(it)}</div>
                       </div>
-                      <div className="pn-variantTitleCell" style={{ fontWeight: 700 }}>{toDisplayTitle(it)}</div>
+                      <div className="pn-variantTitleCell pn-variantTitleCellStrong">{toDisplayTitle(it)}</div>
                       {isCurrent ? (
                         <span className="pn-chip">Текущий</span>
                       ) : (
@@ -1817,13 +1897,13 @@ export default function ProductFeature() {
                 >
                   <div className="pn-mediaDropText">Перетащите изображения сюда или выберите файлы</div>
                   <div className="pn-mediaDropActions">
-                    <label className="pn-editBtn" style={{ cursor: "pointer" }}>
+                    <label className="pn-editBtn pn-filePickBtn">
                       Выбрать файлы
                       <input
                         type="file"
                         multiple
                         accept="image/*"
-                        style={{ display: "none" }}
+                        className="pn-hiddenInput"
                         onChange={async (e) => {
                           await appendImageFiles(e.target.files);
                           e.currentTarget.value = "";
@@ -1864,7 +1944,9 @@ export default function ProductFeature() {
                   </div>
                 )}
                 <div className="pn-imageGallery">
-                  {(content.media_images || []).map((m, idx) => (
+                {(content.media_images || []).map((m, idx) => {
+                  const visibleCaption = mediaDisplayCaption(m, idx);
+                  return (
                     <div key={`media-image-${idx}`} className={`pn-imageCard${selectedImageIndexes.includes(idx) ? " isSelected" : ""}`}>
                       <label className="pn-imageCardCheck">
                         <input
@@ -1882,7 +1964,7 @@ export default function ProductFeature() {
                         ×
                       </button>
                       <button className="pn-imageCardPreview" type="button" onClick={() => setImageModalIndex(idx)}>
-                        {m.url ? <img src={toRenderableMediaUrl(m.url)} alt={m.caption || `Изображение ${idx + 1}`} /> : <span>Нет</span>}
+                        {m.url ? <img src={mediaDisplayUrl(m)} alt={visibleCaption || `Изображение ${idx + 1}`} /> : <span>Нет</span>}
                       </button>
                       <div className="pn-imageExportControls">
                         <label className="pn-imageExportToggle">
@@ -1894,18 +1976,32 @@ export default function ProductFeature() {
                           <span>Выгружать</span>
                         </label>
                         <div className="pn-imageOrderControls" aria-label="Порядок выгрузки">
-                          <button className="pn-editBtn" type="button" disabled={idx === 0} onClick={() => void moveImage(idx, -1)}>
-                            Выше
+                          <button
+                            className="pn-editBtn pn-imageOrderBtn"
+                            type="button"
+                            aria-label={`Поднять ${visibleCaption || `изображение ${idx + 1}`} выше`}
+                            title="Выше"
+                            disabled={idx === 0}
+                            onClick={() => void moveImage(idx, -1)}
+                          >
+                            ↑
                           </button>
-                          <button className="pn-editBtn" type="button" disabled={idx === (content.media_images || []).length - 1} onClick={() => void moveImage(idx, 1)}>
-                            Ниже
+                          <button
+                            className="pn-editBtn pn-imageOrderBtn"
+                            type="button"
+                            aria-label={`Опустить ${visibleCaption || `изображение ${idx + 1}`} ниже`}
+                            title="Ниже"
+                            disabled={idx === (content.media_images || []).length - 1}
+                            onClick={() => void moveImage(idx, 1)}
+                          >
+                            ↓
                           </button>
                         </div>
                       </div>
                       <input
                         className="pn-input pn-imageCardCaption"
                         placeholder="Подпись"
-                        value={m.caption || ""}
+                        value={visibleCaption}
                         onChange={(e) =>
                           setContent((c) =>
                             normalizeContent({
@@ -1923,7 +2019,8 @@ export default function ProductFeature() {
                         }}
                       />
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               </div>
             </div>
@@ -1943,13 +2040,13 @@ export default function ProductFeature() {
                 >
                   <div className="pn-mediaDropText">Перетащите видео сюда или выберите файлы</div>
                   <div className="pn-mediaDropActions">
-                    <label className="pn-editBtn" style={{ cursor: "pointer" }}>
+                    <label className="pn-editBtn pn-filePickBtn">
                       Выбрать файлы
                       <input
                         type="file"
                         multiple
                         accept="video/*"
-                        style={{ display: "none" }}
+                        className="pn-hiddenInput"
                         onChange={async (e) => {
                           await appendVideoFiles(e.target.files);
                           e.currentTarget.value = "";
@@ -2020,12 +2117,12 @@ export default function ProductFeature() {
                 >
                   <div className="pn-mediaDropText">Перетащите вертикальное видео сюда или выберите файл</div>
                   <div className="pn-mediaDropActions">
-                    <label className="pn-editBtn" style={{ cursor: "pointer" }}>
+                    <label className="pn-editBtn pn-filePickBtn">
                       Выбрать файл
                       <input
                         type="file"
                         accept="video/*"
-                        style={{ display: "none" }}
+                        className="pn-hiddenInput"
                         onChange={async (e) => {
                           await replaceVideoCover(e.target.files);
                           e.currentTarget.value = "";
@@ -2118,7 +2215,7 @@ export default function ProductFeature() {
             <div className="pn-sectionHeader">
               <div>
                 <div className="pn-cardTitle">Параметры</div>
-                <div className="pn-muted">Поля берутся из инфо-модели категории, источники и площадки сверяются автоматически.</div>
+                <div className="pn-muted">Поля берутся из модели категории, источники и площадки сверяются автоматически.</div>
               </div>
             </div>
             <div className="pn-featureTable pn-featureTableFlow">
@@ -2257,12 +2354,12 @@ export default function ProductFeature() {
           >
             <div className="pn-mediaDropText">Перетащите документы сюда или выберите файлы</div>
             <div className="pn-mediaDropActions">
-              <label className="pn-editBtn" style={{ cursor: "pointer" }}>
+              <label className="pn-editBtn pn-filePickBtn">
                 Выбрать файлы
                 <input
                   type="file"
                   multiple
-                  style={{ display: "none" }}
+                  className="pn-hiddenInput"
                   onChange={async (e) => {
                     await appendDocumentFiles(e.target.files);
                     e.currentTarget.value = "";
@@ -2357,12 +2454,12 @@ export default function ProductFeature() {
       )}
 
       {selectModalKind && (
-        <div className="pg-modalBackdrop" onClick={() => setSelectModalKind(null)}>
-          <div className="pg-modal pg-modalWide" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setSelectModalKind(null)}>
+          <div className="pg-modal pg-modalWide" role="dialog" aria-modal="true" aria-labelledby="product-relations-title" aria-describedby="product-relations-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">{selectModalKind === "analogs" ? "Добавить аналоги" : "Добавить сопутствующие"}</div>
-                <div className="muted">Выберите товары. Зеленая галочка означает, что товар уже выбран.</div>
+                <div className="card-title" id="product-relations-title">{selectModalKind === "analogs" ? "Добавить аналоги" : "Добавить сопутствующие"}</div>
+                <div className="muted" id="product-relations-subtitle">Выберите товары. Зеленая галочка означает, что товар уже выбран.</div>
               </div>
               <button className="btn" type="button" onClick={() => setSelectModalKind(null)}>Закрыть</button>
             </div>
@@ -2374,22 +2471,21 @@ export default function ProductFeature() {
                 value={selectQuery}
                 onChange={(e) => setSelectQuery(e.target.value)}
               />
-              <div className="pg-addList" style={{ marginTop: 10, maxHeight: "56vh" }}>
+              <div className="pg-addList pn-relationSelectList">
                 {relationSearchLoading ? <div className="pn-muted">Загрузка…</div> : null}
                 {modalItems.map((p: any) => (
                   <button
                     key={p.id}
                     type="button"
-                    className="pg-itemRow"
-                    style={{ width: "100%", textAlign: "left", justifyContent: "space-between" }}
+                    className="pg-itemRow pn-relationSelectRow"
                     onClick={() => toggleRelation(selectModalKind, p)}
                   >
                     <div>
-                      <div style={{ fontWeight: 700 }}>{toDisplayTitle(p)}</div>
+                      <div className="pn-relationSelectTitle">{toDisplayTitle(p)}</div>
                       <div className="muted">{toSkuLine(p)}</div>
                       <div className="muted">{buildPath(nodesById, p.category_id || "")}</div>
                     </div>
-                    <div style={{ fontSize: 18, color: p._selected ? "#16a34a" : "#9ca3af" }}>{p._selected ? "✓" : "○"}</div>
+                    <div className={`pn-relationSelectMark${p._selected ? " isSelected" : ""}`}>{p._selected ? "✓" : "○"}</div>
                   </button>
                 ))}
                 {!relationSearchLoading && !modalItems.length ? <div className="pn-muted">Начни поиск, чтобы выбрать товары.</div> : null}
@@ -2400,12 +2496,12 @@ export default function ProductFeature() {
       )}
 
       {videoModalUrl && (
-        <div className="pg-modalBackdrop" onClick={() => setVideoModalUrl("")}>
-          <div className="pg-modal pg-modalWide pn-mediaModal" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setVideoModalUrl("")}>
+          <div className="pg-modal pg-modalWide pn-mediaModal" role="dialog" aria-modal="true" aria-labelledby="product-video-title" aria-describedby="product-video-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">{videoModalTitle || "Просмотр видео"}</div>
-                <div className="muted">Просмотр файла в полном размере.</div>
+                <div className="card-title" id="product-video-title">{videoModalTitle || "Просмотр видео"}</div>
+                <div className="muted" id="product-video-subtitle">Просмотр файла в полном размере.</div>
               </div>
               <button className="btn" type="button" onClick={() => setVideoModalUrl("")}>Закрыть</button>
             </div>
@@ -2415,7 +2511,7 @@ export default function ProductFeature() {
                 controls
                 autoPlay
                 playsInline
-                style={{ width: "100%", maxHeight: "72vh", borderRadius: 16, background: "#f8fafc" }}
+                className="pn-mediaModalVideo"
               />
             </div>
           </div>
@@ -2423,12 +2519,12 @@ export default function ProductFeature() {
       )}
 
       {imageModalIndex != null && currentModalImage?.url && (
-        <div className="pg-modalBackdrop" onClick={() => setImageModalIndex(null)}>
-          <div className="pg-modal pg-modalWide pn-imageLightbox" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setImageModalIndex(null)}>
+          <div className="pg-modal pg-modalWide pn-imageLightbox" role="dialog" aria-modal="true" aria-labelledby="product-image-title" aria-describedby="product-image-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">{currentModalImage.caption || `Изображение ${imageModalIndex + 1}`}</div>
-                <div className="muted">{`${imageModalIndex + 1} из ${(content.media_images || []).length}`}</div>
+                <div className="card-title" id="product-image-title">{mediaDisplayCaption(currentModalImage, imageModalIndex) || `Изображение ${imageModalIndex + 1}`}</div>
+                <div className="muted" id="product-image-subtitle">{`${imageModalIndex + 1} из ${(content.media_images || []).length}`}</div>
               </div>
               <button className="btn" type="button" onClick={() => setImageModalIndex(null)}>Закрыть</button>
             </div>
@@ -2440,8 +2536,8 @@ export default function ProductFeature() {
               ) : null}
               <img
                 className="pn-imageLightboxImg"
-                src={toRenderableMediaUrl(content.media_images[imageModalIndex].url)}
-                alt={content.media_images[imageModalIndex].caption || `Изображение ${imageModalIndex + 1}`}
+                src={mediaDisplayUrl(content.media_images[imageModalIndex])}
+                alt={mediaDisplayCaption(content.media_images[imageModalIndex], imageModalIndex) || `Изображение ${imageModalIndex + 1}`}
               />
               {(content.media_images || []).length > 1 ? (
                 <button className="pn-lightboxNav isNext" type="button" onClick={() => setImageModalIndex((imageModalIndex + 1) % content.media_images.length)}>
@@ -2459,8 +2555,8 @@ export default function ProductFeature() {
                     onClick={() => setImageModalIndex(idx)}
                   >
                     <img
-                      src={toRenderableMediaUrl(item.url)}
-                      alt={item.caption || `Изображение ${idx + 1}`}
+                      src={mediaDisplayUrl(item)}
+                      alt={mediaDisplayCaption(item, idx) || `Изображение ${idx + 1}`}
                     />
                   </button>
                 ))}
@@ -2471,12 +2567,12 @@ export default function ProductFeature() {
       )}
 
       {pendingDelete && (
-        <div className="pg-modalBackdrop" onClick={() => setPendingDelete(null)}>
-          <div className="pg-modal pn-deleteModal" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setPendingDelete(null)}>
+          <div className="pg-modal pn-deleteModal" role="dialog" aria-modal="true" aria-labelledby="product-file-delete-title" aria-describedby="product-file-delete-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">Удалить файл</div>
-                <div className="muted">Подтвердите удаление файла из карточки товара.</div>
+                <div className="card-title" id="product-file-delete-title">Удалить файл</div>
+                <div className="muted" id="product-file-delete-subtitle">Подтвердите удаление файла из карточки товара.</div>
               </div>
               <button className="btn" type="button" onClick={() => setPendingDelete(null)}>Закрыть</button>
             </div>
@@ -2496,15 +2592,51 @@ export default function ProductFeature() {
         </div>
       )}
 
-      {competitorModalKey && (
-        <div className="pg-modalBackdrop" onClick={() => setCompetitorModalKey(null)}>
-          <div className="pg-modal pn-linkModal" onClick={(e) => e.stopPropagation()}>
+      {productConfirmAction && (
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => !saving && setProductConfirmAction(null)}>
+          <div className="pg-modal pn-deleteModal" role="dialog" aria-modal="true" aria-labelledby="product-action-confirm-title" aria-describedby="product-action-confirm-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">
+                <div className="card-title" id="product-action-confirm-title">{productConfirmAction === "archive" ? "Перевести товар в архив" : "Удалить товар"}</div>
+                <div className="muted" id="product-action-confirm-subtitle">
+                  {productConfirmAction === "archive"
+                    ? "Товар останется в системе, но выгрузки по нему будут отключены."
+                    : "SKU уйдет из каталога, групп и рабочих привязок. Действие нельзя отменить."}
+                </div>
+              </div>
+              <button className="btn" type="button" onClick={() => setProductConfirmAction(null)} disabled={saving}>Закрыть</button>
+            </div>
+            <div className="pg-modalBody">
+              <div className="pn-inlineNote pn-inlineNoteDanger">
+                <div className="pn-inlineNoteDangerIcon" aria-hidden="true">!</div>
+                <div>{title || skuGt || productId}</div>
+              </div>
+              <div className="pn-alertActions">
+                <button className="pn-cancelBtn" type="button" onClick={() => setProductConfirmAction(null)} disabled={saving}>Отмена</button>
+                {productConfirmAction === "archive" ? (
+                  <button className="pn-saveBtn" type="button" onClick={moveToArchive} disabled={saving}>
+                    {saving ? "Сохраняем..." : "В архив"}
+                  </button>
+                ) : (
+                  <button className="pn-dangerBtn" type="button" onClick={deleteProduct} disabled={saving}>
+                    {saving ? "Удаляем..." : "Удалить товар"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {competitorModalKey && (
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setCompetitorModalKey(null)}>
+          <div className="pg-modal pn-linkModal" role="dialog" aria-modal="true" aria-labelledby="product-competitor-link-title" aria-describedby="product-competitor-link-subtitle" onClick={(e) => e.stopPropagation()}>
+            <div className="pg-modalHead">
+              <div>
+                <div className="card-title" id="product-competitor-link-title">
                   {competitorModalKey === "restore" ? "Re:Store" : "Store77"}
                 </div>
-                <div className="muted">Укажите ссылку на товар конкурента.</div>
+                <div className="muted" id="product-competitor-link-subtitle">Укажите ссылку на товар конкурента.</div>
               </div>
               <button className="btn" type="button" onClick={() => setCompetitorModalKey(null)}>Закрыть</button>
             </div>

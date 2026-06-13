@@ -37,12 +37,66 @@ type ProductMedia = {
   caption?: string;
   source?: string;
   source_type?: string;
+  external_url?: string;
+  source_image_url?: string;
+  source_url?: string;
   status?: string;
   needs_review?: boolean;
   selected?: boolean;
   order?: number;
   export_order?: number;
 };
+
+function isLocalCompetitorMediaUrl(url: unknown): boolean {
+  const value = String(url || "");
+  return value.includes("/api/uploads/media_images/") && value.includes("/competitors/");
+}
+
+function mediaPathIdentity(url: unknown): string {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://pim.id-smart.ru";
+    const parsed = new URL(value, base);
+    return parsed.pathname.toLowerCase();
+  } catch {
+    return value.toLowerCase();
+  }
+}
+
+function mediaItemIdentity(item: ProductMedia): string {
+  const primary = mediaPathIdentity(item.url);
+  if (primary.includes("/api/uploads/media_images/") && primary.includes("/competitors/")) {
+    return primary;
+  }
+  return String(item.external_url || item.source_image_url || item.url || "").trim().toLowerCase();
+}
+
+function hasUsableExternalMediaUrl(item: ProductMedia): boolean {
+  const external = String(item.external_url || item.source_image_url || "").trim();
+  return !!external && !isLocalCompetitorMediaUrl(external);
+}
+
+function shouldPreferExternalMediaUrl(item: ProductMedia): boolean {
+  const primary = String(item.url || "").trim();
+  const external = String(item.external_url || item.source_image_url || "").trim();
+  const source = String(item.source || "").toLowerCase();
+  return !!primary && isLocalCompetitorMediaUrl(primary) && hasUsableExternalMediaUrl(item) && (source.includes("restore") || external.includes("re-store.ru"));
+}
+
+function mediaItemQuality(item: ProductMedia): number {
+  return (shouldPreferExternalMediaUrl(item) ? 10 : 0) + (item.selected === false ? 0 : 1);
+}
+
+function mediaDisplayUrl(item: ProductMedia | null | undefined): string {
+  if (!item) return "";
+  const primary = String(item.url || "").trim();
+  const external = String(item.external_url || item.source_image_url || "").trim();
+  if (shouldPreferExternalMediaUrl(item)) {
+    return toRenderableMediaUrl(external);
+  }
+  return toRenderableMediaUrl(primary || external);
+}
 
 type ProductContent = {
   description?: string;
@@ -203,13 +257,13 @@ type SectionId =
 const SECTION_LABELS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "overview", label: "Описание", meta: "контекст SKU" },
   { id: "attributes", label: "Параметры", meta: "значения и источники" },
-  { id: "sources", label: "Источники", meta: "импорт, excel, конкуренты" },
+  { id: "sources", label: "Источники данных", meta: "импорт и Excel" },
   { id: "channels", label: "Площадки", meta: "вывод и альтернативы" },
-  { id: "competitors", label: "Источники", meta: "поиск и насыщение" },
-  { id: "media", label: "Медиа", meta: "S3 assets" },
+  { id: "competitors", label: "Конкуренты", meta: "поиск и насыщение" },
+  { id: "media", label: "Медиа", meta: "выбор и порядок" },
   { id: "validation", label: "Валидация", meta: "ошибки перед экспортом" },
   { id: "relations", label: "Связи", meta: "аналоги и комплекты" },
-  { id: "variants", label: "Варианты", meta: "SKU family" },
+  { id: "variants", label: "Варианты", meta: "группа SKU" },
   { id: "create-flow", label: "Создание", meta: "новый процесс" },
 ];
 
@@ -219,10 +273,9 @@ const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 const PRODUCT_NAV_ITEMS: Array<{ id: SectionId; label: string; meta: string }> = [
   { id: "overview", label: "Описание", meta: "контекст SKU" },
   { id: "attributes", label: "Параметры", meta: "значения и источники" },
-  { id: "competitors", label: "Источники", meta: "площадки и конкуренты" },
+  { id: "sources", label: "Источники данных", meta: "импорт и Excel" },
+  { id: "competitors", label: "Конкуренты", meta: "поиск и насыщение" },
   { id: "media", label: "Медиа", meta: "выбор и порядок" },
-  { id: "validation", label: "Проверка", meta: "блокеры экспорта" },
-  { id: "relations", label: "Связи", meta: "family, аналоги, комплекты" },
 ];
 
 function sectionFromTab(value: string | null): SectionId {
@@ -230,7 +283,7 @@ function sectionFromTab(value: string | null): SectionId {
   if (tab === "params" || tab === "features" || tab === "parameters") return "attributes";
   if (tab === "description") return "overview";
   if (tab === "platforms" || tab === "marketplaces") return "channels";
-  if (tab === "sources" || tab === "competitor" || tab === "competitors" || tab === "competitor_links" || tab === "links") return "competitors";
+  if (tab === "competitor" || tab === "competitors" || tab === "competitor_links" || tab === "links") return "competitors";
   if (SECTION_IDS.has(tab as SectionId)) return tab as SectionId;
   return "overview";
 }
@@ -301,8 +354,8 @@ function buildProductNextAction({
     return {
       title: "Заполнить обязательные параметры",
       detail: `${requiredMissing} обязательных полей еще пустые.`,
-      cta: "Открыть валидацию",
-      tab: "validation",
+      cta: "Открыть параметры",
+      tab: "attributes",
       tone: "danger",
     };
   }
@@ -310,7 +363,7 @@ function buildProductNextAction({
   if (!hasInfoModel && !features.length) {
     return {
       title: "Проверить экспорт SKU",
-      detail: "Описание и медиа есть. Readiness batch покажет, каких параметров или значений не хватает для площадок.",
+      detail: "Описание и медиа есть. Проверка выгрузки покажет, каких параметров или значений не хватает для площадок.",
       cta: "Открыть экспорт",
       href: productExportHref(product.id),
       tone: "active",
@@ -319,7 +372,7 @@ function buildProductNextAction({
 
   return {
     title: "Проверить экспорт SKU",
-    detail: "Описание, медиа и базовые параметры есть. Запустите readiness batch по безопасным магазинам.",
+    detail: "Описание, медиа и базовые параметры есть. Запустите проверку по выбранным магазинам.",
     cta: "Открыть экспорт",
     href: productExportHref(product.id),
     tone: "active",
@@ -367,17 +420,30 @@ function flattenMedia(content?: ProductContent): ProductMedia[] {
   if (!content) return [];
   const sets = [content.media_cover, content.media_images, content.media];
   const out: ProductMedia[] = [];
-  const seen = new Set<string>();
+  const byKey = new Map<string, number>();
   for (const group of sets) {
     for (const item of group || []) {
       const url = normalizeText(item?.url);
-      if (!url || seen.has(url)) continue;
-      seen.add(url);
-      out.push({
+      if (!url) continue;
+      const nextItem = {
         ...item,
         url,
         caption: normalizeText(item?.caption) || undefined,
-      });
+      };
+      const key = mediaItemIdentity(nextItem);
+      if (!key) {
+        out.push(nextItem);
+        continue;
+      }
+      const existingIndex = byKey.get(key);
+      if (existingIndex == null) {
+        byKey.set(key, out.length);
+        out.push(nextItem);
+        continue;
+      }
+      if (mediaItemQuality(nextItem) > mediaItemQuality(out[existingIndex])) {
+        out[existingIndex] = { ...out[existingIndex], ...nextItem };
+      }
     }
   }
   return out;
@@ -520,7 +586,7 @@ function mediaSourceLabel(url: string): string {
   const normalized = normalizeText(url).toLowerCase();
   if (normalized.includes("/competitors/restore/")) return "re-store";
   if (normalized.includes("/competitors/store77/")) return "store77";
-  if (normalized.includes("/uploads/")) return "S3";
+  if (normalized.includes("/uploads/")) return "Загружено в систему";
   return "Медиа";
 }
 
@@ -533,10 +599,19 @@ function mediaSourceTitle(item: ProductMedia): string {
   return mediaSourceLabel(item.url);
 }
 
-function mediaShortName(url: string): string {
-  const normalized = normalizeText(url);
-  const parts = normalized.split(/[/?#]/).filter(Boolean);
-  return compactText(parts[parts.length - 1] || normalized, 34);
+function isTechnicalMediaCaption(value: string): boolean {
+  const normalized = normalizeText(value).toLowerCase();
+  return (
+    normalized.startsWith("media_images_") ||
+    normalized.includes("/api/uploads/") ||
+    /^image[_-]?\d+\.(jpe?g|png|webp|avif)$/i.test(value)
+  );
+}
+
+function mediaDisplayCaption(item: ProductMedia, index: number): string {
+  const caption = normalizeText(item.caption);
+  if (!caption || isTechnicalMediaCaption(caption)) return `Фото ${index + 1}`;
+  return caption;
 }
 
 function inferBrand(title: string, features: ProductFeatureValue[] = []): string {
@@ -616,7 +691,7 @@ function ProductWorkspaceSectionNav({
   const orgPath = useOrgPath();
   return (
     <nav className="productWorkspaceNav" aria-label="Навигация по товару">
-      <div className="productWorkspaceNavTitle">Меню товара</div>
+      <div className="productWorkspaceNavTitle">Разделы SKU</div>
       <div className="productWorkspaceNavList">
         {PRODUCT_NAV_ITEMS.map((section) => (
           <button
@@ -631,7 +706,7 @@ function ProductWorkspaceSectionNav({
         ))}
         <Link className="productWorkspaceNavItem productWorkspaceNavLink" to={orgPath(productExportHref(productId))}>
           <strong>Экспорт</strong>
-          <span>проверка и payload</span>
+          <span>проверка и пакет</span>
         </Link>
       </div>
     </nav>
@@ -668,7 +743,7 @@ function ProductWorkspaceInspector({
           <strong>{normalizeText(product.sku_gt) || "Не задан"}</strong>
         </div>
         <div className="productWorkspaceKeyValue">
-          <span>SKU PIM</span>
+          <span>Внутренний SKU</span>
           <strong>{normalizeText(product.sku_pim) || "Не задан"}</strong>
         </div>
         <div className="productWorkspaceKeyValue">
@@ -681,7 +756,7 @@ function ProductWorkspaceInspector({
         </div>
       </InspectorPanel>
 
-      <InspectorPanel title="Readiness" subtitle="Текущее состояние наполнения">
+      <InspectorPanel title="Готовность" subtitle="Текущее состояние наполнения">
         <div className="productWorkspaceInspectorMetrics">
           <div>
             <span>Заполнено полей</span>
@@ -728,6 +803,8 @@ function ProductAttributeWorkbench({
   rawFeatureCount,
   channels,
   selectedKey,
+  productId,
+  categoryId,
   onSelect,
 }: {
   features: ProductFeatureValue[];
@@ -735,9 +812,23 @@ function ProductAttributeWorkbench({
   rawFeatureCount: number;
   channels: ChannelsSummary | null;
   selectedKey: string;
+  productId: string;
+  categoryId: string;
   onSelect: (key: string) => void;
 }) {
   const orgPath = useOrgPath();
+  const paramsHref = useMemo(() => {
+    const params = new URLSearchParams({ tab: "params" });
+    if (categoryId) params.set("category", categoryId);
+    if (productId) params.set("product", productId);
+    return `/sources?${params.toString()}`;
+  }, [categoryId, productId]);
+  const sourcesHref = useMemo(() => {
+    const params = new URLSearchParams({ tab: "sources" });
+    if (categoryId) params.set("category", categoryId);
+    if (productId) params.set("product", productId);
+    return `/sources?${params.toString()}`;
+  }, [categoryId, productId]);
   const selectedFeature = useMemo(() => {
     return features.find((feature, index) => featureKey(feature, index) === selectedKey) || features[0] || null;
   }, [features, selectedKey]);
@@ -754,18 +845,39 @@ function ProductAttributeWorkbench({
   if (!hasInfoModel) {
     return (
       <EmptyState
-        title="Инфо-модель не создана"
+        className="productWorkspaceInfoModelEmpty"
+        title="Параметры категории не собраны"
         description={
-          rawFeatureCount
-            ? `В товаре сохранено ${rawFeatureCount} сырых параметров из источников, но они не считаются PIM-параметрами до создания инфо-модели категории.`
-            : "Сначала соберите и подтвердите инфо-модель категории, после этого здесь появятся PIM-параметры для выгрузки."
+          <div className="productWorkspaceEmptyRoute">
+            <p>
+              {rawFeatureCount
+                ? `В товаре сохранено ${rawFeatureCount} сырых параметров из источников, но они еще не утверждены как поля категории.`
+                : "Для этой категории еще нет утвержденных полей, поэтому параметры товара нельзя отправить в выгрузку."}
+            </p>
+            <div>
+              <span>1</span>
+              <strong>Сопоставьте площадки и конкурентов</strong>
+              <em>Так система поймет, откуда брать требования, значения, описание и медиа.</em>
+            </div>
+            <div>
+              <span>2</span>
+              <strong>Соберите параметры категории</strong>
+              <em>После подтверждения поля появятся здесь и попадут в экспорт.</em>
+            </div>
+          </div>
+        }
+        action={
+          <div className="productWorkspaceEmptyActions">
+            <Link className="btn" to={orgPath(sourcesHref)}>Открыть сопоставления</Link>
+            <Link className="btn primary" to={orgPath(paramsHref)}>Собрать параметры</Link>
+          </div>
         }
       />
     );
   }
 
   if (!features.length) {
-    return <EmptyState title="Инфо-модель не наполнена" description="После выбора категории здесь появятся параметры, их источники и вывод на площадки." />;
+    return <EmptyState title="Параметры категории пустые" description="После сборки полей здесь появятся значения, источники и вывод на площадки." />;
   }
 
   return (
@@ -791,11 +903,15 @@ function ProductAttributeWorkbench({
                 className={`productParamItem${selectedFeature && key === featureKey(selectedFeature, features.indexOf(selectedFeature)) ? " isActive" : ""}`}
                 onClick={() => onSelect(key)}
               >
-                <span>
+                <span className="productParamItemMain">
                   <strong>{normalizeText(feature.name) || normalizeText(feature.code) || "Параметр"}</strong>
                   <em title={value || undefined}>{value ? compactText(value, 78) : "Не заполнено"}</em>
                 </span>
-                <Badge tone={feature.locked ? "neutral" : qualityTone(!!value)}>{feature.locked ? "системн." : sourceCount ? `${sourceCount} источн.` : "ручн."}</Badge>
+                <span className="productParamItemMeta">
+                  <b>{sourceCount ? `${sourceCount}` : "—"}</b>
+                  <small>{feature.locked ? "системное" : sourceCount ? "источники" : "ручное"}</small>
+                </span>
+                <Badge tone={feature.locked ? "neutral" : qualityTone(!!value)}>{value ? "заполнено" : "пусто"}</Badge>
               </button>
             );
           })}
@@ -807,7 +923,7 @@ function ProductAttributeWorkbench({
           <>
             <div className="productParamHero">
               <div>
-                <span>Canonical value</span>
+                <span>Итоговое значение</span>
                 <h2>{normalizeText(selectedFeature.name) || normalizeText(selectedFeature.code) || "Параметр"}</h2>
                 <p>{normalizeText(selectedFeature.code) || "код параметра не задан"} · {fieldLayerLabel(selectedFeature.field_layer)}</p>
               </div>
@@ -827,7 +943,7 @@ function ProductAttributeWorkbench({
               <div className="productParamPanel">
                 <div className="productParamPanelHead">
                   <span>Как собралось значение</span>
-                  <Badge tone={sourceEntries.length ? "active" : "pending"}>{sourceEntries.length ? "есть источники" : "нет source values"}</Badge>
+                  <Badge tone={sourceEntries.length ? "active" : "pending"}>{sourceEntries.length ? "есть источники" : "нет источников"}</Badge>
                 </div>
                 {sourceEntries.length ? (
                   <div className="productSourceEvidenceList">
@@ -838,9 +954,9 @@ function ProductAttributeWorkbench({
                           <span>{entry.store}</span>
                         </div>
                         <dl>
-                          <div><dt>Raw</dt><dd title={entry.raw || undefined}>{entry.raw ? compactText(entry.raw, 140) : "—"}</dd></div>
-                          <div><dt>Resolved</dt><dd title={entry.resolved || undefined}>{entry.resolved ? compactText(entry.resolved, 140) : "—"}</dd></div>
-                          <div><dt>Canonical</dt><dd title={entry.canonical || undefined}>{entry.canonical ? compactText(entry.canonical, 140) : "—"}</dd></div>
+                          <div><dt>Исходное</dt><dd title={entry.raw || undefined}>{entry.raw ? compactText(entry.raw, 140) : "—"}</dd></div>
+                          <div><dt>Разобранное</dt><dd title={entry.resolved || undefined}>{entry.resolved ? compactText(entry.resolved, 140) : "—"}</dd></div>
+                          <div><dt>Итоговое</dt><dd title={entry.canonical || undefined}>{entry.canonical ? compactText(entry.canonical, 140) : "—"}</dd></div>
                         </dl>
                       </article>
                     ))}
@@ -875,7 +991,8 @@ function ProductAttributeWorkbench({
   );
 }
 
-function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFeatureValue[]; categoryId?: string }) {
+function ProductSourcesWorkbench({ features, categoryId, productId }: { features: ProductFeatureValue[]; categoryId?: string; productId?: string }) {
+  const orgPath = useOrgPath();
   const rows = features.flatMap((feature) =>
     sourceEntriesForFeature(feature).map((entry) => ({
       feature: normalizeText(feature.name) || normalizeText(feature.code) || "Параметр",
@@ -885,6 +1002,16 @@ function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFe
   );
   if (!rows.length) {
     const encodedCategoryId = encodeURIComponent(normalizeText(categoryId));
+    const sourceParams = new URLSearchParams({ tab: "sources" });
+    const paramsParams = new URLSearchParams({ tab: "params" });
+    if (normalizeText(categoryId)) {
+      sourceParams.set("category", normalizeText(categoryId));
+      paramsParams.set("category", normalizeText(categoryId));
+    }
+    if (normalizeText(productId)) {
+      sourceParams.set("product", normalizeText(productId));
+      paramsParams.set("product", normalizeText(productId));
+    }
     return (
       <EmptyState
         title="Источники пока не связаны"
@@ -893,9 +1020,9 @@ function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFe
           <div className="productWorkspaceEmptyActions">
             {encodedCategoryId ? (
               <>
-                <Link className="btn primary" to={orgPath(`/sources?tab=params&category=${encodedCategoryId}`)}>Открыть сопоставление</Link>
-                <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodedCategoryId}`)}>Связать источники</Link>
-                <Link className="btn" to={orgPath(`/templates/${encodedCategoryId}`)}>Собрать инфо-модель</Link>
+                <Link className="btn primary" to={orgPath(`/sources?${sourceParams.toString()}`)}>Связать источники</Link>
+                <Link className="btn" to={orgPath(`/sources?${paramsParams.toString()}`)}>Открыть параметры</Link>
+                <Link className="btn" to={orgPath(`/templates/${encodedCategoryId}`)}>Собрать поля категории</Link>
               </>
             ) : (
               <Link className="btn primary" to={orgPath("/sources?tab=sources")}>Открыть сопоставление</Link>
@@ -912,9 +1039,9 @@ function ProductSourcesWorkbench({ features, categoryId }: { features: ProductFe
           <tr>
             <th>Параметр</th>
             <th>Источник</th>
-            <th>Raw</th>
-            <th>Resolved</th>
-            <th>Canonical</th>
+            <th>Исходное</th>
+            <th>Разобранное</th>
+            <th>Итоговое</th>
           </tr>
         </thead>
         <tbody>
@@ -967,7 +1094,7 @@ function ProductValidationWorkbench({
       ? [{
           key: "media",
           title: "Медиа товара",
-          meta: "нет изображений в S3",
+          meta: "нет изображений для выгрузки",
           action: "Открыть медиа",
           onClick: onOpenMedia,
         }]
@@ -1024,7 +1151,7 @@ function ProductValidationWorkbench({
           </div>
           <div className="productValidationExportAction">
             <Link className="btn primary" to={orgPath(exportHref)}>Проверить экспорт SKU</Link>
-            <span>Readiness batch покажет реальные блокеры площадок и прямые места исправления.</span>
+            <span>Проверка покажет реальные блокеры площадок и прямые места исправления.</span>
           </div>
           {blockers.length ? (
             <div className="productValidationTaskList">
@@ -1075,11 +1202,11 @@ function ProductValidationWorkbench({
 function ProductCreateFlowPreview() {
   const steps = [
     ["01", "Базовые данные", "название, SKU, бренд, статус"],
-    ["02", "Категория", "выбор конечной категории и инфо-модели"],
+    ["02", "Категория", "выбор конечной категории и модели параметров"],
     ["03", "Варианты", "группа SKU, параметры схлопывания"],
-    ["04", "Источники", "импорт, Excel, конкурентные links"],
-    ["05", "Preview", "как товар выглядит в PIM и на площадках"],
-    ["06", "Создание", "создать SKU и открыть cockpit"],
+    ["04", "Источники", "импорт, Excel, ссылки конкурентов"],
+    ["05", "Предпросмотр", "как товар выглядит в системе и на площадках"],
+    ["06", "Создание", "создать SKU и открыть карточку"],
   ];
   return (
     <div className="productCreateFlowPreview">
@@ -1132,7 +1259,7 @@ function ProductCommerceHero({
         <section className="productCommerceGallery" aria-label="Медиа товара">
           <div className="productCommerceImageStage">
             {cover ? (
-              <img src={toRenderableMediaUrl(cover.url)} alt={cover.caption || product.title} />
+              <img src={mediaDisplayUrl(cover)} alt={cover.caption || product.title} />
             ) : (
               <div className="productCommerceImagePlaceholder">
                 <span>SKU</span>
@@ -1143,7 +1270,7 @@ function ProductCommerceHero({
           <div className="productCommerceThumbRow">
             {(media.length ? media.slice(0, 5) : [null, null, null]).map((item, index) => (
               <div key={item?.url || `empty-${index}`} className={`productCommerceThumb${item ? "" : " isEmpty"}`}>
-                {item ? <img src={toRenderableMediaUrl(item.url)} alt={item.caption || `${product.title} ${index + 1}`} /> : <span>{index + 1}</span>}
+                {item ? <img src={mediaDisplayUrl(item)} alt={item.caption || `${product.title} ${index + 1}`} /> : <span>{index + 1}</span>}
               </div>
             ))}
           </div>
@@ -1153,13 +1280,13 @@ function ProductCommerceHero({
           <div className="productCommerceBreadcrumb">{categoryPath || "Категория не задана"}</div>
           <div className="productCommerceTitleRow">
             <h1>{product.title}</h1>
-            <Badge tone={toneForStatus(normalizeText(product.status))}>{normalizeText(product.status) || "draft"}</Badge>
+            <Badge tone={toneForStatus(normalizeText(product.status))}>{normalizeText(product.status) || "черновик"}</Badge>
           </div>
           <div className="productCommerceLead">
             <span>{inferBrand(product.title, features)}</span>
             <span>SKU GT: {normalizeText(product.sku_gt) || "—"}</span>
-            <span>SKU PIM: {normalizeText(product.sku_pim) || "—"}</span>
-            <span>{variants.length ? `${variants.length} вариантов` : "без variant-family"}</span>
+            <span>Внутренний SKU: {normalizeText(product.sku_pim) || "—"}</span>
+            <span>{variants.length ? `${variants.length} вариантов` : "без группы вариантов"}</span>
           </div>
 
           <div className="productCommerceSpecGrid">
@@ -1251,7 +1378,7 @@ function ProductWorkspaceSkeleton() {
             <InspectorPanel title="Описание" subtitle="Загрузка товара">
               <div className="productWorkspaceSkeletonInspector" />
             </InspectorPanel>
-            <InspectorPanel title="Readiness" subtitle="Загрузка контекста">
+            <InspectorPanel title="Готовность" subtitle="Загрузка контекста">
               <div className="productWorkspaceSkeletonInspector" />
             </InspectorPanel>
           </div>
@@ -1289,6 +1416,8 @@ function ProductWorkspaceFeature() {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [mediaSaving, setMediaSaving] = useState(false);
   const [mediaNotice, setMediaNotice] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1550,16 +1679,17 @@ function ProductWorkspaceFeature() {
     }
   }
 
-  async function deleteProduct() {
+  async function confirmDeleteProduct() {
     if (!product) return;
-    const title = normalizeText(product.title) || normalizeText(product.sku_gt) || product.id;
-    if (!window.confirm(`Удалить товар "${title}" безвозвратно?`)) return;
     setError("");
+    setDeleteSaving(true);
     try {
       await api(`/products/${encodeURIComponent(product.id)}`, { method: "DELETE" });
       navigate(orgPath("/products"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось удалить товар.");
+      setDeleteSaving(false);
+      setDeleteConfirmOpen(false);
     }
   }
 
@@ -1726,8 +1856,6 @@ function ProductWorkspaceFeature() {
       const next = new URLSearchParams(current);
       if (id === "overview") {
         next.delete("tab");
-      } else if (id === "competitors") {
-        next.set("tab", "sources");
       } else {
         next.set("tab", id);
       }
@@ -1874,7 +2002,7 @@ function ProductWorkspaceFeature() {
           <div className="productWorkspaceEyebrow">Карточка товара</div>
           <div className="productWorkspaceHeadingRow">
             <h1>{normalizeText(product.sku_gt) || normalizeText(product.sku_pim) || product.id}</h1>
-            <Badge tone={toneForStatus(normalizeText(product.status))}>{normalizeText(product.status) || "draft"}</Badge>
+            <Badge tone={toneForStatus(normalizeText(product.status))}>{normalizeText(product.status) || "черновик"}</Badge>
           </div>
           <div className="productWorkspaceMetaRow">
             <span>{product.title}</span>
@@ -1883,7 +2011,7 @@ function ProductWorkspaceFeature() {
         </div>
         <div className="productWorkspaceTopbarActions">
           <Button variant="primary">Сохранить</Button>
-          <Button variant="danger" onClick={deleteProduct}>Удалить</Button>
+          <Button variant="danger" onClick={() => setDeleteConfirmOpen(true)} disabled={deleteSaving}>Удалить</Button>
           <Link className="btn" to={orgPath("/products")}>
             К очереди товаров
           </Link>
@@ -1916,15 +2044,13 @@ function ProductWorkspaceFeature() {
 
       <WorkspaceFrame
         className="productWorkspaceLayout"
-        sidebar={
-          <ProductWorkspaceSectionNav
-            activeSection={activeSection}
-            onSelect={handleSectionSelect}
-            productId={product.id}
-          />
-        }
         main={
           <div className="productWorkspaceMainStack productCockpitStack">
+            <ProductWorkspaceSectionNav
+              activeSection={activeSection}
+              onSelect={handleSectionSelect}
+              productId={product.id}
+            />
             {activeSection === "overview" ? (
               <>
                 <ProductCommerceHero
@@ -1957,6 +2083,8 @@ function ProductWorkspaceFeature() {
                   rawFeatureCount={rawFeatures.length}
                   channels={channels}
                   selectedKey={selectedFeatureKey}
+                  productId={product.id}
+                  categoryId={product.category_id || ""}
                   onSelect={setSelectedFeatureKey}
                 />
               </Card>
@@ -1964,7 +2092,7 @@ function ProductWorkspaceFeature() {
 
             {activeSection === "sources" ? (
               <Card title="Трассировка источников">
-                <ProductSourcesWorkbench features={features} categoryId={product.category_id} />
+                <ProductSourcesWorkbench features={features} categoryId={product.category_id} productId={product.id} />
               </Card>
             ) : null}
 
@@ -2005,9 +2133,9 @@ function ProductWorkspaceFeature() {
                     ))}
                   </div>
                 ) : channelsLoading ? (
-                  <EmptyState title="Загружаем channel summary" description="Сводка по каналам еще собирается." />
+                  <EmptyState title="Загружаем сводку по площадкам" description="Статусы источников и каналов еще собираются." />
                 ) : (
-                  <EmptyState title="Канальные статусы временно недоступны" description="Базовый товар уже загружен, но summary endpoint не вернул данные." />
+                  <EmptyState title="Статусы площадок временно недоступны" description="Базовый товар загружен, но сводка по каналам пока не вернулась." />
                 )}
               </Card>
             ) : null}
@@ -2022,52 +2150,58 @@ function ProductWorkspaceFeature() {
                       Насыщение параметров и медиа применяется только к выбранному SKU.
                     </div>
                     <div className="pn-competitorSkuToolbar">
-                      <input
-                        className="pn-competitorSkuSearch"
-                        value={competitorSkuQuery}
-                        onChange={(event) => setCompetitorSkuQuery(event.target.value)}
-                        placeholder="Найти SKU, память, цвет, SIM..."
-                      />
-                      {[
-                        ["all", "Все", competitorSkuStatusCounts.all],
-                        ["neutral", "Не сканировали", competitorSkuStatusCounts.neutral],
-                        ["pending", "Кандидаты", competitorSkuStatusCounts.pending],
-                        ["active", "Подтверждено", competitorSkuStatusCounts.active],
-                        ["danger", "Проблемы", competitorSkuStatusCounts.danger],
-                      ].map(([key, label, count]) => (
+                      <div className="pn-competitorSkuControls">
+                        <input
+                          className="pn-competitorSkuSearch"
+                          value={competitorSkuQuery}
+                          onChange={(event) => setCompetitorSkuQuery(event.target.value)}
+                          placeholder="Найти SKU, память, цвет, SIM..."
+                        />
+                        <div className="pn-competitorSkuFilters" aria-label="Фильтры готовности конкурентов">
+                          {[
+                            ["all", "Все", competitorSkuStatusCounts.all],
+                            ["neutral", "Не сканировали", competitorSkuStatusCounts.neutral],
+                            ["pending", "Кандидаты", competitorSkuStatusCounts.pending],
+                            ["active", "Подтверждено", competitorSkuStatusCounts.active],
+                            ["danger", "Проблемы", competitorSkuStatusCounts.danger],
+                          ].map(([key, label, count]) => (
+                            <button
+                              key={String(key)}
+                              type="button"
+                              className={`pn-competitorSkuFilter${competitorSkuFilter === key ? " isActive" : ""}`}
+                              onClick={() => setCompetitorSkuFilter(key as "all" | CompetitorSkuStatus["tone"])}
+                            >
+                              {label} <strong>{count}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="pn-competitorSkuActions" aria-label="Массовые действия">
                         <button
-                          key={String(key)}
                           type="button"
-                          className={`pn-competitorSkuFilter${competitorSkuFilter === key ? " isActive" : ""}`}
-                          onClick={() => setCompetitorSkuFilter(key as "all" | CompetitorSkuStatus["tone"])}
+                          className="pn-competitorSkuRun"
+                          onClick={handleRunCompetitorDiscoveryForSelected}
+                          disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
                         >
-                          {label} <strong>{count}</strong>
+                          {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
                         </button>
-                      ))}
-                      <button
-                        type="button"
-                        className="pn-competitorSkuRun"
-                        onClick={handleRunCompetitorDiscoveryForSelected}
-                        disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
-                      >
-                        {competitorBulkRunning ? "Подбор идет..." : `Найти выбранные ${selectedVisibleCompetitorIds.length}`}
-                      </button>
-                      <button
-                        type="button"
-                        className="pn-competitorSkuRun"
-                        onClick={handleConfirmSafeCompetitorsForSelected}
-                        disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
-                      >
-                        {competitorBulkConfirming ? "Подтверждаю..." : "Подтвердить точные"}
-                      </button>
-                      <button
-                        type="button"
-                        className="pn-competitorSkuRun"
-                        onClick={handleEnrichConfirmedCompetitorsForSelected}
-                        disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
-                      >
-                        {competitorBulkEnriching ? "Ставлю в очередь..." : "Загрузить медиа"}
-                      </button>
+                        <button
+                          type="button"
+                          className="pn-competitorSkuRun"
+                          onClick={handleConfirmSafeCompetitorsForSelected}
+                          disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                        >
+                          {competitorBulkConfirming ? "Подтверждаю..." : "Подтвердить точные"}
+                        </button>
+                        <button
+                          type="button"
+                          className="pn-competitorSkuRun"
+                          onClick={handleEnrichConfirmedCompetitorsForSelected}
+                          disabled={competitorBulkRunning || competitorBulkConfirming || competitorBulkEnriching || !selectedVisibleCompetitorIds.length}
+                        >
+                          {competitorBulkEnriching ? "Ставлю в очередь..." : "Загрузить медиа"}
+                        </button>
+                      </div>
                     </div>
                     <div className="pn-competitorSkuBulkBar">
                       <button type="button" className="pn-competitorSkuSelectAll" onClick={toggleVisibleCompetitorSelection} disabled={!filteredCompetitorIds.length}>
@@ -2099,7 +2233,7 @@ function ProductWorkspaceFeature() {
                         </span>
                         <span>SKU GT</span>
                         <span>Товар</span>
-                        <span>Статус</span>
+                        <span>Готовность</span>
                         <span>Действие</span>
                       </div>
                       {filteredCompetitorGroupItems.map((item) => {
@@ -2187,10 +2321,10 @@ function ProductWorkspaceFeature() {
                     <div className="productWorkspaceMediaGrid">
                       {media.map((item, index) => (
                         <article key={item.url} className={`productWorkspaceMediaCard${item.selected === false ? " isDisabled" : ""}`}>
-                          <img src={toRenderableMediaUrl(item.url)} alt={item.caption || product.title} loading="lazy" />
+                          <img src={mediaDisplayUrl(item)} alt={mediaDisplayCaption(item, index) || product.title} loading="lazy" />
                           <div className="productWorkspaceMediaMeta">
-                            <strong>{item.caption || `Фото ${index + 1}`}</strong>
-                            <span>{mediaSourceTitle(item)} · {mediaShortName(item.url)}</span>
+                            <strong>{mediaDisplayCaption(item, index)}</strong>
+                            <span>{mediaSourceTitle(item)}</span>
                             {isMediaWaitingForReview(item) ? (
                               <em>Нужна проверка перед выгрузкой</em>
                             ) : null}
@@ -2206,8 +2340,24 @@ function ProductWorkspaceFeature() {
                               <span>Выгружать</span>
                             </label>
                             <div className="productWorkspaceMediaOrder" aria-label="Порядок выгрузки">
-                              <Button className="productWorkspaceMediaOrderButton" disabled={mediaSaving || index === 0} onClick={() => moveMediaForExport(index, -1)}>Выше</Button>
-                              <Button className="productWorkspaceMediaOrderButton" disabled={mediaSaving || index === media.length - 1} onClick={() => moveMediaForExport(index, 1)}>Ниже</Button>
+                              <Button
+                                className="productWorkspaceMediaOrderButton"
+                                aria-label={`Поднять ${mediaDisplayCaption(item, index) || `фото ${index + 1}`} выше`}
+                                title="Выше"
+                                disabled={mediaSaving || index === 0}
+                                onClick={() => moveMediaForExport(index, -1)}
+                              >
+                                ↑
+                              </Button>
+                              <Button
+                                className="productWorkspaceMediaOrderButton"
+                                aria-label={`Опустить ${mediaDisplayCaption(item, index) || `фото ${index + 1}`} ниже`}
+                                title="Ниже"
+                                disabled={mediaSaving || index === media.length - 1}
+                                onClick={() => moveMediaForExport(index, 1)}
+                              >
+                                ↓
+                              </Button>
                             </div>
                           </div>
                         </article>
@@ -2217,15 +2367,13 @@ function ProductWorkspaceFeature() {
                 ) : (
                   <EmptyState
                     title="Медиа блокирует выгрузку"
-                    description="У SKU нет изображений в S3. Сначала подтверди карточку конкурента или добавь точную ссылку, затем загрузи параметры и медиа в карточку товара."
+                    description="У SKU нет изображений для выгрузки. Сначала подтвердите карточку конкурента или добавьте точную ссылку, затем загрузите параметры и медиа в карточку товара."
                     action={(
                       <div className="productWorkspaceEmptyActions">
                         <Button variant="primary" onClick={() => handleSectionSelect("competitors")}>
                           Найти карточки и загрузить медиа
                         </Button>
-                        <Button onClick={() => handleSectionSelect("validation")}>
-                          Проверить остальные блокеры
-                        </Button>
+                        <Link className="btn" to={orgPath(productExportHref(product.id))}>Проверить экспорт</Link>
                       </div>
                     )}
                   />
@@ -2293,7 +2441,7 @@ function ProductWorkspaceFeature() {
                         <tr>
                           <th>Товар</th>
                           <th>SKU GT</th>
-                          <th>SKU PIM</th>
+                          <th>Внутренний SKU</th>
                           <th>Статус</th>
                         </tr>
                       </thead>
@@ -2305,14 +2453,14 @@ function ProductWorkspaceFeature() {
                             </td>
                             <td>{normalizeText(variant.sku_gt) || "—"}</td>
                             <td>{normalizeText(variant.sku_pim) || "—"}</td>
-                            <td>{normalizeText(variant.status) || "draft"}</td>
+                            <td>{normalizeText(variant.status) || "черновик"}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <EmptyState title="Вариантов нет" description="SKU не входит в variant-family или другие SKU не добавлены." />
+                  <EmptyState title="Вариантов нет" description="SKU не входит в группу вариантов или другие SKU еще не добавлены." />
                 )}
               </Card>
             ) : null}
@@ -2321,7 +2469,7 @@ function ProductWorkspaceFeature() {
               <Card title="Новый процесс создания товара">
                 <ProductCreateFlowPreview />
                 <div className="productCockpitNextNote">
-                  Следующий slice: заменить текущую страницу создания товара на wizard с этими шагами и автоматическим переходом в cockpit после создания SKU.
+                  Следующий шаг: заменить текущую страницу создания товара мастером с этими шагами и автоматическим переходом в карточку после создания SKU.
                 </div>
               </Card>
             ) : null}
@@ -2338,6 +2486,30 @@ function ProductWorkspaceFeature() {
           />
         }
       />
+      {deleteConfirmOpen ? (
+        <div className="modalBackdrop" role="presentation" onMouseDown={() => !deleteSaving && setDeleteConfirmOpen(false)}>
+          <div className="modalCard modalCardCompact" role="dialog" aria-modal="true" aria-labelledby="delete-product-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div className="modalTitle" id="delete-product-title">Удалить товар</div>
+                <div className="modalSubtitle">
+                  SKU уйдет из каталога, групп, рабочих привязок и очереди выгрузки. Действие нельзя отменить.
+                </div>
+              </div>
+            </div>
+            <div className="productWorkspaceDeleteSummary">
+              <strong>{normalizeText(product.title) || normalizeText(product.sku_gt) || product.id}</strong>
+              <span>{normalizeText(product.sku_gt) || product.id}</span>
+            </div>
+            <div className="productWorkspaceModalActions">
+              <Button onClick={() => setDeleteConfirmOpen(false)} disabled={deleteSaving}>Отмена</Button>
+              <Button variant="danger" onClick={confirmDeleteProduct} disabled={deleteSaving}>
+                {deleteSaving ? "Удаляем..." : "Удалить товар"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

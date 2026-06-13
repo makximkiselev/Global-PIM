@@ -485,6 +485,39 @@ def admin_update_user(user_id: str, payload: UserReq, _auth=Depends(require_acti
     return {"ok": True, "user": _user_public(user, visible_roles)}
 
 
+@router.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: str, _auth=Depends(require_action("users.manage"))):
+    db = load_auth_db()
+    users = db.get("users") if isinstance(db.get("users"), dict) else {}
+    roles = db.get("roles") if isinstance(db.get("roles"), dict) else {}
+    user = users.get(user_id)
+    if not isinstance(user, dict):
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+    _assert_user_manageable(_auth, user, roles)
+    current_user_id = str((_auth.user or {}).get("id") or "")
+    if current_user_id and current_user_id == user_id:
+        raise HTTPException(status_code=400, detail="CANNOT_DELETE_SELF")
+    if _user_has_role_code(user, roles, "owner"):
+        owner_count = sum(
+            1
+            for row in users.values()
+            if isinstance(row, dict) and _user_has_role_code(row, roles, "owner")
+        )
+        if owner_count <= 1:
+            raise HTTPException(status_code=400, detail="LAST_OWNER_REQUIRED")
+    users.pop(user_id, None)
+    db["users"] = users
+    sessions = db.get("sessions") if isinstance(db.get("sessions"), dict) else {}
+    if sessions:
+        db["sessions"] = {
+            sid: session
+            for sid, session in sessions.items()
+            if not isinstance(session, dict) or str(session.get("user_id") or "") != user_id
+        }
+    save_auth_db(db)
+    return {"ok": True, "deleted": user_id}
+
+
 @router.post("/admin/users/{user_id}/reset-password")
 def admin_user_reset_password(user_id: str, payload: ResetPasswordReq, _auth=Depends(require_action("users.manage"))):
     db = load_auth_db()

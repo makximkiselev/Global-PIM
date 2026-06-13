@@ -11,275 +11,6 @@
   overflow-x: hidden;
 }
 
-.sourcesMappingHero,
-.sourcesMappingTopbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 48px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--line) 92%, transparent);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(var(--card-rgb),.80), rgba(var(--card-rgb),.58));
-  box-shadow: var(--shadow-soft);
-}
-
-.sourcesMappingHero {
-  width: 100%;
-  max-width: none;
-  margin: 0 0 2px;
-}
-
-.sourcesMappingHeroText {
-  min-width: 280px;
-  flex: 1 1 auto;
-}
-
-.sourcesMappingTopbarMain {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.sourcesMappingEyebrow {
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.sourcesMappingTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.sourcesMappingTitle {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1;
-  font-weight: 950;
-  letter-spacing: -0.04em;
-}
-
-.sourcesMappingSubtitle {
-  margin: 0;
-  max-width: 780px;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.25;
-  font-weight: 750;
-}
-
-.sourcesMappingCategoryChip {
-  display: inline-flex;
-  align-items: center;
-  max-width: 360px;
-  min-height: 26px;
-  border: 1px solid color-mix(in srgb, var(--brand) 20%, var(--line));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--brand) 8%, var(--panel));
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1;
-  padding: 0 10px;
-}
-
-.sourcesMappingSegmentTabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(116px, 1fr));
-  gap: 6px;
-  flex: 0 0 500px;
-}
-
-.sourcesMappingSegmentTab {
-  min-width: 0;
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--panel) 88%, var(--surface));
-  color: var(--muted);
-  cursor: pointer;
-  padding: 7px 9px;
-  text-align: left;
-  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
-}
-
-.sourcesMappingSegmentTab:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--brand) 26%, var(--line));
-}
-
-.sourcesMappingSegmentTab strong,
-.sourcesMappingSegmentTab span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sourcesMappingSegmentTab strong {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 950;
-  letter-spacing: -0.01em;
-}
-
-.sourcesMappingSegmentTab span {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.sourcesMappingSegmentTab.isActive {
-  border-color: color-mix(in srgb, var(--brand) 34%, var(--line));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--brand) 16%, transparent), color-mix(in srgb, var(--brand2) 12%, transparent)),
-    color-mix(in srgb, var(--panel) 94%, var(--surface));
-}
-
-.sourcesMappingTopbarMeta {
-  min-width: 280px;
-  max-width: 360px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(var(--bg-rgb),.22);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  box-shadow: var(--shadow-soft);
-}
-
-.sourcesMappingMetaLabel {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.sourcesMappingMetaValue {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.sourcesMappingTabs.page-tabs {
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 0;
-  margin: 0;
-}
-
-.sourcesMappingTabs .page-tab {
-  min-height: 34px;
-  padding: 8px 12px;
-  border-radius: 12px;
-}
-
-.sourcesMappingHeaderActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.sourcesMappingHeaderActions > span:not(.shellStatusBadge) {
-  min-height: 32px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(var(--card-rgb), 0.74);
-  color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.sourcesMappingCanvas {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-}
-
-.sourcesMappingContextCard {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
-  border: 1px solid rgba(var(--line-rgb), .72);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(var(--card-rgb), .96), rgba(var(--bg-rgb), .42));
-  box-shadow: var(--shadow-soft);
-}
-
-.sourcesMappingContextCard > div:first-child {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.sourcesMappingContextCard span {
-  color: var(--brand-strong);
-  font-size: 10px;
-  font-weight: 950;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.sourcesMappingContextCard strong {
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 950;
-}
-
-.sourcesMappingContextMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.sourcesMappingContextMeta b {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 88%, var(--surface));
-  color: var(--text-soft);
-  font-size: 11px;
-  font-weight: 850;
-  line-height: 1;
-}
-
-.sourcesMappingContextCard p {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: 13px;
-  line-height: 1.4;
-  font-weight: 760;
-}
-
-.sourcesMappingContextActions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .sourcesMappingCanvasIntro {
   display: none;
 }
@@ -1776,6 +1507,15 @@
   color: var(--text-soft);
 }
 
+.sourcesMappingPage .mm-modalSubtitle {
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.sourcesMappingPage .mm-modalFootnote {
+  margin-top: 10px;
+}
+
 .sourcesMappingPage .pg-modalBody .pg-addActions {
   border: 1px solid var(--line);
   background:
@@ -2009,21 +1749,6 @@
 }
 
 @media (max-width: 1240px) {
-  .sourcesMappingHero,
-  .sourcesMappingTopbar {
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .sourcesMappingSegmentTabs {
-    flex: 0 0 500px;
-    width: auto;
-  }
-
-  .sourcesMappingTopbarMeta {
-    max-width: none;
-  }
-
   .sourcesMappingPage .mm-kpis,
   .sourcesMappingPage .mm-attrWorkbenchGrid,
   .sourcesMappingPage .mm-competitorEnrichmentGrid,
@@ -2307,6 +2032,50 @@
   font-weight: 650;
 }
 
+.paramsDecisionSummary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 84%, var(--panel));
+  overflow: hidden;
+}
+
+.paramsDecisionSummary > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.paramsDecisionSummary > div:last-child {
+  border-right: 0;
+}
+
+.paramsDecisionSummary span {
+  display: block;
+  margin-bottom: 4px;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.paramsDecisionSummary strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .paramsParamMeta span,
 .paramsChip span {
   border-radius: 999px;
@@ -2573,6 +2342,24 @@
 
 .paramsParamCard.isAttention {
   border-color: color-mix(in srgb, var(--brand) 24%, var(--line));
+}
+
+.paramsParamCard.isUnmapped .paramsParamStatus strong {
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand-strong);
+}
+
+.paramsParamCard.isComplex .paramsParamStatus span {
+  border-color: color-mix(in srgb, #2563eb 26%, transparent);
+  background: color-mix(in srgb, #2563eb 8%, transparent);
+  color: color-mix(in srgb, #2563eb 72%, var(--text));
+}
+
+.paramsParamCard.isReady .paramsParamStatus strong {
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success-strong);
 }
 
 .paramsParamCard.isSelected {
@@ -3468,4 +3255,2766 @@
   .sourcesMappingPage .mm-competitorProcessNote em {
     white-space: normal;
   }
+}
+
+/* Mapping workspace 2026 */
+.shellContentBody .sourcesMappingPage{
+  gap:12px;
+}
+
+.shellContentBody .mm-card,
+.shellContentBody .mm-workbenchBlock,
+.shellContentBody .mm-treePane,
+.shellContentBody .mm-detailPane,
+.shellContentBody .mm-providerDetailCard,
+.shellContentBody .mm-categoryExtra,
+.shellContentBody .mm-paramPoolSidebar,
+.shellContentBody .mm-featureMappingPanel,
+.shellContentBody .paramsParamCard,
+.shellContentBody .paramsFocusPanel,
+.shellContentBody .paramsSidePanel{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .sourcesMappingCanvasSub,
+.shellContentBody .mm-workbenchSub,
+.shellContentBody .mm-note,
+.shellContentBody .mm-emptyText{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:700;
+}
+
+.shellContentBody .mm-workspace,
+.shellContentBody .mm-headWorkspace,
+.shellContentBody .mm-attrWorkbenchGrid,
+.shellContentBody .paramsFocusLayout{
+  gap:12px;
+}
+
+.shellContentBody .mm-kpis{
+  gap:10px;
+}
+
+.shellContentBody .mm-kpi{
+  border-radius:12px;
+  border-color:var(--line);
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .mm-paneHead,
+.shellContentBody .mm-providerDetailHead,
+.shellContentBody .mm-providerActionsBar,
+.shellContentBody .mm-featureMappingHead,
+.shellContentBody .mm-paramPoolHead{
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.shellContentBody .csb-treeNode,
+.shellContentBody .mm-competitorSuggestion,
+.shellContentBody .mm-competitorCandidate,
+.shellContentBody .mm-competitorSourceItem,
+.shellContentBody .paramsParamCard{
+  border-radius:10px;
+}
+
+.shellContentBody .csb-treeNode:hover,
+.shellContentBody .mm-competitorSuggestion:hover,
+.shellContentBody .mm-competitorCandidate:hover{
+  background:var(--surface-2);
+}
+
+.shellContentBody .paramsParamCard{
+  grid-template-columns:minmax(320px, .9fr) 120px minmax(460px, 1.1fr);
+  padding:12px;
+}
+
+.shellContentBody .paramsAlert,
+.shellContentBody .paramsMiniAlert,
+.shellContentBody .mm-competitorProcessNote,
+.shellContentBody .mm-competitorRunNotice{
+  border-radius:10px;
+  background:var(--surface-2);
+  border-color:var(--line);
+}
+
+@media (max-width: 1100px){
+  .shellContentBody .paramsParamCard,
+  .shellContentBody .paramsFocusLayout,
+  .shellContentBody .mm-workspace,
+  .shellContentBody .mm-headWorkspace,
+  .shellContentBody .mm-attrWorkbenchGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+/* Sources command table redesign */
+.sourcesCommandPage{
+  gap:12px;
+  padding-top:12px;
+}
+
+.sourcesCommandHeader,
+.sourcesCommandStepper,
+.sourcesCommandSummary,
+.sourcesCommandContextBar,
+.sourcesCommandWorkbench{
+  width:100%;
+  max-width:var(--page-content-width, min(1760px, calc(100vw - 48px)));
+  margin:0 auto;
+}
+
+.sourcesCommandHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  padding:0 0 12px;
+  border-bottom:1px solid var(--line);
+}
+
+.sourcesCommandTitleBlock{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+
+.sourcesCommandBreadcrumb{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+
+.sourcesCommandTitleRow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  min-width:0;
+}
+
+.sourcesCommandTitleRow h1{
+  margin:0;
+  color:var(--text);
+  font-size:28px;
+  line-height:1.05;
+  font-weight:800;
+  letter-spacing:0;
+}
+
+.sourcesCommandContext{
+  display:inline-flex;
+  align-items:center;
+  max-width:min(620px, 52vw);
+  min-height:30px;
+  padding:0 11px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--card);
+  color:var(--text-soft);
+  font-size:13px;
+  font-weight:700;
+  line-height:1;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandTitleBlock p{
+  margin:0;
+  max-width:880px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.42;
+  font-weight:650;
+}
+
+.sourcesCommandActions{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.sourcesCommandStatus{
+  min-height:32px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:0 10px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+
+.sourcesCommandStatus strong{
+  color:var(--text);
+  font-size:12px;
+  font-weight:850;
+}
+
+.sourcesCommandStepper{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:8px;
+}
+
+.sourcesCommandStep{
+  min-width:0;
+  min-height:64px;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  color:var(--text);
+  text-align:left;
+  text-decoration:none;
+  cursor:pointer;
+  box-shadow:none;
+  transition:border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.sourcesCommandStep:hover{
+  border-color:color-mix(in srgb, var(--brand) 24%, var(--line));
+  transform:translateY(-1px);
+}
+
+.sourcesCommandStep.isActive{
+  border-color:rgba(var(--brand-rgb), .28);
+  background:#eef2ff;
+}
+
+:root[data-theme="dark"] .sourcesCommandStep.isActive{
+  background:rgba(var(--brand-rgb), .16);
+}
+
+.sourcesCommandStep.isDone{
+  border-color:rgba(22, 163, 74, .24);
+  background:#ecfdf5;
+}
+
+:root[data-theme="dark"] .sourcesCommandStep.isDone{
+  background:rgba(22, 163, 74, .13);
+}
+
+.sourcesCommandStep.isDisabled{
+  opacity:.52;
+  cursor:not-allowed;
+  transform:none;
+}
+
+.sourcesCommandStepIndex{
+  width:28px;
+  height:28px;
+  flex:0 0 28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+  line-height:1;
+}
+
+.sourcesCommandStep.isActive .sourcesCommandStepIndex{
+  border-color:rgba(var(--brand-rgb), .24);
+  background:rgba(var(--brand-rgb), .10);
+  color:var(--brand);
+}
+
+.sourcesCommandStep.isDone .sourcesCommandStepIndex{
+  border-color:rgba(22, 163, 74, .24);
+  background:rgba(22, 163, 74, .10);
+  color:#15803d;
+}
+
+.sourcesCommandStepMain{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.sourcesCommandStepMain strong,
+.sourcesCommandStepMain span{
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandStepMain strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:800;
+  line-height:1.15;
+}
+
+.sourcesCommandStepMain span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:650;
+  line-height:1.25;
+}
+
+.sourcesCommandSummary{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.sourcesCommandMetric{
+  min-width:0;
+  min-height:66px;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  padding:10px 12px;
+  border-right:1px solid var(--line);
+  box-shadow:none;
+}
+
+.sourcesCommandMetric:last-child{
+  border-right:0;
+}
+
+.sourcesCommandMetric span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandMetric strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:15px;
+  font-weight:800;
+  line-height:1.15;
+}
+
+.sourcesCommandMetric p{
+  margin:0;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:650;
+  line-height:1.35;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+
+.sourcesCommandContextBar{
+  display:grid;
+  grid-template-columns:minmax(150px, .7fr) minmax(280px, 1.4fr) minmax(220px, 1fr);
+  gap:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.sourcesCommandContextItem{
+  min-width:0;
+  padding:9px 12px;
+  border-right:1px solid var(--line);
+}
+
+.sourcesCommandContextItem:last-child{
+  border-right:0;
+}
+
+.sourcesCommandContextItem span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.08em;
+  line-height:1.2;
+  text-transform:uppercase;
+}
+
+.sourcesCommandContextItem strong{
+  display:block;
+  min-width:0;
+  margin-top:3px;
+  overflow:hidden;
+  color:var(--text);
+  font-size:13px;
+  font-weight:850;
+  line-height:1.2;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandContextItem p{
+  min-width:0;
+  margin:3px 0 0;
+  overflow:hidden;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:650;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench{
+  min-height:min(720px, calc(100vh - 252px));
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+  overflow:hidden;
+}
+
+.sourcesCommandWorkbench .sourcesMappingCanvasIntro{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding:14px;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .paramsWorkspace{
+  gap:0;
+  padding:0;
+}
+
+.sourcesCommandWorkbench .paramsWorkspaceMain{
+  gap:0;
+}
+
+.sourcesCommandWorkbench .paramsCommand{
+  display:none;
+}
+
+.sourcesCommandWorkbench .paramsAlert{
+  margin:10px 12px 0;
+  border-radius:10px;
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .paramsInfoModelSetup{
+  margin:12px;
+  border-radius:12px;
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .sourcesStepBlocked{
+  min-height:144px;
+  align-items:center;
+}
+
+.sourcesCommandWorkbench .sourcesStepBlocked h3{
+  max-width:760px;
+}
+
+.sourcesCommandWorkbench .sourcesStepBlocked p{
+  max-width:860px;
+}
+
+.sourcesCommandWorkbench .paramsFocusLayout{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 420px;
+  gap:12px;
+  align-items:start;
+  padding:12px;
+}
+
+.sourcesCommandWorkbench .paramsQueueBlock,
+.sourcesCommandWorkbench .paramsInspector{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .paramsQueueBlock{
+  overflow:hidden;
+}
+
+.sourcesCommandWorkbench .paramsSectionHead{
+  margin:0;
+  padding:14px 14px 10px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .paramsSectionHead h3{
+  font-size:16px;
+  line-height:1.2;
+  letter-spacing:0;
+}
+
+.sourcesCommandWorkbench .paramsSectionHead p{
+  max-width:760px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .paramsDecisionSummary{
+  margin:0;
+  border:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .paramsDecisionSummary > div{
+  padding:11px 14px;
+  border-color:var(--line);
+}
+
+.sourcesCommandWorkbench .paramsDecisionSummary strong{
+  font-size:17px;
+}
+
+.sourcesCommandWorkbench .paramsQueueToolbar{
+  margin:0;
+  padding:12px 14px 10px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .paramsQueueToolbar input{
+  min-height:38px;
+  border-radius:10px;
+}
+
+.sourcesCommandWorkbench .paramsGroupRail{
+  margin:0;
+  padding:10px 14px 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .paramsQueueList{
+  padding:12px 14px 14px;
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .paramsMatrixHead{
+  min-width:1040px;
+  grid-template-columns:minmax(280px, .92fr) 116px minmax(420px, 1.08fr);
+  padding:0 10px 8px;
+}
+
+.sourcesCommandWorkbench .paramsQueueList .paramsParamCard + .paramsParamCard{
+  margin-top:0;
+}
+
+.sourcesCommandWorkbench .paramsParamCard{
+  min-width:1040px;
+  grid-template-columns:minmax(280px, .92fr) 116px minmax(420px, 1.08fr);
+  border-radius:0;
+  border-color:var(--line);
+  border-bottom:0;
+  background:var(--card);
+  box-shadow:none;
+  padding:10px;
+}
+
+.sourcesCommandWorkbench .paramsParamCard:first-of-type{
+  border-radius:10px 10px 0 0;
+}
+
+.sourcesCommandWorkbench .paramsParamCard:last-child{
+  border-bottom:1px solid var(--line);
+  border-radius:0 0 10px 10px;
+}
+
+.sourcesCommandWorkbench .paramsParamCard.isSelected{
+  position:relative;
+  z-index:1;
+  border-color:rgba(var(--brand-rgb),.36);
+  background:#eef2ff;
+}
+
+:root[data-theme="dark"] .sourcesCommandWorkbench .paramsParamCard.isSelected{
+  background:rgba(var(--brand-rgb),.14);
+}
+
+.sourcesCommandWorkbench .paramsParamHead{
+  margin-bottom:6px;
+}
+
+.sourcesCommandWorkbench .paramsParamHead strong{
+  font-size:13px;
+}
+
+.sourcesCommandWorkbench .paramsParamStatus{
+  gap:6px;
+}
+
+.sourcesCommandWorkbench .paramsProviderCell{
+  border-radius:8px;
+  background:var(--surface-2);
+  padding:7px;
+}
+
+.sourcesCommandWorkbench .paramsProviderBindings b{
+  max-width:210px;
+}
+
+.sourcesCommandWorkbench .paramsProviderOrigins,
+.sourcesCommandWorkbench .paramsProviderKinds{
+  margin:2px 0 4px;
+}
+
+.sourcesCommandWorkbench .paramsInspector{
+  position:sticky;
+  top:12px;
+  max-height:calc(100vh - 148px);
+  overflow:auto;
+  padding:14px;
+}
+
+.sourcesCommandWorkbench .paramsInspectorHead{
+  align-items:flex-start;
+  gap:10px;
+}
+
+.sourcesCommandWorkbench .paramsInspectorHead h3{
+  font-size:18px;
+  line-height:1.2;
+  letter-spacing:0;
+}
+
+.sourcesCommandWorkbench .mm-wrap,
+.sourcesCommandWorkbench .mm-page{
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-page{
+  gap:0;
+}
+
+.sourcesCommandWorkbench .mm-summaryCard{
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .sm-valuesPage{
+  padding:0;
+  min-width:0;
+  --values-line:rgba(var(--line-rgb),.12);
+}
+
+.sourcesCommandWorkbench .sm-valuesLayout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  min-height:min(720px, calc(100vh - 252px));
+  border:0;
+  border-radius:0;
+  overflow:hidden;
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .sm-valuesLayout .categorySidebar{
+  width:min(430px, calc(100vw - 48px));
+  max-height:calc(100vh - 48px);
+}
+
+.sourcesCommandWorkbench .sm-valuesHead{
+  display:none !important;
+}
+
+.sourcesCommandWorkbench .sm-valuesQueueHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px 14px 10px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .sm-valuesQueueHeader h3{
+  margin:0;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.2;
+  font-weight:850;
+  letter-spacing:0;
+}
+
+.sourcesCommandWorkbench .sm-valuesQueueHeader p{
+  max-width:820px;
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .sm-valuesQueueHeader .btn{
+  flex:0 0 auto;
+}
+
+.sourcesCommandWorkbench .sm-valuesSummary{
+  display:grid;
+  grid-template-columns:minmax(220px, 1.3fr) repeat(4, minmax(110px, .75fr));
+  gap:0;
+  min-height:64px;
+  padding:0;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .sm-valuesSummary > div{
+  min-width:0;
+  padding:11px 14px;
+  border-right:1px solid var(--line);
+}
+
+.sourcesCommandWorkbench .sm-valuesSummary > div:last-child{
+  border-right:0;
+}
+
+.sourcesCommandWorkbench .sm-valuesSummary span{
+  display:block;
+  margin-bottom:4px;
+  overflow:hidden;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-overflow:ellipsis;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .sm-valuesSummary strong{
+  display:block;
+  overflow:hidden;
+  color:var(--text);
+  font-size:18px;
+  font-weight:850;
+  line-height:1.12;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .sm-valuesSummary small{
+  display:block;
+  margin-top:4px;
+  overflow:hidden;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:650;
+  line-height:1.25;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .sm-valuesWorkbench{
+  display:grid;
+  grid-template-columns:390px minmax(0,1fr);
+  min-height:0;
+}
+
+.sourcesCommandWorkbench .sm-valuesFields{
+  min-width:0;
+  border-right:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .sm-valuesToolbar{
+  position:sticky;
+  top:0;
+  z-index:2;
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--surface-2) 92%, var(--card));
+}
+
+.sourcesCommandWorkbench .sm-valuesToolbar input{
+  width:100%;
+  min-height:38px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  color:var(--text);
+  padding:0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:700;
+}
+
+.sourcesCommandWorkbench .sm-valuesScopeTabs{
+  display:flex;
+  flex-wrap:nowrap;
+  gap:6px;
+  overflow:auto;
+  padding-bottom:2px;
+}
+
+.sourcesCommandWorkbench .sm-valuesScopeTabs .mm-tab{
+  min-height:32px;
+  border-radius:999px;
+  border-color:var(--line);
+  background:var(--card);
+  color:var(--text-soft);
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .sm-valuesScopeTabs .mm-tab.active{
+  border-color:rgba(var(--brand-rgb),.22);
+  background:#eef2ff;
+  color:var(--brand);
+}
+
+:root[data-theme="dark"] .sourcesCommandWorkbench .sm-valuesScopeTabs .mm-tab.active{
+  background:rgba(var(--brand-rgb),.16);
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldList{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  padding:12px;
+  overflow:auto;
+  max-height:calc(100vh - 346px);
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldItem{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  width:100%;
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-bottom:0;
+  border-radius:0;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldItem:first-of-type{
+  border-radius:10px 10px 0 0;
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldItem:last-child{
+  border-bottom:1px solid var(--line);
+  border-radius:0 0 10px 10px;
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldItem:hover{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:color-mix(in srgb, var(--card) 88%, var(--surface-2));
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldItem.is-active{
+  position:relative;
+  z-index:1;
+  border-color:rgba(var(--brand-rgb),.38);
+  background:#eef2ff;
+  box-shadow:none;
+}
+
+:root[data-theme="dark"] .sourcesCommandWorkbench .sm-valuesFieldItem.is-active{
+  background:rgba(var(--brand-rgb),.14);
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldTop strong{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.3;
+}
+
+.sourcesCommandWorkbench .sm-valuesPill,
+.sourcesCommandWorkbench .sm-valuesProviderPill,
+.sourcesCommandWorkbench .sm-valuesState{
+  border-color:var(--line);
+  background:var(--surface-2);
+  color:var(--text-soft);
+}
+
+.sourcesCommandWorkbench .sm-valuesState.is-ok,
+.sourcesCommandWorkbench .sm-valuesProviderPill.is-ready{
+  border-color:rgba(34,197,94,.24);
+  background:rgba(34,197,94,.1);
+  color:#16753b;
+}
+
+.sourcesCommandWorkbench .sm-valuesState.is-warn,
+.sourcesCommandWorkbench .sm-valuesProviderPill.is-gap{
+  border-color:rgba(var(--brand-rgb),.28);
+  background:rgba(var(--brand-rgb),.1);
+  color:var(--brand-strong);
+}
+
+.sourcesCommandWorkbench .sm-valuesState.is-muted,
+.sourcesCommandWorkbench .sm-valuesProviderPill.is-empty{
+  border-color:var(--line);
+  background:var(--card);
+  color:var(--text-soft);
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldMeta,
+.sourcesCommandWorkbench .sm-valuesProviderRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.sourcesCommandWorkbench .sm-valuesFieldMeta{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+}
+
+.sourcesCommandWorkbench .sm-valuesEditor{
+  min-width:0;
+  max-height:calc(100vh - 346px);
+  overflow:auto;
+  padding:12px;
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .sm-valuesRouteCard,
+.sourcesCommandWorkbench .sm-valuesEvidencePanel{
+  margin-bottom:10px;
+}
+
+.sourcesCommandWorkbench .sm-valuesRouteCard,
+.sourcesCommandWorkbench .sm-valuesDecisionPanel,
+.sourcesCommandWorkbench .sm-valuesInlineMap,
+.sourcesCommandWorkbench .sm-valuesSourceEvidence{
+  border-radius:12px;
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .sm-valuesEmpty{
+  border-color:var(--line);
+  border-radius:12px;
+  background:var(--surface-2);
+  color:var(--text-soft);
+}
+
+@media (max-width: 1280px){
+  .sourcesCommandSummary,
+  .sourcesCommandContextBar{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .paramsDecisionSummary,
+  .sourcesCommandWorkbench .paramsDecisionSummary{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .paramsDecisionSummary > div:nth-child(2n),
+  .sourcesCommandWorkbench .paramsDecisionSummary > div:nth-child(2n){
+    border-right:0;
+  }
+
+  .paramsDecisionSummary > div:nth-child(n + 3),
+  .sourcesCommandWorkbench .paramsDecisionSummary > div:nth-child(n + 3){
+    border-top:1px solid var(--line);
+  }
+
+  .sourcesCommandMetric:nth-child(2n){
+    border-right:0;
+  }
+
+  .sourcesCommandMetric:nth-child(n + 3){
+    border-top:1px solid var(--line);
+  }
+
+  .sourcesCommandContextItem:nth-child(2n){
+    border-right:0;
+  }
+
+  .sourcesCommandContextItem:nth-child(n + 3){
+    border-top:1px solid var(--line);
+  }
+
+  .sourcesCommandWorkbench .paramsFocusLayout{
+    grid-template-columns:minmax(0, 1fr);
+  }
+
+  .sourcesCommandWorkbench .sm-valuesWorkbench{
+    grid-template-columns:minmax(0, 1fr);
+  }
+
+  .sourcesCommandWorkbench .sm-valuesSummary{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .sourcesCommandWorkbench .sm-valuesSummary > div:nth-child(2n){
+    border-right:0;
+  }
+
+  .sourcesCommandWorkbench .sm-valuesSummary > div:nth-child(n + 3){
+    border-top:1px solid var(--line);
+  }
+
+  .sourcesCommandWorkbench .sm-valuesFields{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .sourcesCommandWorkbench .paramsInspector{
+    position:relative;
+    top:auto;
+    max-height:none;
+  }
+}
+
+@media (max-width: 900px){
+  .sourcesCommandHeader{
+    flex-direction:column;
+  }
+
+  .sourcesCommandWorkbench .sm-valuesQueueHeader{
+    flex-direction:column;
+  }
+
+  .sourcesCommandWorkbench .sm-valuesSummary{
+    grid-template-columns:1fr;
+  }
+
+  .sourcesCommandWorkbench .sm-valuesSummary > div{
+    border-right:0;
+  }
+
+  .sourcesCommandWorkbench .sm-valuesSummary > div:nth-child(n + 2){
+    border-top:1px solid var(--line);
+  }
+
+  .paramsDecisionSummary,
+  .sourcesCommandWorkbench .paramsDecisionSummary{
+    grid-template-columns:1fr;
+  }
+
+  .paramsDecisionSummary > div,
+  .sourcesCommandWorkbench .paramsDecisionSummary > div{
+    border-right:0;
+  }
+
+  .paramsDecisionSummary > div:nth-child(n + 2),
+  .sourcesCommandWorkbench .paramsDecisionSummary > div:nth-child(n + 2){
+    border-top:1px solid var(--line);
+  }
+
+  .sourcesCommandActions{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  .sourcesCommandStepper,
+  .sourcesCommandSummary,
+  .sourcesCommandContextBar{
+    grid-template-columns:1fr;
+  }
+
+  .sourcesCommandPage .sourcesCommandStepper{
+    display:flex;
+    grid-template-columns:none;
+    overflow-x:auto;
+    scroll-snap-type:x proximity;
+  }
+
+  .sourcesCommandPage .sourcesCommandStep{
+    flex:0 0 168px;
+    min-width:168px;
+    scroll-snap-align:start;
+  }
+
+  .sourcesCommandPage .sourcesCommandStepMain strong{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    line-height:1.15;
+  }
+
+  .sourcesCommandMetric,
+  .sourcesCommandMetric:nth-child(2n),
+  .sourcesCommandContextItem,
+  .sourcesCommandContextItem:nth-child(2n){
+    border-right:0;
+  }
+
+  .sourcesCommandMetric:nth-child(n + 2),
+  .sourcesCommandContextItem:nth-child(n + 2){
+    border-top:1px solid var(--line);
+  }
+
+  .sourcesCommandContext{
+    max-width:100%;
+  }
+}
+
+/* Sources tab rebuild: flatter operational workspace */
+.sourcesCommandPage{
+  gap:8px;
+  padding:10px 14px 22px;
+}
+
+.sourcesCommandPage .sourcesCommandHeader{
+  min-height:58px;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 12px;
+  gap:12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.sourcesCommandPage .sourcesCommandTitleRow h1{
+  font-size:22px;
+  line-height:1.08;
+  font-weight:900;
+  letter-spacing:0;
+}
+
+.sourcesCommandPage .sourcesCommandBreadcrumb{
+  display:none;
+}
+
+.sourcesCommandPage .sourcesCommandContext{
+  min-height:26px;
+  max-width:min(560px, 46vw);
+  padding:3px 9px;
+  border-radius:999px;
+  font-size:12px;
+}
+
+.sourcesCommandPage .sourcesCommandTitleBlock p{
+  display:none;
+  max-width:760px;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.sourcesCommandPage .sourcesCommandStatus{
+  display:none;
+}
+
+.sourcesCommandPage .sourcesCommandActions .btn{
+  min-height:34px;
+  padding:0 12px;
+  border-radius:9px;
+  font-size:13px;
+}
+
+.sourcesCommandPage .sourcesCommandStepper{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:0;
+  width:100%;
+  max-width:100%;
+  margin:0 auto;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+
+.sourcesCommandPage .sourcesCommandStepper::-webkit-scrollbar{
+  display:none;
+}
+
+.sourcesCommandPage .sourcesCommandStep{
+  min-height:46px;
+  align-items:center;
+  justify-content:flex-start;
+  flex:1 1 auto;
+  min-width:0;
+  width:auto;
+  max-width:none;
+  border-radius:0;
+  padding:8px 10px;
+  gap:8px;
+  border-color:transparent;
+  border-right:1px solid var(--line);
+  background:transparent;
+}
+
+.sourcesCommandPage .sourcesCommandStep:last-child{
+  border-right:0;
+}
+
+.sourcesCommandPage .sourcesCommandStepIndex{
+  width:22px;
+  height:22px;
+  flex-basis:22px;
+  border-radius:7px;
+  font-size:10px;
+}
+
+.sourcesCommandPage .sourcesCommandStepMain{
+  gap:0;
+  min-width:0;
+}
+
+.sourcesCommandPage .sourcesCommandStepMain strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+}
+
+.sourcesCommandPage .sourcesCommandStepMain span{
+  display:none;
+  margin-top:2px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.25;
+}
+
+.sourcesCommandPage .sourcesCommandSummary{
+  display:none;
+}
+
+.sourcesCommandPage .sourcesCommandContextBar{
+  display:none;
+  grid-template-columns:minmax(130px, .6fr) minmax(260px, 1.6fr) minmax(220px, 1fr);
+  border-radius:12px;
+  background:var(--card);
+}
+
+.sourcesCommandPage .sourcesCommandContextItem{
+  min-height:58px;
+  padding:10px 12px;
+}
+
+.sourcesCommandPage .sourcesCommandContextItem strong{
+  font-size:14px;
+}
+
+.sourcesCommandPage .sourcesCommandContextItem p{
+  font-size:12px;
+}
+
+.sourcesCommandPage .sourcesCommandMetric{
+  min-height:52px;
+  padding:8px 11px;
+}
+
+.sourcesCommandPage .sourcesCommandMetric p{
+  -webkit-line-clamp:1;
+}
+
+.sourcesCommandWorkbench{
+  border:0;
+  border-radius:0;
+  background:transparent;
+  overflow:visible;
+}
+
+.sourcesCommandWorkbench .mm-wrap,
+.sourcesCommandWorkbench .mm-page,
+.sourcesCommandWorkbench .mm-card,
+.sourcesCommandWorkbench .mm-workbenchBlock{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .mm-card{
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-workspace{
+  display:grid;
+  grid-template-columns:300px minmax(0,1fr) !important;
+  gap:8px;
+  min-height:min(760px, calc(100vh - 132px));
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared.csb-shell{
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+  padding:8px;
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared .csb-head{
+  margin-bottom:8px;
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared .csb-hint{
+  display:none !important;
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared .csb-toolbar{
+  gap:6px;
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared .csb-search{
+  min-height:34px;
+}
+
+.sourcesCommandWorkbench .mm-treePaneShared .csb-treeNode{
+  min-height:26px;
+  padding-block:4px;
+}
+
+.sourcesCommandWorkbench .mm-detailPane{
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+  padding:0;
+  overflow:hidden;
+  min-height:0;
+}
+
+.sourcesCommandWorkbench .mm-detailContent,
+.sourcesCommandWorkbench .mm-detailContent.hasExtra{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr);
+  gap:0;
+}
+
+.sourcesCommandWorkbench .mm-providerStack,
+.sourcesCommandWorkbench .mm-detailContent.hasExtra .mm-providerStack{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr);
+  gap:0;
+}
+
+.sourcesCommandWorkbench .mm-providerTableHead{
+  display:grid;
+  grid-template-columns:minmax(150px, .24fr) minmax(0, 1fr) minmax(156px, auto);
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--surface-2) 78%, var(--card));
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.04em;
+  line-height:1;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-providerTableHead span{
+  min-width:0;
+  padding:9px 12px;
+  border-right:1px solid var(--line);
+}
+
+.sourcesCommandWorkbench .mm-providerTableHead span:last-child{
+  border-right:0;
+  text-align:right;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+  padding:10px 12px;
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel.isCompetitorMode{
+  display:none;
+}
+
+/* Competitor matching workbench, tuned after production visual QA. */
+.sourcesCommandWorkbench .mm-competitorSourceCard{
+  padding:0;
+  overflow:hidden;
+}
+
+.sourcesCommandWorkbench .mm-competitorHeaderQueue{
+  padding:14px 16px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorHeaderQueue .mm-lineProvider{
+  font-size:16px;
+  line-height:1.1;
+}
+
+.sourcesCommandWorkbench .mm-competitorHeaderQueue .mm-providerHint{
+  max-width:640px;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueWorkspace{
+  min-height:0;
+  background:var(--surface);
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary{
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary > div{
+  padding:10px 14px;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary strong{
+  font-size:16px;
+  font-weight:900;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueLayout{
+  grid-template-columns:minmax(420px, .86fr) minmax(520px, 1.14fr);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuQueuePane{
+  gap:14px;
+  padding:14px;
+  background:var(--surface);
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuCard{
+  gap:10px;
+  border-radius:8px;
+  box-shadow:none;
+}
+
+.sourcesCommandWorkbench .mm-competitorPanelLabel{
+  color:var(--muted);
+  letter-spacing:.06em;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuCard > strong{
+  font-size:18px;
+  line-height:1;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuCard > p{
+  color:var(--text);
+  font-size:13px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPicker input{
+  border-radius:8px;
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList{
+  max-height:284px;
+  border-radius:8px;
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button{
+  grid-template-columns:62px minmax(0,1fr);
+  min-height:42px;
+  padding:8px 10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button.isActive{
+  background:rgba(var(--brand-rgb),.10);
+  box-shadow:inset 3px 0 0 var(--brand);
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button strong{
+  font-weight:800;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceQueue{
+  gap:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow{
+  min-height:64px;
+  border-radius:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow b{
+  max-width:none;
+  text-align:left;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateQueuePane{
+  border-left:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead{
+  min-height:64px;
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead strong{
+  font-size:16px;
+  line-height:1.1;
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead span{
+  max-width:360px;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateTable{
+  min-height:280px;
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateHeader{
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateRow{
+  min-height:68px;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueEmpty{
+  min-height:226px;
+  justify-content:center;
+  margin:16px;
+  border-radius:8px;
+  background:var(--surface-2);
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueEmpty .btn{
+  margin-top:4px;
+}
+
+@media (max-width:1280px){
+  .sourcesCommandWorkbench .mm-competitorCandidateQueuePane{
+    border-left:0;
+  }
+}
+
+/* Mobile information architecture: task first, catalog second. */
+@media (max-width: 900px){
+  .sourcesCommandWorkbench .mm-workspace{
+    display:flex !important;
+    flex-direction:column;
+    gap:10px;
+    min-height:0;
+  }
+
+  .sourcesCommandWorkbench .mm-detailPane{
+    order:1;
+  }
+
+  .sourcesCommandWorkbench .mm-treePane{
+    order:2;
+  }
+
+  .sourcesCommandWorkbench .mm-treePaneShared.csb-shell{
+    position:relative;
+    top:auto;
+    max-height:420px;
+  }
+
+  .sourcesCommandWorkbench .csb-body{
+    max-height:300px;
+  }
+
+  .sourcesMappingPage .mm-competitorHeader,
+  .sourcesMappingPage .mm-competitorHeaderQueue{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    align-items:start;
+    gap:12px;
+  }
+
+  .sourcesMappingPage .mm-competitorTitleRow{
+    flex-wrap:wrap;
+    align-items:flex-start;
+    gap:8px;
+  }
+
+  .sourcesMappingPage .mm-providerHint{
+    max-width:none;
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+  }
+
+  .sourcesMappingPage .mm-competitorActions{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .sourcesMappingPage .mm-competitorActions .btn,
+  .sourcesMappingPage .mm-competitorActions a,
+  .sourcesMappingPage .mm-competitorActions button{
+    width:100%;
+    justify-content:center;
+  }
+}
+
+/* Final mobile route-stepper override: show the full workflow without hidden horizontal scroll. */
+@media (max-width: 900px){
+  .sourcesCommandPage .sourcesCommandStepper{
+    display:grid !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:6px !important;
+    overflow:visible !important;
+    padding:6px !important;
+    border-radius:12px !important;
+    scroll-snap-type:none !important;
+  }
+
+  .sourcesCommandPage .sourcesCommandStep{
+    flex:initial !important;
+    min-width:0 !important;
+    width:100% !important;
+    min-height:42px !important;
+    border:1px solid var(--line) !important;
+    border-radius:10px !important;
+    padding:8px !important;
+    scroll-snap-align:none !important;
+  }
+
+  .sourcesCommandPage .sourcesCommandStep:last-child{
+    grid-column:1 / -1;
+  }
+
+  .sourcesCommandPage .sourcesCommandStepMain strong{
+    overflow:visible !important;
+    text-overflow:clip !important;
+    white-space:normal !important;
+  }
+}
+
+@media (max-width: 700px){
+  .sourcesCommandPage,
+  .sourcesCommandWorkbench,
+  .sourcesCommandWorkbench .paramsWorkspace,
+  .sourcesCommandWorkbench .paramsWorkspaceMain,
+  .sourcesCommandWorkbench .paramsInfoModelSetup,
+  .sourcesCommandWorkbench .sourcesStepBlocked{
+    min-width:0;
+    width:100%;
+    max-width:100%;
+  }
+
+  .sourcesCommandWorkbench .paramsInfoModelSetup,
+  .sourcesCommandWorkbench .sourcesStepBlocked{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    justify-content:flex-start;
+    gap:14px;
+    padding:18px;
+    border-radius:16px;
+  }
+
+  .sourcesCommandWorkbench .paramsInfoModelSetup h3,
+  .sourcesCommandWorkbench .sourcesStepBlocked h3{
+    max-width:100%;
+    font-size:24px;
+    line-height:1.08;
+    letter-spacing:0;
+  }
+
+  .sourcesCommandWorkbench .paramsInfoModelSetup p,
+  .sourcesCommandWorkbench .sourcesStepBlocked p{
+    max-width:100%;
+    font-size:14px;
+    line-height:1.42;
+  }
+
+  .sourcesCommandWorkbench .paramsInfoModelSetupActions{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  .sourcesCommandWorkbench .paramsInfoModelSetupActions .btn{
+    width:100%;
+    justify-content:center;
+  }
+}
+
+@media (max-width: 900px){
+  .sourcesCommandPage .sourcesCommandStepper{
+    display:flex;
+    grid-template-columns:none;
+    overflow-x:auto;
+    scroll-snap-type:x proximity;
+  }
+
+  .sourcesCommandPage .sourcesCommandStep{
+    flex:0 0 168px;
+    min-width:168px;
+    width:168px;
+    scroll-snap-align:start;
+  }
+
+  .sourcesCommandPage .sourcesCommandStepMain{
+    min-width:0;
+  }
+
+  .sourcesCommandPage .sourcesCommandStepMain strong{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    line-height:1.15;
+  }
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel.isCompetitorMode strong{
+  font-size:17px;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel.isCompetitorMode p{
+  max-width:840px;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel span{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+  line-height:1.2;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel strong{
+  display:block;
+  margin-top:3px;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.2;
+  letter-spacing:0;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel p{
+  max-width:720px;
+  margin:3px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:650;
+  line-height:1.32;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionBtns{
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionBtns .btn{
+  min-height:34px;
+  border-radius:8px;
+}
+
+.sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard){
+  display:grid;
+  grid-template-columns:minmax(150px, .24fr) minmax(0, 1fr) auto;
+  align-items:stretch;
+  gap:0;
+  min-height:64px;
+  border:0;
+  border-right:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:var(--card);
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard):nth-child(2n){
+  border-right:0;
+}
+
+.sourcesCommandWorkbench .mm-providerDetailHead{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  padding:10px 12px;
+  border:0;
+  border-right:1px solid var(--line);
+  background:transparent;
+}
+
+.sourcesCommandWorkbench .mm-providerActionsBar{
+  order:3;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  min-width:156px;
+  padding:10px 12px;
+  border:0;
+  border-left:1px solid var(--line);
+  background:transparent;
+}
+
+.sourcesCommandWorkbench .mm-providerLead{
+  min-width:0;
+}
+
+.sourcesCommandWorkbench .mm-lineProvider{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.sourcesCommandWorkbench .mm-providerState{
+  width:max-content;
+  margin-top:6px;
+}
+
+.sourcesCommandWorkbench .mm-providerActionBtns{
+  justify-content:flex-end;
+}
+
+.sourcesCommandWorkbench .mm-providerActionBtns .btn{
+  min-height:32px;
+  border-radius:8px;
+}
+
+.sourcesCommandWorkbench .mm-lineContent{
+  order:2;
+  min-width:0;
+  min-height:0;
+}
+
+.sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-lineContent{
+  padding:10px 12px;
+}
+
+.sourcesCommandWorkbench .mm-providerPath{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.sourcesCommandWorkbench .mm-breadcrumbs{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:680;
+}
+
+.sourcesCommandWorkbench .mm-lineEmpty{
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  padding:8px 10px;
+  border:1px dashed var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-lineEmpty{
+  border:1px dashed var(--line);
+  border-radius:8px;
+  background:var(--surface-2);
+  padding:10px;
+}
+
+.sourcesCommandWorkbench .mm-treeMappingCount{
+  min-width:24px;
+  width:24px;
+  padding-inline:0;
+}
+
+.sourcesCommandWorkbench .mm-treeMappingCount.is-empty{
+  color:color-mix(in srgb, var(--muted) 58%, transparent);
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceCard{
+  grid-column:1 / -1 !important;
+  border:0;
+  border-radius:0;
+  background:var(--card) !important;
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceCard .mm-competitorHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:58px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceCard .mm-providerHint{
+  color:var(--text-soft);
+}
+
+.sourcesCommandWorkbench .mm-competitorTitleRow{
+  gap:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceCard .mm-lineProvider{
+  font-size:15px;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.sourcesCommandWorkbench .mm-providerHint{
+  max-width:720px;
+  margin-top:3px;
+  font-size:11px;
+  line-height:1.25;
+}
+
+.sourcesCommandWorkbench .mm-competitorActions .btn{
+  min-height:34px;
+  border-radius:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceCard .mm-lineContent{
+  margin:0;
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorWorkspace2026{
+  display:grid;
+  grid-template-columns:minmax(420px,.95fr) minmax(440px,1.05fr);
+  min-height:300px;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueWorkspace{
+  display:flex;
+  flex-direction:column;
+  min-height:min(560px, calc(100vh - 280px));
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary > div{
+  min-width:0;
+  padding:9px 12px;
+  border-right:1px solid var(--line);
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary > div:last-child{
+  border-right:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary span{
+  display:block;
+  margin-bottom:3px;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueSummary strong{
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  color:var(--text);
+  font-size:15px;
+  font-weight:850;
+  line-height:1.15;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueLayout{
+  display:grid;
+  grid-template-columns:minmax(420px, .9fr) minmax(0, 1.1fr);
+  min-height:0;
+  flex:1;
+}
+
+.sourcesCommandWorkbench .mm-competitorControlPane{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-width:0;
+  padding:14px;
+  border-right:1px solid var(--line);
+  background:#fbfbfc;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuQueuePane{
+  gap:10px;
+  padding:12px;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidatePane{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:0;
+  padding:12px;
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateQueuePane{
+  gap:0;
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuCard{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  padding:12px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuCard strong{
+  color:var(--text);
+  font-size:14px;
+  font-weight:850;
+  line-height:1.2;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuCard p{
+  margin:0;
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:650;
+  line-height:1.35;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPicker{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPicker input{
+  width:100%;
+  min-height:38px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  color:var(--text);
+  padding:0 10px;
+  font:inherit;
+  font-size:12px;
+  font-weight:750;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPicker input:focus{
+  outline:2px solid rgba(var(--brand-rgb),.18);
+  border-color:rgba(var(--brand-rgb),.42);
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  max-height:230px;
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button{
+  display:grid;
+  grid-template-columns:64px minmax(0,1fr);
+  gap:10px;
+  align-items:center;
+  width:100%;
+  border:1px solid transparent;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:transparent;
+  color:var(--text);
+  padding:9px 10px;
+  text-align:left;
+  cursor:pointer;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button:last-child{
+  border-bottom:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button:hover,
+.sourcesCommandWorkbench .mm-competitorSkuList button.isActive{
+  border-color:transparent;
+  background:#eef2ff;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+  line-height:1.25;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuList button strong{
+  min-width:0;
+  color:var(--text);
+  font-size:12px;
+  font-weight:750;
+  line-height:1.25;
+  white-space:normal;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuEmpty{
+  border:1px dashed var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  color:var(--text-soft);
+  padding:12px;
+  font-size:12px;
+  font-weight:700;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuListHint{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.35;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceQueue{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorPaneHead{
+  grid-column:1 / -1;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  padding:0 2px 2px;
+}
+
+.sourcesCommandWorkbench .mm-competitorPaneHead strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorPaneHead span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .mm-competitorProcessNote{
+  display:grid;
+  grid-template-columns:max-content minmax(0,1fr);
+  gap:4px 10px;
+  align-items:center;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorProcessNote span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorProcessNote strong{
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorProcessNote em{
+  grid-column:2;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:650;
+  white-space:normal;
+}
+
+.sourcesCommandWorkbench .mm-competitorWorkbench{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  padding:10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPanel{
+  gap:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorPanelLabel{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPanel strong{
+  font-size:13px;
+  font-weight:800;
+  white-space:normal;
+}
+
+.sourcesCommandWorkbench .mm-competitorSkuPanel p{
+  margin-top:3px;
+  font-size:11px;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceStrip,
+.sourcesCommandWorkbench .mm-competitorSourceDiagnostics{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:6px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceItem,
+.sourcesCommandWorkbench .mm-competitorSourceDiagnostic{
+  border-radius:8px;
+  background:var(--surface-2);
+  padding:8px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceItem{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow{
+  align-items:stretch;
+  gap:8px;
+  flex-direction:column;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  min-height:58px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow div{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow span{
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:650;
+  line-height:1.35;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow b{
+  align-self:flex-start;
+  flex:0 0 auto;
+  max-width:100%;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--text-soft);
+  padding:4px 8px;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.1;
+  text-align:right;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow.is-linked b{
+  border-color:rgba(34,197,94,.24);
+  background:rgba(34,197,94,.10);
+  color:#16753b;
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceRow.is-review b{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:rgba(var(--brand-rgb),.10);
+  color:var(--brand-strong);
+}
+
+.sourcesCommandWorkbench .mm-competitorSourceItem > span,
+.sourcesCommandWorkbench .mm-competitorMiniStats span{
+  border:0;
+  background:transparent;
+  padding:0;
+  font-size:10px;
+  text-transform:none;
+}
+
+.sourcesCommandWorkbench .mm-competitorMiniStats{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.sourcesCommandWorkbench .mm-competitorRunNotice{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  padding:10px 12px;
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin:0;
+  min-height:56px;
+  padding:12px 14px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead strong{
+  font-size:15px;
+  font-weight:800;
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead > div{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorSuggestionsHead span{
+  max-width:460px;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:650;
+  line-height:1.35;
+  text-align:right;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateList{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  min-height:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateTable{
+  overflow:auto;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateHeader{
+  position:sticky;
+  top:0;
+  z-index:1;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 58px max-content;
+  align-items:center;
+  gap:12px;
+  min-height:34px;
+  padding:0 14px;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateHeader span:nth-child(2){
+  text-align:right;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateHeader span:nth-child(3){
+  min-width:226px;
+  text-align:right;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidate{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) max-content;
+  gap:10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  padding:10px;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateRow{
+  grid-template-columns:minmax(0,1fr) 58px max-content;
+  align-items:center;
+  gap:12px;
+  border:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  min-height:64px;
+  padding:9px 14px;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateMain{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidate b{
+  color:var(--muted);
+  font-size:10px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidate strong{
+  font-size:13px;
+  font-weight:750;
+  line-height:1.25;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidate em{
+  color:var(--text-soft);
+  font-size:11px;
+  font-style:normal;
+  font-weight:650;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidate small{
+  justify-self:end;
+  border:1px solid rgba(var(--brand-rgb),.22);
+  border-radius:999px;
+  background:rgba(var(--brand-rgb),.08);
+  color:var(--brand-strong);
+  padding:5px 8px;
+  font-size:11px;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateActions{
+  gap:6px;
+  flex-wrap:nowrap;
+  justify-content:flex-end;
+}
+
+.sourcesCommandWorkbench .mm-competitorCandidateActions .btn,
+.sourcesCommandWorkbench .mm-competitorCandidateActions a{
+  min-height:30px;
+  border-radius:8px;
+  padding:0 9px;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueEmpty{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:8px;
+  margin:14px;
+  border:1px dashed var(--line);
+  border-radius:12px;
+  background:#fbfbfc;
+  padding:18px;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueEmpty strong{
+  color:var(--text);
+  font-size:15px;
+  font-weight:850;
+}
+
+.sourcesCommandWorkbench .mm-competitorQueueEmpty span{
+  max-width:620px;
+  color:var(--text-soft);
+  font-size:12px;
+  font-weight:650;
+  line-height:1.45;
+}
+
+@media (max-width:1280px){
+  .sourcesCommandWorkbench .mm-competitorWorkspace2026,
+  .sourcesCommandWorkbench .mm-competitorQueueLayout{
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .sourcesCommandWorkbench .mm-competitorControlPane{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+}
+
+@media (max-width:900px){
+  .sourcesMappingPage .mm-competitorHeader{
+    grid-template-columns:1fr;
+    align-items:start;
+  }
+
+  .sourcesMappingPage .mm-competitorActions{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  .sourcesMappingPage .mm-competitorActions .btn,
+  .sourcesMappingPage .mm-competitorActions a{
+    min-width:0;
+    flex:1 1 140px;
+  }
+
+  .sourcesCommandWorkbench .mm-workspace,
+  .sourcesCommandWorkbench .mm-providerStack,
+  .sourcesCommandWorkbench .mm-detailContent.hasExtra .mm-providerStack,
+  .sourcesCommandWorkbench .mm-competitorQueueSummary,
+  .sourcesCommandWorkbench .mm-competitorSourceStrip,
+  .sourcesCommandWorkbench .mm-competitorSourceDiagnostics{
+    grid-template-columns:1fr !important;
+  }
+
+  .sourcesCommandWorkbench .mm-workspace{
+    display:flex !important;
+    flex-direction:column;
+    min-height:0;
+  }
+
+  .sourcesCommandWorkbench .mm-detailPane{
+    order:1;
+  }
+
+  .sourcesCommandWorkbench .mm-treePaneShared.csb-shell{
+    order:2;
+    position:relative;
+    top:auto;
+    max-height:none;
+    overflow:visible;
+  }
+
+  .sourcesCommandWorkbench .mm-treePaneShared .csb-body{
+    max-height:360px;
+  }
+
+  .sourcesCommandWorkbench .mm-providerTableHead{
+    display:none;
+  }
+
+  .sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard){
+    grid-template-columns:1fr;
+    border-right:0;
+  }
+
+  .sourcesCommandWorkbench .mm-providerDetailHead,
+  .sourcesCommandWorkbench .mm-providerActionsBar{
+    border-right:0;
+    border-left:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .sourcesCommandWorkbench .mm-providerActionsBar{
+    justify-content:flex-start;
+    min-width:0;
+  }
+
+  .sourcesCommandWorkbench .mm-competitorCandidate{
+    grid-template-columns:1fr;
+  }
+
+  .sourcesCommandWorkbench .mm-competitorCandidateHeader{
+    display:none;
+  }
+
+  .sourcesCommandWorkbench .mm-competitorQueueSummary > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .sourcesCommandWorkbench .mm-competitorCandidateRow{
+    align-items:start;
+  }
+
+  .sourcesCommandWorkbench .mm-competitorCandidateActions{
+    flex-wrap:wrap;
+  }
+}
+
+/* 2026 command-table pass: marketplace mapping first step */
+.sourcesCommandPage .sourcesCommandHeader{
+  min-height:54px;
+  border-radius:8px;
+}
+
+.sourcesCommandPage .sourcesCommandStepper{
+  border-radius:8px;
+}
+
+.sourcesCommandPage .sourcesCommandWorkbench{
+  margin-top:2px;
+}
+
+.sourcesCommandWorkbench .mm-detailPane{
+  border-radius:8px;
+  box-shadow:none;
+  overflow:hidden;
+}
+
+.sourcesCommandWorkbench .mm-paneHead{
+  display:none;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel{
+  min-height:72px;
+  align-items:flex-start;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+  padding:14px;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel span{
+  color:var(--muted);
+  font-size:10px;
+  letter-spacing:.08em;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel strong{
+  margin-top:4px;
+  font-size:17px;
+  line-height:1.16;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel p{
+  max-width:680px;
+  margin-top:5px;
+  color:var(--text-soft);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.sourcesCommandWorkbench .mm-categoryActionBtns:empty{
+  display:none;
+}
+
+.sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard){
+  grid-template-columns:minmax(132px, 170px) minmax(0, 1fr) minmax(128px, 150px);
+  min-height:64px;
+}
+
+.sourcesCommandWorkbench .mm-providerDetailHead{
+  padding:12px 14px;
+}
+
+.sourcesCommandWorkbench .mm-lineProvider{
+  font-size:13px;
+  line-height:1.1;
+}
+
+.sourcesCommandWorkbench .mm-providerState,
+.sourcesCommandWorkbench .mm-providerState.is-empty,
+.sourcesCommandWorkbench .mm-providerState.is-warn,
+.sourcesCommandWorkbench .mm-providerState.is-ok{
+  width:max-content;
+  max-width:100%;
+  margin-top:6px;
+  padding:3px 8px;
+  border-radius:999px;
+  white-space:nowrap;
+  font-size:10px;
+  line-height:1;
+}
+
+.sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard) .mm-lineContent{
+  display:flex;
+  align-items:center;
+  padding:12px 14px;
+}
+
+.sourcesCommandWorkbench .mm-lineEmpty{
+  width:100%;
+  min-height:34px;
+  padding:8px 10px;
+  border-radius:8px;
+  font-size:12px;
+  line-height:1.3;
+}
+
+.sourcesCommandWorkbench .mm-providerActionsBar{
+  min-width:0;
+  padding:12px 14px;
+}
+
+.sourcesCommandWorkbench .mm-providerActionBtns,
+.sourcesCommandWorkbench .mm-providerActionBtns .btn{
+  width:100%;
+}
+
+.sourcesCommandWorkbench .mm-providerActionBtns .btn{
+  justify-content:center;
+  min-height:32px;
+  padding:0 10px;
+  border-radius:8px;
+}
+
+@media (max-width: 980px){
+  .sourcesCommandWorkbench .mm-providerStack > .mm-providerDetailCard:not(.mm-competitorSourceCard){
+    grid-template-columns:1fr;
+  }
+
+  .sourcesCommandWorkbench .mm-providerDetailHead,
+  .sourcesCommandWorkbench .mm-providerActionsBar{
+    border-left:0;
+    border-right:0;
+  }
+}
+
+.sourcesCommandWorkbench .mm-categoryActionPanel.isCompetitorMode{
+  display:none;
 }

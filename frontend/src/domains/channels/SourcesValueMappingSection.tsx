@@ -131,7 +131,7 @@ function usefulProviders(item: ValueItem) {
 function valueItemStatus(item: ValueItem) {
   const providers = usefulProviders(item);
   if (!providers.length) return { label: "нет справочника", tone: "muted" };
-  if (Number(item.value_count || 0) === 0) return { label: "нет PIM знач.", tone: "muted" };
+  if (Number(item.value_count || 0) === 0) return { label: "нет значений", tone: "muted" };
   const hasGap = providers.some((provider) => Boolean(provider.needs_mapping));
   if (hasGap) return { label: "нужно сопоставить", tone: "warn" };
   if (item.needs_unit_check) return { label: "проверить единицы", tone: "muted" };
@@ -150,7 +150,7 @@ function providerSampleText(provider: ValueItemProvider) {
   const mapped = (provider.mapped_sample || []).filter((item) => item.canonical || item.output).slice(0, 2);
   if (missing.length) return `не покрыто: ${missing.join(", ")}`;
   if (mapped.length) return mapped.map((item) => `${item.canonical} → ${item.output}`).join("; ");
-  if (Number(provider.covered_count || 0) > 0) return `покрыто PIM-значений: ${provider.covered_count}`;
+  if (Number(provider.covered_count || 0) > 0) return `покрыто значений: ${provider.covered_count}`;
   if (allowed.length) return `значения площадки: ${allowed.join(", ")}`;
   if (provider.needs_unit_check) return "проверь единицы измерения перед экспортом";
   return "";
@@ -171,7 +171,7 @@ function providerCoverageLabel(provider: ValueItemProvider, item: ValueItem) {
   const covered = Number(provider.covered_count || 0);
   const missing = Number(provider.missing_count || 0);
   if (valueCount > 0 && (covered > 0 || missing > 0 || provider.needs_mapping)) {
-    return `${covered}/${valueCount} PIM`;
+    return `${covered}/${valueCount} знач.`;
   }
   if (Number(provider.mapped_count || 0) > 0) return `${provider.mapped_count} ручн.`;
   if (Number(provider.allowed_count || 0) > 0) return `${provider.allowed_count} знач.`;
@@ -447,7 +447,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
   const branchSourcesCount = Array.isArray(data?.branch_sources) ? data!.branch_sources.length : 0;
   const emptyValuesMessage = useMemo(() => {
     if (!mappingItemsCount && !rawItemsCount) {
-      return "В этой категории еще нет PIM-параметров. Сначала соберите и подтвердите черновик модели, затем здесь появятся значения для Я.Маркета и Ozon.";
+      return "В этой категории еще нет параметров каталога. Сначала соберите и подтвердите модель, затем здесь появятся значения для Я.Маркета и Ozon.";
     }
     if (!mappingItemsCount) return "В модели нет полей со справочниками или контролируемыми значениями площадок. Можно перейти к проверке экспорта.";
     if (workFilter === "blockers") return "Блокеров по значениям нет. Открой «Все», чтобы проверить поля со справочниками.";
@@ -538,7 +538,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
             return (
               <div className={`sm-valuesInlineRow ${isMissing ? "is-missing" : ""}`} key={`${provider.code}:${value}`}>
                 <div className="sm-valuesInlineCanon">
-                  <span>PIM</span>
+                  <span>Каталог</span>
                   <strong title={value}>{value}</strong>
                 </div>
                 <input
@@ -609,7 +609,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
               <div className="sm-valuesKicker">Значения для выгрузки</div>
               <div className="sm-shellTitle">Сопоставление значений</div>
               <div className="sm-shellSub">
-                Слева выбирается поле PIM, справа задается, как его значения должны называться на Я.Маркете, Ozon и других площадках.
+                Слева выбирается поле каталога, справа задается, как его значения должны называться на Я.Маркете, Ozon и других площадках.
               </div>
             </div>
             <div className="sm-valuesActions">
@@ -619,13 +619,42 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
             </div>
           </div>
 
-          <div className="sm-valuesSummary">
-            <span>{data?.category?.path || "Категория не выбрана"}</span>
-            {branchSourcesCount ? <span>{branchSourcesCount} дочерних категорий</span> : null}
-            <span>{mappingItemsCount} из {rawItemsCount} полей со справочниками</span>
-            <span>{allUnresolvedCount} блокеров</span>
-            <span>{unitCheckCount} числовых проверок</span>
-            <span>{allReadyCount} готовы</span>
+          <div className="sm-valuesQueueHeader">
+            <div>
+              <h3>Очередь значений</h3>
+              <p>
+                Нормализуйте значения каталога под справочники площадок: сначала блокеры, затем числовые единицы и готовность к экспорту.
+              </p>
+            </div>
+            <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
+          </div>
+
+          <div className="sm-valuesSummary" aria-label="Сводка сопоставления значений">
+            <div>
+              <span>Категория</span>
+              <strong>{data?.category?.name || "Не выбрана"}</strong>
+              <small>{data?.category?.path || "Выберите категорию"}</small>
+            </div>
+            <div>
+              <span>Поля</span>
+              <strong>{mappingItemsCount}/{rawItemsCount}</strong>
+              <small>со справочниками</small>
+            </div>
+            <div>
+              <span>Блокеры</span>
+              <strong>{allUnresolvedCount}</strong>
+              <small>нужно сопоставить</small>
+            </div>
+            <div>
+              <span>Единицы</span>
+              <strong>{unitCheckCount}</strong>
+              <small>числовые проверки</small>
+            </div>
+            <div>
+              <span>Готово</span>
+              <strong>{allReadyCount}</strong>
+              <small>{branchSourcesCount ? `${branchSourcesCount} веток источников` : "к проверке экспорта"}</small>
+            </div>
           </div>
 
           <div className="sm-valuesWorkbench">
@@ -719,7 +748,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                           <span>{item.scope_label}</span>
                           {item.source_category?.name ? <span>{item.source_category.name}</span> : null}
                           <span>{valueModeLabel(item)}</span>
-                          <span>{item.value_count} PIM-знач.</span>
+                          <span>{item.value_count} знач.</span>
                         </div>
                         <div className="sm-valuesProviderRow">
                           {providers.length ? providers.map((provider) => (
@@ -754,7 +783,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                 <>
                   <div className="sm-valuesRouteCard">
                     <div className="sm-valuesRouteStep">
-                      <span>PIM поле</span>
+                      <span>Поле каталога</span>
                       <strong>{activeItem.catalog_name}</strong>
                       <small>
                         {[
@@ -784,13 +813,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     <div className={`sm-valuesRouteStep is-status ${valueItemStatus(activeItem).tone === "warn" ? "is-gap" : "is-ready"}`}>
                       <span>Статус</span>
                       <strong>{valueItemStatus(activeItem).label}</strong>
-                      <small>{valueItemStatus(activeItem).tone === "warn" ? "сначала закрыть маппинг" : "можно проверять экспорт"}</small>
+                      <small>{valueItemStatus(activeItem).tone === "warn" ? "сначала закрыть сопоставление" : "можно проверять экспорт"}</small>
                     </div>
                   </div>
                   <div className="sm-valuesEvidencePanel">
                     {activeItem.pim_sample?.length ? (
                       <div className="sm-valuesEvidenceCard">
-                        <strong>PIM словарь</strong>
+                        <strong>Словарь каталога</strong>
                         <span>Канонические значения</span>
                         <small>{activeItem.pim_sample.slice(0, 4).join(" · ")}</small>
                       </div>
@@ -814,13 +843,13 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                     <div className="sm-valuesDecisionPanel">
                       <div className="sm-valuesSourceEvidenceHead">
                         <strong>Что будет выгружено</strong>
-                        <span>Каноническое PIM-значение, подтверждающие источники и выходное значение по каждой площадке</span>
+                        <span>Итоговое значение каталога, подтверждающие источники и выходное значение по каждой площадке</span>
                       </div>
                       <div className="sm-valuesDecisionRows">
                         {activeItem.pim_values.slice(0, 16).map((value) => (
                           <div className="sm-valuesDecisionRow" key={`${activeItem.dict_id}:${value}`}>
                             <div className="sm-valuesDecisionCanon">
-                              <span>PIM</span>
+                              <span>Каталог</span>
                               <strong title={value}>{value}</strong>
                               <small>{evidenceCountForValue(activeItem, value) || 0} источн.</small>
                             </div>
@@ -846,7 +875,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
                   {activeItem.source_evidence?.length ? (
                     <div className="sm-valuesSourceEvidence">
                       <div className="sm-valuesSourceEvidenceHead">
-                        <strong>Raw values из источников</strong>
+                        <strong>Исходные значения из источников</strong>
                         <span>что пришло с конкурентов и площадок до нормализации</span>
                       </div>
                       <div className="sm-valuesSourceEvidenceList">
@@ -866,7 +895,7 @@ export default function SourcesValueMappingSection({ selectedCategoryId = "", on
               ) : (
                 <div className="sm-valuesEmpty">
                   {!mappingItemsCount && !rawItemsCount
-                    ? "Здесь появятся значения после сборки и подтверждения PIM-параметров."
+                    ? "Здесь появятся значения после сборки и подтверждения параметров каталога."
                     : "Выбери поле слева, чтобы открыть сопоставление значений."}
                 </div>
               )}

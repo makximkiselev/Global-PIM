@@ -14,8 +14,6 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
-import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
-import WorkspaceTaskQueue from "../../components/layout/WorkspaceTaskQueue";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -742,64 +740,49 @@ export default function CatalogFeature() {
 
   return (
     <div className="catalog-fresh-page catalogWorkspacePage page-shell">
-      <WorkspaceHeader
-        eyebrow="Товары"
-        title="Каталог"
-        subtitle="Чистая структура категорий и товары внутри выбранной ветки."
-        badges={[
-          { label: `${nodes.length || 0} категорий`, tone: "neutral" },
-          { label: `${totalProductsCount || 0} SKU`, tone: totalProductsCount > 0 ? "active" : "neutral" },
-        ]}
-        actions={
-          <>
-            <Link className="btn" to={orgPath("/catalog/groups")}>
-              Группы
+      <section className="catalogCommandHeader" aria-labelledby="catalog-title">
+        <div className="catalogCommandTitleBlock">
+          <div className="catalogCommandBreadcrumb">Товары / структура каталога</div>
+          <div className="catalogCommandTitleRow">
+            <h1 id="catalog-title">Каталог</h1>
+            {selected ? <span>{selected.name}</span> : <span>Ветка не выбрана</span>}
+          </div>
+          <p>Управляйте деревом категорий, товарами внутри ветки и переходами к сопоставлениям без отдельной маршрутной панели.</p>
+        </div>
+        <div className="catalogCommandActions">
+          <Link className="btn" to={orgPath("/catalog/groups")}>Группы</Link>
+          <Button onClick={() => setBulkOpen(true)}>Импорт Excel</Button>
+          {selected ? (
+            <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selected.id)}`)}>
+              Сопоставления
             </Link>
-            <Button variant="primary" onClick={openCreateRoot}>
-              Новая категория
-            </Button>
-          </>
-        }
-      />
+          ) : null}
+          <Button variant="primary" onClick={openCreateRoot}>Новая категория</Button>
+        </div>
+      </section>
 
-      <WorkspaceTaskQueue
-        title="Маршрут работы с веткой"
-        items={[
-          {
-            key: "select-category",
-            label: selected ? `Открыта ветка: ${selected.name}` : "Выбери категорию",
-            description: selected
-              ? "Смотри SKU в выбранной ветке и перемещай товары между категориями."
-              : "Слева выбери категорию, чтобы увидеть товары и действия.",
-            status: selected ? "done" : "active",
-          },
-          {
-            key: "add-products",
-            label: "Добавить или импортировать SKU",
-            description: selected ? "Создай товар вручную или загрузи Excel в эту ветку." : "Доступно после выбора категории.",
-            href: selected ? `/products/new?category_id=${encodeURIComponent(selected.id)}` : undefined,
-            actionLabel: "Создать SKU",
-            status: selected && selectedCount > 0 ? "done" : "active",
-            meta: selected ? `${selectedCount} SKU в ветке` : undefined,
-          },
-          {
-            key: "map-sources",
-            label: "Сопоставить источники",
-            description: "Проверь категории площадок и конкурентные карточки для насыщения.",
-            href: selected ? `/sources?tab=sources&category=${encodeURIComponent(selected.id)}` : undefined,
-            actionLabel: "К сопоставлениям",
-            status: selected ? "todo" : "blocked",
-          },
-          {
-            key: "export",
-            label: "Подготовить выгрузку",
-            description: "После модели, значений и медиа проверь готовность к Я.Маркет и Ozon.",
-            href: selected ? `/catalog/exchange?tab=export&category=${encodeURIComponent(selected.id)}` : undefined,
-            actionLabel: "Экспорт",
-            status: "todo",
-          },
-        ]}
-      />
+      <section className="catalogCommandContextBar" aria-label="Контекст каталога">
+        <div className="catalogCommandContextItem">
+          <span>Категории</span>
+          <strong>{nodes.length || 0}</strong>
+          <p>{loading ? "Загружается" : "узлов в дереве"}</p>
+        </div>
+        <div className="catalogCommandContextItem">
+          <span>SKU</span>
+          <strong>{totalProductsCount || 0}</strong>
+          <p>в текущем каталоге</p>
+        </div>
+        <div className="catalogCommandContextItem isWide">
+          <span>Открытая ветка</span>
+          <strong>{selected ? selected.name : "Не выбрана"}</strong>
+          <p>{selected ? selectedPath || selected.name : "Выберите категорию слева"}</p>
+        </div>
+        <div className="catalogCommandContextItem">
+          <span>В ветке</span>
+          <strong>{selected ? selectedCount : "-"}</strong>
+          <p>{selected ? `${selectedChildrenCount} подкатегорий` : "нет выбора"}</p>
+        </div>
+      </section>
 
       {refreshError ? <Alert tone="error">{refreshError}</Alert> : null}
 
@@ -913,6 +896,7 @@ export default function CatalogFeature() {
                   mode="embedded"
                   variant="catalogClean"
                   scopeCategoryId={selected.id}
+                  scopeIncludeDescendants
                   scopeTitle={`Товары: ${selected.name}`}
                   paramPrefix="cat_"
                   showHeader={false}

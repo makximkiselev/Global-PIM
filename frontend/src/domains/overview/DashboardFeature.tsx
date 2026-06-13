@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import MetricGrid from "../../components/data/MetricGrid";
 import Card from "../../components/ui/Card";
-import PageHeader from "../../components/ui/PageHeader";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import { api } from "../../lib/api";
@@ -136,13 +134,6 @@ export default function DashboardFeature() {
       : "0"
     : "—";
 
-  const metricItems = [
-    { label: "Категории", value: stats ? stats.categories : "—", meta: "структура каталога" },
-    { label: "Товары", value: stats ? stats.products : "—", meta: "рабочие SKU" },
-    { label: "Инфо-модели", value: stats ? stats.templates : "—", meta: "активные модели" },
-    { label: "Площадки", value: connectorsLabel, meta: "готовы к обмену" },
-  ];
-
   const queueItems: QueueItem[] = [
     {
       title: "Товарная очередь",
@@ -157,10 +148,10 @@ export default function DashboardFeature() {
       value: stats ? `${stats.categories}` : "—",
     },
     {
-      title: "Инфо-модели",
-      text: "Структура полей, группы и правила заполнения.",
-      to: "/templates",
-      value: stats ? `${stats.templates}` : "—",
+      title: "Сопоставления",
+      text: "Категории площадок, конкуренты, параметры и значения.",
+      to: "/sources?tab=sources",
+      value: stats ? `${Number(stats.mapping_issues?.count || 0)}` : "—",
     },
   ];
 
@@ -173,24 +164,6 @@ export default function DashboardFeature() {
         : "Площадки готовы к обмену";
   const mappingIssues = stats?.mapping_issues?.items || [];
   const mappingIssuesCount = Number(stats?.mapping_issues?.count || 0);
-
-  const readinessItems = [
-    {
-      label: "Каталог",
-      value: stats ? `${stats.categories}` : "—",
-      meta: "категорий готовы к рабочему контексту",
-    },
-    {
-      label: "Модели",
-      value: stats ? `${stats.templates}` : "—",
-      meta: "моделей можно использовать в товарах",
-    },
-    {
-      label: "Площадки",
-      value: connectorsLabel,
-      meta: "площадок в рабочем контуре",
-    },
-  ];
 
   const quickActions: QuickAction[] = [
     {
@@ -208,8 +181,8 @@ export default function DashboardFeature() {
     {
       title: "Сопоставить параметры",
       text: "Проверить связи категорий, полей и значений для площадок.",
-      to: "/sources-mapping",
-      label: "Инфо-модель",
+      to: "/sources?tab=sources",
+      label: "Сопоставления",
     },
     {
       title: "Проверить площадки",
@@ -221,24 +194,46 @@ export default function DashboardFeature() {
 
   return (
     <div className="dashboard-page page-shell controlCenterPage">
-      <PageHeader
-        title="Рабочая сводка"
-        subtitle="Короткий вход в товары, каталог, инфо-модели и подготовку к выгрузке."
-        actions={
-          <>
-            <Link className="btn" to={orgPath("/products")}>
-              Открыть товары
-            </Link>
-            <Link className="btn primary" to={orgPath("/products/new")}>
-              Создать товар
-            </Link>
-          </>
-        }
-      />
+      <header className="controlCenterCommandHeader">
+        <div className="controlCenterCommandContext">
+          <span>Рабочая панель</span>
+          <h1>Операционная сводка</h1>
+          <p>Быстрый вход в товары, каталог, источники, сопоставления и подготовку к выгрузке.</p>
+        </div>
+        <div className="controlCenterCommandControls">
+          <Link className="btn" to={orgPath("/products")}>
+            Открыть товары
+          </Link>
+          <Link className="btn primary" to={orgPath("/products/new")}>
+            Создать товар
+          </Link>
+        </div>
+      </header>
 
       {loadError ? <Alert tone="error">Не удалось загрузить сводку: {loadError}</Alert> : null}
 
-      <MetricGrid items={metricItems} className="controlCenterMetricGrid" />
+      <section className="controlCenterStatusStrip" aria-label="Состояние рабочего контура">
+        <div>
+          <span>Категории</span>
+          <strong>{stats ? stats.categories : "—"}</strong>
+          <em>структура каталога</em>
+        </div>
+        <div>
+          <span>Товары</span>
+          <strong>{stats ? stats.products : "—"}</strong>
+          <em>рабочие SKU</em>
+        </div>
+        <div>
+          <span>Параметры</span>
+          <strong>{stats ? stats.templates : "—"}</strong>
+          <em>категорий с моделью</em>
+        </div>
+        <div>
+          <span>Площадки</span>
+          <strong>{connectorsLabel}</strong>
+          <em>готовы к обмену</em>
+        </div>
+      </section>
 
       <section className="controlCenterPriorityGrid">
         <Card className="controlCenterPanel controlCenterPanelWide">
@@ -308,7 +303,11 @@ export default function DashboardFeature() {
               <div className="controlCenterPanelTitle">Готовность рабочего контура</div>
             </div>
           </div>
-          <MetricGrid items={readinessItems} className="controlCenterCompactMetrics" />
+          <div className="controlCenterReadinessList">
+            <div><span>Каталог</span><strong>{stats ? `${stats.categories}` : "—"}</strong><em>категорий готовы к рабочему контексту</em></div>
+            <div><span>Параметры</span><strong>{stats ? `${stats.templates}` : "—"}</strong><em>категорий с утвержденными полями</em></div>
+            <div><span>Площадки</span><strong>{connectorsLabel}</strong><em>площадок в рабочем контуре</em></div>
+          </div>
         </Card>
 
         <Card className="controlCenterPanel">
@@ -333,7 +332,7 @@ export default function DashboardFeature() {
               </div>
               <span>Экспорт</span>
             </Link>
-            <Link className="controlCenterOperationRow" to={orgPath("/sources-mapping")}>
+            <Link className="controlCenterOperationRow" to={orgPath("/sources?tab=sources")}>
               <div>
                 <strong>Сопоставления</strong>
                 <small>Связка категорий, параметров, значений и источников.</small>

@@ -12,10 +12,8 @@ import EmptyState from "../../components/ui/EmptyState";
 import Field from "../../components/ui/Field";
 import IconButton from "../../components/ui/IconButton";
 import Modal from "../../components/ui/Modal";
-import PageTabs from "../../components/ui/PageTabs";
 import TextInput from "../../components/ui/TextInput";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
-import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
 import type { InfoModelCandidate, InfoModelSummary } from "./infoModelDraft";
 import { candidateTone, modelStatusLabel } from "./infoModelDraft";
 
@@ -120,8 +118,8 @@ const TYPE_HELP_TEXT = [
 
 const REQUIRED_HELP_TEXT = "Если параметр отмечен как обязательный — товар без него сохранить нельзя.";
 const SOURCE_LABEL: Record<string, string> = {
-  products: "Товары PIM",
-  existing_products: "Товары PIM",
+  products: "Товары каталога",
+  existing_products: "Товары каталога",
   marketplaces: "Площадки",
   yandex_market: "Я.Маркет",
   ozon: "Ozon",
@@ -311,7 +309,7 @@ function draftRecommendation(candidate: InfoModelCandidate) {
   if (candidate.status === "accepted") return "В модели";
   if (candidate.status === "rejected") return "Не использовать";
   if (isSemanticDuplicateCandidate(candidate)) return "Проверить повтор";
-  if (isWeakGlobalCandidate(candidate)) return "Проверить связь PIM";
+  if (isWeakGlobalCandidate(candidate)) return "Проверить похожее поле";
   if (candidate.global_match) return "Можно переиспользовать";
   if (isMarketplaceOnlyCandidate(candidate)) return "Проверить необходимость";
   if (isCompetitorOnlyCandidate(candidate)) return "Проверить источник";
@@ -319,7 +317,7 @@ function draftRecommendation(candidate: InfoModelCandidate) {
 }
 
 function draftPrimaryActionLabel(candidate: InfoModelCandidate) {
-  if (candidate.global_match) return "Переиспользовать PIM-поле";
+  if (candidate.global_match) return "Переиспользовать поле";
   return "Добавить поле";
 }
 
@@ -899,7 +897,7 @@ export default function TemplateEditor() {
       setOwnerTpl(response.template);
       setTpl(response.template);
       setInfoModel({ ...(response.info_model || { status: "draft" }), candidates: response.candidates || [] });
-      showToast("Draft-модель собрана");
+      showToast("Черновик модели собран");
       await load();
     } finally {
       setDraftBusy(false);
@@ -916,7 +914,7 @@ export default function TemplateEditor() {
       });
       setInfoModel(response.info_model || { status: "approved" });
       setAttrs(sortAttrs((response.attributes || []) as AttrT[]));
-      showToast("Инфо-модель утверждена");
+      showToast("Модель категории утверждена");
       await load();
     } finally {
       setDraftBusy(false);
@@ -1145,7 +1143,7 @@ export default function TemplateEditor() {
     { key: "competitor_only", label: `Только конкуренты (${draftAudit.competitorOnly})` },
     { key: "marketplace_only", label: `Только площадки (${draftAudit.marketplaceOnly})` },
     { key: "semantic_duplicates", label: `Повторы смысла (${draftAudit.duplicates})` },
-    { key: "weak_global", label: `Слабая связь PIM (${draftAudit.weakGlobalMatch})` },
+    { key: "weak_global", label: `Похожие поля (${draftAudit.weakGlobalMatch})` },
     { key: "layer_features", label: `Характеристики (${draftAudit.byLayer.features})` },
     { key: "layer_content", label: `Контент (${draftAudit.byLayer.content})` },
     { key: "layer_documents", label: `Документы (${draftAudit.byLayer.documents})` },
@@ -1164,20 +1162,55 @@ export default function TemplateEditor() {
   })();
 
   return (
-    <div className="templates-page page-shell">
+    <div className="templates-page page-shell templateEditorCommandPage">
       {toast ? <div className="tpl-toast">{toast}</div> : null}
 
-      <WorkspaceHeader
-        eyebrow="Инфо-модель"
-        title={category?.name || "Категория"}
-        context={category?.path?.length ? `Категория: ${category.path.map((item) => item.name).join(" / ")}` : undefined}
-        subtitle="Сначала соберите черновик полей из товаров, площадок и конкурентов. После проверки он станет PIM-моделью категории."
-        actions={
+      <section className="tplCommandHeader" aria-labelledby="template-editor-title">
+        <div className="tplCommandTitleBlock">
+          <div className="tplCommandEyebrow">Каталог / параметры категории</div>
+          <div className="tplCommandTitleRow">
+            <h1 id="template-editor-title">{category?.name || "Категория"}</h1>
+            <span>{modelStatusLabel(infoModel.status)}</span>
+          </div>
+          <p>
+            Соберите предложения полей из товаров, площадок и конкурентов, затем утвердите только проверенные параметры категории.
+          </p>
+        </div>
+        <div className="tplCommandActions">
           <Button onClick={() => nav(`/sources?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
             К сопоставлениям
           </Button>
-        }
-      />
+          <Button onClick={() => nav(`/catalog?category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+            К каталогу
+          </Button>
+          <Button variant="primary" onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
+            {draftBusy ? "Собираю…" : "Собрать предложения"}
+          </Button>
+        </div>
+      </section>
+
+      <section className="tplCommandContextBar" aria-label="Контекст модели категории">
+        <div className="tplCommandContextItem isWide">
+          <span>Категория</span>
+          <strong>{category?.path?.length ? category.path.map((item) => item.name).join(" / ") : category?.name || "Не выбрана"}</strong>
+          <p>{categoryId ? `ID ${categoryId}` : "нет категории"}</p>
+        </div>
+        <div className="tplCommandContextItem">
+          <span>Поля</span>
+          <strong>{infoModel.status === "draft" ? modelFieldsInWork : attrs.length}</strong>
+          <p>{infoModel.status === "draft" ? "принято в черновике" : "в модели"}</p>
+        </div>
+        <div className="tplCommandContextItem">
+          <span>На проверке</span>
+          <strong>{reviewCandidates}</strong>
+          <p>{draftCandidates.length} предложений всего</p>
+        </div>
+        <div className="tplCommandContextItem isWide">
+          <span>Источники</span>
+          <strong>{modelSourcesText}</strong>
+          <p>{hasAnyTpl ? (isInherited ? "наследуется" : "своя модель") : "модель не создана"}</p>
+        </div>
+      </section>
 
       {hasAnyTpl && inheritedFrom && !ownerTpl?.id ? (
         <Alert>
@@ -1198,33 +1231,62 @@ export default function TemplateEditor() {
                 <Alert tone="error">{bootstrapError}</Alert>
               </Card>
             ) : !tpl ? (
-              <Card className="tplCanvasCard">
-                <EmptyState
-                  title="Инфо-модель еще не собрана"
-                  description="Сейчас у категории нет PIM-полей. Нажмите «Собрать предложения», чтобы система подготовила draft из товаров, площадок и конкурентных карточек. Затем проверьте список и утвердите модель."
-                  action={
-                    <div className="tplEmptyActions">
+              <Card className="tplCanvasCard tplEmptyModelWorkspace">
+                <div className="tplEmptyModelHero">
+                  <div>
+                    <div className="tplSectionEyebrow">Следующий шаг</div>
+                    <h2>Соберите черновик модели категории</h2>
+                    <p>
+                      Сейчас у категории нет утвержденных полей. SmartPim должен собрать предложения из товаров,
+                      площадок и конкурентных карточек, после этого контент-менеджер утверждает только нужные параметры.
+                    </p>
+                    <div className="tplEmptyModelActions">
                       <Button variant="primary" onClick={collectDraftModel} disabled={!categoryId || draftBusy}>
                         {draftBusy ? "Собираю…" : "Собрать предложения"}
                       </Button>
-                      <Button onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>
-                        Создать вручную
-                      </Button>
-                      <Button onClick={() => setImportOpen(true)} disabled={!categoryId || saving || draftBusy}>
-                        Импортировать Excel
+                      <Button onClick={() => nav(`/sources?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                        Открыть сопоставления
                       </Button>
                     </div>
-                  }
-                />
+                  </div>
+                  <div className="tplEmptyModelChecklist" aria-label="Что нужно для модели">
+                    <div><span>01</span><strong>Категории площадок</strong><em>Я.Маркет и Ozon должны быть связаны</em></div>
+                    <div><span>02</span><strong>Конкурентные карточки</strong><em>нужны для медиа, описания и спорных параметров</em></div>
+                    <div><span>03</span><strong>Товарные данные</strong><em>сырые параметры SKU становятся кандидатами модели</em></div>
+                  </div>
+                </div>
+
+                <div className="tplEmptyModelGrid">
+                  <button type="button" onClick={() => nav(`/sources?tab=sources&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                    <span>Площадки</span>
+                    <strong>Проверить связку категорий</strong>
+                    <em>без нее не собрать обязательные поля выгрузки</em>
+                  </button>
+                  <button type="button" onClick={() => nav(`/sources?tab=competitors&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
+                    <span>Конкуренты</span>
+                    <strong>Подтвердить карточки</strong>
+                    <em>точные совпадения питают параметры и медиа</em>
+                  </button>
+                  <button type="button" onClick={createTemplateIfMissing} disabled={!categoryId || saving || draftBusy}>
+                    <span>Ручной режим</span>
+                    <strong>Создать вручную</strong>
+                    <em>если источники пока не готовы</em>
+                  </button>
+                  <button type="button" onClick={() => setImportOpen(true)} disabled={!categoryId || saving || draftBusy}>
+                    <span>Excel</span>
+                    <strong>Импортировать модель</strong>
+                    <em>для готового списка параметров категории</em>
+                  </button>
+                </div>
               </Card>
             ) : (
               <>
                 <Card className="tplCanvasCard tplModelCommandCard">
                   <div className="tplModelCommandTop">
                     <div>
-                      <div className="tplSectionEyebrow">Инфо-модель</div>
+                      <div className="tplSectionEyebrow">Модель категории</div>
                       <h2>{category?.name || tplName || tpl.name}</h2>
-                      <p>Поля, источники и подготовка к маппингу для карточек SKU.</p>
+                      <p>Поля, источники и подготовка к сопоставлению для карточек SKU.</p>
                     </div>
                     <div className="tplModelCommandActions">
                       <Badge tone={infoModel.status === "approved" ? "active" : infoModel.status === "draft" ? "pending" : "neutral"}>
@@ -1284,7 +1346,7 @@ export default function TemplateEditor() {
                           Товары категории
                         </button>
                         <button type="button" onClick={() => nav(`/sources?tab=params&category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
-                          Маппинг полей
+                          Сопоставление полей
                         </button>
                         <button type="button" onClick={() => nav(`/catalog?category=${encodeURIComponent(categoryId || "")}`)} disabled={!categoryId}>
                           Открыть категорию
@@ -1308,17 +1370,17 @@ export default function TemplateEditor() {
                       <div>
                         <div className="tplSectionEyebrow">Предложения полей</div>
                         <h3>Поля из площадок и товаров</h3>
-                        <p>Проверьте, какие поля действительно нужны в PIM-модели. Сервисные поля, дубли и слабые совпадения можно не добавлять.</p>
+                        <p>Проверьте, какие поля действительно нужны в модели категории. Сервисные поля, дубли и слабые совпадения можно не добавлять.</p>
                         <div className="tplDraftCountersLine">
                           <span>{acceptedCandidates} добавлено в модель</span>
                           <span>{reviewCandidates} на проверке</span>
                           <span>{rejectedCandidates} не используется</span>
                         </div>
-                        <div className="tplDraftAuditGrid" aria-label="Проверка качества draft-модели">
+                        <div className="tplDraftAuditGrid" aria-label="Проверка качества предложений модели">
                           <span><b>{draftAudit.marketplaceOnly}</b>только площадки</span>
                           <span><b>{draftAudit.selectWithoutValues}</b>списки без значений</span>
                           <span><b>{draftAudit.competitorOnly}</b>только конкуренты</span>
-                          <span><b>{draftAudit.weakGlobalMatch}</b>слабая связь PIM</span>
+                          <span><b>{draftAudit.weakGlobalMatch}</b>похожие поля</span>
                           <span><b>{draftAudit.lowConfidence}</b>низкая уверенность</span>
                           <span><b>{draftAudit.duplicates}</b>повторы смысла</span>
                         </div>
@@ -1326,15 +1388,22 @@ export default function TemplateEditor() {
                       <details className="tplDraftHelp">
                         <summary>Как читать предложения</summary>
                         <p>
-                          Совпадение показывает, насколько уверенно система считает найденный параметр тем же смыслом для PIM. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
+                          Совпадение показывает, насколько уверенно система считает найденный параметр тем же смыслом. Высокое можно принимать быстрее, среднее и низкое лучше проверить руками.
                         </p>
                       </details>
                     </div>
-                    <PageTabs
-                      items={draftFilterItems.map((item) => ({ key: item.key, label: item.label }))}
-                      activeKey={draftFilter}
-                      onChange={(key) => setDraftFilter(key as DraftFilter)}
-                    />
+                    <div className="tplInlineTabs" role="tablist" aria-label="Фильтр предложений">
+                      {draftFilterItems.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={draftFilter === item.key ? "active" : ""}
+                          onClick={() => setDraftFilter(item.key as DraftFilter)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="tplDraftSortBar">
                       <span>Сортировка</span>
                       <select value={draftSort} onChange={(event) => setDraftSort(event.target.value as DraftSort)}>
@@ -1363,7 +1432,7 @@ export default function TemplateEditor() {
                               </div>
                               {candidate.global_match ? (
                                 <div className={`tplDraftReuse ${isWeakGlobalCandidate(candidate) ? "is-weak" : ""}`}>
-                                  <b>Уже есть в PIM</b>
+                                  <b>Уже есть в справочнике</b>
                                   <span>
                                     {candidate.global_match.title || candidate.global_match.code} · {globalMatchReasonLabel(candidate.global_match.reason)}
                                     {typeof candidate.global_match.score === "number" ? ` ${Math.round(candidate.global_match.score * 100)}%` : ""}
@@ -1462,11 +1531,18 @@ export default function TemplateEditor() {
                     subtitle={!canEdit ? "Открыт наследуемый контур — редактирование отключено." : "Редактируйте состав и обязательность полей."}
                     actions={
                       <>
-                        <PageTabs
-                          items={attrTabItems.map((item) => ({ key: item.key, label: item.label }))}
-                          activeKey={attrTab}
-                          onChange={(key) => setAttrTab(key as "all" | "base" | "category")}
-                        />
+                        <div className="tplInlineTabs" role="tablist" aria-label="Фильтр полей модели">
+                          {attrTabItems.map((item) => (
+                            <button
+                              key={item.key}
+                              type="button"
+                              className={attrTab === item.key ? "active" : ""}
+                              onClick={() => setAttrTab(item.key as "all" | "base" | "category")}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
                         <Button onClick={addAttr} disabled={!canEdit || attrTab === "base"}>
                           Добавить поле
                         </Button>
@@ -1715,7 +1791,7 @@ export default function TemplateEditor() {
             ref={fileRef}
             type="file"
             accept=".xlsx"
-            style={{ display: "none" }}
+            className="templateHiddenInput"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void uploadXlsx(file);

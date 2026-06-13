@@ -7,7 +7,7 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
-import PageHeader from "../../components/ui/PageHeader";
+import Modal from "../../components/ui/Modal";
 import CategorySidebar from "../../components/CategorySidebar";
 import DataToolbar from "../../components/data/DataToolbar";
 import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
@@ -79,7 +79,7 @@ const TYPE_LABEL: Record<string, string> = {
   select: "Список",
   bool: "Да/Нет",
   date: "Дата",
-  json: "JSON",
+  json: "Структура",
 };
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -205,6 +205,9 @@ export default function TemplatesCatalogFeature() {
   const [previewAttrs, setPreviewAttrs] = useState<AttrT[]>([]);
   const [previewMaster, setPreviewMaster] = useState<TemplateMaster | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
+  const [createTemplateName, setCreateTemplateName] = useState("");
+  const [deleteTemplateOpen, setDeleteTemplateOpen] = useState(false);
   const [mappingItems, setMappingItems] = useState<CategoryMappingItem[]>([]);
   const [mappingLoading, setMappingLoading] = useState(false);
   const [productPreview, setProductPreview] = useState<ProductPreviewItem[]>([]);
@@ -260,6 +263,9 @@ export default function TemplatesCatalogFeature() {
 
   const canCreateTemplate = !!selectedNode && !selectedNode.template_id && selectedNode.can_have_own_template !== false;
   const canDeleteTemplate = !!selectedNode?.template_id;
+  const hasEffectiveTemplate = !!selectedNode?.effective_template_id;
+  const displayedTotalAttrs = hasEffectiveTemplate ? totalAttrs : 0;
+  const displayedRequiredAttrs = hasEffectiveTemplate ? requiredAttrs : 0;
   const selectedStatusLabel = selectedNode?.template_id ? "Своя модель" : selectedNode?.effective_template_id ? "Наследуется" : "Не задана";
   const selectedStatusTone = selectedNode?.template_id ? "active" : selectedNode?.effective_template_id ? "pending" : "neutral";
 
@@ -384,17 +390,24 @@ export default function TemplatesCatalogFeature() {
     preserveViewport(() => setExpanded((prev) => ({ ...prev, [id]: !prev[id] })));
   };
 
-  async function createTemplateForSelected() {
+  function openCreateTemplateModal() {
     if (!selectedNode || !canCreateTemplate) return;
     const defaultName = selectedNode.name ? `Мастер-шаблон: ${selectedNode.name}` : "Мастер-шаблон";
-    const name = window.prompt("Название мастер-шаблона", defaultName) || "";
-    if (!name.trim()) return;
+    setCreateTemplateName(defaultName);
+    setCreateTemplateOpen(true);
+  }
+
+  async function createTemplateForSelected() {
+    if (!selectedNode || !canCreateTemplate) return;
+    const name = createTemplateName.trim();
+    if (!name) return;
     setActionLoading(true);
     try {
       await api(`/templates/by-category/${encodeURIComponent(selectedNode.id)}`, {
         method: "POST",
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name }),
       });
+      setCreateTemplateOpen(false);
       await refreshTree();
       setSelectedId(selectedNode.id);
     } finally {
@@ -404,14 +417,10 @@ export default function TemplatesCatalogFeature() {
 
   async function deleteTemplateForSelected() {
     if (!selectedNode?.template_id) return;
-    const label = previewTemplate?.name || selectedNode.name;
-    const confirmed = window.confirm(
-      `Удалить мастер-шаблон "${label}"?\n\nПоля модели будут удалены без возможности восстановления.`,
-    );
-    if (!confirmed) return;
     setActionLoading(true);
     try {
       await api(`/templates/${encodeURIComponent(selectedNode.template_id)}`, { method: "DELETE" });
+      setDeleteTemplateOpen(false);
       await refreshTree();
       setSelectedId(selectedNode.id);
     } finally {
@@ -498,10 +507,13 @@ export default function TemplatesCatalogFeature() {
 
   return (
     <div className="templates-page page-shell">
-      <PageHeader
-        title="Инфо-модели"
-        subtitle="Выберите категорию, проверьте источник модели и переходите к сборке полей."
-      />
+      <header className="templatesCommandHeader">
+        <div className="templatesCommandContext">
+          <span>Данные / модели</span>
+          <h1>Модели категорий</h1>
+          <p>Выберите категорию, проверьте источник параметров и переходите к сборке полей.</p>
+        </div>
+      </header>
 
       <WorkspaceFrame
         className="templatesCatalogFrame"
@@ -542,7 +554,7 @@ export default function TemplatesCatalogFeature() {
           <div className="tplCanvasStack">
             <Card className="tplCanvasCard tplCanvasSummary">
               {!selectedNode ? (
-                <EmptyState title="Выбери категорию" body="Слева выбери ветку каталога, чтобы увидеть структуру инфо-модели." />
+                <EmptyState title="Выбери категорию" body="Слева выбери ветку каталога, чтобы увидеть структуру параметров категории." />
               ) : previewLoading ? (
                 <div className="muted">Загружаю модель категории…</div>
               ) : previewErr ? (
@@ -569,20 +581,20 @@ export default function TemplatesCatalogFeature() {
                     <div className="tplSummaryActionPanel">
                       <Badge tone={selectedStatusTone}>{selectedStatusLabel}</Badge>
                       <div className="tplSummaryQuickStats">
-                        <span><strong>{totalAttrs || "—"}</strong> полей</span>
-                        <span><strong>{requiredAttrs || "—"}</strong> обязательных</span>
+                        <span><strong>{displayedTotalAttrs}</strong> полей</span>
+                        <span><strong>{displayedRequiredAttrs}</strong> обязательных</span>
                         <span>
                           <strong>
-                            {previewMaster?.stats
+                            {hasEffectiveTemplate && previewMaster?.stats
                               ? `${Number(previewMaster.stats.confirmed_count || 0)} / ${Number(previewMaster.stats.row_count || 0)}`
-                              : "—"}
+                              : "0 / 0"}
                           </strong>{" "}
                           подтверждено
                         </span>
                       </div>
                       <div className="tplSummaryActions">
                         {canCreateTemplate ? (
-                          <Button variant="primary" onClick={createTemplateForSelected} disabled={actionLoading}>
+                          <Button variant="primary" onClick={openCreateTemplateModal} disabled={actionLoading}>
                             Создать модель
                           </Button>
                         ) : null}
@@ -596,9 +608,9 @@ export default function TemplatesCatalogFeature() {
                           Товары
                         </Button>
                         {canDeleteTemplate ? (
-                          <Button variant="danger" onClick={deleteTemplateForSelected} disabled={actionLoading}>
-                            Удалить модель
-                          </Button>
+                        <Button variant="danger" onClick={() => setDeleteTemplateOpen(true)} disabled={actionLoading}>
+                          Удалить модель
+                        </Button>
                         ) : null}
                       </div>
                       {!selectedNode.template_id && selectedNode.effective_template_id ? (
@@ -709,25 +721,39 @@ export default function TemplatesCatalogFeature() {
                             <div key={`${item.id || item.category_id || index}-mapping`} className="tplUsageRow">
                               <div className="tplUsageCopy">
                                 <strong>{item.name || item.title || item.category_name || "Связанный канал"}</strong>
-                                <span>Контур category mapping уже связан с этой категорией.</span>
+                                <span>Контур сопоставления категорий уже связан с этой категорией.</span>
                               </div>
                               <div className="tplUsageStats">
-                                <span>{item.linked ? "Связано" : "Черновик"}</span>
+                                <span>{item.linked ? "Связано" : "На проверке"}</span>
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <EmptyState title="Связей пока нет" body="После канального маппинга здесь появятся площадки и источники структуры." />
+                        <EmptyState
+                          className="tplGuidedEmpty"
+                          title="Сначала сопоставьте площадки"
+                          description="Для модели нужны категории Я.Маркета и Ozon по этой ветке. После связки здесь появятся источники параметров и можно будет собирать поля категории."
+                          action={
+                            <div className="tplGuidedEmptyActions">
+                              <Button variant="primary" onClick={() => nav(`/sources?tab=sources&category=${encodeURIComponent(selectedNode.id)}`)}>
+                                Сопоставить площадки
+                              </Button>
+                              <Button onClick={() => nav("/connectors/status?tab=marketplaces")}>
+                                Открыть источники
+                              </Button>
+                            </div>
+                          }
+                        />
                       )}
-                      {mappingLoading ? <div className="muted">Обновляю канальный контур…</div> : null}
+                      {mappingLoading ? <div className="muted">Обновляю связи площадок…</div> : null}
                     </section>
 
                     <section className="tplSectionCard">
                       <div className="tplSectionHead">
                         <div>
                           <h3>Товары по категории</h3>
-                          <p>Быстрый preview SKU, которые уже живут в этой ветке каталога.</p>
+                          <p>Быстрый просмотр SKU, которые уже живут в этой ветке каталога.</p>
                         </div>
                         <span className="tplSectionCount">{productPreview.length}</span>
                       </div>
@@ -759,6 +785,49 @@ export default function TemplatesCatalogFeature() {
           </div>
         }
       />
+      <Modal
+        open={createTemplateOpen}
+        onClose={() => !actionLoading && setCreateTemplateOpen(false)}
+        title="Создать модель категории"
+        subtitle="Модель задает поля, которые будут использовать товары выбранной категории."
+      >
+        <label className="tplModalField">
+          <span>Название модели</span>
+          <input
+            className="pn-input"
+            value={createTemplateName}
+            onChange={(event) => setCreateTemplateName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void createTemplateForSelected();
+            }}
+            placeholder="Например: Мастер-шаблон: Смартфоны"
+          />
+        </label>
+        <div className="modal-actions">
+          <Button onClick={() => setCreateTemplateOpen(false)} disabled={actionLoading}>Отмена</Button>
+          <Button variant="primary" onClick={() => void createTemplateForSelected()} disabled={actionLoading || !createTemplateName.trim()}>
+            {actionLoading ? "Создаю…" : "Создать модель"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={deleteTemplateOpen}
+        onClose={() => !actionLoading && setDeleteTemplateOpen(false)}
+        title="Удалить модель категории"
+        subtitle="Поля этой модели будут удалены без возможности восстановления. Наследуемые категории вернутся к родительской модели."
+      >
+        <div className="tplDeleteSummary">
+          <strong>{previewTemplate?.name || selectedNode?.name || "Модель категории"}</strong>
+          <span>{previewAttrs.length} полей</span>
+        </div>
+        <div className="modal-actions">
+          <Button onClick={() => setDeleteTemplateOpen(false)} disabled={actionLoading}>Отмена</Button>
+          <Button variant="danger" onClick={() => void deleteTemplateForSelected()} disabled={actionLoading || !selectedNode?.template_id}>
+            {actionLoading ? "Удаляю…" : "Удалить модель"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

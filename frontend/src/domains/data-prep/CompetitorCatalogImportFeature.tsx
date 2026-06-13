@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import PageHeader from "../../components/ui/PageHeader";
 import TextInput from "../../components/ui/TextInput";
 import MetricGrid from "../../components/data/MetricGrid";
 import { api } from "../../lib/api";
@@ -134,7 +133,7 @@ function runStatusLabel(status: string) {
   if (status === "completed") return "Готово";
   if (status === "running") return "Идет импорт";
   if (status === "failed") return "Ошибка";
-  return status || "Черновик";
+  return status || "На проверке";
 }
 
 function linkLabel(link?: ProductLink | null) {
@@ -231,7 +230,26 @@ function ProductInspector({
   if (!product) {
     return (
       <aside className="cciInspector">
-        <div className="cciInspectorEmpty">Выберите карточку в таблице, чтобы проверить медиа, цену и характеристики.</div>
+        <div className="cciInspectorEmpty cciStartGuide">
+          <div className="cciEyebrow">Что будет справа</div>
+          <h2>Карточка конкурента</h2>
+          <p>После импорта выберите найденный товар. Здесь появятся медиа, цена, характеристики и кандидаты SKU для связи с вашим каталогом.</p>
+          <div>
+            <span>1</span>
+            <strong>Проверить карточку</strong>
+            <em>Название, изображения, цену и характеристики с сайта конкурента.</em>
+          </div>
+          <div>
+            <span>2</span>
+            <strong>Связать с SKU</strong>
+            <em>Система предложит похожие товары, ручной поиск остается доступен.</em>
+          </div>
+          <div>
+            <span>3</span>
+            <strong>Применить данные</strong>
+            <em>Описание, медиа и параметры попадут в PIM только после подтверждения.</em>
+          </div>
+        </div>
       </aside>
     );
   }
@@ -276,7 +294,7 @@ function ProductInspector({
       </a>
 
       <div className="cciLinkBlock">
-        <div className="cciSectionTitle">Связь с PIM</div>
+        <div className="cciSectionTitle">Связь с каталогом</div>
         {product.link?.status === "linked" ? (
           <div className="cciLinkedProduct">
             <span>Связана с SKU</span>
@@ -313,7 +331,7 @@ function ProductInspector({
               <TextInput
                 value={manualQuery}
                 onChange={(event) => setManualQuery(event.target.value)}
-                placeholder="Ручной поиск SKU: название, GT SKU, PIM SKU"
+                placeholder="Ручной поиск SKU: название, GT SKU, внутренний SKU"
               />
               {manualLoading ? <div className="cciMuted">Ищу товары...</div> : null}
               {manualResults.length ? (
@@ -570,118 +588,144 @@ export default function CompetitorCatalogImportFeature() {
 
   return (
     <div className="page-shell cciPage">
-      <PageHeader
-        title="Импорт каталога конкурента"
-        subtitle="Сканирование сайта конкурента в отдельный внешний каталог. Найденные карточки не попадают в PIM, пока их не сопоставят с нашими SKU."
-        actions={<Badge tone="pending">MVP crawler</Badge>}
-      />
+      <header className="cciCommandHeader">
+        <div className="cciCommandContext">
+          <span>Источники / внешний каталог</span>
+          <h1>Импорт каталога конкурента</h1>
+          <p>Сканирование сайта конкурента во внешний каталог. Найденные карточки не попадут в товары, пока их не сопоставят с нашими SKU.</p>
+        </div>
+        <div className="cciCommandControls">
+          <Badge tone="pending">Быстрый режим</Badge>
+        </div>
+      </header>
 
       <MetricGrid items={metrics} className="cciMetrics" />
 
       <section className="cciLayout">
-        <main className="cciMain">
-          <form className="cciRunPanel" onSubmit={submit}>
-            <div>
-              <div className="cciEyebrow">Новый прогон</div>
-              <h2>Укажи сайт или раздел конкурента</h2>
-              <p>Система попробует sitemap, затем ссылки внутри этого домена. Обход ограничен страницами и товарами.</p>
-            </div>
-            <div className="cciFormGrid">
+        <form className="cciRunPanel" onSubmit={submit}>
+          <div>
+            <div className="cciEyebrow">Новый прогон</div>
+            <h2>Сайт конкурента</h2>
+            <p>Сканер забирает внешний каталог в отдельную очередь. В PIM попадут только карточки, которые контент-менеджер сопоставит с нашими SKU.</p>
+          </div>
+          <div className="cciFormGrid">
+            <label>
+              <span>Название источника</span>
+              <TextInput value={name} onChange={(event) => setName(event.target.value)} placeholder="re-store, store77" />
+            </label>
+            <label>
+              <span>Ссылка</span>
+              <TextInput value={startUrl} onChange={(event) => setStartUrl(event.target.value)} placeholder="https://example.ru/catalog" required />
+            </label>
+            <div className="cciLimitsRow">
               <label>
-                <span>Название источника</span>
-                <TextInput value={name} onChange={(event) => setName(event.target.value)} placeholder="re-store, store77, локальный конкурент" />
-              </label>
-              <label className="cciWideField">
-                <span>Ссылка</span>
-                <TextInput value={startUrl} onChange={(event) => setStartUrl(event.target.value)} placeholder="https://example.ru/catalog/smartphones" required />
-              </label>
-              <label>
-                <span>Лимит страниц</span>
+                <span>Страниц</span>
                 <TextInput type="number" value={maxPages} min={1} max={80} onChange={(event) => setMaxPages(Number(event.target.value) || 1)} />
               </label>
               <label>
-                <span>Лимит товаров</span>
+                <span>Товаров</span>
                 <TextInput type="number" value={maxProducts} min={1} max={120} onChange={(event) => setMaxProducts(Number(event.target.value) || 1)} />
               </label>
             </div>
-            <div className="cciRunActions">
-              <Button variant="primary" type="submit" disabled={running || !startUrl.trim()}>
-                {running ? "Сканирую..." : "Запустить импорт"}
-              </Button>
-              {lastRun ? <span>Последний прогон: {runStatusLabel(lastRun.status)} · {lastRun.host}</span> : null}
+          </div>
+          <div className="cciRunActions">
+            <Button variant="primary" type="submit" disabled={running || !startUrl.trim()}>
+              {running ? "Сканирую..." : "Запустить импорт"}
+            </Button>
+            {lastRun ? <span>{runStatusLabel(lastRun.status)} · {lastRun.host}</span> : null}
+          </div>
+          {error ? <div className="cciError">{error}</div> : null}
+        </form>
+
+        <section className="cciTablePanel">
+          <div className="cciPanelHead">
+            <div>
+              <div className="cciEyebrow">Внешний каталог</div>
+              <h2>Найденные карточки</h2>
             </div>
-            {error ? <div className="cciError">{error}</div> : null}
-          </form>
+            {loading ? <Badge tone="provisioning">Загрузка</Badge> : <Badge tone="neutral">{filteredProducts.length} из {products.length}</Badge>}
+          </div>
 
-          <section className="cciTablePanel">
-            <div className="cciPanelHead">
-              <div>
-                <div className="cciEyebrow">Внешний каталог</div>
-                <h2>Найденные карточки</h2>
-              </div>
-              {loading ? <Badge tone="provisioning">Загрузка</Badge> : <Badge tone="neutral">{filteredProducts.length} из {products.length}</Badge>}
+          {products.length ? (
+            <div className="cciQueueFilters">
+              {(["all", "unlinked", "ready", "applied", "ignored"] as ProductQueueFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  className={queueFilter === filter ? "isActive" : ""}
+                  onClick={() => setQueueFilter(filter)}
+                >
+                  <span>{queueFilterLabel(filter)}</span>
+                  <strong>{queueCounts[filter]}</strong>
+                </button>
+              ))}
             </div>
+          ) : null}
 
-            {products.length ? (
-              <div className="cciQueueFilters">
-                {(["all", "unlinked", "ready", "applied", "ignored"] as ProductQueueFilter[]).map((filter) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    className={queueFilter === filter ? "isActive" : ""}
-                    onClick={() => setQueueFilter(filter)}
-                  >
-                    <span>{queueFilterLabel(filter)}</span>
-                    <strong>{queueCounts[filter]}</strong>
-                  </button>
-                ))}
+          {filteredProducts.length ? (
+            <div className="cciTable">
+              <div className="cciTableHead">
+                <span>Товар</span>
+                <span>Связь</span>
+                <span>Цена</span>
+                <span>Медиа</span>
+                <span>Параметры</span>
+                <span>Уверенность</span>
               </div>
-            ) : null}
-
-            {filteredProducts.length ? (
-              <div className="cciTable">
-                <div className="cciTableHead">
-                  <span>Товар</span>
-                  <span>Связь</span>
-                  <span>Цена</span>
-                  <span>Медиа</span>
-                  <span>Параметры</span>
-                  <span>Уверенность</span>
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  className={`cciTableRow${selectedProduct?.id === product.id ? " isActive" : ""}`}
+                  onClick={() => setSelectedId(product.id)}
+                >
+                  <span>
+                    <strong>{product.title}</strong>
+                    <small>{product.url}</small>
+                  </span>
+                  <span>
+                    <Badge tone={product.link?.status === "linked" ? "active" : product.link?.status === "ignored" ? "neutral" : "pending"}>
+                      {linkLabel(product.link)}
+                    </Badge>
+                  </span>
+                  <span>{product.price ? `${product.price} ${product.currency || ""}`.trim() : "-"}</span>
+                  <span>{product.images?.length || 0}</span>
+                  <span>{product.spec_count || 0}</span>
+                  <span>{product.confidence}%</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="cciEmpty">
+              {loading ? (
+                "Загружаю последние результаты..."
+              ) : products.length ? (
+                "В выбранном состоянии нет карточек."
+              ) : (
+                <div className="cciStartGuide cciTableStartGuide">
+                  <div className="cciEyebrow">Первый запуск</div>
+                  <h2>Импортируйте внешний каталог</h2>
+                  <p>Укажите раздел или главную страницу конкурента. Сканер сохранит найденные карточки в отдельную очередь, не смешивая их с вашим каталогом.</p>
+                  <div>
+                    <span>1</span>
+                    <strong>Вставьте URL сайта или раздела</strong>
+                    <em>Например, раздел смартфонов, ноутбуков или аксессуаров.</em>
+                  </div>
+                  <div>
+                    <span>2</span>
+                    <strong>Запустите ограниченный обход</strong>
+                    <em>Лимиты страниц и товаров защищают сервер от тяжелого парсинга.</em>
+                  </div>
+                  <div>
+                    <span>3</span>
+                    <strong>Свяжите найденные карточки с SKU</strong>
+                    <em>Только подтвержденные связи смогут насыщать товары.</em>
+                  </div>
                 </div>
-                {filteredProducts.map((product) => (
-                  <button
-                    key={product.id}
-                    type="button"
-                    className={`cciTableRow${selectedProduct?.id === product.id ? " isActive" : ""}`}
-                    onClick={() => setSelectedId(product.id)}
-                  >
-                    <span>
-                      <strong>{product.title}</strong>
-                      <small>{product.url}</small>
-                    </span>
-                    <span>
-                      <Badge tone={product.link?.status === "linked" ? "active" : product.link?.status === "ignored" ? "neutral" : "pending"}>
-                        {linkLabel(product.link)}
-                      </Badge>
-                    </span>
-                    <span>{product.price ? `${product.price} ${product.currency || ""}`.trim() : "-"}</span>
-                    <span>{product.images?.length || 0}</span>
-                    <span>{product.spec_count || 0}</span>
-                    <span>{product.confidence}%</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="cciEmpty">
-                {loading
-                  ? "Загружаю последние результаты..."
-                  : products.length
-                    ? "В выбранном состоянии нет карточек."
-                    : "Пока нет импортированных карточек. Запусти первый обход сайта конкурента."}
-              </div>
-            )}
-          </section>
-        </main>
+              )}
+            </div>
+          )}
+        </section>
 
         <ProductInspector
           product={selectedProduct}

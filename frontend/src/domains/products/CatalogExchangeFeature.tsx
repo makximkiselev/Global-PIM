@@ -1,7 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useOrgPath } from "../../app/orgRoutes";
-import PageHeader from "../../components/ui/PageHeader";
-import PageTabs from "../../components/ui/PageTabs";
 import CatalogExportFeature from "./CatalogExportFeature";
 import CatalogImportFeature from "./CatalogImportFeature";
 
@@ -24,26 +22,32 @@ export default function CatalogExchangeFeature() {
 
   return (
     <div className="cx-exchangePage">
-      <PageHeader
-        title="Импорт / Экспорт"
-        subtitle="Одна рабочая область для загрузки данных в товары и подготовки выгрузки на площадки."
-        actions={
-          <>
-            <Link className="btn" to={orgPath("/catalog")}>К каталогу</Link>
-            <Link className="btn" to={orgPath("/products")}>К товарам</Link>
-          </>
-        }
-      />
-
-      <PageTabs
-        className="cx-exchangeTabs"
-        activeKey={tab}
-        onChange={(key) => setTab(key as ExchangeTab)}
-        items={[
-          { key: "import", label: "Импорт товаров" },
-          { key: "export", label: "Экспорт товаров" },
-        ]}
-      />
+      <header className="cxExchangeCommandHeader">
+        <div className="cxExchangeCommandContext">
+          <span>Каталог / обмен</span>
+          <h1>Импорт и экспорт</h1>
+          <p>Одна рабочая область для загрузки данных в товары и подготовки выгрузки на площадки.</p>
+        </div>
+        <div className="cxExchangeCommandControls">
+          <nav className="cxExchangeSegmentedTabs" aria-label="Режим обмена">
+            {[
+              { key: "import", label: "Импорт" },
+              { key: "export", label: "Экспорт" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={tab === item.key ? "active" : ""}
+                onClick={() => setTab(item.key as ExchangeTab)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <Link className="btn" to={orgPath("/catalog")}>Каталог</Link>
+          <Link className="btn" to={orgPath("/products")}>Товары</Link>
+        </div>
+      </header>
 
       {tab === "export" ? <CatalogExportFeature embedded /> : <CatalogImportFeature embedded />}
     </div>

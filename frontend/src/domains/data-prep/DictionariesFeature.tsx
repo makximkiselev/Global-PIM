@@ -6,7 +6,6 @@ import "../../styles/dictionary-modern.css";
 import { api } from "../../lib/api";
 import DataFilters from "../../components/data/DataFilters";
 import DataToolbar from "../../components/data/DataToolbar";
-import MetricGrid from "../../components/data/MetricGrid";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -14,7 +13,6 @@ import EmptyState from "../../components/ui/EmptyState";
 import Field from "../../components/ui/Field";
 import IconButton from "../../components/ui/IconButton";
 import Modal from "../../components/ui/Modal";
-import PageHeader from "../../components/ui/PageHeader";
 import Select from "../../components/ui/Select";
 import TextInput from "../../components/ui/TextInput";
 import InspectorPanel from "../../components/data/InspectorPanel";
@@ -44,6 +42,28 @@ const TYPE_LABEL: Record<string, string> = {
   date: "Дата",
   json: "JSON",
 };
+
+function EditIcon() {
+  return (
+    <svg className="uiIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 20h4.5L19 9.5 14.5 5 4 15.5V20Z" />
+      <path d="M13.5 6 18 10.5" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg className="uiIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 7h14" />
+      <path d="M9 7V5h6v2" />
+      <path d="M8 10v8" />
+      <path d="M12 10v8" />
+      <path d="M16 10v8" />
+      <path d="M7 7l1 13h8l1-13" />
+    </svg>
+  );
+}
 
 function fmtDate(s?: string | null) {
   if (!s) return "";
@@ -103,6 +123,8 @@ export default function Dictionaries() {
   const [renameTitle, setRenameTitle] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<DictListItem | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   useEffect(() => {
     setActiveParamTabState(normalizeParamTab(searchParams.get("tab")));
@@ -225,16 +247,18 @@ export default function Dictionaries() {
     }
   }
 
-  async function deleteDictionary(dictId: string, title?: string) {
+  async function deleteDictionary(dictId: string) {
     if (!dictId) return;
-    const name = title || dictId;
-    if (!confirm(`Удалить параметр "${name}"?\n\nЗначения будут удалены без возможности восстановления.`)) return;
-
-    await api(`/dictionaries/${encodeURIComponent(dictId)}`, {
-      method: "DELETE",
-    });
-
-    await load();
+    setDeleteSaving(true);
+    try {
+      await api(`/dictionaries/${encodeURIComponent(dictId)}`, {
+        method: "DELETE",
+      });
+      setDeleteTarget(null);
+      await load();
+    } finally {
+      setDeleteSaving(false);
+    }
   }
 
   function openRenameModal(item: DictListItem) {
@@ -273,28 +297,41 @@ export default function Dictionaries() {
 
   return (
     <div className="templates-page page-shell">
-      <PageHeader
-        title="Параметры"
-        subtitle="Автонакапливаемые значения параметров и их справочников."
-        actions={
+      <header className="dictCommandHeader">
+        <div className="dictCommandContext">
+          <span>Данные / справочники</span>
+          <h1>Параметры</h1>
+          <p>Автонакапливаемые значения параметров, словари и группы характеристик для карточек товаров.</p>
+        </div>
+        <div className="dictCommandControls">
           <Button type="button" onClick={() => nav("/")}>
-            ← На главную
+            Рабочая сводка
           </Button>
-        }
-      />
+        </div>
+      </header>
 
       <WorkspaceFrame
         className="dictWorkspace"
         main={
           <>
-            <MetricGrid
-              className="dict-kpis"
-              items={[
-                { label: "Всего параметров", value: stats.total },
-                { label: "Обязательные", value: stats.required },
-                { label: "С заполненными значениями", value: stats.withValues },
-              ]}
-            />
+            <section className="dictStatusStrip" aria-label="Состояние параметров">
+              <div>
+                <span>Всего параметров</span>
+                <strong>{stats.total}</strong>
+              </div>
+              <div>
+                <span>Обязательные</span>
+                <strong>{stats.required}</strong>
+              </div>
+              <div>
+                <span>С заполненными значениями</span>
+                <strong>{stats.withValues}</strong>
+              </div>
+              <div>
+                <span>Текущий раздел</span>
+                <strong>{activeParamTab === "all" ? "Все" : activeParamTab}</strong>
+              </div>
+            </section>
 
             <Card className="dict-searchCard">
               <TextInput
@@ -339,66 +376,78 @@ export default function Dictionaries() {
                 {tabFiltered.length === 0 ? (
                   <EmptyState className="dict-emptyCard" title="Здесь пока что пусто" />
                 ) : (
-                  tabFiltered.map((d) => (
-                    <Card
-                      key={d.id}
-                      className="dict-rowCard"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() =>
-                        nav(`/dictionaries/${encodeURIComponent(d.id)}`, {
-                          state: { backTo: "/dictionaries", backLabel: "К параметрам" },
-                        })
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          nav(`/dictionaries/${encodeURIComponent(d.id)}`, {
-                            state: { backTo: "/dictionaries", backLabel: "К параметрам" },
-                          });
-                        }
-                      }}
-                      title="Открыть параметр"
-                    >
-                      <div className="dict-rowTop">
-                        <div className="dict-rowTitleWrap">
-                          <div className="dict-rowTitle">{d.title || d.id}</div>
-                          <div className="dict-rowBadges">
-                            <span className="dict-badge">{getParamGroup(d)}</span>
-                            {d.meta?.required || d.meta?.service ? <span className="dict-badge dict-badgeRequired">Обязательный</span> : null}
-                          </div>
-                        </div>
-                        <div className="dict-rowActions">
-                          <IconButton
-                            type="button"
-                            title="Редактировать"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openRenameModal(d);
+                  <div className="dictTableScroll">
+                    <table className="dictTable">
+                      <thead>
+                        <tr>
+                          <th>Параметр</th>
+                          <th>Группа</th>
+                          <th>Тип</th>
+                          <th>Значения</th>
+                          <th>Категории</th>
+                          <th>Обновлен</th>
+                          <th aria-label="Действия" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tabFiltered.map((d) => (
+                          <tr
+                            key={d.id}
+                            tabIndex={0}
+                            onClick={() =>
+                              nav(`/dictionaries/${encodeURIComponent(d.id)}`, {
+                                state: { backTo: "/dictionaries", backLabel: "К параметрам" },
+                              })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                nav(`/dictionaries/${encodeURIComponent(d.id)}`, {
+                                  state: { backTo: "/dictionaries", backLabel: "К параметрам" },
+                                });
+                              }
                             }}
+                            title="Открыть параметр"
                           >
-                            ✏️
-                          </IconButton>
-                          <IconButton
-                            tone="danger"
-                            type="button"
-                            title="Удалить"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void deleteDictionary(d.id, d.title);
-                            }}
-                          >
-                            🗑
-                          </IconButton>
-                        </div>
-                      </div>
-                      <div className="dict-rowMeta">
-                        <span>Категории: <b>{d.category_count ?? 0}</b></span>
-                        <span>Тип: <b>{TYPE_LABEL[d.type || ""] || "—"}</b></span>
-                        <span>Значения: <b>{d.size ?? 0}</b></span>
-                        <span>Обновлен: <b>{fmtDate(d.updated_at) || fmtDate(d.created_at) || "—"}</b></span>
-                      </div>
-                    </Card>
-                  ))
+                            <td>
+                              <div className="dictTableTitle">{d.title || d.id}</div>
+                              <div className="dictTableId">{d.id}</div>
+                            </td>
+                            <td><span className="dict-badge">{getParamGroup(d)}</span></td>
+                            <td>{TYPE_LABEL[d.type || ""] || "—"}</td>
+                            <td>{d.size ?? 0}</td>
+                            <td>{d.category_count ?? 0}</td>
+                            <td>{fmtDate(d.updated_at) || fmtDate(d.created_at) || "—"}</td>
+                            <td>
+                              <div className="dict-rowActions">
+                                {d.meta?.required || d.meta?.service ? <span className="dict-badge dict-badgeRequired">Обязательный</span> : null}
+                                <IconButton
+                                  type="button"
+                                  title="Редактировать"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRenameModal(d);
+                                  }}
+                                >
+                                  <EditIcon />
+                                </IconButton>
+                                <IconButton
+                                  tone="danger"
+                                  type="button"
+                                  title="Удалить"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteTarget(d);
+                                  }}
+                                >
+                                  <TrashIcon />
+                                </IconButton>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </Card>
@@ -440,7 +489,7 @@ export default function Dictionaries() {
         title="Добавить параметр"
         subtitle="Создайте один или несколько параметров. Для каждого задайте раздел и значения."
       >
-        <div className="dict-tabsWrap" style={{ marginTop: 10 }}>
+        <div className="dict-tabsWrap dict-modalTabs">
           <DataFilters className="dict-tabs">
             {createForms.map((_, idx) => (
               <button
@@ -455,7 +504,7 @@ export default function Dictionaries() {
           </DataFilters>
         </div>
 
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <div className="dict-modalFormGrid">
           <Field label="Название">
             <TextInput
               value={currentForm.name}
@@ -525,8 +574,8 @@ export default function Dictionaries() {
 
           <div className="dict-requiredRow">
             <div>
-              <div className="field-label" style={{ marginBottom: 4 }}>Обязательный параметр</div>
-              <div className="muted" style={{ fontSize: 12 }}>Будет отмечен как обязательный в карточках и списке.</div>
+              <div className="field-label dict-requiredTitle">Обязательный параметр</div>
+              <div className="muted dict-requiredText">Будет отмечен как обязательный в карточках и списке.</div>
             </div>
             <label className="dict-toggle" aria-label="Обязательный параметр">
               <input
@@ -544,7 +593,7 @@ export default function Dictionaries() {
           {createError ? <Alert tone="error">{createError}</Alert> : null}
         </div>
 
-        <div className="modal-actions" style={{ marginTop: 14 }}>
+        <div className="modal-actions dict-modalActions">
           <Button type="button" onClick={addCreateForm} disabled={createSaving}>
             + Добавить еще
           </Button>
@@ -563,7 +612,7 @@ export default function Dictionaries() {
         title="Редактировать параметр"
         subtitle="Измените название параметра."
       >
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+        <div className="dict-modalFormGrid">
           <Field label="Название">
             <TextInput
               value={renameTitle}
@@ -577,12 +626,32 @@ export default function Dictionaries() {
           {renameError ? <Alert tone="error">{renameError}</Alert> : null}
         </div>
 
-        <div className="modal-actions" style={{ marginTop: 14 }}>
+        <div className="modal-actions dict-modalActions">
           <Button type="button" onClick={() => setRenameOpen(false)} disabled={renameSaving}>
             Отмена
           </Button>
           <Button variant="primary" type="button" onClick={submitRename} disabled={renameSaving}>
             {renameSaving ? "Сохраняю…" : "Сохранить"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => !deleteSaving && setDeleteTarget(null)}
+        title="Удалить параметр"
+        subtitle="Значения и связи этого параметра будут удалены без возможности восстановления."
+      >
+        <div className="dict-deleteSummary">
+          <strong>{deleteTarget?.title || deleteTarget?.id}</strong>
+          <span>{deleteTarget?.size || 0} значений</span>
+        </div>
+        <div className="modal-actions dict-modalActions">
+          <Button type="button" onClick={() => setDeleteTarget(null)} disabled={deleteSaving}>
+            Отмена
+          </Button>
+          <Button variant="danger" type="button" onClick={() => deleteTarget && void deleteDictionary(deleteTarget.id)} disabled={deleteSaving || !deleteTarget}>
+            {deleteSaving ? "Удаляю…" : "Удалить параметр"}
           </Button>
         </div>
       </Modal>

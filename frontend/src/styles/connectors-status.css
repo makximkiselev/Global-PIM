@@ -4,10 +4,6 @@
   gap:16px;
 }
 
-.cs-page .page-header{
-  align-items:center;
-}
-
 .cs-commandGrid{
   display:grid;
   grid-template-columns:minmax(0, 1fr) minmax(280px, 380px);
@@ -54,7 +50,7 @@
   color:var(--text);
   font-size:clamp(30px, 4vw, 54px);
   line-height:.92;
-  letter-spacing:-.055em;
+  letter-spacing:0;
 }
 
 .cs-healthHero p{
@@ -81,7 +77,7 @@
   color:var(--text);
   font-size:34px;
   line-height:1;
-  letter-spacing:-.04em;
+  letter-spacing:0;
 }
 
 .cs-healthScore span{
@@ -137,7 +133,7 @@
   color:var(--text);
   font-size:30px;
   line-height:1;
-  letter-spacing:-.04em;
+  letter-spacing:0;
 }
 
 .cs-readinessCard p{
@@ -158,7 +154,7 @@
   color:var(--text);
   font-size:22px;
   line-height:1.05;
-  letter-spacing:-.035em;
+  letter-spacing:0;
 }
 
 .cs-actionStack{
@@ -294,7 +290,7 @@ a.cs-actionItem:hover{
   color:var(--text);
   font-size:28px;
   line-height:1;
-  letter-spacing:-.04em;
+  letter-spacing:0;
 }
 
 .cs-providerTitleBlock p{
@@ -389,16 +385,46 @@ a.cs-actionItem:hover{
 
 .cs-storeList{
   display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));
+  gap:0;
+  overflow:hidden;
+  border:1px solid rgba(226, 232, 240, .95);
+  border-radius:18px;
+  background:rgba(255,255,255,.70);
+}
+
+.cs-storeListHead{
+  display:grid;
+  grid-template-columns:minmax(220px, 1.1fr) minmax(160px, .85fr) minmax(240px, 1.25fr) minmax(120px, .55fr) minmax(230px, .9fr);
   gap:12px;
+  padding:10px 12px;
+  border-bottom:1px solid rgba(226, 232, 240, .9);
+  background:rgba(248,250,252,.88);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
 }
 
 .cs-storeCard{
+  display:grid;
+  grid-template-columns:minmax(220px, 1.1fr) minmax(160px, .85fr) minmax(240px, 1.25fr) minmax(120px, .55fr) minmax(230px, .9fr);
+  align-items:center;
+  gap:12px;
   min-width:0;
-  border:1px solid rgba(226, 232, 240, .95);
-  border-radius:20px;
-  padding:14px;
-  background:rgba(255,255,255,.78);
+  padding:12px;
+  border-bottom:1px solid rgba(226, 232, 240, .76);
+  background:rgba(255,255,255,.76);
+}
+
+.cs-storeCard:last-child{
+  border-bottom:0;
+}
+
+.cs-storeCard.isRequested{
+  position:relative;
+  border-color:rgba(59, 130, 246, .42);
+  box-shadow:0 0 0 3px rgba(59, 130, 246, .08);
 }
 
 .cs-storeTop{
@@ -416,10 +442,47 @@ a.cs-actionItem:hover{
   overflow-wrap:anywhere;
 }
 
+.cs-storeToggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(226, 232, 240, .95);
+  border-radius:999px;
+  padding:7px 9px;
+  background:#fbfcff;
+  cursor:pointer;
+}
+
+.cs-storeToggle input{
+  margin:0;
+  accent-color:var(--brand);
+}
+
+.cs-storeToggle span{
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  gap:3px;
+}
+
+.cs-storeToggle strong{
+  color:var(--text);
+  font-size:12px;
+  line-height:1.2;
+}
+
+.cs-storeToggle em{
+  color:var(--muted);
+  font-size:11px;
+  font-style:normal;
+  font-weight:700;
+  line-height:1.35;
+}
+
 .cs-storeMeta{
   display:grid;
-  gap:6px;
-  margin:12px 0;
+  gap:4px;
+  margin:0;
 }
 
 .cs-storeMeta div{
@@ -444,11 +507,12 @@ a.cs-actionItem:hover{
 
 .cs-storeAccess{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  border-radius:14px;
-  padding:8px 10px;
+  align-items:flex-start;
+  justify-content:center;
+  flex-direction:column;
+  gap:3px;
+  border-radius:12px;
+  padding:7px 9px;
   background:#f6f7f9;
   color:#52525b;
   font-size:12px;
@@ -473,7 +537,9 @@ a.cs-actionItem:hover{
 
 .cs-storeError,
 .cs-storeNotes{
-  margin:10px 0 0;
+  grid-column:1 / -1;
+  margin:0;
+  padding-top:2px;
   color:var(--muted);
   font-size:12px;
   font-weight:700;
@@ -488,8 +554,9 @@ a.cs-actionItem:hover{
 .cs-storeActions{
   display:flex;
   flex-wrap:wrap;
+  justify-content:flex-end;
   gap:8px;
-  margin-top:12px;
+  margin:0;
 }
 
 .cs-storeActions .btn{
@@ -499,12 +566,38 @@ a.cs-actionItem:hover{
 }
 
 .cs-emptyAccess{
+  display:flex;
+  min-height:154px;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:9px;
   border:1px dashed rgba(226, 232, 240, .95);
   border-radius:18px;
   padding:16px;
   color:var(--muted);
   font-size:13px;
   font-weight:750;
+}
+
+.cs-emptyAccess.isRequested{
+  border-color:rgba(59, 130, 246, .42);
+  background:rgba(239, 246, 255, .64);
+}
+
+.cs-emptyAccess strong{
+  color:var(--text);
+  font-size:15px;
+  line-height:1.2;
+}
+
+.cs-emptyAccess span{
+  max-width:460px;
+  line-height:1.45;
+}
+
+.cs-emptyAccess .btn{
+  margin-top:2px;
 }
 
 .cs-summaryRows{
@@ -722,10 +815,36 @@ a.cs-actionItem:hover{
     border-right:0;
     border-bottom:1px solid rgba(226, 232, 240, .72);
   }
+
+  .cs-storeListHead{
+    display:none;
+  }
+
+  .cs-storeList{
+    gap:10px;
+    overflow:visible;
+    border:0;
+    border-radius:0;
+    background:transparent;
+  }
+
+  .cs-storeCard{
+    grid-template-columns:minmax(220px, 1fr) minmax(180px, .8fr);
+    border:1px solid rgba(226, 232, 240, .95);
+    border-radius:18px;
+  }
+
+  .cs-storeMeta,
+  .cs-storeActions{
+    grid-column:1 / -1;
+  }
+
+  .cs-storeActions{
+    justify-content:flex-start;
+  }
 }
 
 @media (max-width: 820px){
-  .cs-page .page-header,
   .cs-healthHero,
   .cs-providerHead,
   .cs-sectionHead{
@@ -739,7 +858,8 @@ a.cs-actionItem:hover{
   }
 
   .cs-methodRow,
-  .cs-methodDetailsGrid{
+  .cs-methodDetailsGrid,
+  .cs-storeCard{
     grid-template-columns:1fr;
   }
 
@@ -762,4 +882,210 @@ a.cs-actionItem:hover{
   button.cs-actionItem{
     transition:none;
   }
+}
+
+/* 2026 operational pass: sources should feel like a working control panel, not a promo page. */
+.cs-page{
+  gap:12px;
+}
+
+.cs-commandGrid{
+  gap:12px;
+}
+
+.cs-healthPanel,
+.cs-inspectorCard,
+.cs-providerCard{
+  border:1px solid var(--line);
+  background:var(--card);
+  box-shadow:none;
+}
+
+.cs-healthPanel,
+.cs-inspectorCard,
+.cs-providerCard,
+.cs-readinessCard,
+.cs-actionItem,
+.cs-methodRow,
+.cs-storeList,
+.cs-storeToggle,
+.cs-emptyAccess,
+.cs-offerBox,
+.cs-summaryRows > div{
+  border-radius:8px;
+}
+
+.cs-healthPanel,
+.cs-inspectorCard{
+  padding:14px;
+}
+
+.cs-healthHero{
+  gap:16px;
+  margin-bottom:12px;
+}
+
+.cs-eyebrow,
+.cs-readinessCard span,
+.cs-actionItem span{
+  color:var(--muted);
+  font-weight:850;
+  letter-spacing:.08em;
+}
+
+.cs-healthHero h2{
+  margin:4px 0 6px;
+  font-size:26px;
+  line-height:1.05;
+  font-weight:900;
+}
+
+.cs-healthHero p{
+  max-width:760px;
+  font-size:13px;
+  line-height:1.42;
+  font-weight:650;
+}
+
+.cs-healthScore{
+  min-width:138px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface-2);
+  padding:12px;
+}
+
+.cs-healthScore strong{
+  font-size:24px;
+}
+
+.cs-readinessGrid,
+.cs-actionStack,
+.cs-providers{
+  gap:8px;
+}
+
+.cs-readinessCard,
+.cs-actionItem,
+.cs-summaryRows > div{
+  border:1px solid var(--line);
+  background:var(--surface-2);
+  padding:10px;
+}
+
+.cs-readinessCard:hover,
+button.cs-actionItem:hover,
+a.cs-actionItem:hover{
+  transform:none;
+  border-color:rgba(var(--brand-rgb),.22);
+  box-shadow:none;
+}
+
+.cs-readinessCard.isReady,
+.cs-actionItem.ok{
+  border-color:rgba(34, 197, 94, .28);
+  background:color-mix(in srgb, #ecfdf3 58%, var(--card));
+}
+
+.cs-readinessCard.isBlocked,
+.cs-actionItem.critical{
+  border-color:rgba(248, 113, 113, .34);
+  background:color-mix(in srgb, #fff7ed 58%, var(--card));
+}
+
+.cs-actionItem.warn{
+  border-color:rgba(245, 158, 11, .32);
+  background:color-mix(in srgb, #fffbeb 58%, var(--card));
+}
+
+.cs-readinessCard strong{
+  margin-top:7px;
+  font-size:22px;
+}
+
+.cs-inspectorHead strong{
+  margin-top:5px;
+  font-size:18px;
+  line-height:1.15;
+}
+
+.cs-actionStack{
+  margin-top:12px;
+}
+
+.cs-actionItem b{
+  margin-top:8px;
+  color:var(--brand);
+}
+
+.cs-providerCard{
+  animation:none;
+}
+
+.cs-providerHead{
+  padding:14px;
+  border-bottom:1px solid var(--line);
+}
+
+.cs-providerTitleBlock h3{
+  margin:6px 0 4px;
+  font-size:20px;
+  line-height:1.1;
+  font-weight:900;
+}
+
+.cs-providerSection{
+  padding:14px;
+  border-top:1px solid var(--line);
+}
+
+.cs-sectionHead strong{
+  font-size:15px;
+}
+
+.cs-storeList{
+  border:1px solid var(--line);
+  background:var(--card);
+}
+
+.cs-storeListHead{
+  gap:10px;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.cs-storeCard{
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.cs-storeToggle,
+.cs-storeAccess,
+.cs-offerBox{
+  border:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.cs-storeToggle{
+  border-radius:8px;
+}
+
+.cs-storeAccess{
+  color:var(--muted);
+}
+
+.cs-methodRow{
+  border:1px solid var(--line);
+  background:var(--card);
+  padding:12px;
+}
+
+.cs-methodRow.critical{
+  background:color-mix(in srgb, #fff7ed 58%, var(--card));
+}
+
+.cs-methodRow.warn{
+  background:color-mix(in srgb, #fffbeb 58%, var(--card));
 }

@@ -5,17 +5,15 @@ import { useOrgPath } from "../../app/orgRoutes";
 import DataList from "../../components/data/DataList";
 import DataTable from "../../components/data/DataTable";
 import InspectorPanel from "../../components/data/InspectorPanel";
-import MetricGrid from "../../components/data/MetricGrid";
 import Alert from "../../components/ui/Alert";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import EmptyState from "../../components/ui/EmptyState";
 import Field from "../../components/ui/Field";
-import PageHeader from "../../components/ui/PageHeader";
-import PageTabs from "../../components/ui/PageTabs";
 import Select from "../../components/ui/Select";
 import TextInput from "../../components/ui/TextInput";
 import { api } from "../../lib/api";
+import AdminAccessFeature from "./AdminAccessFeature";
 
 type OrganizationRow = {
   id: string;
@@ -31,7 +29,7 @@ type OrganizationRow = {
 type MemberRow = {
   id: string;
   organization_id: string;
-  platform_user_id: string;
+  user_id: string;
   org_role_code: string;
   status: string;
   email: string;
@@ -61,7 +59,7 @@ type WorkspaceBootstrapResp = {
   invites: InviteRow[];
 };
 
-type AdminMode = "organizations" | "members" | "invites";
+type AdminMode = "organizations" | "members" | "invites" | "roles";
 
 type Props = {
   initialTab: AdminMode | "platform";
@@ -71,6 +69,7 @@ const TAB_TO_PATH: Record<AdminMode, string> = {
   organizations: "/admin/organizations",
   members: "/admin/members",
   invites: "/admin/invites",
+  roles: "/admin/roles?tab=roles",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -79,6 +78,13 @@ const ROLE_LABELS: Record<string, string> = {
   org_editor: "Редактор",
   org_viewer: "Наблюдатель",
 };
+
+const ORG_ROLE_OPTIONS = [
+  { value: "org_owner", label: "Владелец" },
+  { value: "org_admin", label: "Администратор" },
+  { value: "org_editor", label: "Редактор" },
+  { value: "org_viewer", label: "Наблюдатель" },
+];
 
 function badgeToneFromStatus(status?: string | null): "neutral" | "active" | "provisioning" | "pending" | "danger" {
   const normalized = String(status || "").toLowerCase();
@@ -131,11 +137,17 @@ function pluralRu(value: number, forms: [string, string, string]) {
   return forms[2];
 }
 
+function appendSearch(path: string, params: URLSearchParams) {
+  const query = params.toString();
+  if (!query) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}${query}`;
+}
+
 export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const navigate = useNavigate();
   const orgPath = useOrgPath();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentOrganization, switchOrganization } = useAuth();
+  const { currentOrganization, switchOrganization, user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -143,6 +155,10 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
   const [query, setQuery] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [selectedInviteId, setSelectedInviteId] = useState("");
+  const [memberRoleDraft, setMemberRoleDraft] = useState("org_editor");
+  const [memberStatusDraft, setMemberStatusDraft] = useState("active");
+  const [savingMember, setSavingMember] = useState(false);
+  const [deletingMember, setDeletingMember] = useState(false);
   const [submittingInvite, setSubmittingInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("org_editor");
@@ -190,6 +206,13 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     () => invites.find((invite) => invite.id === selectedInviteId) || pendingInvites[0] || invites[0] || null,
     [invites, pendingInvites, selectedInviteId],
   );
+  const isSelectedMemberSelf = Boolean(selectedMember?.user_id && selectedMember.user_id === user?.id);
+
+  useEffect(() => {
+    if (!selectedMember) return;
+    setMemberRoleDraft(selectedMember.org_role_code || "org_editor");
+    setMemberStatusDraft(selectedMember.status || "active");
+  }, [selectedMember?.id, selectedMember?.org_role_code, selectedMember?.status]);
 
   const filteredMembers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -256,6 +279,42 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
     await navigator.clipboard.writeText(inviteResult);
   }
 
+  async function saveSelectedMember() {
+    if (!selectedOrganization || !selectedMember) return;
+    setSavingMember(true);
+    setError("");
+    try {
+      await api(`/platform/organizations/${encodeURIComponent(selectedOrganization.id)}/members/${encodeURIComponent(selectedMember.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ org_role_code: memberRoleDraft, status: memberStatusDraft }),
+      });
+      await load(selectedOrganization.id);
+    } catch (err) {
+      setError((err as Error).message || "Не удалось обновить участника");
+    } finally {
+      setSavingMember(false);
+    }
+  }
+
+  async function deleteSelectedMember() {
+    if (!selectedOrganization || !selectedMember) return;
+    const confirmed = window.confirm(`Удалить доступ для ${personName(selectedMember.name, selectedMember.email)}?`);
+    if (!confirmed) return;
+    setDeletingMember(true);
+    setError("");
+    try {
+      await api(`/platform/organizations/${encodeURIComponent(selectedOrganization.id)}/members/${encodeURIComponent(selectedMember.id)}`, {
+        method: "DELETE",
+      });
+      setSelectedMemberId("");
+      await load(selectedOrganization.id);
+    } catch (err) {
+      setError((err as Error).message || "Не удалось удалить участника");
+    } finally {
+      setDeletingMember(false);
+    }
+  }
+
   const organizationSwitcher = organizationRows.length > 1 ? (
     <div className="orgAdminSwitcher" aria-label="Выбор организации">
       {organizationRows.map((organization) => (
@@ -304,6 +363,44 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         </InspectorPanel>
       ) : null}
 
+      {activeTab === "members" ? (
+        <InspectorPanel title="Участник команды" subtitle={selectedMember?.email || "Выберите сотрудника"}>
+          {selectedMember ? (
+            <div className="orgAdminMemberEditor">
+              <div className="orgAdminInspectorRows">
+                <div><span>Имя</span><strong>{personName(selectedMember.name, selectedMember.email)}</strong></div>
+                <div><span>Email</span><strong>{selectedMember.email || "—"}</strong></div>
+                <div><span>Последний вход</span><strong>{formatDate(selectedMember.last_login_at)}</strong></div>
+                <div><span>Статус аккаунта</span><Badge tone={badgeToneFromStatus(selectedMember.user_status)}>{statusLabel(selectedMember.user_status)}</Badge></div>
+              </div>
+              <Field label="Роль в организации">
+                <Select value={memberRoleDraft} onChange={(event) => setMemberRoleDraft(event.target.value)}>
+                  {ORG_ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Доступ">
+                <Select value={memberStatusDraft} onChange={(event) => setMemberStatusDraft(event.target.value)}>
+                  <option value="active">Активен</option>
+                  <option value="disabled">Отключен</option>
+                </Select>
+              </Field>
+              <div className="orgAdminInspectorActions">
+                <Button variant="primary" onClick={() => void saveSelectedMember()} disabled={savingMember || deletingMember}>
+                  {savingMember ? "Сохраняем..." : "Сохранить"}
+                </Button>
+                <Button variant="danger" onClick={() => void deleteSelectedMember()} disabled={savingMember || deletingMember || isSelectedMemberSelf}>
+                  {deletingMember ? "Удаляем..." : "Удалить из организации"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="dataListEmpty">Выберите сотрудника в списке.</div>
+          )}
+        </InspectorPanel>
+      ) : null}
+
     </div>
   );
 
@@ -312,7 +409,7 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
       <div className="orgAdminCommand">
         <div>
           <div className="orgAdminCommandTitle">
-            {activeTab === "organizations" ? "Организация" : activeTab === "members" ? "Команда" : "Приглашения"}
+            {activeTab === "organizations" ? "Организация" : activeTab === "members" ? "Команда" : activeTab === "roles" ? "Роли" : "Приглашения"}
           </div>
           <div className="orgAdminCommandMeta">
             {selectedOrganization ? `${selectedOrganization.name} · ${organizationCaption(selectedOrganization)}` : "Организация не выбрана"}
@@ -341,14 +438,23 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
             </div>
             <Badge tone={badgeToneFromStatus(selectedOrganization.status)}>{statusLabel(selectedOrganization.status)}</Badge>
           </div>
-          <MetricGrid
-            className="orgAdminGrid"
-            items={[
-              { label: "Сотрудники", value: selectedOrganization.member_count, meta: "имеют доступ к организации" },
-              { label: "Приглашения", value: selectedOrganization.pending_invite_count, meta: "ожидают принятия" },
-              { label: "Состояние", value: selectedOrganization.tenant_status ? statusLabel(selectedOrganization.tenant_status) : "Готова", meta: "рабочий контур доступен" },
-            ]}
-          />
+          <section className="orgAdminStatusStrip" aria-label="Состояние организации">
+            <div>
+              <span>Сотрудники</span>
+              <strong>{selectedOrganization.member_count}</strong>
+              <em>имеют доступ</em>
+            </div>
+            <div>
+              <span>Приглашения</span>
+              <strong>{selectedOrganization.pending_invite_count}</strong>
+              <em>ожидают принятия</em>
+            </div>
+            <div>
+              <span>Контур</span>
+              <strong>{selectedOrganization.tenant_status ? statusLabel(selectedOrganization.tenant_status) : "Готова"}</strong>
+              <em>рабочая организация</em>
+            </div>
+          </section>
           <div className="orgAdminNextSteps">
             <button type="button" onClick={() => navigate(orgPath(`/admin/members?organization=${encodeURIComponent(selectedOrganization.id)}`))}>
               <span>Команда</span>
@@ -357,6 +463,10 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
             <button type="button" onClick={() => navigate(orgPath(`/admin/invites?organization=${encodeURIComponent(selectedOrganization.id)}`))}>
               <span>Приглашения</span>
               <strong>Добавить нового сотрудника</strong>
+            </button>
+            <button type="button" onClick={() => navigate(orgPath(`/admin/roles?tab=roles&organization=${encodeURIComponent(selectedOrganization.id)}`))}>
+              <span>Роли</span>
+              <strong>Настроить права команды</strong>
             </button>
           </div>
         </div>
@@ -441,36 +551,53 @@ export default function OrganizationsAdminFeature({ initialTab }: Props) {
         </div>
       ) : null}
 
+      {!loading && selectedOrganization && activeTab === "roles" ? (
+        <div className="orgAdminAccessEmbed">
+          <AdminAccessFeature embedded />
+        </div>
+      ) : null}
+
     </div>
   );
 
-  const showInlineInspector = activeTab === "invites";
+  const showInlineInspector = activeTab === "members" || activeTab === "invites";
 
   return (
     <div className="page-shell orgAdminPage">
-      <PageHeader
-        title="Администрирование"
-        subtitle="Организации, команда и права доступа без лишних панелей."
-        actions={<Button onClick={() => void load()}>Обновить</Button>}
-      />
-
-      <PageTabs
-        activeKey={activeTab}
-        className="orgAdminTabs"
-        items={[
-          { key: "organizations", label: "Организации" },
-          { key: "members", label: "Команда" },
-          { key: "invites", label: "Приглашения" },
-        ]}
-        onChange={(key) => {
-          const next = key as AdminMode;
-          navigate(orgPath(`${TAB_TO_PATH[next]}?${searchParams.toString()}`));
-        }}
-      />
+      <header className="orgAdminCommandHeader">
+        <div className="orgAdminCommandContext">
+          <span>Система / доступ</span>
+          <h1>Организации и команда</h1>
+          <p>Переключайте организацию, проверяйте роли и отправляйте приглашения без отдельной админки.</p>
+        </div>
+        <div className="orgAdminCommandControls">
+          <nav className="orgAdminSegmentedTabs" aria-label="Раздел администрирования">
+            {[
+              { key: "organizations", label: "Организации" },
+              { key: "members", label: "Команда" },
+              { key: "invites", label: "Приглашения" },
+              { key: "roles", label: "Роли" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={activeTab === item.key ? "active" : ""}
+                onClick={() => {
+                  const next = item.key as AdminMode;
+                  navigate(orgPath(appendSearch(TAB_TO_PATH[next], searchParams)));
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <Button onClick={() => void load()}>Обновить</Button>
+        </div>
+      </header>
 
       {error ? <Alert tone="error" className="orgAdminNotice">{error}</Alert> : null}
 
-      <div className="orgAdminWorkspaceFlat">
+      <div className={`orgAdminWorkspaceFlat${organizationSwitcher ? "" : " noSwitcher"}`}>
         {organizationSwitcher}
         <div className={`orgAdminWorkSurface${showInlineInspector ? "" : " noInspector"}`}>
           <div className="orgAdminWorkMain">{main}</div>

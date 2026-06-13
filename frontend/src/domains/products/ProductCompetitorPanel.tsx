@@ -532,7 +532,7 @@ export default function ProductCompetitorPanel({
                 </a>
                 <div className="productCompetitorFacts">
                   <div><span>Точность</span><strong>{scoreLabel(selected)}</strong></div>
-                  <div><span>SIM в PIM</span><strong>{simProfileLabel(selected.product_sim_profile)}</strong></div>
+                  <div><span>SIM в товаре</span><strong>{simProfileLabel(selected.product_sim_profile)}</strong></div>
                   <div><span>SIM у конкурента</span><strong>{simProfileLabel(selected.candidate_sim_profile)}</strong></div>
                   <div><span>Последняя проверка</span><strong>{selected.last_seen_at ? new Date(selected.last_seen_at).toLocaleString("ru-RU") : "—"}</strong></div>
                   <div><span>{reasonCaption(selected)}</span><strong>{(selected.confidence_reasons || []).join(", ") || "—"}</strong></div>

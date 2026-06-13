@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useOrgPath } from "../../app/orgRoutes";
 import SourcesMarketplaceSection from "./SourcesMarketplaceSection";
 import SourcesParamsWorkspaceSection from "./SourcesParamsWorkspaceSection";
 import SourcesValueMappingSection from "./SourcesValueMappingSection";
-import WorkspaceHeader from "../../components/layout/WorkspaceHeader";
-import WorkspaceTaskQueue from "../../components/layout/WorkspaceTaskQueue";
 import { api } from "../../lib/api";
 import "../../styles/product-groups.css";
 import "../../styles/competitor-mapping.css";
 import "../../styles/sources-mapping-modern.css";
 
-type SourcesTab = "sources" | "params" | "values";
+type SourcesTab = "sources" | "competitors" | "params" | "values";
 
 type MappingBootstrapResp = {
   catalog_nodes?: Array<{ id: string; parent_id: string | null; name: string }>;
@@ -22,11 +20,17 @@ const MAPPING_BOOTSTRAP_CACHE_KEY = "sources_mapping_feature_bootstrap_v2";
 const PRODUCT_CONTEXT_CACHE_KEY = "smartpim_last_product_context_v1";
 let mappingBootstrapCache: MappingBootstrapResp | null = null;
 
-const TAB_ITEMS: Array<{ key: SourcesTab; label: string; hint: string }> = [
-  { key: "sources", label: "Категории", hint: "Площадки и конкурентные источники" },
-  { key: "params", label: "Черновик параметров", hint: "Источники -> поля PIM" },
-  { key: "values", label: "Значения", hint: "Написания для выгрузки" },
+const STEP_ITEMS: Array<{ key: SourcesTab | "export"; label: string; hint: string }> = [
+  { key: "sources", label: "Площадки", hint: "Категории Я.Маркет и Ozon" },
+  { key: "competitors", label: "Конкуренты", hint: "Точные карточки товаров" },
+  { key: "params", label: "Параметры", hint: "Поля категории и источников" },
+  { key: "values", label: "Значения", hint: "Справочники и написания" },
+  { key: "export", label: "Экспорт", hint: "Проверка готовности" },
 ];
+
+function stepIndex(key: SourcesTab | "export") {
+  return STEP_ITEMS.findIndex((item) => item.key === key);
+}
 
 function readStoredProductContext(): { productId: string; categoryId: string; categoryName: string } {
   if (typeof window === "undefined") return { productId: "", categoryId: "", categoryName: "" };
@@ -68,8 +72,17 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: strin
   }
   if (tab === "sources") {
     return {
+      title: "Подобрать конкурентов",
+      detail: "После привязки категорий площадок выберите точные карточки конкурентов для насыщения товаров.",
+      label: "К конкурентам",
+      href: sourcesHref("competitors", categoryId, productId),
+      tone: "pending",
+    };
+  }
+  if (tab === "competitors") {
+    return {
       title: "Собрать параметры",
-      detail: "Когда категория площадки и конкурентные карточки выбраны, переходите к черновику PIM-параметров.",
+      detail: "Когда категории площадок и конкурентные карточки выбраны, переходите к предложениям параметров категории.",
       label: "К параметрам",
       href: sourcesHref("params", categoryId, productId),
       tone: "pending",
@@ -78,7 +91,7 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: strin
   if (tab === "params") {
     return {
       title: "Нормализовать значения",
-      detail: "После связки полей проверьте справочники, boolean/enum значения и provider-specific output.",
+      detail: "После связки полей проверьте справочники, значения да/нет, списки и написания для каждой площадки.",
       label: "К значениям",
       href: sourcesHref("values", categoryId, productId),
       tone: "pending",
@@ -87,8 +100,8 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: strin
   return {
     title: productId ? "Проверить экспорт SKU" : "Проверить экспорт категории",
     detail: productId
-      ? "После значений запустите readiness batch по исходному SKU."
-      : "После значений запустите readiness batch. Для финальной проверки лучше выбрать отдельный SKU.",
+      ? "После значений запустите проверку выгрузки по исходному SKU."
+      : "После значений запустите проверку выгрузки. Для финальной проверки лучше выбрать отдельный SKU.",
     label: productId ? "Экспорт SKU" : "Проверить экспорт",
     href: exportHref(categoryId, productId),
     tone: "active",
@@ -97,6 +110,7 @@ function sourcesNextAction(tab: SourcesTab, categoryId: string, productId: strin
 
 function normalizeTab(value: string | null): SourcesTab {
   if (value === "mp_categories" || value === "marketplace_categories") return "sources";
+  if (value === "competitors" || value === "competitor" || value === "competitor_links" || value === "discovery") return "competitors";
   if (value === "params") return "params";
   if (value === "mp_attributes" || value === "attributes") return "params";
   if (value === "values") return "values";
@@ -132,7 +146,6 @@ async function loadMappingBootstrap() {
 export default function SourcesMappingFeature() {
   const orgPath = useOrgPath();
   const [searchParams, setSearchParams] = useSearchParams();
-  const rawTab = searchParams.get("tab");
   const initialTab = normalizeTab(searchParams.get("tab"));
   const storedContext = useMemo(() => readStoredProductContext(), []);
   const categoryParam = String(searchParams.get("category") || "").trim();
@@ -145,20 +158,51 @@ export default function SourcesMappingFeature() {
   const [tab, setTabState] = useState<SourcesTab>(initialTab);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
   const [selectedCategoryName, setSelectedCategoryName] = useState(storedContext.categoryName);
+  const [marketplaceReady, setMarketplaceReady] = useState(false);
   const [categoryResolving, setCategoryResolving] = useState(
     (initialTab === "params" && !initialCategoryId) || !!providerCategoryParam,
   );
   const tabDescription = useMemo(
     () =>
       tab === "sources"
-        ? "Выберите PIM-категорию, сопоставьте площадки и подтвердите конкурентные карточки для насыщения товаров."
+        ? "Сопоставьте категорию каталога с категориями Я.Маркета и Ozon. Конкуренты вынесены в следующий шаг."
+        : tab === "competitors"
+          ? "Выберите точные карточки конкурентов для SKU: из них система заберет параметры, описание и медиа."
         : tab === "params"
-          ? "Соберите черновик PIM-параметров из площадок, конкурентов и товарных данных, затем утверждайте модель."
-          : "Контроль значений PIM, справочников площадок и написаний для выгрузки по каждому параметру.",
+          ? "Соберите предложения параметров категории из площадок, конкурентов и товарных данных, затем утверждайте модель."
+          : "Контроль значений, справочников площадок и написаний для выгрузки по каждому параметру.",
     [tab],
   );
-  const nextAction = useMemo(() => sourcesNextAction(tab, selectedCategoryId, productParam), [productParam, selectedCategoryId, tab]);
-  const routeStateLabel = tab === "sources" ? "Шаг 1 из 4" : tab === "params" ? "Шаг 2 из 4" : "Шаг 3 из 4";
+  const nextAction = useMemo(() => {
+    if (tab === "sources" && selectedCategoryId && !marketplaceReady) {
+      return {
+        title: "Сопоставьте площадки",
+        detail: "Выберите категории Я.Маркета и Ozon для текущей ветки. После этого откроются конкуренты, параметры и значения.",
+        label: "Сопоставить площадки",
+        href: sourcesHref("sources", selectedCategoryId, productParam),
+        tone: "pending",
+      };
+    }
+    if ((tab === "params" || tab === "values") && selectedCategoryId && !marketplaceReady) {
+      return {
+        title: "Сначала сопоставьте площадки",
+        detail: "Без связки с категориями маркетплейсов нельзя собрать обязательные поля, значения и готовую выгрузку.",
+        label: "Открыть площадки",
+        href: sourcesHref("sources", selectedCategoryId, productParam),
+        tone: "pending",
+      };
+    }
+    return sourcesNextAction(tab, selectedCategoryId, productParam);
+  }, [marketplaceReady, productParam, selectedCategoryId, tab]);
+  const activeStepIndex = stepIndex(tab);
+  const categoryLabel = selectedCategoryName || (selectedCategoryId ? `ID ${selectedCategoryId}` : "Категория не выбрана");
+  const workModeLabel = productParam ? "SKU" : "Категория";
+  const workModeDetail = productParam
+    ? `Контроль по ${productParam}, модель и значения применяются к категории.`
+    : selectedCategoryId
+      ? "Работа идет по выбранной ветке каталога."
+      : "Выберите ветку каталога, чтобы открыть источники.";
+  const currentStepLabel = STEP_ITEMS[activeStepIndex]?.label || "Источники";
 
   useEffect(() => {
     const nextTab = normalizeTab(searchParams.get("tab"));
@@ -206,6 +250,28 @@ export default function SourcesMappingFeature() {
       cancelled = true;
     };
   }, [selectedCategoryId, selectedCategoryName]);
+
+  useEffect(() => {
+    if (!selectedCategoryId) {
+      setMarketplaceReady(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await loadMappingBootstrap();
+        if (cancelled) return;
+        const mappings = data.mappings || {};
+        const hasMapping = Object.values(mappings[selectedCategoryId] || {}).some((value) => !!String(value || "").trim());
+        setMarketplaceReady(hasMapping);
+      } catch {
+        if (!cancelled) setMarketplaceReady(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId]);
 
   useEffect(() => {
     if (!providerParam || !providerCategoryParam) return;
@@ -315,84 +381,87 @@ export default function SourcesMappingFeature() {
     setSearchParams(next, { replace: true });
   }
 
-  if (rawTab === "competitors" || rawTab === "competitor" || rawTab === "competitor_links" || rawTab === "discovery") {
-    const categoryParam = selectedCategoryId ? `?category=${encodeURIComponent(selectedCategoryId)}` : "";
-    return <Navigate to={orgPath(`/data-prep/competitors${categoryParam}`)} replace />;
-  }
-
   return (
-    <div className="page-shell sourcesMappingPage">
-      <WorkspaceHeader
-        eyebrow="Инфо-модели"
-        title="Сопоставления"
-        context={selectedCategoryName || undefined}
-        subtitle={tabDescription}
-        tabs={TAB_ITEMS}
-        activeTab={tab}
-        onTabChange={(nextTab) => setTab(nextTab as SourcesTab)}
-      />
-
-      <WorkspaceTaskQueue
-        title="Маршрут сопоставления"
-        items={[
-          {
-            key: "sources",
-            label: "Категории и конкурентные карточки",
-            description: "Сначала свяжи PIM-ветку с площадками, затем подтверди точные карточки re-store/store77 для SKU.",
-            href: selectedCategoryId ? sourcesHref("sources", selectedCategoryId, productParam) : undefined,
-            actionLabel: "Открыть",
-            status: tab === "sources" ? "active" : "done",
-          },
-          {
-            key: "params",
-            label: "Черновик PIM-параметров",
-            description: "Создается из данных площадок, конкурентов и товаров. Одни только площадки не являются финальной моделью.",
-            href: selectedCategoryId ? sourcesHref("params", selectedCategoryId, productParam) : undefined,
-            actionLabel: "Черновик",
-            status: tab === "params" ? "active" : tab === "values" ? "done" : "todo",
-          },
-          {
-            key: "values",
-            label: "Значения для выгрузки",
-            description: "Нормализуй написания: 256 ГБ, eSIM, цвета и справочники площадок.",
-            href: selectedCategoryId ? sourcesHref("values", selectedCategoryId, productParam) : undefined,
-            actionLabel: "Значения",
-            status: tab === "values" ? "active" : "todo",
-          },
-          {
-            key: "export",
-            label: "Проверить экспорт",
-            description: "Когда категории, поля и значения закрыты, проверь готовность выгрузки.",
-            href: selectedCategoryId ? exportHref(selectedCategoryId, productParam) : undefined,
-            actionLabel: "Экспорт",
-            status: "todo",
-          },
-        ]}
-      />
-
-      <div className="sourcesMappingContextCard">
-        <div>
-          <span>Рабочий контекст</span>
-          <strong>{selectedCategoryName || "Категория не выбрана"}</strong>
-          <div className="sourcesMappingContextMeta">
-            <b>{routeStateLabel}</b>
-            {productParam ? <b>SKU-контекст</b> : <b>Категория</b>}
-            {selectedCategoryId ? <b>ID {selectedCategoryId}</b> : null}
+    <div className="page-shell sourcesMappingPage sourcesCommandPage">
+      <section className="sourcesCommandHeader" aria-labelledby="sources-mapping-title">
+        <div className="sourcesCommandTitleBlock">
+          <div className="sourcesCommandBreadcrumb">Каталог / Подготовка данных</div>
+          <div className="sourcesCommandTitleRow">
+            <h1 id="sources-mapping-title">Сопоставления</h1>
+            <span className="sourcesCommandContext">{categoryLabel}</span>
           </div>
-          <p>
-            {productParam
-              ? `Переход из SKU ${productParam}: правки применяются к категории, а проверку результата лучше запускать по этому SKU.`
-              : "Все вкладки ниже работают в одной категории: источники, поля, значения и проверка экспорта."}
-          </p>
+          <p>{tabDescription}</p>
         </div>
-        <div className="sourcesMappingContextActions">
+        <div className="sourcesCommandActions">
+          <div className="sourcesCommandStatus" title={tabDescription}>
+            <span>Этап</span>
+            <strong>{currentStepLabel}</strong>
+          </div>
           {productParam ? <Link className="btn" to={orgPath(`/products/${encodeURIComponent(productParam)}`)}>Открыть SKU</Link> : null}
-          <Link className="btn" to={orgPath(exportHref(selectedCategoryId, productParam))}>{productParam ? "Экспорт SKU" : "Экспорт категории"}</Link>
           <Link className="btn primary" to={orgPath(nextAction.href)}>{nextAction.label}</Link>
         </div>
-      </div>
+      </section>
 
-      <div className="sourcesMappingCanvas">
+      <nav className="sourcesCommandStepper" aria-label="Маршрут сопоставления">
+        {STEP_ITEMS.map((step, index) => {
+          const isActive = step.key === tab;
+          const isDone = index < activeStepIndex;
+          const isDisabled = step.key !== "sources" && !selectedCategoryId;
+          const href = step.key === "export"
+            ? exportHref(selectedCategoryId, productParam)
+            : sourcesHref(step.key, selectedCategoryId, productParam);
+          const className = [
+            "sourcesCommandStep",
+            isActive ? "isActive" : "",
+            isDone ? "isDone" : "",
+            isDisabled ? "isDisabled" : "",
+          ].filter(Boolean).join(" ");
+          const content = (
+            <>
+              <span className="sourcesCommandStepIndex">{String(index + 1).padStart(2, "0")}</span>
+              <span className="sourcesCommandStepMain">
+                <strong>{step.label}</strong>
+                <span>{step.hint}</span>
+              </span>
+            </>
+          );
+          if (isDisabled) {
+            return (
+              <button className={className} disabled key={step.key} type="button">
+                {content}
+              </button>
+            );
+          }
+          if (step.key === "export") {
+            return <Link className={className} key={step.key} to={orgPath(href)}>{content}</Link>;
+          }
+          return (
+            <button className={className} key={step.key} type="button" onClick={() => setTab(step.key)}>
+              {content}
+            </button>
+          );
+        })}
+      </nav>
+
+      <section className="sourcesCommandContextBar" aria-label="Контекст сопоставления">
+        <div className="sourcesCommandContextItem">
+          <span>Контекст</span>
+          <strong>{workModeLabel}</strong>
+          <p>{workModeDetail}</p>
+        </div>
+        <div className="sourcesCommandContextItem isWide">
+          <span>Категория</span>
+          <strong>{categoryLabel}</strong>
+          <p>{selectedCategoryId ? `ID ${selectedCategoryId}` : "Выберите ветку каталога слева"}</p>
+        </div>
+        <div className="sourcesCommandContextItem">
+          <span>Дальше</span>
+          <strong>{nextAction.label}</strong>
+          <p>{nextAction.detail}</p>
+        </div>
+      </section>
+
+      <section className="sourcesCommandWorkbench">
         {tab === "params" && categoryResolving ? (
           <div className="sourcesMappingCanvasIntro">
             <div className="sourcesMappingCanvasTitle">Подбираем рабочую категорию</div>
@@ -410,6 +479,24 @@ export default function SourcesMappingFeature() {
             forcedImportTab="categories"
             hideMainTabs
             hideImportTabs
+            hideCompetitors
+            selectedCategoryId={selectedCategoryId}
+            onSelectedCategoryChange={(categoryId, categoryName) => {
+              setSelectedCategory(categoryId, categoryName);
+            }}
+          />
+        )}
+
+        {tab === "competitors" && (
+          <SourcesMarketplaceSection
+            key="competitors-workspace"
+            embedded
+            forcedMainTab="import"
+            forcedImportTab="categories"
+            hideMainTabs
+            hideImportTabs
+            showOnlyCompetitors
+            focusedProductId={productParam}
             selectedCategoryId={selectedCategoryId}
             onSelectedCategoryChange={(categoryId, categoryName) => {
               setSelectedCategory(categoryId, categoryName);
@@ -426,7 +513,22 @@ export default function SourcesMappingFeature() {
           />
         )}
 
-        {tab === "values" && (
+        {tab === "values" && selectedCategoryId && !marketplaceReady ? (
+          <div className="paramsInfoModelSetup sourcesStepBlocked">
+            <div>
+              <span>Нужен предыдущий шаг</span>
+              <h3>Сначала сопоставьте площадки</h3>
+              <p>
+                Значения можно нормализовать только после того, как категория связана с Я.Маркетом и Ozon.
+                Откройте шаг «Площадки», выберите категории площадок, затем вернитесь к значениям.
+              </p>
+            </div>
+            <div className="paramsInfoModelSetupActions">
+              <Link className="btn btn-primary" to={orgPath(sourcesHref("sources", selectedCategoryId, productParam))}>Открыть площадки</Link>
+              <Link className="btn" to={orgPath(sourcesHref("params", selectedCategoryId, productParam))}>К параметрам</Link>
+            </div>
+          </div>
+        ) : tab === "values" && (
           <SourcesValueMappingSection
             selectedCategoryId={selectedCategoryId}
             onSelectedCategoryChange={(categoryId, categoryName) => {
@@ -434,7 +536,7 @@ export default function SourcesMappingFeature() {
             }}
           />
         )}
-      </div>
+      </section>
     </div>
   );
 }

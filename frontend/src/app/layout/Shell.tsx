@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useAuth } from "../auth/AuthContext";
@@ -14,25 +14,25 @@ import { orgAwarePath, stripOrgPrefix, withOrgPath } from "../orgRoutes";
 
 const groups: ShellNavGroup[] = [
   {
-    title: "Сводка",
+    title: "Работа",
     icon: "workspace",
     summary: "Что требует внимания и где продолжить работу.",
     flow: ["очереди", "ошибки", "следующий шаг"],
     sections: [
       {
-        title: "Контроль",
+        title: "Работа",
         items: [{ href: "/", label: "Рабочая сводка", page: "dashboard" }],
       },
     ],
   },
   {
-    title: "Каталог",
+    title: "Товары",
     icon: "catalog",
     summary: "Категории, товары, группы, медиа, инфографика, импорт и экспорт.",
     flow: ["каталог", "товары", "медиа", "обмен"],
     sections: [
       {
-        title: "Работа с товарами",
+        title: "Товары",
         items: [
           { href: "/catalog", label: "Каталог", page: "catalog" },
           { href: "/products", label: "Товары", page: "products" },
@@ -42,8 +42,7 @@ const groups: ShellNavGroup[] = [
       {
         title: "Медиа",
         items: [
-          { href: "/products/media", label: "Медиа по товарам", page: "infographics" },
-          { href: "/images/infographics", label: "Создание инфографики", page: "infographics" },
+          { href: "/images/infographics", label: "Медиа и инфографика", page: "infographics" },
         ],
       },
       {
@@ -55,38 +54,32 @@ const groups: ShellNavGroup[] = [
     ],
   },
   {
-    title: "Инфо-модели",
+    title: "Данные",
     icon: "models",
-    summary: "Инфо-модели, сопоставления и источники данных.",
-    flow: ["категории", "параметры", "модель", "источники"],
+    summary: "Источники, сопоставления, параметры и рабочие модели.",
+    flow: ["источники", "сопоставления", "параметры", "экспорт"],
     sections: [
       {
-        title: "Рабочие области",
+        title: "Данные",
         items: [
-          { href: "/templates", label: "Инфо-модели", page: "templates" },
-          { href: "/sources?tab=sources", label: "Сопоставления", page: "sources_mapping" },
           { href: "/connectors/status", label: "Источники данных", pages: ["connectors_status", "sources_mapping"] },
+          { href: "/sources?tab=sources", label: "Сопоставления", page: "sources_mapping" },
           { href: "/data-prep/competitor-import", label: "Импорт конкурента", page: "sources_mapping" },
+          { href: "/templates", label: "Модели категорий", page: "templates" },
         ],
       },
     ],
   },
   {
-    title: "Администрирование",
+    title: "Система",
     icon: "admin",
     summary: "Организация, команда, права, роли и приглашения.",
     flow: ["организация", "команда", "доступ"],
     sections: [
       {
-        title: "Организация",
+        title: "Система",
         items: [
           { href: "/admin/organizations", label: "Организация", page: "admin_access" },
-        ],
-      },
-      {
-        title: "Права",
-        items: [
-          { href: "/admin/access", label: "Права и роли", page: "admin_access" },
         ],
       },
     ],
@@ -99,10 +92,7 @@ function isActive(currentLocation: string, href: string): boolean {
   if ((hrefPath === "/sources" || hrefPath === "/sources-mapping") && (currentPath === "/sources" || currentPath === "/sources-mapping")) {
     return true;
   }
-  if (hrefPath === "/admin/organizations" && ["/admin/organizations", "/admin/members", "/admin/invites"].includes(currentPath)) {
-    return true;
-  }
-  if (hrefPath === "/admin/access" && currentPath === "/admin/access") {
+  if (hrefPath === "/admin/organizations" && ["/admin/organizations", "/admin/members", "/admin/invites", "/admin/roles", "/admin/access"].includes(currentPath)) {
     return true;
   }
   if (hrefSearch) {
@@ -180,7 +170,6 @@ export default function Shell({ children }: { children: ReactNode }) {
   const appPathname = stripOrgPrefix(pathname).appPath;
   const appLocation = `${appPathname}${search}`;
   const currentLabel = useMemo(() => findCurrentLabel(appLocation, visibleGroups), [appLocation, visibleGroups]);
-  const [activeGroupTitle, setActiveGroupTitle] = useState("");
   const showShellHeading = false;
   const userLabel = user?.name || user?.login || user?.email || "Пользователь";
   const userMeta = user?.login || user?.email || "";
@@ -191,23 +180,6 @@ export default function Shell({ children }: { children: ReactNode }) {
     .map((part) => part[0])
     .join("")
     .toUpperCase() || "SP";
-
-  useEffect(() => {
-    const activeGroup =
-      visibleGroups.find((group) =>
-        group.sections.some((section) => section.items.some((item) => isActive(appLocation, item.href))),
-      ) || visibleGroups[0];
-    setActiveGroupTitle((current) => {
-      if (!activeGroup?.title) return current;
-      if (!current) return activeGroup.title;
-      const currentVisible = visibleGroups.some((group) => group.title === current);
-      if (!currentVisible) return activeGroup.title;
-      const routeInsideCurrent = visibleGroups
-        .find((group) => group.title === current)
-        ?.sections.some((section) => section.items.some((item) => isActive(appLocation, item.href)));
-      return routeInsideCurrent ? current : activeGroup.title;
-    });
-  }, [appLocation, visibleGroups]);
 
   async function submitPasswordChange() {
     setSavingPassword(true);
@@ -268,8 +240,6 @@ export default function Shell({ children }: { children: ReactNode }) {
                   pathname={pathname}
                   currentLocation={appLocation}
                   groups={visibleGroups}
-                  activeGroupTitle={activeGroupTitle}
-                  onSelectGroup={setActiveGroupTitle}
                   isActive={isActive}
                   resolveHref={(href) => orgAwarePath(pathname, href, currentOrganization)}
                   railFooter={

@@ -2,16 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import "../../styles/catalog.css";
 import "../../styles/templates.css";
+import "../../styles/dictionary-modern.css";
 import { api } from "../../lib/api";
 import DataFilters from "../../components/data/DataFilters";
 import DataToolbar from "../../components/data/DataToolbar";
-import MetricGrid from "../../components/data/MetricGrid";
 import Alert from "../../components/ui/Alert";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Field from "../../components/ui/Field";
 import IconButton from "../../components/ui/IconButton";
-import PageHeader from "../../components/ui/PageHeader";
+import Modal from "../../components/ui/Modal";
 import Select from "../../components/ui/Select";
 import TextInput from "../../components/ui/TextInput";
 
@@ -219,6 +219,8 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
   const [dedupeOpen, setDedupeOpen] = useState(false);
   const [dedupeLoading, setDedupeLoading] = useState(false);
   const [dedupePreview, setDedupePreview] = useState<DedupeResp | null>(null);
+  const [dedupeConfirmOpen, setDedupeConfirmOpen] = useState(false);
+  const [deleteValueTarget, setDeleteValueTarget] = useState("");
 
   // import
   const [importOpen, setImportOpen] = useState(false);
@@ -469,8 +471,6 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       return;
     }
 
-    if (!confirm(`Склеить и удалить дубли? Будет удалено: ${removed}.`)) return;
-
     setDedupeLoading(true);
     try {
       await api<DedupeResp>(`/dictionaries/${encodeURIComponent(effectiveDictId)}/dedupe`, {
@@ -478,6 +478,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
         body: JSON.stringify({ apply: true }),
       });
       setDedupeOpen(false);
+      setDedupeConfirmOpen(false);
       setDedupePreview(null);
       await load();
     } finally {
@@ -572,7 +573,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       {embedded ? (
         <div className="dictionaryValueHeader">
           <div className="dictionaryValueHeaderMain">
-            <div className="dictionaryValueEyebrow">Поле PIM</div>
+            <div className="dictionaryValueEyebrow">Поле каталога</div>
             <div className="dictionaryValueTitle">{item?.title || "Параметр"}</div>
             <div className="dictionaryValueSub">Написания для выбранной площадки.</div>
           </div>
@@ -581,18 +582,19 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
           </Button>
         </div>
       ) : (
-        <PageHeader
-          title={item?.title || "Параметр"}
-          subtitle="Редактирование значений, ручная чистка дублей и настройка соответствий площадок."
-          actions={
-            <>
-              <Button onClick={goBack}>← {navState?.backLabel || "Назад"}</Button>
-              <Button onClick={() => void load()} disabled={loading}>
-                {loading ? "Обновляю…" : "Обновить"}
-              </Button>
-            </>
-          }
-        />
+        <header className="dictEditorCommandHeader">
+          <div className="dictEditorCommandContext">
+            <span>Справочник параметра</span>
+            <h1>{item?.title || "Параметр"}</h1>
+            <p>Редактирование значений, ручная чистка дублей и настройка соответствий площадок.</p>
+          </div>
+          <div className="dictEditorCommandControls">
+            <Button onClick={goBack}>{navState?.backLabel || "Назад"}</Button>
+            <Button onClick={() => void load()} disabled={loading}>
+              {loading ? "Обновляю…" : "Обновить"}
+            </Button>
+          </div>
+        </header>
       )}
 
       {requiredFlag ? (
@@ -601,17 +603,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
           compact
           className="dictionaryEditorToolbar"
           actions={
-            <span
-              style={{
-                border: "1px solid rgba(61,107,255,.3)",
-                background: "rgba(61,107,255,.08)",
-                color: "#1d4ed8",
-                borderRadius: 999,
-                padding: "2px 8px",
-                fontSize: 12,
-                fontWeight: 800,
-              }}
-            >
+            <span className="dictionaryRequiredBadge">
               Обязательный
             </span>
           }
@@ -621,9 +613,9 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
 
       {!embedded ? <div className="dictionaryEditorTop">
         <Card title="Метаданные">
-          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(2, minmax(220px, 1fr))" }}>
+          <div className="dictionaryEditorMetaGrid">
             <Field label="Тип данных" className="dictionaryEditorField">
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="dictionaryEditorInlineControls">
                 <Select
                   value={attrType}
                   onChange={async (e) => {
@@ -676,18 +668,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
             </Field>
 
             <Field label="Обязательный параметр" className="dictionaryEditorField" hint="Пометить как обязательный для заполнения">
-              <label
-                htmlFor={requiredInputId}
-                className="muted"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 10,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  alignSelf: "flex-start",
-                }}
-              >
+              <label htmlFor={requiredInputId} className="muted dictionaryEditorCheckLabel">
                 <input
                   id={requiredInputId}
                   type="checkbox"
@@ -706,7 +687,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                     flashSavedToast();
                   }}
                   disabled={loading}
-                  style={{ margin: 0 }}
+                  className="dictionaryEditorCheckInput"
                 />
                 Пометить как обязательный для заполнения
               </label>
@@ -714,22 +695,31 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
           </div>
         </Card>
 
-        <MetricGrid
-          className="dictionaryEditorMetrics"
-          items={[
-            { label: "Значений", value: stats.valuesTotal },
-            { label: "Дублей", value: stats.duplicatesTotal },
-            { label: "Основной источник", value: stats.topSource },
-            { label: "Последнее обновление", value: stats.updatedAt ? new Date(stats.updatedAt).toLocaleString() : "—" },
-          ]}
-        />
+        <section className="dictionaryEditorStatusStrip" aria-label="Состояние справочника">
+          <div>
+            <span>Значений</span>
+            <strong>{stats.valuesTotal}</strong>
+          </div>
+          <div>
+            <span>Дублей</span>
+            <strong>{stats.duplicatesTotal}</strong>
+          </div>
+          <div>
+            <span>Источник</span>
+            <strong>{stats.topSource}</strong>
+          </div>
+          <div>
+            <span>Обновление</span>
+            <strong>{stats.updatedAt ? new Date(stats.updatedAt).toLocaleString() : "—"}</strong>
+          </div>
+        </section>
       </div> : null}
 
       {providerCodes.length ? (
-        <Card className="dictionaryProviderCompactCard" style={{ marginBottom: 14 }}>
+        <Card className="dictionaryProviderCompactCard">
           <DataToolbar
             title="Площадка для выгрузки"
-            subtitle="Здесь не меняем PIM-значение. Здесь задаем, какое написание примет маркетплейс при экспорте."
+            subtitle="Здесь не меняем значение каталога. Здесь задаем, какое написание примет маркетплейс при экспорте."
             actions={
               <>
                 {providerCodes.map((provider) => (
@@ -748,24 +738,24 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
           {activeProviderRef ? (
             <div className="dictionaryEditorProviderGrid isCompact">
               <Card className="dictionaryEditorProviderCard">
-                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>
+                <div className="dictionaryProviderEyebrow">
                   {PROVIDER_LABEL[activeProvider] || activeProvider}
                 </div>
-                <div style={{ fontWeight: 900, fontSize: 18, marginTop: 6 }}>
+                <div className="dictionaryProviderTitle">
                   {activeProviderRef.name || "Поле не указано"}
                 </div>
-                <div className="muted" style={{ marginTop: 8, fontSize: 13, display: "grid", gap: 6 }}>
-                  <div>Тип площадки: <b style={{ color: "var(--text)" }}>{activeProviderRef.kind || "—"}</b></div>
-                  <div>Обязательный: <b style={{ color: "var(--text)" }}>{activeProviderRef.required ? "да" : "нет"}</b></div>
-                  <div>Допустимых значений: <b style={{ color: "var(--text)" }}>{activeProviderAllowedValues.length}</b></div>
-                  <div>Сопоставлено: <b style={{ color: "var(--text)" }}>{activeProviderMappedCount}/{values.length}</b></div>
+                <div className="dictionaryProviderFacts">
+                  <div>Тип площадки: <b>{activeProviderRef.kind || "—"}</b></div>
+                  <div>Обязательный: <b>{activeProviderRef.required ? "да" : "нет"}</b></div>
+                  <div>Допустимых значений: <b>{activeProviderAllowedValues.length}</b></div>
+                  <div>Сопоставлено: <b>{activeProviderMappedCount}/{values.length}</b></div>
                 </div>
               </Card>
 
               <Card className="dictionaryEditorProviderCard">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-                  <div style={{ fontWeight: 800 }}>Справочник площадки</div>
-                  <span className="muted" style={{ fontSize: 12 }}>
+                <div className="dictionaryProviderCardHead">
+                  <div>Справочник площадки</div>
+                  <span>
                     показано {visibleProviderAllowedValues.length} из {activeProviderAllowedValues.length}
                   </span>
                 </div>
@@ -775,7 +765,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                       value={providerAllowedQuery}
                       onChange={(event) => setProviderAllowedQuery(event.target.value)}
                       placeholder="Найти значение площадки..."
-                      style={{ marginBottom: 10 }}
+                      className="dictionaryProviderSearch"
                     />
                     <div className="dictionaryAllowedValuesCloud">
                       {visibleProviderAllowedValues.map((value) => (
@@ -785,13 +775,13 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                       ))}
                     </div>
                     {activeProviderAllowedValues.length > visibleProviderAllowedValues.length ? (
-                      <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                      <div className="dictionaryProviderHint">
                         Полный список не выводится простыней. Используйте поиск или поле сопоставления ниже.
                       </div>
                     ) : null}
                   </>
                 ) : (
-                  <div className="muted" style={{ fontSize: 13 }}>
+                  <div className="dictionaryProviderHint">
                     У площадки нет справочника значений для этого параметра.
                   </div>
                 )}
@@ -801,7 +791,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
         </Card>
       ) : null}
 
-      <Card className="dictionarySearchCompactCard" style={{ marginBottom: 14 }}>
+      <Card className="dictionarySearchCompactCard">
         <Field label="Поиск по значениям" className="dictionaryEditorField">
           <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder="Например: black, 256, titanium…" />
         </Field>
@@ -844,19 +834,19 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
             </>
           }
         >
-          <div className="muted" style={{ fontSize: 12 }}>
+          <div className="muted dictionaryEditorHelpText">
             Если переименовать значение в уже существующее — они будут <b>склеены</b>.
           </div>
         </DataToolbar>
 
         {addOpen ? (
-          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <div className="dictionaryEditorAddRow">
             <TextInput
               ref={addRef}
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
               placeholder="Новое значение…"
-              style={{ flex: 1 }}
+              className="dictionaryEditorGrowInput"
               onKeyDown={(e) => {
                 if (e.key === "Enter") void addValue();
                 if (e.key === "Escape") {
@@ -880,7 +870,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
         ) : null}
 
         {importOpen ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+          <div className="dictionaryEditorImportBox">
             <input
               ref={importRef}
               type="file"
@@ -892,12 +882,12 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
               }}
             />
             {importFileName ? (
-              <div className="muted" style={{ fontSize: 12 }}>
+              <div className="muted dictionaryEditorHelpText">
                 Файл: <b>{importFileName}</b>
               </div>
             ) : null}
             {importErr ? <Alert tone="error">{importErr}</Alert> : null}
-            <div style={{ display: "flex", gap: 10 }}>
+            <div className="dictionaryEditorInlineActions">
               <Button
                 variant="primary"
                 onClick={() => void importValues(importRef.current?.files?.[0] || null)}
@@ -916,7 +906,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                 Отмена
               </Button>
             </div>
-            <div className="muted" style={{ fontSize: 12 }}>
+            <div className="muted dictionaryEditorHelpText">
               Формат: одна строка = одно значение (CSV/текст). При импорте список синхронизируется.
             </div>
           </div>
@@ -924,21 +914,21 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       </Card>
 
       {dedupeOpen && dedupePreview ? (
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <Card className="dictionaryDedupeCard">
+          <div className="dictionaryDedupeHead">
             <div>
-              <div style={{ fontWeight: 900 }}>Чистка дублей</div>
-              <div className="muted" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.35 }}>
+              <div className="dictionaryDedupeTitle">Чистка дублей</div>
+              <div className="muted dictionaryDedupeMeta">
                 Было: <b>{dedupePreview.before_count}</b> → станет: <b>{dedupePreview.after_count}</b> (удалится: <b>{dedupePreview.removed}</b>)
               </div>
             </div>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div className="dictionaryEditorInlineActions">
               <Button onClick={() => setDedupeOpen(false)} disabled={dedupeLoading}>
                 Закрыть
               </Button>
               <Button
                 variant="primary"
-                onClick={() => void applyDedupe()}
+                onClick={() => setDedupeConfirmOpen(true)}
                 disabled={dedupeLoading || !dedupePreview.removed}
                 title={dedupePreview.removed ? "Применить чистку" : "Дублей нет"}
               >
@@ -948,23 +938,23 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
           </div>
 
           {dedupePreview.merges?.length ? (
-            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="dictionaryDedupeList">
               {dedupePreview.merges.slice(0, 50).map((m, idx) => (
-                <Card key={`${m.keep}-${idx}`} style={{ padding: 10 }}>
-                  <div style={{ fontWeight: 600 }}>{m.keep}</div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                <Card key={`${m.keep}-${idx}`} className="dictionaryDedupeMergeCard">
+                  <div className="dictionaryDedupeMergeTitle">{m.keep}</div>
+                  <div className="muted dictionaryDedupeMergeMeta">
                     Склеено: {m.merged_items} (значения: {m.merged.join(", ")})
                   </div>
                 </Card>
               ))}
               {dedupePreview.merges.length > 50 ? (
-                <div className="muted" style={{ fontSize: 12 }}>
+                <div className="muted dictionaryEditorHelpText">
                   Показаны первые 50 merge-групп.
                 </div>
               ) : null}
             </div>
           ) : (
-            <div className="muted" style={{ marginTop: 10 }}>
+            <div className="muted dictionaryDedupeEmpty">
               Дублей не найдено.
             </div>
           )}
@@ -977,14 +967,14 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
         </Card>
       ) : (
         <Card>
-          <div className="muted" style={{ marginBottom: 10 }}>
+          <div className="muted dictionaryValuesCounter">
             Значений: <b>{values.length}</b>
           </div>
 
           {filtered.length === 0 ? (
             <div className="muted">Ничего не найдено.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="dictionaryValuesList">
               {filtered.map((v, i) => {
                 const text = asText(v);
                 const isEditing = editKey === text;
@@ -997,28 +987,11 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                 return (
                   <Card
                     key={`${text}-${i}`}
-                    className="dictionaryValueRow"
-                    style={{
-                      padding: 10,
-                      display: "grid",
-                      gridTemplateColumns: activeProvider ? "minmax(220px, 1fr) minmax(260px, 340px) auto" : "minmax(220px, 1fr) auto",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
+                    className={`dictionaryValueRow ${activeProvider ? "hasProvider" : ""}`}
                   >
-                    <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="dictionaryValueMainCell">
                       {!isEditing ? (
-                        <div
-                          style={{
-                            fontWeight: 400,
-                            fontSize: 15,
-                            lineHeight: "20px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={text}
-                        >
+                        <div className="dictionaryValueText" title={text}>
                           {text}
                         </div>
                       ) : (
@@ -1038,7 +1011,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                     </div>
 
                     {activeProvider ? (
-                      <div className="dictionaryValueProviderCell" style={{ minWidth: 0 }}>
+                      <div className="dictionaryValueProviderCell">
                         <div className="dictionaryValueProviderHead">
                           <span>{PROVIDER_LABEL[activeProvider] || activeProvider}</span>
                           {mappedValue ? (
@@ -1049,14 +1022,14 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                             <b>Нужно выбрать</b>
                           )}
                         </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <div className="dictionaryValueProviderControls">
                           <TextInput
                             list={`provider-values-${activeProvider}`}
                             value={mappedValue}
                             onChange={(e) => updateExportMapDraft(activeProvider, text, e.target.value)}
                             placeholder={suggestedValue || "Значение площадки…"}
                             disabled={isEditing}
-                            style={{ flex: 1, minWidth: 0 }}
+                            className="dictionaryEditorGrowInput"
                           />
                           {suggestedValue ? (
                             <Button
@@ -1089,7 +1062,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                       </div>
                     ) : null}
 
-                    <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+                    <div className="dictionaryValueActions">
                       {!isEditing ? (
                         <>
                           <IconButton
@@ -1106,10 +1079,7 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
                             tone="danger"
                             type="button"
                             title="Удалить значение"
-                            onClick={() => {
-                              if (!confirm(`Удалить значение "${text}"?`)) return;
-                              void deleteValue(text);
-                            }}
+                            onClick={() => setDeleteValueTarget(text)}
                           >
                             Уд.
                           </IconButton>
@@ -1155,25 +1125,54 @@ export default function DictionaryEditor({ embedded = false, dictIdOverride }: D
       })}
 
       {savedToast ? (
-        <div
-          style={{
-            position: "fixed",
-            left: "50%",
-            bottom: 20,
-            transform: "translateX(-50%)",
-            zIndex: 50,
-            background: "rgba(11,18,32,.92)",
-            color: "#fff",
-            padding: "10px 14px",
-            borderRadius: 12,
-            fontSize: 13,
-            fontWeight: 700,
-            boxShadow: "0 8px 24px rgba(11,18,32,.28)",
-          }}
-        >
+        <div className="dictionarySavedToast">
           Изменения сохранены
         </div>
       ) : null}
+
+      <Modal
+        open={dedupeConfirmOpen}
+        onClose={() => !dedupeLoading && setDedupeConfirmOpen(false)}
+        title="Применить чистку дублей"
+        subtitle="Система склеит совпадающие значения и удалит дубли из словаря."
+      >
+        <div className="dict-deleteSummary">
+          <strong>{dedupePreview?.removed || 0}</strong>
+          <span>значений будет удалено</span>
+        </div>
+        <div className="modal-actions dict-modalActions">
+          <Button onClick={() => setDedupeConfirmOpen(false)} disabled={dedupeLoading}>Отмена</Button>
+          <Button variant="primary" onClick={() => void applyDedupe()} disabled={dedupeLoading || !dedupePreview?.removed}>
+            {dedupeLoading ? "Применяю…" : "Применить"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!deleteValueTarget}
+        onClose={() => setDeleteValueTarget("")}
+        title="Удалить значение"
+        subtitle="Значение будет удалено из словаря без возможности восстановления."
+      >
+        <div className="dict-deleteSummary">
+          <strong>{deleteValueTarget}</strong>
+          <span>значение словаря</span>
+        </div>
+        <div className="modal-actions dict-modalActions">
+          <Button onClick={() => setDeleteValueTarget("")}>Отмена</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              const value = deleteValueTarget;
+              setDeleteValueTarget("");
+              void deleteValue(value);
+            }}
+            disabled={!deleteValueTarget}
+          >
+            Удалить значение
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

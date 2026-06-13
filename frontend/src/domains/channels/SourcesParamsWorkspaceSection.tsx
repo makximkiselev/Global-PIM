@@ -37,6 +37,8 @@ type AttrRow = {
 
 type AttrDetailsResp = {
   ok: boolean;
+  blocker_code?: string;
+  blocker_message?: string;
   category: { id: string; name: string; path: string };
   mapping: Record<string, string>;
   mapping_meta?: {
@@ -117,7 +119,7 @@ const PARAM_GROUPS: Array<{ key: Exclude<ParamGroupKey, "all">; label: string; h
 const PARAM_GROUP_LABEL = Object.fromEntries(PARAM_GROUPS.map((item) => [item.key, item.label])) as Record<Exclude<ParamGroupKey, "all">, string>;
 
 const SERVICE_EXPORTS = [
-  { key: "sku_gt", title: "SKU GT", target: "offerId / SKU площадки", note: "Идентификатор товара. Передается в экспортном payload, не как характеристика." },
+  { key: "sku_gt", title: "SKU GT", target: "offerId / SKU площадки", note: "Идентификатор товара. Передается в экспортный пакет, не как характеристика." },
   { key: "title", title: "Название", target: "name", note: "Название карточки товара. Берется из товарной карточки." },
   { key: "description", title: "Описание", target: "description", note: "Текст карточки. Передается через контентный блок экспорта." },
   { key: "media_images", title: "Фото", target: "pictures / images", note: "Основная галерея товара. Передается через медиа-блок экспорта." },
@@ -180,6 +182,7 @@ function paramGroupLabel(row: AttrRow) {
 }
 
 function providerCodes(details: AttrDetailsResp | null) {
+  if (!details) return [];
   const codes = Object.keys(details?.providers || {});
   return codes.length ? codes : ["yandex_market", "ozon"];
 }
@@ -213,10 +216,10 @@ function rowStatusReason(row: AttrRow, codes: string[]) {
     if (row.confirmed) {
       return "Пользователь подтвердил, что это поле не передается как характеристика площадки. Если решение изменилось, сбросьте его и выберите поле площадки.";
     }
-    return "Поле PIM пока не связано ни с одной площадкой. Выберите подходящие поля вручную или соберите черновик по правилам категории.";
+    return "Поле каталога пока не связано ни с одной площадкой. Выберите подходящие поля вручную или соберите предложения по правилам категории.";
   }
   if (rowHasComplexBindings(row, codes)) {
-    return "У поля есть сложная связка: один параметр PIM передается в несколько полей площадки. Проверьте это вручную перед подтверждением.";
+    return "У поля есть сложная связка: один параметр каталога передается в несколько полей площадки. Проверьте это вручную перед подтверждением.";
   }
   if (!row.confirmed) {
     return "Связка найдена, но еще не подтверждена пользователем. Проверьте названия полей и сохраните решение.";
@@ -255,7 +258,7 @@ function providerValueMode(binding?: ProviderBinding | ProviderParam | null) {
     return {
       code: "boolean",
       label: "Да/Нет",
-      hint: "Площадка ждет булево значение. Нужна нормализация да/нет из PIM.",
+      hint: "Площадка ждет булево значение. Нужна нормализация да/нет из значения каталога.",
       needsValues: true,
     };
   }
@@ -271,7 +274,7 @@ function providerValueMode(binding?: ProviderBinding | ProviderParam | null) {
     return {
       code: "dictionary",
       label: "Справочник",
-      hint: valuesCount ? "Нужна нормализация PIM-значений в допустимые значения площадки." : "Справочник ожидается, но допустимые значения не загружены.",
+      hint: valuesCount ? "Нужна нормализация значений каталога в допустимые значения площадки." : "Справочник ожидается, но допустимые значения не загружены.",
       needsValues: true,
     };
   }
@@ -312,7 +315,7 @@ function serviceExportStatus(row: AttrRow | undefined, codes: string[]) {
     return {
       label: "проверьте связку",
       className: "isWarn",
-      hint: "Служебное поле связано как характеристика. Обычно это ошибка: его нужно передавать через export payload.",
+      hint: "Служебное поле связано как характеристика. Обычно это ошибка: его нужно передавать как системное поле выгрузки.",
     };
   }
   if (row.confirmed) {
@@ -448,8 +451,8 @@ function providerOptionGroups(row: AttrRow, visible: ProviderParam[], currentIds
   }
 
   return [
-    { key: "selected", title: "Связано сейчас", hint: "Рекомендация или ручной выбор уже применены к этому PIM-полю.", items: selected },
-    { key: "suggested", title: "Близко по названию", hint: "Поля площадки, похожие на выбранный PIM-параметр. Проверьте тип и значения.", items: suggested },
+    { key: "selected", title: "Связано сейчас", hint: "Рекомендация или ручной выбор уже применены к этому полю каталога.", items: selected },
+    { key: "suggested", title: "Близко по названию", hint: "Поля площадки, похожие на выбранный параметр каталога. Проверьте тип и значения.", items: suggested },
     { key: "manual", title: isSearch ? "Ручной поиск" : "Все остальные поля", hint: "Полный ручной выбор из параметров выбранной категории площадки.", items: manual },
   ].filter((group) => group.items.length > 0);
 }
@@ -478,6 +481,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   async function loadDetails(categoryId: string) {
     const resp = await api<AttrDetailsResp>(`/marketplaces/mapping/import/attributes/${encodeURIComponent(categoryId)}`);
     setDetails(resp);
+    setError(resp.blocker_code || "");
     onSelectedCategoryChange?.(resp.category.id, resp.category.name);
   }
 
@@ -620,7 +624,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   const categoryName = details?.category?.name || "Выберите категорию";
   const categoryPath = details?.category?.path || "Категория не выбрана";
   const mappingInherited = !!details?.mapping_meta?.inherited;
-  const hasProviderCategoryMapping = Object.keys(details?.mapping || {}).length > 0;
+  const effectiveProviderMapping = details?.mapping_meta?.effective || details?.mapping || {};
+  const hasProviderCategoryMapping = Object.keys(effectiveProviderMapping).length > 0;
   const inheritedProviderLabels = useMemo(() => {
     if (!details?.mapping_meta?.inherited) return [];
     const sources = details.mapping_meta.sources || {};
@@ -633,10 +638,10 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   }, [details?.mapping_meta, codes, selectedCategoryId]);
   const initialParamsLoading = loading && !details;
   const readinessText = initialParamsLoading
-    ? "загружаю черновик параметров"
+    ? "загружаю предложения параметров"
     : stats.total
-      ? `${stats.ready}/${stats.total} параметров черновика готово`
-      : "черновик параметров пуст";
+      ? `${stats.ready}/${stats.total} параметров готово`
+      : "предложения параметров пусты";
   const competitorTotals = useMemo(() => {
     const sources = competitors?.sources || [];
     return sources.reduce(
@@ -651,6 +656,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
   }, [competitors]);
   const hasCompetitorEvidence = competitorTotals.links > 0 || competitorTotals.review > 0;
   const infoModelIsEmpty = !!selectedCategoryId && !initialParamsLoading && hasProviderCategoryMapping && stats.total === 0;
+  const categoryMappingError = error.includes("CATEGORY_NOT_DIRECTLY_MAPPED");
 
   useEffect(() => {
     if (!paramRows.length || !queueRows.length) {
@@ -685,7 +691,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
       setNotice(formatDraftBuildNotice(resp));
       await loadDetails(selectedCategoryId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка сборки черновика");
+      setError(err instanceof Error ? err.message : "Ошибка сборки предложений");
     } finally {
       setDraftBuilding(false);
     }
@@ -853,7 +859,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             {!infoModelIsEmpty ? (
               <>
                 <button className="btn" type="button" onClick={buildDraft} disabled={!selectedCategoryId || draftBuilding || loading}>
-                  {draftBuilding ? "Собираю..." : "Собрать черновик"}
+                  {draftBuilding ? "Собираю..." : "Собрать предложения"}
                 </button>
                 <Link className="btn btn-primary" to={orgPath(`/catalog/exchange?tab=export&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить выгрузку</Link>
               </>
@@ -886,11 +892,9 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           </div>
         ) : null}
 
-        {error ? (
+        {error && !categoryMappingError ? (
           <div className="paramsAlert">
-            {error.includes("CATEGORY_NOT_DIRECTLY_MAPPED")
-              ? "Для этой категории или ее родителя сначала нужна связка с категориями площадок."
-              : error}
+            {error}
           </div>
         ) : null}
         {mappingInherited && !infoModelIsEmpty ? (
@@ -900,28 +904,43 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
             Можно насыщать товары здесь, а параметры площадок брать из общей категории.
           </div>
         ) : null}
-        {!infoModelIsEmpty && !hasCompetitorEvidence ? (
+        {!categoryMappingError && !infoModelIsEmpty && !hasCompetitorEvidence ? (
           <div className="paramsAlert isInfo">
-            Площадки уже дают список обязательных и полезных полей, но финальная инфо-модель строится после конкурентных карточек и товарных данных.
-            Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к черновику параметров.
-            <Link className="btn sm" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть источники</Link>
+            Площадки уже дают список обязательных и полезных полей, но финальная модель категории строится после конкурентных карточек и товарных данных.
+            Сначала подтвердите карточки конкурентов для SKU, затем возвращайтесь к предложениям параметров.
+            <Link className="btn sm" to={orgPath(`/sources?tab=competitors&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть конкурентов</Link>
           </div>
         ) : null}
         {notice ? <div className="paramsAlert isSuccess">{notice}</div> : null}
         {loading ? <div className="paramsAlert">Загружаю параметры категории...</div> : null}
 
-        {infoModelIsEmpty ? (
+        {categoryMappingError ? (
           <div className="paramsInfoModelSetup">
             <div>
-              <span>Следующий шаг</span>
-              <h3>Соберите инфо-модель категории</h3>
+              <span>Нужен предыдущий шаг</span>
+              <h3>Сначала сопоставьте площадки</h3>
               <p>
-                Категории площадок уже связаны{mappingInherited ? " через родительскую ветку" : ""}, но PIM-полей для сопоставления еще нет.
-                Сначала соберите черновик модели из товаров, площадок и конкурентов, затем возвращайтесь сюда для сопоставления полей.
+                Для выбранной категории нет прямой или унаследованной связи с категориями маркетплейсов.
+                Откройте шаг «Площадки», выберите категории Я.Маркета и Ozon, затем возвращайтесь к параметрам.
               </p>
             </div>
             <div className="paramsInfoModelSetupActions">
-              <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(selectedCategoryId)}`)}>Собрать инфо-модель</Link>
+              <Link className="btn btn-primary" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть площадки</Link>
+              <button className="btn" type="button" onClick={() => setCategoryDrawerOpen(true)}>Сменить категорию</button>
+            </div>
+          </div>
+        ) : infoModelIsEmpty ? (
+          <div className="paramsInfoModelSetup">
+            <div>
+              <span>Следующий шаг</span>
+              <h3>Соберите модель параметров категории</h3>
+              <p>
+                Категории площадок уже связаны{mappingInherited ? " через родительскую ветку" : ""}, но полей каталога для сопоставления еще нет.
+                Сначала соберите предложения модели из товаров, площадок и конкурентов, затем возвращайтесь сюда для сопоставления полей.
+              </p>
+            </div>
+            <div className="paramsInfoModelSetupActions">
+              <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(selectedCategoryId)}`)}>Собрать модель категории</Link>
               <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Проверить источники</Link>
             </div>
           </div>
@@ -930,10 +949,33 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
           <div className="paramsQueueBlock">
             <div className="paramsSectionHead">
               <div>
-                <h3>Черновик PIM-параметров</h3>
+                <h3>Очередь параметров</h3>
                 <p>
-                  Это не финальная инфо-модель: строки собираются из площадок, конкурентов и товарных данных. Утверждайте только проверенные параметры.
+                  Решайте, какие поля каталога передаются на площадки, какие требуют проверки значений, а какие не должны быть характеристиками.
                 </p>
+              </div>
+            </div>
+
+            <div className="paramsDecisionSummary" aria-label="Сводка параметров">
+              <div>
+                <span>Всего</span>
+                <strong>{initialParamsLoading ? "..." : stats.total}</strong>
+              </div>
+              <div>
+                <span>Требуют решения</span>
+                <strong>{initialParamsLoading ? "..." : stats.attention}</strong>
+              </div>
+              <div>
+                <span>Без связки</span>
+                <strong>{initialParamsLoading ? "..." : stats.unmapped}</strong>
+              </div>
+              <div>
+                <span>Со справочниками</span>
+                <strong>{initialParamsLoading ? "..." : stats.values}</strong>
+              </div>
+              <div>
+                <span>Готово</span>
+                <strong>{initialParamsLoading ? "..." : `${stats.ready}/${stats.total}`}</strong>
               </div>
             </div>
 
@@ -999,9 +1041,9 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
             <div className="paramsQueueList">
               <div className="paramsMatrixHead" aria-hidden="true">
-                <span>Поле PIM</span>
+                <span>Поле каталога</span>
                 <span>Статус</span>
-                {codes.map((code) => <span key={code}>{PROVIDER_LABEL[code] || code}</span>)}
+                <span>Связки площадок</span>
               </div>
               {initialParamsLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
@@ -1016,10 +1058,12 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               ) : queueRows.length ? queueRows.map((row) => {
                 const coverage = rowProviderCoverage(row, codes);
                 const needsAttention = rowNeedsAttention(row, codes);
+                const isUnmapped = coverage === 0;
+                const isComplex = rowHasComplexBindings(row, codes);
                 const active = String(selectedRow?.id || "") === String(row.id || "");
                 return (
                   <button
-                    className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${active ? "isSelected" : ""}`}
+                    className={`paramsParamCard ${needsAttention ? "isAttention" : "isReady"} ${isUnmapped ? "isUnmapped" : ""} ${isComplex ? "isComplex" : ""} ${active ? "isSelected" : ""}`}
                     key={row.id || row.catalog_name}
                     type="button"
                     onClick={() => setSelectedRowId(String(row.id || ""))}
@@ -1090,8 +1134,8 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
               }) : (
                 <div className="paramsAlert">
                   {infoModelIsEmpty
-                    ? "Инфо-модель пустая. Сначала соберите черновик модели категории из источников."
-                    : "Черновик параметров пуст. Подтвердите конкурентные карточки для SKU, затем соберите черновик из источников."}
+                    ? "Модель категории пустая. Сначала соберите предложения параметров из источников."
+                    : "Предложения параметров пусты. Подтвердите конкурентные карточки для SKU, затем соберите предложения из источников."}
                 </div>
               )}
             </div>
@@ -1126,7 +1170,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
 
                 <div className="paramsInspectorSection">
                   <h4>Привязка к площадкам</h4>
-                  <p>Здесь редактируется, какое поле площадки наполняет поле PIM.</p>
+                  <p>Здесь редактируется, какое поле площадки наполняет поле каталога.</p>
                   {(() => {
                     const provenance = providerOriginChips(
                       codes.flatMap((code) => providerBindings(selectedRow.provider_map?.[code])),
@@ -1153,7 +1197,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                     <span><i className="paramsValueMode ismulti">Мультивыбор</i> значения могут быть списком</span>
                     <span><i className="paramsValueMode isboolean">Да/Нет</i> нормализовать булево значение</span>
                     <span><i className="paramsValueMode isnumber">Число</i> проверить единицы измерения</span>
-                    <span><i className="paramsValueMode istext">Текст</i> передается вручную/из PIM без справочника</span>
+                    <span><i className="paramsValueMode istext">Текст</i> передается вручную или из каталога без справочника</span>
                   </div>
                   {codes.map((code) => {
                     const provider = details?.providers?.[code];
@@ -1173,7 +1217,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                             <div className="paramsCurrentBindings">
                               {bindings.length > 1 ? (
                                 <div className="paramsComplexNote">
-                                  Один параметр PIM будет передан в несколько полей площадки.
+                                  Один параметр каталога будет передан в несколько полей площадки.
                                 </div>
                               ) : null}
                               {bindings.map((item, index) => (
@@ -1287,7 +1331,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       <em>отдельная очередь</em>
                     </div>
                   </div>
-                  <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть источники</Link>
+                  <Link className="btn" to={orgPath(`/sources?tab=competitors&category=${encodeURIComponent(selectedCategoryId)}`)}>Открыть конкурентов</Link>
                 </div>
 
                 <div className="paramsInspectorSection">
@@ -1300,7 +1344,7 @@ export default function SourcesParamsWorkspaceSection({ selectedCategoryId = "",
                       disabled={!selectedCategoryId || draftBuilding || loading}
                       onClick={buildDraft}
                     >
-                      {draftBuilding ? "Собираю черновик..." : "Собрать черновик"}
+                      {draftBuilding ? "Собираю предложения..." : "Собрать предложения"}
                     </button>
                     <button
                       className="btn btn-primary"

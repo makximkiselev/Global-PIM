@@ -9,8 +9,6 @@ import WorkspaceFrame from "../../components/layout/WorkspaceFrame";
 import { api } from "../../lib/api";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import EmptyState from "../../components/ui/EmptyState";
-import PageHeader from "../../components/ui/PageHeader";
 import "../../styles/catalog-exchange.css";
 
 type Store = { id: string; title: string; enabled?: boolean; export_enabled?: boolean };
@@ -191,8 +189,8 @@ function blockerFixHref(blocker: ExportBlocker, reason: string, detail?: ExportM
 
 function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   const target = String(detail?.target || "").trim();
-  if (detail?.code === "parameter_mapping_required") return "Собрать инфо-модель";
-  if (target === "competitors") return "Открыть источники";
+  if (detail?.code === "parameter_mapping_required") return "Собрать модель категории";
+  if (target === "competitors") return "Открыть конкурентов";
   if (target === "media") return detail?.code === "media_review_required" ? "Проверить медиа" : "Открыть медиа";
   if (target === "description") return "Открыть описание";
   if (target === "import") return "Импортировать фото";
@@ -204,7 +202,7 @@ function blockerFixLabel(reason: string, detail?: ExportMissingDetail): string {
   if (lower.includes("категор")) return "Открыть категории";
   if (lower.includes("маппинг") || lower.includes("сопоставлен") || lower.includes("параметр")) return "Открыть параметры";
   if (lower.includes("значен")) return "Открыть значения";
-  if (lower.includes("конкурент")) return "Открыть источники";
+  if (lower.includes("конкурент")) return "Открыть конкурентов";
   if (lower.includes("изображ") || lower.includes("pictures") || lower.includes("медиа")) return "Открыть медиа";
   if (lower.includes("описание")) return "Открыть описание";
   return "Открыть место исправления";
@@ -221,6 +219,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [selectedStores, setSelectedStores] = useState<Record<string, string[]>>({});
+  const [savingStoreIds, setSavingStoreIds] = useState<Record<string, boolean>>({});
   const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [run, setRun] = useState<ExportRunResp | null>(null);
@@ -237,6 +236,26 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     ...String(searchParams.get("products") || "").split(","),
   ].map((item) => item.trim()).filter(Boolean);
 
+  function applyConnectorsResponse(response: ConnectorsResp) {
+    const exportProviders = (response.providers || [])
+      .filter((x) => ["yandex_market", "ozon"].includes(x.code))
+      .map((provider) => ({
+        ...provider,
+        import_stores: provider.import_stores || [],
+      }));
+    setProviders(exportProviders);
+    setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [
+      provider.code,
+      (provider.import_stores || []).some((store) => store.enabled !== false && store.export_enabled !== false),
+    ])));
+    setSelectedStores(Object.fromEntries(exportProviders.map((provider) => [
+      provider.code,
+      (provider.import_stores || [])
+        .filter((store) => store.enabled !== false && store.export_enabled !== false)
+        .map((store) => store.id),
+    ])));
+  }
+
   useEffect(() => {
     const load = async () => {
       setInitialLoading(true);
@@ -248,22 +267,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         ]);
         setNodes(n.nodes || []);
         setProductCountsByCategory(counts.counts || {});
-        const exportProviders = (c.providers || [])
-          .filter((x) => ["yandex_market", "ozon"].includes(x.code))
-          .map((provider) => ({
-            ...provider,
-            import_stores: provider.import_stores || [],
-          }))
-          .filter((provider) => (provider.import_stores || []).length > 0);
-        setProviders(exportProviders);
-        setSelectedProviders(Object.fromEntries(exportProviders.map((provider) => [
-          provider.code,
-          (provider.import_stores || []).some((store) => store.export_enabled !== false),
-        ])));
-        setSelectedStores(Object.fromEntries(exportProviders.map((provider) => [
-          provider.code,
-          (provider.import_stores || []).filter((store) => store.export_enabled !== false).map((store) => store.id),
-        ])));
+        applyConnectorsResponse(c);
       } catch (e) {
         setErr((e as Error).message || "Не удалось загрузить данные экспорта");
       } finally {
@@ -314,20 +318,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     ? "Загружаю каналы"
     : providers.length === 0
       ? "Нет магазинов"
-      : activeTargets.length
-        ? `${activeTargets.length} канала`
-        : "Не выбрано";
+    : activeTargets.length
+      ? `${activeTargets.length} канала`
+      : "0 магазинов";
   const exportBadgeTone = initialLoading ? "pending" : activeTargets.length ? "active" : "neutral";
   const selectedCategoryForLinks = selectedNodeIds[0] || initialCategoryId;
   const sourcesCategoryHref = selectedCategoryForLinks
     ? `/sources?tab=sources&category=${encodeURIComponent(selectedCategoryForLinks)}`
     : "/sources?tab=sources";
-  const exportEmptyTitle = providers.length === 0
-    ? "Нет магазинов для экспорта"
-    : "Выберите магазины выше";
-  const exportEmptyDescription = providers.length === 0
-    ? "Сначала добавьте хотя бы один магазин в коннекторах или проверьте привязку категории к площадкам."
-    : "Отметьте Я.Маркет или Ozon и конкретные магазины, затем запустите подготовку по выбранной области каталога.";
   const selectedTargetLabels = useMemo(() => {
     const out: string[] = [];
     for (const target of activeTargets) {
@@ -339,6 +337,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return out;
   }, [activeTargets, providers]);
+  const storesAvailableCount = useMemo(
+    () => providers.reduce((sum, provider) => sum + (provider.import_stores || []).filter((store) => store.enabled !== false).length, 0),
+    [providers],
+  );
   const selectedSkuEstimate = useMemo(() => {
     if (selectedProductIds.length) return String(selectedProductIds.length);
     if (selectedNodeIds.length) {
@@ -347,6 +349,26 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     }
     return "до 50";
   }, [includeDescendants, productCountsByCategory, selectedNodeIds, selectedProductIds.length]);
+  const targetSetupItems = [
+    {
+      label: "Область",
+      value: selectedScope,
+      state: selectedProductIds.length || selectedNodeIds.length ? "ready" : "pending",
+      hint: selectedProductIds.length ? "точный список SKU" : selectedNodeIds.length ? "категория каталога" : "по умолчанию весь каталог",
+    },
+    {
+      label: "Магазины",
+      value: `${selectedTargetsCount}/${storesAvailableCount || 0}`,
+      state: selectedTargetsCount ? "ready" : "blocked",
+      hint: storesAvailableCount ? "нужно отметить цель" : "нет доступных целей",
+    },
+    {
+      label: "Проверка",
+      value: selectedSkuEstimate,
+      state: activeTargets.length ? "ready" : "pending",
+      hint: activeTargets.length ? "можно собрать пакет" : "ждет магазины",
+    },
+  ];
   const readyForPrepare = activeTargets.length > 0;
   const broadExportScope = selectedProductIds.length === 0 && (selectedNodeIds.length !== 1 || includeDescendants);
   const totalBlocked = useMemo(
@@ -390,6 +412,50 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     setConfirmOpen(true);
   }
 
+  async function updateStoreExport(providerCode: string, storeId: string, exportEnabled: boolean) {
+    const savingKey = `${providerCode}:${storeId}`;
+    setSavingStoreIds((prev) => ({ ...prev, [savingKey]: true }));
+    setErr("");
+    setSelectedStores((prev) => {
+      const next = new Set(prev[providerCode] || []);
+      if (exportEnabled) next.add(storeId);
+      else next.delete(storeId);
+      const nextStoreIds = Array.from(next);
+      setSelectedProviders((current) => ({ ...current, [providerCode]: nextStoreIds.length > 0 }));
+      return { ...prev, [providerCode]: nextStoreIds };
+    });
+    try {
+      const response = await api<ConnectorsResp>(`/connectors/status/import-stores/${encodeURIComponent(providerCode)}/${encodeURIComponent(storeId)}/export`, {
+        method: "PATCH",
+        body: JSON.stringify({ export_enabled: exportEnabled }),
+      });
+      applyConnectorsResponse(response);
+    } catch (e) {
+      setErr((e as Error).message || "Не удалось сохранить выбор магазина для экспорта.");
+      try {
+        const response = await api<ConnectorsResp>("/connectors/status");
+        applyConnectorsResponse(response);
+      } catch {
+        // Keep the visible error from the failed save.
+      }
+    } finally {
+      setSavingStoreIds((prev) => {
+        const next = { ...prev };
+        delete next[savingKey];
+        return next;
+      });
+    }
+  }
+
+  async function updateProviderExport(provider: ProviderRow, exportEnabled: boolean) {
+    const stores = (provider.import_stores || []).filter((store) => store.enabled !== false);
+    if (!stores.length) return;
+    const nextIds = exportEnabled ? stores.map((store) => store.id) : [];
+    setSelectedStores((prev) => ({ ...prev, [provider.code]: nextIds }));
+    setSelectedProviders((prev) => ({ ...prev, [provider.code]: nextIds.length > 0 }));
+    await Promise.all(stores.map((store) => updateStoreExport(provider.code, store.id, exportEnabled)));
+  }
+
   function latestRunPath() {
     const params = new URLSearchParams();
     if (selectedNodeIds.length === 1 && !selectedProductIds.length) params.set("category_id", selectedNodeIds[0]);
@@ -419,10 +485,10 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
     while (Date.now() < deadline) {
       const job = await api<ExportJobResp>(`/catalog/exchange/export/jobs/${encodeURIComponent(nextJobId)}`);
       setJobId(job.job_id || nextJobId);
-      setPreparingMessage(job.message || "Export batch считается в фоне.");
+      setPreparingMessage(job.message || "Проверка выгрузки выполняется в фоне.");
       if (job.status === "completed" && job.run) return job.run;
       if (job.status === "failed") {
-        throw new Error(job.error || job.message || "Export batch не завершился.");
+        throw new Error(job.error || job.message || "Проверка выгрузки не завершилась.");
       }
       await new Promise((resolve) => window.setTimeout(resolve, 3_000));
     }
@@ -459,14 +525,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       });
       window.clearTimeout(timeoutId);
       setJobId(job.job_id || "");
-      setPreparingMessage(job.message || "Export batch поставлен в очередь.");
+      setPreparingMessage(job.message || "Проверка выгрузки поставлена в очередь.");
       const res = job.run || await waitForExportJob(job.job_id, startedAt);
-      if (!res) throw new Error("Export batch еще не вернул сохраненный результат.");
+      if (!res) throw new Error("Проверка выгрузки еще не вернула сохраненный результат.");
       setRun(res);
       setPreparingMessage("");
     } catch (e) {
       window.clearTimeout(timeoutId);
-      setPreparingMessage(jobId ? "Batch еще считается на сервере. Проверяю статус job и сохраненный результат." : "Batch еще считается на сервере. Подхватываю сохраненный результат без перезапуска.");
+      setPreparingMessage(jobId ? "Проверка еще выполняется на сервере. Проверяю статус и сохраненный результат." : "Проверка еще выполняется на сервере. Подхватываю сохраненный результат без перезапуска.");
       const latest = await waitForLatestRun(startedAt);
       if (latest) {
         setRun(latest);
@@ -494,14 +560,14 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${runId}-payload.json`;
+        link.download = `${runId}-export-package.json`;
         document.body.appendChild(link);
         link.click();
         link.remove();
         window.URL.revokeObjectURL(url);
       }
     } catch (e) {
-      setErr((e as Error).message || "Не удалось собрать export payload.");
+      setErr((e as Error).message || "Не удалось собрать пакет выгрузки.");
     } finally {
       setPackageLoading(false);
     }
@@ -519,19 +585,26 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
         </div>
       </InspectorPanel>
 
-      <InspectorPanel title="Каналы" subtitle="Что сейчас выбрано для batch run">
+      <InspectorPanel title="Каналы" subtitle="Что сейчас выбрано для выгрузки">
         <div className="cx-inspectorStack">
           {providers.map((provider) => {
             const stores = provider.import_stores || [];
             const current = selectedStores[provider.code] || [];
+            const enabledStores = stores.filter((store) => store.enabled !== false);
             return (
               <div key={provider.code} className="cx-sourceInspectorCard">
                 <div>
                   <strong>{provider.title}</strong>
-                  <p>{current.length ? `${current.length} магазинов выбрано` : `${stores.length} магазинов доступно`}</p>
+                  <p>
+                    {current.length
+                      ? `${current.length} магазинов выбрано`
+                      : stores.length
+                        ? `${enabledStores.length} активных из ${stores.length}`
+                        : "нет подключенных магазинов"}
+                  </p>
                 </div>
-                <Badge tone={selectedProviders[provider.code] ? "active" : "neutral"}>
-                  {selectedProviders[provider.code] ? "Включен" : "Выключен"}
+                <Badge tone={selectedProviders[provider.code] && current.length ? "active" : "neutral"}>
+                  {current.length ? "В выгрузке" : "0 выбрано"}
                 </Badge>
               </div>
             );
@@ -540,11 +613,11 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
       </InspectorPanel>
 
       {run ? (
-        <InspectorPanel title="Последний batch" subtitle="Итог текущей подготовки">
+        <InspectorPanel title="Последняя подготовка" subtitle="Итог текущей проверки">
           <div className="cx-inspectorList">
-            <div className="cx-inspectorRow"><span>Run ID</span><strong>{run.run_id || run.id}</strong></div>
+            <div className="cx-inspectorRow"><span>Проверка</span><strong>{run.run_id || run.id}</strong></div>
             <div className="cx-inspectorRow"><span>Товаров</span><strong>{run.count}</strong></div>
-            <div className="cx-inspectorRow"><span>Batch rows</span><strong>{run.batches.length}</strong></div>
+            <div className="cx-inspectorRow"><span>Целей</span><strong>{run.batches.length}</strong></div>
           </div>
         </InspectorPanel>
       ) : null}
@@ -554,18 +627,19 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
   return (
     <div className="cx-page cx-pageModern">
       {!embedded ? (
-        <PageHeader
-          title="Экспорт"
-          subtitle="Собирай batch-выгрузку по выбранным каналам и магазинам из той же рабочей области, где отбирается каталог."
-          actions={(
-            <>
-              <Link className="btn" to={orgPath("/products")}>К товарам</Link>
-              <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
-                {loading ? "Готовлю…" : "Подготовить экспорт"}
-              </Button>
-            </>
-          )}
-        />
+        <header className="cxStandaloneCommandHeader">
+          <div className="cxStandaloneCommandContext">
+            <span>Каталог / экспорт</span>
+            <h1>Экспорт</h1>
+            <p>Собирайте выгрузку по выбранным площадкам и магазинам из той же рабочей области, где отбирается каталог.</p>
+          </div>
+          <div className="cxStandaloneCommandControls">
+            <Link className="btn" to={orgPath("/products")}>Товары</Link>
+            <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
+              {loading ? "Готовлю…" : "Подготовить экспорт"}
+            </Button>
+          </div>
+        </header>
       ) : null}
 
       {err ? <div className="card cx-error">{err}</div> : null}
@@ -591,16 +665,16 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             <SummaryMetricRow
               items={[
                 { label: "Область", value: selectedScope, hint: includeDescendants && selectedNodeIds.length ? "с дочерними ветками" : "текущий выбор" },
-                { label: "SKU в проверке", value: selectedSkuEstimate, hint: selectedProductIds.length ? "точный выбор" : "контрольный batch" },
+                { label: "SKU в проверке", value: selectedSkuEstimate, hint: selectedProductIds.length ? "точный выбор" : "контрольная выборка" },
                 { label: "Каналы", value: activeTargets.length, hint: "площадки" },
-                { label: "Магазины", value: selectedTargetsCount, hint: "цели batch", accent: !readyForPrepare },
+                { label: "Магазины", value: selectedTargetsCount, hint: "цели выгрузки", accent: !readyForPrepare },
               ]}
             />
 
             <DataToolbar
-              title="Цели экспорта"
-              subtitle="Отметьте магазины, куда нужно подготовить карточки. Выбор хранится в интерфейсе, кодом ничего включать не нужно."
-              className="cx-workspaceToolbar"
+              title="Магазины для выгрузки"
+              subtitle="Выберите площадку и конкретные магазины. SmartPim подготовит выгрузку только по отмеченным строкам."
+              className="cx-workspaceToolbar cx-exportCommand"
               compact
               actions={(
                 <div className="cx-toolbarActions">
@@ -614,64 +688,82 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               <div className="cx-targetsBoard">
                 {initialLoading ? (
                   <div className="cx-empty">Загружаю магазины и каналы экспорта…</div>
-                ) : providers.length === 0 ? (
-                  <div className="cx-empty cx-exportEmptyHint">
-                    <strong>Нет магазинов для экспорта</strong>
-                    <span>Включите магазины для выгрузки в настройках коннекторов или проверьте привязку категории к площадкам.</span>
-                    <div className="cx-emptyActions">
-                      <Link className="btn btn-primary" to={orgPath("/connectors/status?tab=marketplaces")}>Открыть коннекторы</Link>
-                      <Link className="btn" to={orgPath(sourcesCategoryHref)}>Проверить привязку</Link>
+                ) : providers.length === 0 || storesAvailableCount === 0 ? (
+                  <div className="cx-targetSetupEmpty">
+                    <div className="cx-targetSetupText">
+                      <span>Нет целей экспорта</span>
+                      <strong>Подключите магазин перед подготовкой пакета</strong>
+                      <p>Выгрузка запускается только по конкретным магазинам. Добавьте Я.Маркет или Ozon в источниках данных, затем вернитесь сюда.</p>
+                    </div>
+                    <div className="cx-targetSetupSteps">
+                      <div><b>1</b><span>Добавить магазин</span></div>
+                      <div><b>2</b><span>Проверить категорию</span></div>
+                      <div><b>3</b><span>Отметить цель</span></div>
+                    </div>
+                    <div className="cx-targetSetupActions">
+                      <Link className="btn btn-primary" to={orgPath("/connectors/status?tab=stores")}>Открыть магазины</Link>
+                      <Link className="btn" to={orgPath(sourcesCategoryHref)}>Привязка категории</Link>
                     </div>
                   </div>
                 ) : providers.map((provider) => {
-                  const checked = !!selectedProviders[provider.code];
                   const stores = provider.import_stores || [];
                   const current = new Set(selectedStores[provider.code] || []);
+                  const enabledStores = stores.filter((store) => store.enabled !== false);
+                  const checked = current.size > 0;
+                  const providerSaving = stores.some((store) => savingStoreIds[`${provider.code}:${store.id}`]);
                   return (
                     <div key={provider.code} className="cx-targetCard">
                       <div className="cx-targetCardHead">
-                        <label className={`cx-inlineCheck ${stores.length ? "" : "isDisabled"}`}>
+                        <label className={`cx-inlineCheck ${enabledStores.length ? "" : "isDisabled"}`}>
                           <input
                             type="checkbox"
-                            checked={stores.length > 0 && checked}
-                            disabled={!stores.length}
-                            onChange={(e) => {
-                              setSelectedProviders((prev) => ({ ...prev, [provider.code]: e.target.checked }));
-                            }}
+                            checked={enabledStores.length > 0 && checked}
+                            disabled={!enabledStores.length || providerSaving}
+                            onChange={(e) => void updateProviderExport(provider, e.target.checked)}
                           />
                           <span>{provider.title}</span>
                         </label>
                         <Badge tone={checked && current.size ? "active" : "neutral"}>
-                          {current.size ? `${current.size}/${stores.length}` : "Выберите"}
+                          {providerSaving ? "сохраняю" : current.size ? `${current.size}/${enabledStores.length || stores.length}` : "0 выбрано"}
                         </Badge>
                       </div>
-                      <div className="cx-storeChips">
+                      <div className="cx-targetMeta">
+                        <span>
+                          {stores.length
+                            ? `${enabledStores.length} активных из ${stores.length}`
+                            : "нет подключенных магазинов"}
+                        </span>
+                        <strong>{current.size ? `${current.size} выбрано` : stores.length ? "выберите магазин" : "добавьте магазин"}</strong>
+                      </div>
+                      <div className="cx-storeRows">
                         {stores.map((store) => {
                           const storeDisabled = store.enabled === false;
+                          const storeSaving = Boolean(savingStoreIds[`${provider.code}:${store.id}`]);
                           return (
-                            <label key={store.id} className={`cx-storeChip ${current.has(store.id) && !storeDisabled ? "isActive" : ""} ${storeDisabled ? "isDisabled" : ""}`}>
-                              <input
-                                type="checkbox"
-                                checked={!storeDisabled && current.has(store.id)}
-                                disabled={storeDisabled}
-                                onChange={(e) => {
-                                  const next = new Set(selectedStores[provider.code] || []);
-                                  if (e.target.checked) next.add(store.id);
-                                  else next.delete(store.id);
-                                  setSelectedStores((prev) => ({ ...prev, [provider.code]: Array.from(next) }));
-                                }}
-                              />
-                              <span>{store.title}</span>
+                            <label key={store.id} className={`cx-storeRow ${current.has(store.id) && !storeDisabled ? "isActive" : ""} ${storeDisabled ? "isDisabled" : ""} ${storeSaving ? "isSaving" : ""}`}>
+                              <span className="cx-storeRowMain">
+                                <input
+                                  type="checkbox"
+                                  checked={!storeDisabled && current.has(store.id)}
+                                  disabled={storeDisabled || storeSaving}
+                                  onChange={(e) => void updateStoreExport(provider.code, store.id, e.target.checked)}
+                                />
+                                <span>
+                                  <strong>{store.title}</strong>
+                                  <em>{storeSaving ? "сохраняю выбор..." : store.id}</em>
+                                </span>
+                              </span>
+                              <span className="cx-storeRowState" aria-hidden="true" />
                             </label>
                           );
                         })}
                       </div>
                       {!stores.length ? (
                         <div className="cx-targetHelp">
-                          <Link to={orgPath("/connectors/status?tab=stores")}>Добавить магазин</Link>
+                          <Link to={orgPath(`/connectors/status?tab=stores&provider=${encodeURIComponent(provider.code)}`)}>Добавить магазин</Link>
                         </div>
                       ) : current.size === 0 ? (
-                        <div className="cx-targetHelp">Ни один магазин не попадет в batch, пока не выбрана галочка магазина.</div>
+                        <div className="cx-targetHelp">Отметьте магазин галочкой. Только выбранные магазины попадут в выгрузку.</div>
                       ) : null}
                     </div>
                   );
@@ -679,12 +771,45 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
               </div>
             </DataToolbar>
 
+            <section className="card cx-exportStartPanel">
+              <div>
+                <div className="cx-paneTitle">Подготовка выгрузки</div>
+                <div className="cx-paneSub">
+                  Экспорт не отправляет все подряд: сначала собирается проверочный пакет по выбранной области, магазинам, медиа, описанию и параметрам.
+                </div>
+              </div>
+              <div className="cx-exportChecklist">
+                {targetSetupItems.map((item) => (
+                  <div key={item.label} className={`cx-exportChecklistItem is-${item.state}`}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                    <em>{item.hint}</em>
+                  </div>
+                ))}
+              </div>
+              <div className="cx-exportStartActions">
+                {selectedTargetLabels.length ? (
+                  <div className="cx-selectedTargets">
+                    {selectedTargetLabels.slice(0, 4).map((label) => <span key={label}>{label}</span>)}
+                    {selectedTargetLabels.length > 4 ? <span>+{selectedTargetLabels.length - 4}</span> : null}
+                  </div>
+                ) : (
+                  <div className="cx-selectedTargets isEmpty">
+                    {storesAvailableCount ? "Сначала отметьте хотя бы один магазин" : "Нет магазинов, доступных для экспорта"}
+                  </div>
+                )}
+                <Button variant="primary" onClick={requestExport} disabled={initialLoading || loading || activeTargets.length === 0}>
+                  {loading ? "Готовлю…" : "Подготовить выгрузку"}
+                </Button>
+              </div>
+            </section>
+
             {broadExportScope ? (
               <section className="card cx-exportScopeGuard">
                 <div>
                   <div className="cx-paneTitle">Широкая область проверки</div>
                   <div className="cx-paneSub">
-                    Для массовой области SmartPim готовит контрольный batch до 50 SKU. Для финальной отправки выберите конкретные SKU или узкую категорию без дочерних веток.
+                    Для массовой области SmartPim готовит контрольную выборку до 50 SKU. Для финальной отправки выберите конкретные SKU или узкую категорию без дочерних веток.
                   </div>
                 </div>
                 <Badge tone="pending">guardrail</Badge>
@@ -723,7 +848,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                 {runIsReady ? (
                   <section className="card cx-exportReady">
                     <div>
-                      <div className="cx-paneTitle">Batch готов к выгрузке</div>
+                      <div className="cx-paneTitle">Пакет готов к выгрузке</div>
                       <div className="cx-paneSub">
                         Проверка прошла по выбранной области и выбранным магазинам. SmartPim подготовил данные карточки для выбранных площадок.
                       </div>
@@ -731,7 +856,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                     <div className="cx-exportReadyActions">
                       <Badge tone="active">Можно переходить к отправке</Badge>
                       <Button onClick={() => void loadExportPackage(false)} disabled={packageLoading}>
-                        {packageLoading ? "Собираю…" : "Показать payload"}
+                        {packageLoading ? "Собираю…" : "Показать пакет"}
                       </Button>
                       <Button variant="primary" onClick={() => void loadExportPackage(true)} disabled={packageLoading}>
                         Скачать JSON
@@ -744,17 +869,17 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   <section className="card cx-pane">
                     <div className="cx-paneHead">
                       <div>
-                        <div className="cx-paneTitle">Payload для отправки</div>
-                        <div className="cx-paneSub">Финальный пакет по текущему run: только готовые строки, сгруппированные по площадке и магазину.</div>
+                        <div className="cx-paneTitle">Пакет для отправки</div>
+                        <div className="cx-paneSub">Финальные данные текущей проверки: только готовые строки, сгруппированные по площадке и магазину.</div>
                       </div>
                       <Badge tone={exportPackage.status === "ready" ? "active" : "pending"}>
                         {exportPackage.status === "ready" ? "Готов" : "Частичный"}
                       </Badge>
                     </div>
                     <div className="cx-payloadSummary">
-                      <div><span>Run</span><strong>{exportPackage.run_id}</strong></div>
-                      <div><span>Batch</span><strong>{exportPackage.summary?.batch_count ?? 0}</strong></div>
-                      <div><span>Payload rows</span><strong>{exportPackage.summary?.ready_items ?? 0}</strong></div>
+                      <div><span>Проверка</span><strong>{exportPackage.run_id}</strong></div>
+                      <div><span>Целей</span><strong>{exportPackage.summary?.batch_count ?? 0}</strong></div>
+                      <div><span>Готовых строк</span><strong>{exportPackage.summary?.ready_items ?? 0}</strong></div>
                       <div><span>Блокеры</span><strong>{exportPackage.summary?.blocked_items ?? 0}</strong></div>
                     </div>
                     <div className="cx-resultsTableWrap">
@@ -763,7 +888,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                           <tr>
                             <th>Площадка</th>
                             <th>Магазин</th>
-                            <th>Payload rows</th>
+                            <th>Готовые строки</th>
                             <th>Статус</th>
                           </tr>
                         </thead>
@@ -790,7 +915,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   <div className="cx-paneHead">
                     <div>
                       <div className="cx-paneTitle">Очередь экспорта</div>
-                      <div className="cx-paneSub">Видно, по каким каналам и магазинам собран batch и сколько SKU готовы к выгрузке.</div>
+                      <div className="cx-paneSub">Видно, по каким площадкам и магазинам собрана очередь и сколько SKU готовы к выгрузке.</div>
                     </div>
                   </div>
                   <div className="cx-resultsTableWrap">
@@ -871,22 +996,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
                   </section>
                 ) : null}
               </>
-            ) : (
-              <EmptyState
-                title={exportEmptyTitle}
-                description={exportEmptyDescription}
-                action={providers.length === 0 ? (
-                  <div className="cx-emptyActions">
-                    <Link className="btn btn-primary" to={orgPath("/connectors/status?tab=marketplaces")}>Открыть коннекторы</Link>
-                    <Link className="btn" to={orgPath(sourcesCategoryHref)}>Проверить привязку</Link>
-                  </div>
-                ) : (
-                  <Button variant="primary" onClick={requestExport} disabled={loading || activeTargets.length === 0}>
-                    {loading ? "Готовлю…" : "Подготовить экспорт"}
-                  </Button>
-                )}
-              />
-            )}
+            ) : null}
           </div>
         )}
         inspector={inspector}
@@ -922,7 +1032,7 @@ export default function CatalogExportFeature({ embedded = false }: { embedded?: 
             <div className="cx-confirmWarning">
               {broadExportScope
                 ? "Это широкая проверка до 50 SKU. Для финальной отправки лучше выбрать конкретные SKU или узкую категорию."
-                : "Сейчас будет только batch-подготовка и проверка данных по выбранным магазинам. Проверь список целей перед запуском."}
+                : "Сейчас будет подготовка и проверка данных по выбранным магазинам. Проверьте список целей перед запуском."}
             </div>
             {broadExportScope ? (
               <div className="cx-confirmGuard">

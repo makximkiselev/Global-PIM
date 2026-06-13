@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { useOrgPath } from "../../app/orgRoutes";
 import "../../styles/product-new.css";
@@ -352,7 +352,7 @@ function CategoryModal(props: {
             )}
           </div>
 
-          <div className="pn-hint" style={{ marginTop: 10 }}>
+          <div className="pn-hint pn-categoryPickerHint">
             Выбирайте конечную категорию — окно закроется автоматически.
           </div>
         </div>
@@ -530,7 +530,7 @@ function ParamPickerModal(props: {
 
   return createPortal(
     <div className="pn-modalOverlay" onMouseDown={onClose} role="dialog" aria-modal="true">
-      <div className="pn-modal" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 1020 }}>
+      <div className="pn-modal pn-variantAxesModal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="pn-modalHead">
           <div className="pn-modalTitle">Оси вариантов</div>
           <button className="pn-iconBtn" onClick={onClose} aria-label="close" type="button">
@@ -538,7 +538,7 @@ function ParamPickerModal(props: {
           </button>
         </div>
 
-        <div className="pn-modalBody" style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 14 }}>
+        <div className="pn-modalBody pn-variantAxesBody">
           <div>
             <div className="pn-catSearchBlock">
               <div className="pn-catSearchLabel">Поиск оси</div>
@@ -551,7 +551,7 @@ function ParamPickerModal(props: {
               />
             </div>
 
-            <div className="pn-catList" style={{ marginTop: 10 }}>
+            <div className="pn-catList pn-variantAxesList">
               {filteredParams.map((p) => {
                 const sel = isSelected(p.attr_id);
                 const act = activeAttrId === p.attr_id;
@@ -562,9 +562,8 @@ function ParamPickerModal(props: {
                     onClick={() => setActiveAttrId(p.attr_id)}
                     type="button"
                     title={p.title}
-                    style={{ alignItems: "center" }}
                   >
-                    <span className="pn-catTitle pn-smallText" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="pn-catTitle pn-smallText pn-variantAxisTitle">
                       <input
                         type="checkbox"
                         checked={sel}
@@ -582,14 +581,14 @@ function ParamPickerModal(props: {
               })}
             </div>
 
-            <div className="pn-hint" style={{ marginTop: 10 }}>
+            <div className="pn-hint pn-variantAxesHint">
               Здесь только параметры, по которым реально строятся SKU-варианты.
             </div>
           </div>
 
           <div>
-            <div className="pn-card pn-cardInner" style={{ margin: 0 }}>
-              <div className="pn-cardTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <div className="pn-card pn-cardInner pn-variantAxesValueCard">
+              <div className="pn-cardTitle pn-variantAxesValueTitle">
                 <span>{activeParam ? activeParam.title : "Выберите ось"} — значения</span>
                 {activeParam && !isSelected(activeParam.attr_id) && (
                   <span className="pn-muted">сначала включите слева</span>
@@ -597,14 +596,14 @@ function ParamPickerModal(props: {
               </div>
 
               {!!err && (
-                <div className="pn-alert pn-alertBad" style={{ marginTop: 8 }}>
+                <div className="pn-alert pn-alertBad pn-variantAxesAlert">
                   <div className="pn-alertTitle">Ошибка</div>
                   <div className="pn-alertText">{err}</div>
                 </div>
               )}
 
               <select
-                className="pn-input"
+                className="pn-input pn-variantAxesSelect"
                 multiple
                 value={activeParam ? values[activeParam.attr_id] || [] : []}
                 onChange={(e) => {
@@ -612,7 +611,6 @@ function ParamPickerModal(props: {
                   const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
                   setValues((prev) => ({ ...prev, [activeParam.attr_id]: uniqTrim(vals) }));
                 }}
-                style={{ height: 220 }}
                 disabled={!activeParam || !isSelected(activeParam.attr_id)}
               >
                 {(activeParam ? optionsByAttr[activeParam.attr_id] || [] : []).map((x) => (
@@ -622,7 +620,7 @@ function ParamPickerModal(props: {
                 ))}
               </select>
 
-              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+              <div className="pn-variantAxesAddRow">
                 <input
                   className="pn-input"
                   value={newValue}
@@ -640,12 +638,12 @@ function ParamPickerModal(props: {
                 </button>
               </div>
 
-              <div className="pn-hint" style={{ marginTop: 10 }}>
+              <div className="pn-hint pn-variantAxesHint">
                 Выберите значения из словаря. Каждая комбинация станет отдельным SKU.
               </div>
             </div>
 
-            <div className="pn-variantsActions" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+            <div className="pn-variantsActions pn-variantAxesActions">
               <button className="pn-editBtn" onClick={onClose} type="button">
                 Отмена
               </button>
@@ -810,7 +808,6 @@ function variantContentPatch(
 }
 
 export default function ProductNewFeature() {
-  const navigate = useNavigate();
   const orgPath = useOrgPath();
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState("");
@@ -845,7 +842,7 @@ export default function ProductNewFeature() {
 
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ id: string; title: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; title: string; groupId?: string } | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
@@ -865,7 +862,11 @@ export default function ProductNewFeature() {
         setTemplateTreeById(templateMap);
         setGlobalAttrs(res.attributes || []);
         setDictionaryItems(res.dictionaries || []);
-        const initialCategoryId = searchParams.get("category_id") || "";
+        const initialCategoryId =
+          searchParams.get("category") ||
+          searchParams.get("category_id") ||
+          searchParams.get("node_id") ||
+          "";
         if (initialCategoryId && mapFlat.has(initialCategoryId)) {
           setCategoryId(initialCategoryId);
           setCategoryPath(buildPathString(mapFlat, initialCategoryId));
@@ -1313,13 +1314,9 @@ export default function ProductNewFeature() {
 
       const firstCreated = res.first_product || res.products?.[0];
       if (firstCreated) {
-        setCreated(firstCreated);
         const groupId = String(res.group?.id || "").trim();
-        if (productType === "multi" && groupId) {
-          navigate(orgPath(`/catalog/groups?group=${encodeURIComponent(groupId)}&created=1`));
-        } else {
-          navigate(orgPath(`/products/${encodeURIComponent(firstCreated.id)}?tab=sources&created=1`));
-        }
+        setCreated({ ...firstCreated, groupId: groupId || undefined });
+        setCurrentStep(wizardSteps.length - 1);
       }
     } catch (e: any) {
       setSaveErr(e?.message || "SAVE_FAILED");
@@ -1354,11 +1351,19 @@ export default function ProductNewFeature() {
   const disabledVariantCount = Math.max(0, variants.length - enabledVariantCount);
   const variantAxisColumns = selectedParamLabels.length ? selectedParamLabels : [{ id: "__variant", label: "Вариант", values: [] }];
   const readyToCreate = Boolean(normStr(title) && categoryId && enabledVariantCount);
+  const baseReady = Boolean(normStr(title) && categoryId);
+  const variantsReady = Boolean(enabledVariantCount);
+  const canEnterStep = (index: number) => {
+    if (index <= activeStep) return true;
+    if (index === 1) return baseReady;
+    if (index === 2) return baseReady && variantsReady;
+    return baseReady && variantsReady;
+  };
   const canGoNext =
     activeStep === 0
-      ? Boolean(normStr(title) && categoryId)
+      ? baseReady
     : activeStep === 1
-      ? Boolean(enabledVariantCount)
+      ? variantsReady
       : true;
 
   return (
@@ -1375,6 +1380,7 @@ export default function ProductNewFeature() {
                 key={step.label}
                 type="button"
                 className={`pnWizardStep${index === activeStep ? " isActive" : ""}${index < activeStep ? " isDone" : ""}`}
+                disabled={!canEnterStep(index)}
                 onClick={() => setCurrentStep(index)}
               >
                 <span>{String(index + 1).padStart(2, "0")}</span>
@@ -1406,14 +1412,14 @@ export default function ProductNewFeature() {
           <div className="pnWizardTopbar">
             <div>
               <div className="pnWizardEyebrow">Создание товара</div>
-              <h1>{wizardSteps[activeStep].label}</h1>
-              <p>{wizardSteps[activeStep].meta}</p>
+              <h1>Новый SKU</h1>
+              <p>
+                Шаг {String(activeStep + 1).padStart(2, "0")} · {wizardSteps[activeStep].label} ·{" "}
+                {wizardSteps[activeStep].meta}
+              </p>
             </div>
             <div className="pnWizardTopActions">
               <Link className="btn" to={orgPath("/products")}>К товарам</Link>
-              <button className="btn primary" onClick={onSaveAll} disabled={!canSave || !readyToCreate}>
-                {saving ? "Создаем..." : productType === "single" ? "Создать SKU" : "Создать группу"}
-              </button>
             </div>
           </div>
 
@@ -1433,9 +1439,27 @@ export default function ProductNewFeature() {
             <div className="pnWizardSuccess">
               <div>
                 <strong>Товар создан</strong>
-                <span>ID: {created.id}. Дальше лучше открыть карточку и довести параметры, медиа и каналы.</span>
+                <span>
+                  SKU {created.id} сохранен. Следующий шаг - привязать источники и конкурентов, затем собрать параметры и
+                  подготовить выгрузку.
+                </span>
               </div>
-              <Link className="btn primary" to={orgPath(`/products/${created.id}`)}>Открыть карточку</Link>
+              <div className="pnWizardSuccessActions">
+                <Link className="btn primary" to={orgPath(`/products/${created.id}?tab=sources&created=1`)}>
+                  Открыть источники
+                </Link>
+                <Link className="btn" to={orgPath(`/products/${created.id}?tab=attributes&created=1`)}>
+                  Параметры SKU
+                </Link>
+                {created.groupId ? (
+                  <Link className="btn" to={orgPath(`/catalog/groups?group=${encodeURIComponent(created.groupId)}&created=1`)}>
+                    Группа SKU
+                  </Link>
+                ) : null}
+                <Link className="btn" to={orgPath(`/catalog/exchange?tab=export&product=${encodeURIComponent(created.id)}`)}>
+                  К экспорту
+                </Link>
+              </div>
             </div>
           ) : null}
 
@@ -1457,7 +1481,7 @@ export default function ProductNewFeature() {
                   <div className="pnWizardTypeGrid">
                     <button className={`pnWizardChoice${productType === "single" ? " isActive" : ""}`} onClick={() => setProductType("single")} type="button">
                       <strong>Один SKU</strong>
-                      <span>Обычная карточка без variant-family.</span>
+                      <span>Обычная карточка без группы вариантов.</span>
                     </button>
                     <button className={`pnWizardChoice${productType === "multi" ? " isActive" : ""}`} onClick={() => setProductType("multi")} type="button">
                       <strong>С вариантами</strong>
@@ -1466,11 +1490,11 @@ export default function ProductNewFeature() {
                   </div>
                 </div>
                 <div className="pnWizardPreviewCard">
-                  <span>Preview</span>
+                  <span>Предпросмотр</span>
                   <strong>{normStr(title) || "Название товара"}</strong>
                   <p>{categoryPath || "Категория появится здесь после выбора."}</p>
                   <div>
-                    <BadgeLike label={productType === "single" ? "single SKU" : "variant family"} />
+                    <BadgeLike label={productType === "single" ? "один SKU" : "группа вариантов"} />
                     <BadgeLike label={templateId ? "модель найдена" : "модель не выбрана"} />
                   </div>
                 </div>
@@ -1484,7 +1508,7 @@ export default function ProductNewFeature() {
                     <strong>{productType === "single" ? "Один товарный SKU" : "Группа вариантов"}</strong>
                     <span>
                       {productType === "single"
-                        ? "Один товар сразу получит SKU GT и SKU PIM."
+                        ? "Один товар сразу получит SKU GT и внутренний SKU."
                         : "Каждая комбинация станет отдельным SKU, а все SKU будут объединены в одну группу товара."}
                     </span>
                   </div>
@@ -1499,7 +1523,7 @@ export default function ProductNewFeature() {
                 </div>
                 {productType === "multi" && !hasVariantParams ? (
                   <div className="pnWizardNotice">
-                    В категории пока нет справочников для вариантов. Можно создать один SKU или сначала настроить инфо-модель.
+                    В категории пока нет справочников для вариантов. Можно создать один SKU или сначала настроить модель категории.
                   </div>
                 ) : null}
                 {productType === "multi" && selectedParamLabels.length ? (
@@ -1533,7 +1557,7 @@ export default function ProductNewFeature() {
                         ))}
                         <span>Название</span>
                         <span>SKU GT</span>
-                        <span>SKU PIM</span>
+                        <span>Внутренний SKU</span>
                         <span>Действие</span>
                       </div>
                       {variants.map((variant) => (
@@ -1581,7 +1605,7 @@ export default function ProductNewFeature() {
                             placeholder="будет выделен"
                             onClick={(event) => event.stopPropagation()}
                             onChange={(event) => updateVariantRow(variant.key, { sku_pim: event.target.value })}
-                            aria-label="SKU PIM"
+                            aria-label="Внутренний SKU"
                           />
                           <button
                             className="pnVariantToggle"
@@ -1656,16 +1680,45 @@ export default function ProductNewFeature() {
                   После создания одного SKU откроется карточка товара. После создания линейки откроется группа SKU, чтобы сначала проверить состав,
                   общие факты и отличия, а затем перейти к подбору конкурентов и выгрузке выбранных SKU.
                 </div>
-                <button className="btn primary pnWizardCreateButton" onClick={onSaveAll} disabled={!canSave || !readyToCreate}>
-                  {saving ? "Создаем..." : productType === "single" ? "Создать SKU" : "Создать группу SKU"}
-                </button>
+                {created ? (
+                  <div className="pnWizardNextGrid" aria-label="Следующие шаги">
+                    <Link className="pnWizardNextCard isPrimary" to={orgPath(`/products/${created.id}?tab=sources&created=1`)}>
+                      <span>01</span>
+                      <strong>Источники</strong>
+                      <em>найти карточки конкурентов и площадок</em>
+                    </Link>
+                    <Link className="pnWizardNextCard" to={orgPath(`/products/${created.id}?tab=attributes&created=1`)}>
+                      <span>02</span>
+                      <strong>Параметры</strong>
+                      <em>проверить заполнение SKU</em>
+                    </Link>
+                    {created.groupId ? (
+                      <Link className="pnWizardNextCard" to={orgPath(`/catalog/groups?group=${encodeURIComponent(created.groupId)}&created=1`)}>
+                        <span>03</span>
+                        <strong>Группа SKU</strong>
+                        <em>проверить линейку и отличия</em>
+                      </Link>
+                    ) : null}
+                    <Link className="pnWizardNextCard" to={orgPath(`/catalog/exchange?tab=export&product=${encodeURIComponent(created.id)}`)}>
+                      <span>{created.groupId ? "04" : "03"}</span>
+                      <strong>Экспорт</strong>
+                      <em>выбрать магазины и подготовить выгрузку</em>
+                    </Link>
+                  </div>
+                ) : (
+                  <button className="btn primary pnWizardCreateButton" onClick={onSaveAll} disabled={!canSave || !readyToCreate}>
+                    {saving ? "Создаем..." : productType === "single" ? "Создать SKU" : "Создать группу SKU"}
+                  </button>
+                )}
               </div>
             ) : null}
           </section>
 
           <div className="pnWizardFooter">
             <button className="btn" type="button" onClick={() => setCurrentStep((step) => Math.max(0, step - 1))} disabled={activeStep === 0}>Назад</button>
-            <button className="btn primary" type="button" onClick={() => setCurrentStep((step) => Math.min(wizardSteps.length - 1, step + 1))} disabled={activeStep === wizardSteps.length - 1 || !canGoNext}>Дальше</button>
+            {activeStep < wizardSteps.length - 1 ? (
+              <button className="btn primary" type="button" onClick={() => setCurrentStep((step) => Math.min(wizardSteps.length - 1, step + 1))} disabled={!canGoNext}>Дальше</button>
+            ) : null}
           </div>
         </main>
       </div>

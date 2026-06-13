@@ -62,8 +62,50 @@ def _public_base_url() -> str:
     return value.rstrip("/")
 
 
+def _is_local_competitor_media_url(value: Any) -> bool:
+    text = str(value or "")
+    return "/api/uploads/media_images/" in text and "/competitors/" in text
+
+
+def _media_export_identity_key(item: Dict[str, Any]) -> str:
+    primary = str(item.get("url") or "").strip()
+    if primary and _is_local_competitor_media_url(primary):
+        parsed = urlparse(primary)
+        return (parsed.path or primary).lower()
+    for field in ("external_url", "source_image_url", "url"):
+        value = str(item.get(field) or "").strip()
+        if value:
+            return value.lower()
+    return ""
+
+
+def _media_export_quality(item: Dict[str, Any]) -> int:
+    score = 10 if _should_prefer_external_media_url(item) else 0
+    if item.get("selected") is not False:
+        score += 1
+    return score
+
+
+def _should_prefer_external_media_url(item: Dict[str, Any]) -> bool:
+    primary = str(item.get("url") or "").strip()
+    external = str(item.get("external_url") or item.get("source_image_url") or "").strip()
+    source = str(item.get("source") or "").strip().lower()
+    return bool(
+        primary
+        and _is_local_competitor_media_url(primary)
+        and external
+        and not _is_local_competitor_media_url(external)
+        and ("restore" in source or "re-store.ru" in external)
+    )
+
+
 def _export_media_url(url: Any) -> str:
-    value = str(url or "").strip()
+    if isinstance(url, dict):
+        primary = str(url.get("url") or "").strip()
+        external = str(url.get("external_url") or url.get("source_image_url") or "").strip()
+        value = external if _should_prefer_external_media_url(url) else (primary or external)
+    else:
+        value = str(url or "").strip()
     if not value:
         return ""
     parsed = urlparse(value)
@@ -89,10 +131,21 @@ def _export_media_urls(items: Any) -> List[str]:
             order = idx + 1
         sortable.append((order, idx, item))
     sortable.sort(key=lambda row: (row[0], row[1]))
+    best_by_identity: Dict[str, Dict[str, Any]] = {}
+    for _, _, item in sortable:
+        identity = _media_export_identity_key(item)
+        if not identity:
+            continue
+        current = best_by_identity.get(identity)
+        if current is None or _media_export_quality(item) > _media_export_quality(current):
+            best_by_identity[identity] = item
     out: List[str] = []
     seen: Set[str] = set()
     for _, _, item in sortable:
-        url = _export_media_url(item.get("url"))
+        identity = _media_export_identity_key(item)
+        if identity and best_by_identity.get(identity) is not item:
+            continue
+        url = _export_media_url(item)
         if not url or url in seen:
             continue
         seen.add(url)

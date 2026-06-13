@@ -29,6 +29,7 @@ type Props = {
   onIncludeDescendantsChange: (value: boolean) => void;
   embedded?: boolean;
   dataLoading?: boolean;
+  intent?: "import" | "export";
 };
 
 function qnorm(s: string) {
@@ -59,6 +60,7 @@ export default function CatalogExchangePicker(props: Props) {
     onIncludeDescendantsChange,
     embedded = false,
     dataLoading = false,
+    intent = "export",
   } = props;
 
   const [nodeQuery, setNodeQuery] = useState("");
@@ -301,7 +303,18 @@ export default function CatalogExchangePicker(props: Props) {
       return [
         <div key={node.id}>
           <div className="csb-treeRow" style={{ ["--depth" as any]: depth }}>
-            <label className={`csb-treeNode csb-treeNodeCheck ${checked ? "is-active" : ""}`}>
+            <label
+              className={`csb-treeNode csb-treeNodeCheck ${checked ? "is-active" : ""}`}
+              data-category-id={node.id}
+              data-category-name={node.name}
+              aria-label={`${checked ? "Снять категорию" : "Выбрать категорию"} ${node.name}`}
+              onClick={(event) => {
+                const target = event.target as HTMLElement | null;
+                if (target?.closest("button,input")) return;
+                event.preventDefault();
+                toggleNode(node.id, !checked);
+              }}
+            >
               {hasKids ? (
                 <button
                   className="csb-caretBtn"
@@ -321,6 +334,7 @@ export default function CatalogExchangePicker(props: Props) {
               <input
                 type="checkbox"
                 checked={checked}
+                aria-label={`${checked ? "Снять категорию" : "Выбрать категорию"} ${node.name}`}
                 onChange={(e) => toggleNode(node.id, e.target.checked)}
               />
               <span className="csb-treeName" title={node.name}>{node.name}</span>
@@ -348,8 +362,19 @@ export default function CatalogExchangePicker(props: Props) {
           const title = String(p.title || p.name || p.id);
           const cid = String(p.category_id || "");
           return (
-            <label key={p.id} className="cx-productRow">
-              <input type="checkbox" checked={selectedProductSet.has(p.id)} onChange={(e) => toggleProduct(p.id, e.target.checked)} />
+            <label
+              key={p.id}
+              className="cx-productRow"
+              data-product-id={p.id}
+              data-product-title={title}
+              aria-label={`${selectedProductSet.has(p.id) ? "Снять товар" : "Выбрать товар"} ${title}`}
+            >
+              <input
+                type="checkbox"
+                checked={selectedProductSet.has(p.id)}
+                aria-label={`${selectedProductSet.has(p.id) ? "Снять товар" : "Выбрать товар"} ${title}`}
+                onChange={(e) => toggleProduct(p.id, e.target.checked)}
+              />
               <span className="cx-productMain">
                 <span className="cx-productTitle">{title}</span>
                 <span className="cx-productMeta">{buildPath(nodeById, cid)} · GT {p.sku_gt || "-"}</span>
@@ -390,12 +415,24 @@ export default function CatalogExchangePicker(props: Props) {
     </CategorySidebar>
   );
 
+  const scopeTitle = intent === "import" ? "Область импорта" : "Область выгрузки";
+  const scopeDescription = scopeMode === "products"
+    ? intent === "import"
+      ? "Заполняются только выбранные SKU."
+      : "Экспортируются только выбранные SKU."
+    : intent === "import"
+      ? "Заполняется выбранная категория или ветка."
+      : "Экспортируется выбранная категория или ветка.";
+
+  const activePickerPanel = scopeMode === "products" ? productPanel : categoryPanel;
+  const supportingPickerPanel = scopeMode === "products" ? categoryPanel : productPanel;
+
   return (
     <div className={`cx-pickerGrid${embedded ? " isEmbedded" : ""}`}>
       <section className="card cx-scopeModePanel">
         <div>
-          <strong>Область выгрузки</strong>
-          <span>{scopeMode === "products" ? "Экспортируются только выбранные SKU." : "Экспортируется выбранная категория или ветка."}</span>
+          <strong>{scopeTitle}</strong>
+          <span>{scopeDescription}</span>
         </div>
         <div className="cx-scopeModeSwitch">
           <button
@@ -414,8 +451,12 @@ export default function CatalogExchangePicker(props: Props) {
           </button>
         </div>
       </section>
-      {scopeMode === "products" ? productPanel : categoryPanel}
-      {scopeMode === "products" ? categoryPanel : productPanel}
+      {embedded ? activePickerPanel : (
+        <>
+          {activePickerPanel}
+          {supportingPickerPanel}
+        </>
+      )}
     </div>
   );
 }

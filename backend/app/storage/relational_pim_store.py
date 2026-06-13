@@ -2572,21 +2572,47 @@ def _bootstrap_attribute_value_refs_tenant_from_legacy(organization_id: Optional
 
 def _replace_product_marketplace_status_tenant_table(rows: List[Dict[str, Any]], organization_id: Optional[str]) -> None:
     org_id = _resolve_organization_id(organization_id)
-    payload: List[tuple[str, str, bool, str, bool, str]] = []
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    def _status_value(value: Any) -> str:
+        return str(value or "Нет данных").strip() or "Нет данных"
+
+    def _merge_status(existing: str, incoming: str) -> str:
+        if existing and existing != "Нет данных":
+            return existing
+        return incoming or existing or "Нет данных"
+
     for row in rows or []:
         pid = str(row.get("product_id") or "").strip()
         if not pid:
             continue
-        payload.append(
-            (
-                org_id,
-                pid,
-                bool(row.get("yandex_present") or False),
-                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
-                bool(row.get("ozon_present") or False),
-                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
-            )
+        yandex_status = _status_value(row.get("yandex_status"))
+        ozon_status = _status_value(row.get("ozon_status"))
+        current = merged.get(pid)
+        if current:
+            current["yandex_present"] = bool(current.get("yandex_present")) or bool(row.get("yandex_present") or False)
+            current["ozon_present"] = bool(current.get("ozon_present")) or bool(row.get("ozon_present") or False)
+            current["yandex_status"] = _merge_status(str(current.get("yandex_status") or ""), yandex_status)
+            current["ozon_status"] = _merge_status(str(current.get("ozon_status") or ""), ozon_status)
+            continue
+        merged[pid] = {
+            "yandex_present": bool(row.get("yandex_present") or False),
+            "yandex_status": yandex_status,
+            "ozon_present": bool(row.get("ozon_present") or False),
+            "ozon_status": ozon_status,
+        }
+
+    payload: List[tuple[str, str, bool, str, bool, str]] = [
+        (
+            org_id,
+            pid,
+            bool(row.get("yandex_present") or False),
+            str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
+            bool(row.get("ozon_present") or False),
+            str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
         )
+        for pid, row in merged.items()
+    ]
 
     def _run() -> None:
         conn, _, _ = _pg_connect()
@@ -2598,6 +2624,12 @@ def _replace_product_marketplace_status_tenant_table(rows: List[Dict[str, Any]],
                     INSERT INTO product_marketplace_status_tenant_rel (
                       organization_id, product_id, yandex_present, yandex_status, ozon_present, ozon_status, updated_at
                     ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (organization_id, product_id) DO UPDATE SET
+                      yandex_present = EXCLUDED.yandex_present,
+                      yandex_status = EXCLUDED.yandex_status,
+                      ozon_present = EXCLUDED.ozon_present,
+                      ozon_status = EXCLUDED.ozon_status,
+                      updated_at = NOW()
                     """,
                     payload,
                 )
@@ -2665,33 +2697,31 @@ def _bootstrap_product_marketplace_status_tenant_from_legacy(organization_id: Op
 
 
 def _collect_catalog_product_page_payload(rows: List[Dict[str, Any]]) -> List[tuple[Any, ...]]:
-    payload: List[tuple[Any, ...]] = []
+    payload_by_product: Dict[str, tuple[Any, ...]] = {}
     for row in rows or []:
         product_id = str(row.get("product_id") or row.get("id") or "").strip()
         if not product_id:
             continue
-        payload.append(
-            (
-                product_id,
-                str(row.get("title") or row.get("name") or "").strip(),
-                str(row.get("category_id") or "").strip(),
-                str(row.get("category_path") or "").strip(),
-                str(row.get("sku_pim") or "").strip() or None,
-                str(row.get("sku_gt") or "").strip() or None,
-                str(row.get("group_id") or "").strip() or None,
-                str(row.get("group_name") or "").strip() or None,
-                str(row.get("template_id") or "").strip() or None,
-                str(row.get("template_name") or "").strip() or None,
-                str(row.get("template_source_category_id") or "").strip() or None,
-                bool(row.get("yandex_present") or False),
-                str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
-                bool(row.get("ozon_present") or False),
-                str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
-                str(row.get("preview_url") or "").strip() or None,
-                json.dumps(row.get("exports_enabled") if isinstance(row.get("exports_enabled"), dict) else {}),
-            )
+        payload_by_product[product_id] = (
+            product_id,
+            str(row.get("title") or row.get("name") or "").strip(),
+            str(row.get("category_id") or "").strip(),
+            str(row.get("category_path") or "").strip(),
+            str(row.get("sku_pim") or "").strip() or None,
+            str(row.get("sku_gt") or "").strip() or None,
+            str(row.get("group_id") or "").strip() or None,
+            str(row.get("group_name") or "").strip() or None,
+            str(row.get("template_id") or "").strip() or None,
+            str(row.get("template_name") or "").strip() or None,
+            str(row.get("template_source_category_id") or "").strip() or None,
+            bool(row.get("yandex_present") or False),
+            str(row.get("yandex_status") or "Нет данных").strip() or "Нет данных",
+            bool(row.get("ozon_present") or False),
+            str(row.get("ozon_status") or "Нет данных").strip() or "Нет данных",
+            str(row.get("preview_url") or "").strip() or None,
+            json.dumps(row.get("exports_enabled") if isinstance(row.get("exports_enabled"), dict) else {}),
         )
-    return payload
+    return list(payload_by_product.values())
 
 
 def _replace_catalog_product_page_tenant_table(rows: List[Dict[str, Any]], organization_id: Optional[str]) -> None:
@@ -2716,6 +2746,24 @@ def _replace_catalog_product_page_tenant_table(rows: List[Dict[str, Any]], organ
                       %s, %s, %s, %s,
                       %s, %s::jsonb, NOW()
                     )
+                    ON CONFLICT (organization_id, product_id) DO UPDATE SET
+                      title = EXCLUDED.title,
+                      category_id = EXCLUDED.category_id,
+                      category_path = EXCLUDED.category_path,
+                      sku_pim = EXCLUDED.sku_pim,
+                      sku_gt = EXCLUDED.sku_gt,
+                      group_id = EXCLUDED.group_id,
+                      group_name = EXCLUDED.group_name,
+                      template_id = EXCLUDED.template_id,
+                      template_name = EXCLUDED.template_name,
+                      template_source_category_id = EXCLUDED.template_source_category_id,
+                      yandex_present = EXCLUDED.yandex_present,
+                      yandex_status = EXCLUDED.yandex_status,
+                      ozon_present = EXCLUDED.ozon_present,
+                      ozon_status = EXCLUDED.ozon_status,
+                      preview_url = EXCLUDED.preview_url,
+                      exports_enabled_json = EXCLUDED.exports_enabled_json,
+                      updated_at = NOW()
                     """,
                     [(org_id, *row) for row in payload],
                 )

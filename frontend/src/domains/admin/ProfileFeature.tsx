@@ -7,7 +7,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Field from "../../components/ui/Field";
 import Modal from "../../components/ui/Modal";
-import PageHeader from "../../components/ui/PageHeader";
 import TextInput from "../../components/ui/TextInput";
 import { api } from "../../lib/api";
 
@@ -93,18 +92,19 @@ export default function ProfileFeature() {
 
   return (
     <div className="page-shell profilePage page-shell-narrow">
-      <PageHeader
-        title="Профиль"
-        subtitle="Личные данные текущего пользователя и быстрые действия аккаунта."
-        actions={(
-          <>
-            <Button onClick={() => setShowPasswordModal(true)}>Сменить пароль</Button>
-            <Button variant="danger" onClick={() => void handleLogout()} disabled={loggingOut}>
-              {loggingOut ? "Выходим..." : "Выйти"}
-            </Button>
-          </>
-        )}
-      />
+      <header className="profileCommandHeader">
+        <div className="profileCommandContext">
+          <span>Аккаунт</span>
+          <h1>Профиль</h1>
+          <p>Личные данные текущего пользователя, организация и быстрые действия аккаунта.</p>
+        </div>
+        <div className="profileCommandControls">
+          <Button onClick={() => setShowPasswordModal(true)}>Сменить пароль</Button>
+          <Button variant="danger" onClick={() => void handleLogout()} disabled={loggingOut}>
+            {loggingOut ? "Выходим..." : "Выйти"}
+          </Button>
+        </div>
+      </header>
 
       <div className="profileWorkspace page-center">
         <Card className="profileHero">

@@ -10,7 +10,6 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
-import PageHeader from "../../components/ui/PageHeader";
 import Textarea from "../../components/ui/Textarea";
 import "../../styles/catalog-exchange.css";
 
@@ -306,8 +305,14 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
     if (useCompetitors) return "Только конкуренты";
     return "Источники не выбраны";
   }, [useCompetitors, useYandex]);
+  const hasImportScope = selectedNodeIds.length > 0 || selectedProductIds.length > 0;
+  const importDisabled = loading || !hasImportScope || (!useYandex && !useCompetitors);
 
   async function startImport() {
+    if (!hasImportScope) {
+      setErr("Выберите категорию, ветку или конкретный SKU перед запуском импорта.");
+      return;
+    }
     setLoading(true);
     setErr("");
     try {
@@ -461,7 +466,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
         </div>
       </InspectorPanel>
 
-      <InspectorPanel title="Источники" subtitle="Источник данных для enrichment">
+      <InspectorPanel title="Источники" subtitle="Откуда система берет данные для наполнения">
         <div className="cx-inspectorStack">
           <div className="cx-sourceInspectorCard">
             <div>
@@ -515,18 +520,19 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   return (
     <div className="cx-page cx-pageModern">
       {!embedded ? (
-        <PageHeader
-          title="Импорт контента"
-          subtitle="Заполняй товары через Яндекс.Маркет и конкурентные источники без переходов между отдельными экранами."
-          actions={(
-            <>
-              <Link className="btn" to={orgPath("/catalog")}>К каталогу</Link>
-              <Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
-                {loading ? "Заполняю…" : "Запустить заполнение"}
-              </Button>
-            </>
-          )}
-        />
+        <header className="cxStandaloneCommandHeader">
+          <div className="cxStandaloneCommandContext">
+            <span>Каталог / импорт</span>
+            <h1>Импорт контента</h1>
+            <p>Заполняйте товары через Яндекс.Маркет и конкурентные источники без переходов между отдельными экранами.</p>
+          </div>
+          <div className="cxStandaloneCommandControls">
+            <Link className="btn" to={orgPath("/catalog")}>Каталог</Link>
+            <Button variant="primary" onClick={() => void startImport()} disabled={importDisabled}>
+              {loading ? "Заполняю…" : "Запустить заполнение"}
+            </Button>
+          </div>
+        </header>
       ) : null}
 
       {err ? <div className="card cx-error">{err}</div> : null}
@@ -537,6 +543,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
         sidebar={(
           <CatalogExchangePicker
             embedded
+            intent="import"
             nodes={nodes}
             productCountsByCategory={productCountsByCategory}
             selectedNodeIds={selectedNodeIds}
@@ -556,7 +563,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
               actions={(
                 <div className="cx-toolbarActions">
                   <Badge tone={useYandex || useCompetitors ? "active" : "neutral"}>{sourceMode}</Badge>
-                  <Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>
+                  <Button variant="primary" onClick={() => void startImport()} disabled={importDisabled}>
                     {loading ? "Заполняю…" : "Запустить"}
                   </Button>
                   <Button onClick={() => void startMediaSourceDiscovery()} disabled={discoveryRunning || loading || !missingMediaRows.length}>
@@ -569,15 +576,28 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
                 <label className={`cx-sourceToggle ${useYandex ? "isActive" : ""}`}>
                   <input type="checkbox" checked={useYandex} onChange={(e) => setUseYandex(e.target.checked)} />
                   <span className="cx-sourceTitle">Яндекс.Маркет</span>
-                  <span className="cx-sourceMeta">Приоритетный источник описания, медиа и части характеристик по шаблону.</span>
+                  <span className="cx-sourceRole">приоритет</span>
+                  <span className="cx-sourceMeta">Описание, медиа и характеристики по шаблону.</span>
                 </label>
                 <label className={`cx-sourceToggle ${useCompetitors ? "isActive" : ""}`}>
                   <input type="checkbox" checked={useCompetitors} onChange={(e) => setUseCompetitors(e.target.checked)} />
                   <span className="cx-sourceTitle">Конкуренты</span>
-                  <span className="cx-sourceMeta">Добивают пробелы после Маркета и создают кандидатов для конфликтов.</span>
+                  <span className="cx-sourceRole">fallback</span>
+                  <span className="cx-sourceMeta">Закрывают пробелы после Маркета и дают кандидатов для конфликтов.</span>
                 </label>
               </div>
             </DataToolbar>
+
+            {!hasImportScope ? (
+              <section className="card cx-scopeGuard">
+                <div>
+                  <span>Нужно выбрать область</span>
+                  <strong>Импорт не запускается по всему каталогу из пустого состояния</strong>
+                  <p>Выберите категорию, всю ветку или отдельные SKU слева. После выбора появится обзор готовности и станет доступен запуск заполнения.</p>
+                </div>
+                <Badge tone="pending">безопасный режим</Badge>
+              </section>
+            ) : null}
 
             {(overview || overviewLoading) ? (
               <>
@@ -591,7 +611,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
                 />
                 <ProductsResultsTable
                   title="Текущая готовность ветки"
-                  subtitle="Прогретые backend-данные до нового запуска."
+                  subtitle="Срез данных системы до нового запуска наполнения."
                   rows={baselineProducts}
                   loading={overviewLoading}
                 />
@@ -599,8 +619,8 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
             ) : (
               <EmptyState
                 title="Выбери ветку или SKU"
-                description="Слева можно ограничить импорт категорией, отдельными товарами или оставить весь каталог."
-                action={<Button variant="primary" onClick={() => void startImport()} disabled={loading || (!useYandex && !useCompetitors)}>{loading ? "Заполняю…" : "Запустить заполнение"}</Button>}
+                description="Слева можно ограничить импорт категорией, всей веткой или отдельными товарами. Массовый запуск без области здесь недоступен."
+                action={<Button variant="primary" onClick={() => void startImport()} disabled={importDisabled}>{loading ? "Заполняю…" : "Запустить заполнение"}</Button>}
               />
             )}
 
@@ -619,7 +639,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
                 />
                 <ProductsResultsTable
                   title="Результат прогона"
-                  subtitle="Срез после enrichment из Маркета и конкурентных источников."
+                  subtitle="Срез после наполнения из Маркета и конкурентных источников."
                   rows={runProducts}
                   showConflicts
                 />
@@ -627,7 +647,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
                   <div className="cx-paneHead">
                     <div>
                       <div className="cx-paneTitle">Конфликты данных</div>
-                      <div className="cx-paneSub">Выбери итоговое значение или задай свое. Пока конфликты не закрыты, run считается незавершенным.</div>
+                      <div className="cx-paneSub">Выбери итоговое значение или задай свое. Пока конфликты не закрыты, запуск считается незавершенным.</div>
                     </div>
                     <Button variant="primary" onClick={() => void saveResolutions()} disabled={saving || unresolved.length === 0}>
                       {saving ? "Сохраняю…" : "Применить выбранные значения"}

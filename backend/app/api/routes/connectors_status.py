@@ -15,7 +15,7 @@ from app.core.json_store import with_lock
 from app.core.control_plane import DEFAULT_ORGANIZATION_ID
 from app.core.control_plane import list_organizations_overview
 from app.core.tenant_context import TenantContext
-from app.api.routes import marketplace_mapping, yandex_market, ozon_market, comfyui
+from app.api.routes import marketplace_mapping, yandex_market, ozon_market
 from app.storage.relational_pim_store import load_connectors_state_doc, save_connectors_state_doc
 
 router = APIRouter(prefix="/connectors/status", tags=["connectors-status"])
@@ -64,12 +64,6 @@ PROVIDERS_DEF: Dict[str, Dict[str, Any]] = {
             "categories_tree": "Импорт дерева категорий",
             "category_attributes": "Импорт характеристик категорий",
             "product_content_status": "Импорт статуса и рейтинга товаров",
-        },
-    },
-    "comfyui": {
-        "title": "ComfyUI",
-        "methods": {
-            "healthcheck": "Проверка доступности генератора",
         },
     },
     "insales": {
@@ -532,13 +526,6 @@ async def _run_ozon_product_content_status(organization_id: Optional[str] = None
         await ozon_market.sync_product_statuses(req)
 
 
-async def _run_comfyui_healthcheck(organization_id: Optional[str] = None) -> None:
-    status = await comfyui.comfyui_status()
-    if isinstance(status, dict) and not bool(status.get("ok")):
-        message = str(status.get("error") or status.get("status") or "COMFYUI_NOT_READY")
-        raise ConnectorSoftWarning(message)
-
-
 async def _run_insales_categories(organization_id: Optional[str] = None) -> None:
     store = _first_enabled_insales_store(organization_id)
     if not store:
@@ -567,7 +554,6 @@ METHOD_RUNNERS: Dict[Tuple[str, str], Callable[[Optional[str]], Awaitable[None]]
     ("ozon", "categories_tree"): _run_ozon_categories_tree,
     ("ozon", "category_attributes"): _run_ozon_category_attributes,
     ("ozon", "product_content_status"): _run_ozon_product_content_status,
-    ("comfyui", "healthcheck"): _run_comfyui_healthcheck,
     ("insales", "categories"): _run_insales_categories,
     ("insales", "products"): _run_insales_products,
     ("insales", "properties"): _run_insales_properties,

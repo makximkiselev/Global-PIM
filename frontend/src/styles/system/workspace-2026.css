@@ -1,0 +1,6618 @@
+/* Workspace-only 2026 design system. Auth/promo pages do not render inside .shellContentBody. */
+.shellContentBody{
+  --workspace-max:min(1760px, calc(100vw - 48px));
+}
+
+.shellContentBody :where(
+  .page-shell,
+  .dashboard-page,
+  .products-page,
+  .templates-page,
+  .cs-page,
+  .pg-page,
+  .catalog-page,
+  .cm-page,
+  .accessPage,
+  .orgAdminPage,
+  .catalogExchangePage,
+  .catalogWorkspacePage,
+  .productWorkspacePage,
+  .dictionaryPage,
+  .sourcesMappingPage,
+  .connectorsStatusPage,
+  .competitorCatalogImportPage
+  , .cciPage
+  , .profilePage
+  , .dataSourcesPage
+  , .sm-valuesPage
+  , .cx-page
+  , .cx-exchangePage
+  , .productListPage
+  , .pn-page
+  , .page
+){
+  --page-content-width:var(--workspace-max);
+  width:100%;
+  max-width:none;
+  margin:0;
+  padding:18px 22px 32px;
+  background:var(--bg);
+}
+
+.shellContentBody .page-title{
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  letter-spacing:0;
+  font-weight:900;
+}
+
+.shellContentBody .page-subtitle{
+  max-width:860px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.4;
+  font-weight:720;
+}
+
+.shellContentBody :where(.card, .dataToolbar, .dataTable, .dataList, .inspectorPanel, .metricCard, .emptyState){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .card{
+  padding:14px;
+}
+
+.shellContentBody .card-head{
+  min-height:0;
+  margin:0 0 12px;
+  padding:0 0 10px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .card-title{
+  font-size:16px;
+  line-height:1.15;
+  letter-spacing:0;
+  font-weight:900;
+}
+
+.shellContentBody .btn{
+  min-height:36px;
+  padding:0 12px;
+  border-radius:9px;
+  border:1px solid var(--line);
+  background:var(--card);
+  color:var(--text);
+  box-shadow:none;
+  font-size:13px;
+  font-weight:800;
+}
+
+.shellContentBody .btn:hover{
+  transform:none;
+  background:var(--surface-4);
+  border-color:var(--line-strong);
+}
+
+.shellContentBody .btn.primary{
+  border-color:var(--accent, #111827);
+  background:#111827;
+  color:#fff;
+  box-shadow:none;
+}
+
+:root[data-theme="dark"] .shellContentBody .btn.primary{
+  border-color:#f3f4f6;
+  background:#f3f4f6;
+  color:#111827;
+}
+
+.shellContentBody .btn:disabled,
+.shellContentBody .btn[disabled]{
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+  opacity:.62;
+}
+
+.shellContentBody .btn:disabled:hover,
+.shellContentBody .btn[disabled]:hover{
+  transform:none;
+  background:var(--surface-2);
+  border-color:var(--line);
+}
+
+.shellContentBody .btn.primary:disabled,
+.shellContentBody .btn.primary[disabled]{
+  border-color:var(--line);
+  background:var(--surface-2);
+  color:var(--muted);
+}
+
+.shellContentBody .btn.danger{
+  border-color:rgba(185,28,28,.24);
+  background:#fef2f2;
+  color:#b91c1c;
+}
+
+.shellContentBody .btn.danger:disabled{
+  border-color:var(--line);
+  background:var(--surface-2);
+  color:var(--muted);
+}
+
+.shellContentBody .uiIcon{
+  width:16px;
+  height:16px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.shellContentBody :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea, .uiSelect, .pn-input, .pn-select, .pn-textarea){
+  min-height:36px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  color:var(--text);
+  font-size:13px;
+  font-weight:720;
+  box-shadow:none;
+}
+
+.shellContentBody :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea, .uiSelect, .pn-input, .pn-select, .pn-textarea):focus{
+  outline:none;
+  border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.14);
+}
+
+.shellContentBody .metricGrid{
+  gap:10px;
+}
+
+.shellContentBody .metricCard{
+  min-height:86px;
+  padding:12px;
+}
+
+.shellContentBody .metricCardLabel{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .metricCardValue{
+  margin-top:7px;
+  color:var(--text);
+  font-size:24px;
+  line-height:1;
+  font-weight:900;
+}
+
+.shellContentBody .metricCardMeta{
+  margin-top:7px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:700;
+}
+
+.shellContentBody .dataToolbar{
+  padding:12px;
+  gap:10px;
+}
+
+.shellContentBody .dataToolbarTitle{
+  font-size:15px;
+  font-weight:900;
+}
+
+.shellContentBody .dataToolbarSubtitle{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+
+.shellContentBody .dataTable{
+  overflow:hidden;
+}
+
+.shellContentBody .dataTableHead{
+  min-height:38px;
+  background:#f5f6f8;
+  color:var(--muted);
+  border-bottom:1px solid var(--line);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+}
+
+:root[data-theme="dark"] .shellContentBody .dataTableHead{
+  background:#151f2e;
+}
+
+.shellContentBody .dataTableRow{
+  min-height:54px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+.shellContentBody .dataTableRow:hover{
+  background:var(--surface-2);
+}
+
+.shellContentBody .shellStatusBadge{
+  min-height:24px;
+  border-radius:999px;
+  padding:0 8px;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.02em;
+}
+
+.shellContentBody .emptyState{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  padding:24px;
+  text-align:left;
+}
+
+.shellContentBody .emptyStateTitle{
+  font-size:18px;
+  font-weight:900;
+}
+
+.shellContentBody .emptyStateDescription{
+  max-width:680px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.modalBackdrop{
+  z-index:120;
+  background:rgba(15,23,42,.42);
+  backdrop-filter:blur(2px);
+}
+
+.modalCard{
+  border-radius:18px;
+  box-shadow:0 28px 80px rgba(15,23,42,.28);
+}
+
+.modalTitle{
+  font-size:20px;
+  line-height:1.1;
+  font-weight:900;
+}
+
+.sideSheetScrim{
+  position:fixed;
+  inset:0;
+  z-index:90;
+  background:rgba(15,23,42,.42);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease;
+}
+
+.sideSheetScrim.isOpen{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.sideSheet{
+  position:fixed;
+  top:10px;
+  right:10px;
+  bottom:10px;
+  z-index:91;
+  width:min(620px, calc(100vw - 28px));
+  display:grid;
+  grid-template-rows:auto minmax(0, 1fr);
+  border:1px solid var(--line-strong);
+  border-radius:18px;
+  background:var(--card);
+  box-shadow:0 28px 80px rgba(15,23,42,.32);
+  overflow:hidden;
+  transform:translateX(calc(100% + 28px));
+  opacity:0;
+  pointer-events:none;
+  transition:transform .2s ease, opacity .2s ease;
+}
+
+.sideSheet.isOpen{
+  transform:translateX(0);
+  opacity:1;
+  pointer-events:auto;
+}
+
+.sideSheetHeader{
+  padding:18px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.sideSheetHeaderMain{
+  min-width:0;
+}
+
+.sideSheetEyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sideSheetTitle{
+  margin-top:5px;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.1;
+  font-weight:900;
+}
+
+.sideSheetSubtitle{
+  margin-top:7px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.sideSheetActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.sideSheetBody{
+  min-height:0;
+  overflow:auto;
+  padding:16px;
+  background:var(--surface-2);
+}
+
+.shellContentBody :where(.workspaceFrameTwo, .workspaceFrameThree){
+  gap:12px;
+}
+
+.shellContentBody :where(.catalogTreePanel, .catalogCanvasSummaryCard, .catalogCanvasProductsCard, .catalogCanvasModelCard, .controlCenterPanel, .workspaceLeadCard){
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+/* Catalog */
+.shellContentBody .catalogWorkspaceFrame.workspaceFrameThree{
+  grid-template-columns:300px minmax(0, 1fr) 320px;
+  gap:12px;
+}
+
+.shellContentBody .catalogWorkspaceFrame.workspaceFrameTwo{
+  grid-template-columns:300px minmax(0, 1fr);
+  gap:12px;
+}
+
+.shellContentBody .catalogTreePanel{
+  top:12px;
+  padding:12px;
+}
+
+.shellContentBody .catalogTree{
+  min-height:0;
+  gap:2px;
+}
+
+.shellContentBody .catalogTreeNode{
+  min-height:36px;
+  border-radius:8px;
+  padding:6px 8px;
+  background:transparent;
+}
+
+.shellContentBody .catalogTreeNode:hover{
+  background:var(--surface-4);
+  transform:none;
+}
+
+.shellContentBody .catalogTreeNode.isActive{
+  background:#eef2ff;
+  border-color:rgba(var(--brand-rgb),.18);
+}
+
+:root[data-theme="dark"] .shellContentBody .catalogTreeNode.isActive{
+  background:rgba(var(--brand-rgb),.16);
+}
+
+.shellContentBody .catalogTreeName{
+  font-size:12px;
+  font-weight:800;
+}
+
+.shellContentBody .catalogTreeMetaTag,
+.shellContentBody .catalogProductsMeta span,
+.shellContentBody .catalogProductsTab{
+  border-radius:999px;
+}
+
+.shellContentBody .catalogProductsWorkspace{
+  border-radius:12px;
+  box-shadow:none;
+}
+
+.shellContentBody .catalogProductsHead{
+  padding:14px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .catalogProductsHead h2{
+  font-size:22px;
+  line-height:1.1;
+  letter-spacing:0;
+}
+
+.shellContentBody .catalogProductsWorkspace .products-table thead th{
+  background:#f5f6f8;
+  font-size:10px;
+  font-weight:950;
+}
+
+:root[data-theme="dark"] .shellContentBody .catalogProductsWorkspace .products-table thead th{
+  background:#151f2e;
+}
+
+/* Product workspace */
+.shellContentBody .productWorkspaceLayout.workspaceFrameThree{
+  grid-template-columns:260px minmax(0, 1fr) 320px;
+  gap:12px;
+}
+
+.shellContentBody .productWorkspaceTopbar,
+.shellContentBody .productWorkspaceCompactTopbar,
+.shellContentBody .productCockpitHero,
+.shellContentBody .productParamQueue,
+.shellContentBody .productCompetitorInspector,
+.shellContentBody .productWorkspaceLayout .workspaceFrameSidebar,
+.shellContentBody .productWorkspaceLayout .workspaceFrameInspector{
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+  border:1px solid var(--line);
+}
+
+.shellContentBody .productWorkspaceTopbar{
+  padding:14px;
+}
+
+.shellContentBody .productWorkspaceHeadingRow h1{
+  font-size:26px;
+  line-height:1.08;
+  letter-spacing:0;
+}
+
+.shellContentBody .productWorkspaceMetaRow > span,
+.shellContentBody .productWorkspaceMetaRow > a{
+  border-radius:999px;
+}
+
+.shellContentBody .productWorkspaceLayout .workspaceFrameSidebar{
+  top:12px;
+}
+
+/* Product groups */
+.shellContentBody .pg-grid,
+.shellContentBody .pg-addGrid,
+.shellContentBody .pg-familyFactsGrid{
+  gap:12px;
+}
+
+.shellContentBody :where(.pg-card, .pg-panel, .pg-familyPanel, .pg-paramRow, .pg-modal){
+  border-radius:12px;
+  border-color:var(--line);
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .pg-modalBackdrop{
+  background:rgba(15,23,42,.42);
+  backdrop-filter:blur(2px);
+}
+
+.shellContentBody .pg-modal{
+  box-shadow:0 28px 80px rgba(15,23,42,.28);
+}
+
+/* Dictionaries and templates */
+.shellContentBody :where(.templatesCatalogFrame, .templatesEditorFrame, .dictWorkspace){
+  gap:12px;
+}
+
+.shellContentBody :where(.dictionaryEditorProviderCard, .dictionaryProviderCompactCard, .dictionarySearchCompactCard, .dictionaryValueRow, .templateEditorField, .dictionaryEditorField){
+  border-radius:12px;
+}
+
+.shellContentBody .dictionaryEditorToolbar,
+.shellContentBody .dictionaryEditorTop{
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .dictionaryProviderEyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .dictionaryProviderTitle{
+  margin-top:6px;
+  color:var(--text);
+  font-size:18px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.shellContentBody .dictionaryProviderFacts{
+  margin-top:10px;
+  display:grid;
+  gap:6px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.shellContentBody .dictionaryProviderFacts b{
+  color:var(--text);
+  font-weight:900;
+}
+
+.shellContentBody .dictionaryProviderCardHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .dictionaryProviderCardHead div{
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+}
+
+.shellContentBody .dictionaryProviderCardHead span,
+.shellContentBody .dictionaryProviderHint{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:720;
+}
+
+.shellContentBody .dictionaryProviderSearch{
+  margin-bottom:10px;
+}
+
+.shellContentBody .dictionaryEditorStatusStrip{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .dictionaryEditorStatusStrip > div{
+  min-width:0;
+  padding:12px 14px;
+  border-right:1px solid var(--line);
+}
+
+.shellContentBody .dictionaryEditorStatusStrip > div:last-child{
+  border-right:0;
+}
+
+.shellContentBody .dictionaryEditorStatusStrip span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.1;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .dictionaryEditorStatusStrip strong{
+  display:block;
+  margin-top:6px;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.1;
+  font-weight:950;
+  overflow-wrap:anywhere;
+}
+
+/* Admin */
+.shellContentBody .accessWorkspace{
+  gap:12px;
+}
+
+.shellContentBody :where(.accessSidebar, .accessPanel, .accessHero, .accessRoleCard, .accessPermissionBlock, .accessAccordionCard, .accessCapabilityCard, .accessResetBox, .orgAdminCard, .orgAdminPanel){
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .accessRow,
+.shellContentBody .accessListGroupToggle{
+  border-radius:8px;
+}
+
+.shellContentBody .accessRow.active,
+.shellContentBody .accessCapabilityCard.isChecked{
+  background:#eef2ff;
+  border-color:rgba(var(--brand-rgb),.18);
+}
+
+:root[data-theme="dark"] .shellContentBody .accessRow.active,
+:root[data-theme="dark"] .shellContentBody .accessCapabilityCard.isChecked{
+  background:rgba(var(--brand-rgb),.16);
+}
+
+/* Shared workflow helpers */
+.shellContentBody .workspaceIntro{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .workspaceIntro{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  padding:16px;
+}
+
+.shellContentBody .workspaceIntroEyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .workspaceIntroTitle{
+  margin-top:4px;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.1;
+  font-weight:900;
+  letter-spacing:0;
+}
+
+.shellContentBody .workspaceIntroText{
+  max-width:760px;
+  margin-top:7px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:720;
+}
+
+.shellContentBody .workspaceEmptyState{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(280px, .42fr);
+  gap:16px;
+  align-items:stretch;
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .workspaceEmptyStateMain{
+  min-width:0;
+}
+
+.shellContentBody .workspaceEmptyStateEyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .workspaceEmptyState h2{
+  margin:6px 0 0;
+  color:var(--text);
+  font-size:24px;
+  line-height:1.08;
+  letter-spacing:0;
+  font-weight:950;
+}
+
+.shellContentBody .workspaceEmptyState p{
+  max-width:820px;
+  margin:8px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:720;
+}
+
+.shellContentBody .workspaceEmptyStateActions{
+  margin-top:16px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.shellContentBody .workspaceEmptyStateAside{
+  min-width:0;
+}
+
+.shellContentBody .workspaceEmptyChecklist{
+  display:grid;
+  gap:8px;
+}
+
+.shellContentBody .workspaceEmptyChecklist > div{
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr);
+  gap:2px 10px;
+  align-items:start;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .workspaceEmptyChecklist span{
+  grid-row:1 / 3;
+  min-width:28px;
+  height:24px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:rgba(var(--brand-rgb),.1);
+  color:var(--brand);
+  font-size:10px;
+  font-weight:950;
+}
+
+.shellContentBody .workspaceEmptyChecklist strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+}
+
+.shellContentBody .workspaceEmptyChecklist em{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-style:normal;
+  font-weight:700;
+}
+
+.shellContentBody .mediaOpsPage{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.shellContentBody .mediaOpsCommandHeader,
+.shellContentBody .mediaOpsMetrics,
+.shellContentBody .mediaOpsWorkspace{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  width:100%;
+}
+
+.shellContentBody .mediaOpsCommandHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .mediaOpsCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .mediaOpsCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .mediaOpsCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .mediaOpsCommandContext p{
+  margin:6px 0 0;
+  max-width:820px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .mediaOpsActions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  flex:0 0 auto;
+}
+
+.shellContentBody .mediaOpsWorkspace{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 360px;
+  gap:12px;
+  align-items:start;
+}
+
+.shellContentBody .mediaOpsBoard{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+
+.shellContentBody .mediaOpsStep{
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr);
+  gap:12px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+}
+
+.shellContentBody .mediaOpsStepNumber{
+  width:34px;
+  height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+  background:var(--surface-3);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:950;
+}
+
+.shellContentBody .mediaOpsStepHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.shellContentBody .mediaOpsStep h2{
+  margin:0;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.shellContentBody .mediaOpsStep p{
+  margin:8px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.shellContentBody .mediaOpsQueuePanel{
+  position:sticky;
+  top:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .mediaOpsQueueHead{
+  padding:14px 14px 12px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .mediaOpsQueueHead span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .mediaOpsQueueHead strong{
+  display:block;
+  margin-top:5px;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.shellContentBody .mediaOpsQueueList{
+  display:grid;
+}
+
+.shellContentBody .mediaOpsQueueItem{
+  padding:13px 14px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .mediaOpsQueueItem:last-child{
+  border-bottom:0;
+}
+
+.shellContentBody .mediaOpsQueueItem > div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.shellContentBody .mediaOpsQueueItem span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.shellContentBody .mediaOpsQueueItem strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:950;
+}
+
+.shellContentBody .mediaOpsQueueItem p{
+  margin:7px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.shellContentBody .mediaOpsTableCard{
+  width:100%;
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+}
+
+.shellContentBody .mediaOpsTableHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .mediaOpsTableHeader span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .mediaOpsTableHeader h2{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:18px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.shellContentBody .mediaOpsTableHeader p{
+  margin:6px 0 0;
+  max-width:760px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:720;
+}
+
+.shellContentBody .mediaOpsTableActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+  flex:0 0 auto;
+}
+
+.shellContentBody .mediaOpsFilters{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.shellContentBody .mediaOpsFilters button{
+  min-height:34px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:0 10px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  color:var(--muted);
+  font-size:12px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.shellContentBody .mediaOpsFilters button.isActive{
+  border-color:rgba(var(--brand-rgb),.25);
+  background:var(--surface-3);
+  color:var(--text);
+}
+
+.shellContentBody .mediaOpsFilters span{
+  min-width:20px;
+  height:20px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--text);
+  font-size:11px;
+  font-weight:950;
+}
+
+.shellContentBody .mediaOpsTable{
+  display:grid;
+  margin-top:12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.shellContentBody .mediaOpsTableRow{
+  display:grid;
+  grid-template-columns:minmax(280px, 1.4fr) minmax(180px, .8fr) 120px 120px 150px 110px;
+  align-items:center;
+  gap:12px;
+  min-height:58px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+  color:var(--text);
+  font-size:12px;
+  font-weight:760;
+}
+
+.shellContentBody .mediaOpsTableRow:last-child{
+  border-bottom:0;
+}
+
+.shellContentBody .mediaOpsTableRow.isHead{
+  min-height:38px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .mediaOpsSkuCell{
+  min-width:0;
+}
+
+.shellContentBody .mediaOpsSkuCell strong{
+  display:block;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.shellContentBody .mediaOpsSkuCell span{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+}
+
+.shellContentBody .mediaOpsTableEmpty{
+  padding:18px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:800;
+}
+
+/* Product card and SKU workspaces */
+.shellContentBody .pn-wrap.pn-page{
+  width:100%;
+  max-width:none;
+  padding:18px 22px 32px;
+}
+
+.shellContentBody .pn-wrap > .pn-card,
+.shellContentBody .pn-rightHeader,
+.shellContentBody .pn-tabsUnder,
+.shellContentBody .pn-variantList,
+.shellContentBody .pn-variantSection{
+  max-width:var(--page-content-width);
+}
+
+.shellContentBody .pn-rightHeader{
+  min-height:58px;
+  align-items:center;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .pn-title{
+  color:var(--text);
+  font-size:22px;
+  line-height:1.1;
+  letter-spacing:0;
+  font-weight:900;
+}
+
+.shellContentBody .pn-sub,
+.shellContentBody .pn-muted{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.shellContentBody :where(
+  .pn-card,
+  .pn-cardMuted,
+  .pn-heroMedia,
+  .pn-heroMain,
+  .pn-variantTable,
+  .pn-serviceFlowCard,
+  .pn-featureRowFlow,
+  .pn-workflowContext,
+  .pn-workflowStep,
+  .pn-parameterFlowSummary,
+  .pn-workflowNext,
+  .pn-relCard,
+  .pn-marketDetailPanel,
+  .pn-channelShell,
+  .pn-marketSelectorCard,
+  .pn-storeRow,
+  .pn-auxCard,
+  .pn-channelAuxCard,
+  .pn-validationTile,
+  .pn-mediaSection,
+  .pn-mediaDropZone,
+  .pn-imageGalleryToolbar,
+  .pn-mediaRow,
+  .pn-catSearchBlock,
+  .pn-catList,
+  .pn-catRow,
+  .pn-imageCard,
+  .pn-imageExportCard
+){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .pn-card{
+  padding:14px;
+}
+
+.shellContentBody .pn-cardTitle,
+.shellContentBody .pn-cardSubTitle{
+  color:var(--text);
+  font-size:15px;
+  line-height:1.15;
+  font-weight:900;
+}
+
+.shellContentBody .pn-hero{
+  grid-template-columns:minmax(260px, 360px) minmax(0, 1fr);
+  gap:12px;
+}
+
+.shellContentBody .pn-mediaMain{
+  border-radius:10px;
+  background:#f8fafc;
+  box-shadow:inset 0 0 0 1px var(--line);
+}
+
+.shellContentBody .pn-mediaThumb,
+.shellContentBody .pn-variantPreview{
+  border-radius:8px;
+  border-color:var(--line);
+}
+
+.shellContentBody .pn-mediaThumb.isActive{
+  border-color:rgba(var(--brand-rgb),.35);
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.12);
+}
+
+.shellContentBody .pn-heroTitleInput{
+  width:100%;
+  min-height:44px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  font-size:30px;
+  line-height:1.08;
+  letter-spacing:0;
+  font-weight:950;
+}
+
+.shellContentBody .pn-heroTitleInput:focus{
+  outline:none;
+}
+
+.shellContentBody .pn-heroCategory,
+.shellContentBody .pn-heroSkuLine,
+.shellContentBody .pn-channelSectionHint,
+.shellContentBody .pn-marketStoreCount,
+.shellContentBody .pn-storeRowStatus,
+.shellContentBody .pn-channelSub,
+.shellContentBody .pn-catMeta,
+.shellContentBody .pn-hint{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.shellContentBody .pn-channelSectionTitle,
+.shellContentBody .pn-channelName,
+.shellContentBody .pn-storeRowTitle,
+.shellContentBody .pn-catTitle,
+.shellContentBody .pn-alertTitle{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.shellContentBody .pn-tab,
+.shellContentBody .pn-editBtn,
+.shellContentBody .pn-saveBtn,
+.shellContentBody .pn-cancelBtn,
+.shellContentBody .pn-dangerBtn,
+.shellContentBody .pn-iconBtn,
+.shellContentBody .pn-inputBtn{
+  min-height:34px;
+  border-radius:9px;
+  border:1px solid var(--line);
+  background:var(--card);
+  color:var(--text);
+  box-shadow:none;
+  font-size:12px;
+  font-weight:850;
+}
+
+.shellContentBody .pn-saveBtn,
+.shellContentBody .pn-editBtn.isPrimary{
+  border-color:#111827;
+  background:#111827;
+  color:#fff;
+}
+
+.shellContentBody .pn-dangerBtn{
+  border-color:rgba(185,28,28,.24);
+  background:#fef2f2;
+  color:#b91c1c;
+}
+
+.shellContentBody .pn-productFlowNav{
+  grid-template-columns:repeat(auto-fit, minmax(148px, 1fr));
+  gap:8px;
+  margin-top:10px;
+}
+
+.shellContentBody .pn-tab.isActive,
+.shellContentBody .pn-tab.active,
+.shellContentBody .pn-marketSelectorCard.isActive,
+.shellContentBody .pn-catRow:hover,
+.shellContentBody .pn-catRow.isActive{
+  border-color:rgba(var(--brand-rgb),.22);
+  background:#eef2ff;
+  color:var(--brand);
+}
+
+.shellContentBody .pn-badge,
+.shellContentBody .pn-flowStats span,
+.shellContentBody .pn-sourcePills span,
+.shellContentBody .pn-marketplaceFlowList span,
+.shellContentBody .pn-statusPill,
+.shellContentBody .pn-scoreChip,
+.shellContentBody .pn-storeScoreMini,
+.shellContentBody .pnWizardBadge{
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--muted);
+  box-shadow:none;
+}
+
+.shellContentBody .pn-channelShell,
+.shellContentBody .pn-marketDetailPanel{
+  padding:12px;
+}
+
+.shellContentBody .pn-marketSelectorRow,
+.shellContentBody .pn-channelAuxGrid,
+.shellContentBody .pn-storeList,
+.shellContentBody .pn-mediaSections,
+.shellContentBody .pn-imageGallery,
+.shellContentBody .pn-mediaSectionBody{
+  gap:10px;
+}
+
+.shellContentBody .pn-marketSelectorCard,
+.shellContentBody .pn-storeRow,
+.shellContentBody .pn-auxCard,
+.shellContentBody .pn-validationTile{
+  padding:10px 12px;
+}
+
+.shellContentBody .pn-mediaDropZone{
+  min-height:128px;
+  border-style:dashed;
+  background:var(--surface-2);
+}
+
+.shellContentBody .pn-imageCard{
+  overflow:hidden;
+}
+
+.shellContentBody .pn-imageCardPreview{
+  border:0;
+  background:var(--surface-2);
+}
+
+.shellContentBody .pn-imageExportControls,
+.shellContentBody .pn-mediaRowActions,
+.shellContentBody .pn-imageOrderControls{
+  gap:6px;
+}
+
+.shellContentBody .pn-imageOrderControls{
+  flex:0 0 auto;
+}
+
+.shellContentBody .pn-imageOrderBtn{
+  width:30px;
+  min-width:30px;
+  height:30px;
+  min-height:30px;
+  padding:0;
+  border-radius:8px;
+  font-size:15px;
+  line-height:1;
+}
+
+.shellContentBody .pn-variantHead,
+.shellContentBody .pn-featureTableHeader,
+.shellContentBody .pn-competitorSkuHead{
+  background:#f5f6f8;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .pn-variantRow,
+.shellContentBody .pn-featureTableRow,
+.shellContentBody .pn-competitorSkuRow{
+  border-color:var(--line);
+  background:var(--card);
+}
+
+.shellContentBody .pn-variantRowClickable:hover,
+.shellContentBody .pn-competitorSkuRow:hover{
+  background:var(--surface-2);
+}
+
+.shellContentBody .pn-workflowNextGrid,
+.shellContentBody .pn-serviceFlowGrid{
+  gap:10px;
+}
+
+.shellContentBody .pn-workflowStep{
+  min-height:132px;
+  padding:12px;
+}
+
+.shellContentBody .pn-workflowStep:hover,
+.shellContentBody .pn-workflowStep:focus-visible{
+  transform:none;
+  border-color:rgba(var(--brand-rgb),.22);
+  box-shadow:none;
+}
+
+.shellContentBody .pn-modalOverlay{
+  background:rgba(15,23,42,.42);
+  backdrop-filter:blur(2px);
+}
+
+.shellContentBody .pn-modal,
+.shellContentBody .pn-mediaModal,
+.shellContentBody .pn-imageLightbox,
+.shellContentBody .pn-deleteModal,
+.shellContentBody .pn-linkModal{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--card);
+  box-shadow:0 28px 80px rgba(15,23,42,.28);
+}
+
+.shellContentBody .pn-modalHead{
+  min-height:52px;
+  padding:14px 16px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .pn-modalTitle{
+  color:var(--text);
+  font-size:17px;
+  line-height:1.15;
+  font-weight:950;
+}
+
+.shellContentBody .pn-modalBody{
+  padding:14px 16px;
+}
+
+.shellContentBody .pn-catSearchInput{
+  min-height:36px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+}
+
+.shellContentBody .pn-alert,
+.shellContentBody .pn-alertBad{
+  border:1px solid rgba(185,28,28,.2);
+  border-radius:12px;
+  background:#fef2f2;
+  color:#991b1b;
+  box-shadow:none;
+}
+
+/* Product creation wizard */
+.shellContentBody .pnWizardPage{
+  padding:18px 22px 32px;
+}
+
+.shellContentBody .pnWizardShell{
+  max-width:var(--page-content-width);
+  grid-template-columns:240px minmax(0, 1fr);
+  gap:12px;
+}
+
+.shellContentBody .pnWizardRail,
+.shellContentBody .pnWizardTopbar,
+.shellContentBody .pnWizardCard{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .pnWizardRail{
+  top:12px;
+  min-height:auto;
+}
+
+.shellContentBody .pnWizardTopbar{
+  min-height:84px;
+  padding:14px 16px;
+}
+
+.shellContentBody .pnWizardTopbar h1{
+  font-size:28px;
+  line-height:1.05;
+  letter-spacing:0;
+}
+
+.shellContentBody .pnWizardTopbar p{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:700;
+}
+
+.shellContentBody .pnWizardCard{
+  min-height:0;
+  padding:16px;
+}
+
+.shellContentBody :where(.pnWizardChoice, .pnWizardPreviewCard, .pnWizardVariantCard, .pnWizardSourceCard, .pnWizardContentPanel, .pnWizardRelationPanel, .pnWizardReviewGrid > div){
+  border-radius:12px;
+  background:var(--surface-2);
+  box-shadow:none;
+}
+
+.shellContentBody .pnWizardStep{
+  border-radius:10px;
+}
+
+.shellContentBody .pnWizardStep.isActive,
+.shellContentBody .pnWizardChoice.isActive,
+.shellContentBody .pnWizardVariantCard.isActive{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:#eef2ff;
+}
+
+/* Value mapping */
+.shellContentBody .sm-valuesLayout{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+}
+
+.shellContentBody .sm-valuesHead,
+.shellContentBody .sm-valuesSummary,
+.shellContentBody .sm-valuesWorkbench{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .sm-valuesHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .sm-valuesKicker{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .sm-shellTitle{
+  margin-top:4px;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.08;
+  letter-spacing:0;
+  font-weight:900;
+}
+
+.shellContentBody .sm-shellSub{
+  max-width:760px;
+  margin-top:7px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:720;
+}
+
+.shellContentBody .sm-valuesActions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+
+.shellContentBody .sm-valuesSummary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:10px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .sm-valuesSummary span,
+.shellContentBody .sm-valuesProviderPill,
+.shellContentBody .sm-valuesState{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+}
+
+.shellContentBody .sm-valuesProviderPill.is-ready,
+.shellContentBody .sm-valuesState.is-ok{
+  color:#047857;
+  border-color:rgba(16,185,129,.24);
+  background:#ecfdf5;
+}
+
+.shellContentBody .sm-valuesProviderPill.is-gap,
+.shellContentBody .sm-valuesState.is-warn{
+  color:#b45309;
+  border-color:rgba(245,158,11,.28);
+  background:#fffbeb;
+}
+
+.shellContentBody .sm-valuesWorkbench{
+  display:grid;
+  grid-template-columns:minmax(340px, .42fr) minmax(0, 1fr);
+  gap:0;
+  overflow:hidden;
+}
+
+.shellContentBody .sm-valuesFields{
+  border-right:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.shellContentBody .sm-valuesToolbar{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:12px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .sm-valuesScopeTabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.shellContentBody .sm-valuesFieldList{
+  padding:10px;
+}
+
+.shellContentBody .sm-valuesFieldItem{
+  width:100%;
+  display:block;
+  margin-bottom:8px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  color:var(--text);
+  text-align:left;
+  box-shadow:none;
+}
+
+.shellContentBody .sm-valuesFieldItem.is-active{
+  border-color:rgba(var(--brand-rgb),.28);
+  background:#eef2ff;
+}
+
+.shellContentBody .sm-valuesFieldTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.shellContentBody .sm-valuesFieldTop strong{
+  color:var(--text);
+  font-size:14px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.shellContentBody .sm-valuesFieldMeta,
+.shellContentBody .sm-valuesProviderRow,
+.shellContentBody .sm-valuesEvidenceRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+
+.shellContentBody .sm-valuesFieldMeta span,
+.shellContentBody .sm-valuesEvidenceRow span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:760;
+}
+
+.shellContentBody .sm-valuesEditor{
+  min-width:0;
+  padding:12px;
+  background:var(--card);
+}
+
+.shellContentBody :where(.sm-valuesRouteCard, .sm-valuesEvidencePanel, .sm-valuesDecisionPanel, .sm-valuesSourceEvidence, .sm-valuesInlineMap){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .sm-valuesRouteCard{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:8px;
+  padding:10px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .sm-valuesRouteStep,
+.shellContentBody .sm-valuesEvidenceCard,
+.shellContentBody .sm-valuesDecisionRow,
+.shellContentBody .sm-valuesSourceEvidenceItem,
+.shellContentBody .sm-valuesInlineRow{
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  box-shadow:none;
+}
+
+.shellContentBody .sm-valuesRouteStep{
+  padding:10px;
+}
+
+.shellContentBody .sm-valuesRouteStep span,
+.shellContentBody .sm-valuesEvidenceCard span,
+.shellContentBody .sm-valuesSourceEvidenceHead span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .sm-valuesRouteStep strong,
+.shellContentBody .sm-valuesEvidenceCard strong,
+.shellContentBody .sm-valuesSourceEvidenceHead strong{
+  display:block;
+  margin-top:4px;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.shellContentBody .sm-valuesRouteStep small,
+.shellContentBody .sm-valuesEvidenceCard small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.3;
+  font-weight:720;
+}
+
+.shellContentBody .sm-valuesEvidencePanel{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+  gap:8px;
+  padding:10px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .sm-valuesEvidenceCard{
+  padding:10px;
+}
+
+.shellContentBody .sm-valuesDecisionPanel,
+.shellContentBody .sm-valuesSourceEvidence{
+  padding:12px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .sm-valuesDecisionRows,
+.shellContentBody .sm-valuesSourceEvidenceList{
+  display:grid;
+  gap:8px;
+  margin-top:10px;
+}
+
+.shellContentBody .sm-valuesDecisionRow{
+  display:grid;
+  grid-template-columns:minmax(160px, .8fr) repeat(4, minmax(120px, 1fr));
+  gap:8px;
+  padding:8px;
+}
+
+.shellContentBody .sm-valuesDecisionCanon,
+.shellContentBody .sm-valuesDecisionProvider{
+  min-width:0;
+}
+
+.shellContentBody .sm-valuesDecisionCanon span,
+.shellContentBody .sm-valuesDecisionProvider span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.shellContentBody .sm-valuesDecisionCanon strong,
+.shellContentBody .sm-valuesDecisionProvider strong{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:12px;
+  font-weight:900;
+}
+
+.shellContentBody .sm-valuesEmpty{
+  min-height:120px;
+  display:grid;
+  place-items:center;
+  border:1px dashed var(--line);
+  border-radius:12px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:760;
+  text-align:center;
+}
+
+/* Connectors */
+.shellContentBody .cs-commandGrid,
+.shellContentBody .cs-providers{
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.shellContentBody .cs-commandGrid{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 340px;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.shellContentBody :where(.cs-healthPanel, .cs-inspectorCard, .cs-providerCard, .cs-storeCard, .cs-methodCard, .cs-offerBox){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cs-healthPanel,
+.shellContentBody .cs-inspectorCard,
+.shellContentBody .cs-providerCard{
+  padding:14px;
+}
+
+.shellContentBody .cs-healthHero,
+.shellContentBody .cs-providerHead,
+.shellContentBody .cs-sectionHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.shellContentBody .cs-eyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cs-healthHero h2,
+.shellContentBody .cs-providerTitleBlock h3{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:24px;
+  line-height:1.08;
+  letter-spacing:0;
+  font-weight:900;
+}
+
+.shellContentBody .cs-healthHero p,
+.shellContentBody .cs-providerTitleBlock p{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:720;
+}
+
+.shellContentBody .cs-readinessGrid,
+.shellContentBody .cs-summaryRows,
+.shellContentBody .cs-storeList{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+
+.shellContentBody .cs-readinessGrid{
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+}
+
+.shellContentBody .cs-overviewStrip{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  margin-top:12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .cs-overviewStrip > div{
+  min-width:0;
+  padding:10px 12px;
+  border-right:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.shellContentBody .cs-overviewStrip > div:last-child{
+  border-right:0;
+}
+
+.shellContentBody .cs-overviewStrip span{
+  min-width:0;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.2;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cs-overviewStrip strong{
+  color:var(--text);
+  font-size:16px;
+  line-height:1;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.shellContentBody .cs-readinessCard,
+.shellContentBody .cs-actionItem,
+.shellContentBody .cs-summaryRows > div,
+.shellContentBody .cs-storeCard{
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  box-shadow:none;
+}
+
+.shellContentBody .cs-readinessCard,
+.shellContentBody .cs-actionItem,
+.shellContentBody .cs-summaryRows > div{
+  padding:10px;
+}
+
+.shellContentBody .cs-readinessCard strong{
+  margin-top:5px;
+  font-size:20px;
+  line-height:1;
+}
+
+.shellContentBody .cs-readinessCard p{
+  margin-top:4px;
+  font-size:11px;
+}
+
+.shellContentBody .cs-healthScore{
+  min-width:120px;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  text-align:right;
+}
+
+.shellContentBody .cs-healthScore strong{
+  display:block;
+  color:var(--text);
+  font-size:24px;
+  line-height:1;
+  font-weight:900;
+}
+
+.shellContentBody .cs-statusPill,
+.shellContentBody .cs-storeBadge{
+  display:inline-flex;
+  min-height:24px;
+  align-items:center;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+}
+
+.shellContentBody .cs-storeCard{
+  padding:12px;
+}
+
+.shellContentBody .cs-storeTop{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.shellContentBody .cs-storeMeta{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
+  gap:8px;
+  margin:10px 0 0;
+}
+
+.shellContentBody .cs-storeMeta div{
+  min-width:0;
+  padding:8px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--card);
+}
+
+.shellContentBody .cs-storeMeta dt{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cs-storeMeta dd{
+  margin:3px 0 0;
+  color:var(--text);
+  font-size:12px;
+  font-weight:850;
+}
+
+/* Profile and organization admin */
+.shellContentBody .profileCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 8px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:56px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .profileCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .profileCommandContext span{
+  display:none;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .profileCommandContext h1{
+  margin:0;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.08;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .profileCommandContext p{
+  display:none;
+  margin:6px 0 0;
+  max-width:720px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .profileCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .profileWorkspace,
+.shellContentBody .orgAdminWorkspaceFlat{
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.shellContentBody .orgAdminCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 8px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:56px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .orgAdminCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .orgAdminCommandContext span{
+  display:none;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .orgAdminCommandContext h1{
+  margin:0;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.08;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .orgAdminCommandContext p{
+  display:none;
+  margin:6px 0 0;
+  max-width:760px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .orgAdminCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .orgAdminSegmentedTabs{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .orgAdminSegmentedTabs button{
+  min-height:32px;
+  padding:0 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.shellContentBody .orgAdminSegmentedTabs button.active{
+  background:var(--card);
+  color:var(--text);
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+
+.shellContentBody .dataSourcesCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .dataSourcesCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .dataSourcesCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .dataSourcesCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .dataSourcesCommandContext p{
+  margin:6px 0 0;
+  max-width:800px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .dataSourcesCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .dataSourcesSegmentedTabs{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .dataSourcesSegmentedTabs button{
+  min-height:32px;
+  padding:0 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.shellContentBody .dataSourcesSegmentedTabs button.active{
+  background:var(--card);
+  color:var(--text);
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+
+.shellContentBody .csCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .csCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .csCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .csCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .csCommandContext p{
+  margin:6px 0 0;
+  max-width:760px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .csCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .cxExchangeCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cxExchangeCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .cxExchangeCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cxExchangeCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .cxExchangeCommandContext p{
+  margin:6px 0 0;
+  max-width:760px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .cxExchangeCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .cxExchangeSegmentedTabs{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .cxExchangeSegmentedTabs button{
+  min-height:32px;
+  padding:0 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.shellContentBody .cxExchangeSegmentedTabs button.active{
+  background:var(--card);
+  color:var(--text);
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+
+.shellContentBody .cxStandaloneCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cxStandaloneCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .cxStandaloneCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cxStandaloneCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .cxStandaloneCommandContext p{
+  margin:6px 0 0;
+  max-width:780px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .cxStandaloneCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .competitorSourcesCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .competitorSourcesCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .competitorSourcesCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .competitorSourcesCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .competitorSourcesCommandContext p{
+  margin:6px 0 0;
+  max-width:780px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .competitorSourcesCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .competitorSourcesPage{
+  gap:10px;
+}
+
+.shellContentBody .competitorSourcesPage > .competitorDiscovery{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  width:100%;
+}
+
+.shellContentBody .competitorSourcesContextBar{
+  max-width:var(--page-content-width);
+  width:100%;
+  margin:0 auto 12px;
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .competitorSourcesContextBar > div{
+  min-width:0;
+  padding:14px 16px;
+  border-right:1px solid var(--line);
+}
+
+.shellContentBody .competitorSourcesContextBar > div:last-child{
+  border-right:0;
+}
+
+.shellContentBody .competitorSourcesContextBar span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.1;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .competitorSourcesContextBar strong{
+  display:block;
+  margin-top:5px;
+  color:var(--text);
+  font-size:15px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.shellContentBody .competitorSourcesContextBar p{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:700;
+}
+
+.shellContentBody .profileWorkspace,
+.shellContentBody .profileGrid,
+.shellContentBody .orgAdminWorkspaceFlat{
+  display:grid;
+  gap:12px;
+}
+
+.shellContentBody .profileGrid{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
+.shellContentBody :where(.profileHero, .profileCard, .orgAdminSwitcher, .orgAdminSwitchCard, .orgAdminWorkSurface, .orgAdminCommand, .orgAdminOrgOverview, .orgAdminPeopleList, .orgAdminInvites, .orgAdminInlineInspector, .orgAdminTable){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .profileHero{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:16px;
+}
+
+.shellContentBody .profileAvatar{
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  border-radius:12px;
+  background:#111827;
+  color:#fff;
+  font-size:14px;
+  font-weight:900;
+}
+
+.shellContentBody .profileEyebrow,
+.shellContentBody .orgAdminSectionTitle{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .profileHero h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:24px;
+  line-height:1.08;
+  font-weight:900;
+  letter-spacing:0;
+}
+
+.shellContentBody .profileHero p{
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:760;
+}
+
+.shellContentBody .orgAdminStatusStrip{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .orgAdminStatusStrip > div{
+  min-width:0;
+  padding:12px 14px;
+  border-right:1px solid var(--line);
+}
+
+.shellContentBody .orgAdminStatusStrip > div:last-child{
+  border-right:0;
+}
+
+.shellContentBody .orgAdminStatusStrip span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.1;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .orgAdminStatusStrip strong{
+  display:block;
+  margin-top:6px;
+  color:var(--text);
+  font-size:20px;
+  line-height:1;
+  font-weight:950;
+}
+
+.shellContentBody .orgAdminStatusStrip em{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.3;
+  font-style:normal;
+  font-weight:720;
+}
+
+.shellContentBody .profileRows{
+  display:grid;
+  gap:8px;
+}
+
+.shellContentBody .profileRows > div,
+.shellContentBody .orgAdminInspectorRows > div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:42px;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .profileRows span,
+.shellContentBody .orgAdminInspectorRows span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+}
+
+.shellContentBody .profileRows strong,
+.shellContentBody .orgAdminInspectorRows strong{
+  color:var(--text);
+  font-size:12px;
+  font-weight:900;
+  text-align:right;
+}
+
+.shellContentBody .orgAdminTabs{
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.shellContentBody .orgAdminWorkspaceFlat{
+  grid-template-columns:280px minmax(0, 1fr);
+}
+
+.shellContentBody .orgAdminWorkspaceFlat.noSwitcher{
+  grid-template-columns:minmax(0, 1fr);
+}
+
+.shellContentBody .orgAdminSwitcher{
+  padding:10px;
+  align-self:start;
+}
+
+.shellContentBody .orgAdminSwitchCard,
+.shellContentBody .orgAdminPersonRow{
+  width:100%;
+  min-height:48px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  color:var(--text);
+}
+
+.shellContentBody .orgAdminSwitchCard.active,
+.shellContentBody .orgAdminPersonRow.active{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:#eef2ff;
+}
+
+.shellContentBody .orgAdminWorkSurface{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 320px;
+  gap:0;
+  overflow:hidden;
+}
+
+.shellContentBody .orgAdminWorkSurface.noInspector{
+  grid-template-columns:minmax(0, 1fr);
+}
+
+.shellContentBody .orgAdminWorkMain,
+.shellContentBody .orgAdminInlineInspector{
+  min-width:0;
+  padding:14px;
+}
+
+.shellContentBody .orgAdminInlineInspector{
+  border-left:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.shellContentBody .orgAdminCommand,
+.shellContentBody .orgAdminOrgOverview,
+.shellContentBody .orgAdminPeopleList,
+.shellContentBody .orgAdminInvites{
+  padding:12px;
+  margin-bottom:10px;
+}
+
+.shellContentBody .orgAdminCommand{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.shellContentBody .orgAdminCommandTitle{
+  color:var(--text);
+  font-size:16px;
+  font-weight:900;
+}
+
+.shellContentBody .orgAdminCommandMeta{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:760;
+}
+
+.shellContentBody .orgAdminSearch{
+  width:100%;
+}
+
+.shellContentBody .orgAdminPersonRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:9px 10px;
+  margin-bottom:8px;
+}
+
+.shellContentBody .orgAdminPersonIdentity{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+.shellContentBody .orgAdminPersonAvatar{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  border-radius:9px;
+  background:#111827;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+}
+
+.shellContentBody .orgAdminPersonMeta{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:760;
+}
+
+.shellContentBody .orgAdminTable{
+  overflow:hidden;
+}
+
+/* Dashboard / control center */
+.shellContentBody .controlCenterCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .controlCenterCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .controlCenterCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .controlCenterCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .controlCenterCommandContext p{
+  margin:6px 0 0;
+  max-width:760px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .controlCenterCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .controlCenterPage > :where(.controlCenterStatusStrip, .controlCenterPriorityGrid, .controlCenterSecondaryGrid, .controlCenterQuickActionsGrid){
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.shellContentBody .controlCenterStatusStrip{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  margin-bottom:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .controlCenterStatusStrip > div{
+  min-width:0;
+  padding:12px 14px;
+  border-right:1px solid var(--line);
+}
+
+.shellContentBody .controlCenterStatusStrip > div:last-child{
+  border-right:0;
+}
+
+.shellContentBody .controlCenterStatusStrip span,
+.shellContentBody .controlCenterReadinessList span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.1;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .controlCenterStatusStrip strong,
+.shellContentBody .controlCenterReadinessList strong{
+  display:block;
+  margin-top:6px;
+  color:var(--text);
+  font-size:20px;
+  line-height:1;
+  font-weight:950;
+}
+
+.shellContentBody .controlCenterStatusStrip em,
+.shellContentBody .controlCenterReadinessList em{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.3;
+  font-style:normal;
+  font-weight:720;
+}
+
+.shellContentBody .controlCenterPriorityGrid,
+.shellContentBody .controlCenterSecondaryGrid{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(340px, .46fr);
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.shellContentBody .controlCenterQuickActionsGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+.shellContentBody :where(.controlCenterPanel, .controlCenterQueueCard, .controlCenterIssueCard, .controlCenterQuickAction, .controlCenterOperationRow){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .controlCenterPanel{
+  padding:14px;
+}
+
+.shellContentBody .controlCenterPanelHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding:0 0 10px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .controlCenterEyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .controlCenterPanelTitle{
+  margin-top:4px;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.12;
+  font-weight:900;
+}
+
+.shellContentBody .controlCenterQueueGrid,
+.shellContentBody .controlCenterIssueStack,
+.shellContentBody .controlCenterOperations,
+.shellContentBody .controlCenterReadinessList{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+
+.shellContentBody .controlCenterReadinessList > div{
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .controlCenterQueueGrid{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+
+.shellContentBody .controlCenterQueueCard,
+.shellContentBody .controlCenterQuickAction,
+.shellContentBody .controlCenterIssueCard,
+.shellContentBody .controlCenterOperationRow{
+  display:block;
+  min-height:96px;
+  padding:12px;
+  color:var(--text);
+  text-decoration:none;
+}
+
+.shellContentBody :where(.controlCenterQueueCard, .controlCenterQuickAction, .controlCenterOperationRow):hover{
+  transform:none;
+  border-color:rgba(var(--brand-rgb),.22);
+  background:#eef2ff;
+}
+
+.shellContentBody .controlCenterQueueValue{
+  color:var(--text);
+  font-size:28px;
+  line-height:1;
+  font-weight:900;
+}
+
+.shellContentBody .controlCenterQueueTitle,
+.shellContentBody .controlCenterQuickActionTitle,
+.shellContentBody .controlCenterIssueTitle{
+  margin-top:8px;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.shellContentBody .controlCenterQueueText,
+.shellContentBody .controlCenterQuickActionText,
+.shellContentBody .controlCenterIssueText{
+  margin-top:6px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.38;
+  font-weight:720;
+}
+
+.shellContentBody .controlCenterIssueLink,
+.shellContentBody .controlCenterQuickActionLabel{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  margin-top:8px;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--brand);
+  font-size:10px;
+  font-weight:950;
+  text-decoration:none;
+}
+
+/* Product registry table */
+.shellContentBody .products-toolbar,
+.shellContentBody .products-pager{
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.shellContentBody .products-toolbar{
+  padding:12px;
+}
+
+.shellContentBody .products-toolbarTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.shellContentBody .products-toolbarSearch{
+  flex:1 1 440px;
+}
+
+.shellContentBody .products-toolbarMeta,
+.shellContentBody .products-quickFilters,
+.shellContentBody .products-rowActions,
+.shellContentBody .products-pagerActions{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.shellContentBody .products-summaryChip{
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:0 10px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .products-summaryLabel{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.shellContentBody .products-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  overflow:hidden;
+}
+
+.shellContentBody .products-table th{
+  height:38px;
+  background:#f5f6f8;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+  text-align:left;
+}
+
+.shellContentBody .products-table td{
+  min-height:58px;
+  border-top:1px solid var(--line);
+  color:var(--text);
+  font-size:12px;
+  font-weight:760;
+}
+
+.shellContentBody .products-table tbody tr:hover td{
+  background:var(--surface-2);
+}
+
+.shellContentBody .productListTableScroller{
+  max-width:100%;
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+}
+
+.shellContentBody .productListTable{
+  width:100%;
+  min-width:0;
+  border-collapse:separate;
+  border-spacing:0;
+  table-layout:fixed;
+}
+
+.shellContentBody .productListTable th:nth-child(1){ width:36px; }
+.shellContentBody .productListTable th:nth-child(2){ width:30%; }
+.shellContentBody .productListTable th:nth-child(3){ width:15%; }
+.shellContentBody .productListTable th:nth-child(4){ width:11%; }
+.shellContentBody .productListTable th:nth-child(5){ width:16%; }
+.shellContentBody .productListTable th:nth-child(6){ width:104px; }
+.shellContentBody .productListTable th:nth-child(7){ width:82px; }
+
+.shellContentBody .productListTable th,
+.shellContentBody .productListTable td{
+  border-right:0 !important;
+  box-shadow:none !important;
+}
+
+.shellContentBody .productListTable thead th{
+  height:38px;
+  padding:9px 10px;
+  border-bottom:1px solid var(--line);
+  background:#f5f6f8;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .productListTable tbody td{
+  padding:8px;
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+  color:var(--text);
+  font-size:12px;
+  font-weight:760;
+}
+
+.shellContentBody .productListRow:hover td,
+.shellContentBody .productListRow.isFocused td,
+.shellContentBody .productListRow.isSelected td{
+  background:var(--surface-2);
+  box-shadow:none !important;
+}
+
+.shellContentBody .productListTableCheckCol{
+  width:36px;
+  min-width:36px;
+}
+
+.shellContentBody .productListTitleCell{
+  min-width:0;
+  gap:10px;
+}
+
+.shellContentBody .productListPrimaryLink{
+  max-width:none;
+  color:var(--text);
+  font-size:13px;
+  line-height:1.28;
+  font-weight:900;
+  white-space:normal;
+  overflow:visible;
+  overflow-wrap:anywhere;
+  text-decoration:none;
+}
+
+.shellContentBody .productListContextCell,
+.shellContentBody .productListReadinessCell{
+  min-width:0;
+}
+
+.shellContentBody .productListReadinessCell{
+  gap:5px;
+}
+
+.shellContentBody .productListNextStep{
+  gap:2px;
+}
+
+.shellContentBody .productListNextStep strong{
+  font-size:12px;
+  line-height:1.25;
+  color:var(--text);
+  font-weight:900;
+}
+
+.shellContentBody .productListNextStep div{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.25;
+  font-weight:740;
+}
+
+.shellContentBody .productListChannels{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(64px, 1fr));
+  gap:4px;
+}
+
+.shellContentBody .productListChannelBadge{
+  justify-content:center;
+  gap:4px;
+  min-height:24px;
+  width:auto;
+  padding:0 5px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.shellContentBody .productListChannelBadge > span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.shellContentBody .productListChannelBadge small{
+  max-width:none;
+  font-size:9px;
+  text-transform:uppercase;
+}
+
+.shellContentBody .productListRowAction{
+  min-height:28px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--text);
+  padding:0 8px;
+  box-shadow:none;
+  font-size:10px;
+  font-weight:900;
+}
+
+.shellContentBody .productListOpenLink{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  min-height:22px;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+  text-decoration:none;
+}
+
+.shellContentBody .productListOpenLink:hover,
+.shellContentBody .productListRowAction:hover{
+  color:var(--brand);
+}
+
+.shellContentBody .productListSku,
+.shellContentBody .productListMeta,
+.shellContentBody .productListCellMuted{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.25;
+  font-weight:750;
+}
+
+.shellContentBody .productListActionPill,
+.shellContentBody .productListMarketplacePill,
+.shellContentBody .productListStatusPill{
+  min-height:24px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--muted);
+  padding:0 8px;
+  font-size:10px;
+  font-weight:900;
+  box-shadow:none;
+}
+
+.shellContentBody .productListActionPill.isPrimary,
+.shellContentBody .productListMarketplacePill.isReady{
+  border-color:rgba(var(--brand-rgb),.22);
+  background:#eef2ff;
+  color:var(--brand);
+}
+
+.shellContentBody .products-mainCell{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+.shellContentBody .products-thumbWrap,
+.shellContentBody .products-thumb{
+  width:42px;
+  height:42px;
+  flex:0 0 auto;
+  border-radius:8px;
+}
+
+.shellContentBody .products-thumb{
+  display:block;
+  object-fit:cover;
+  border:1px solid var(--line);
+  background:var(--surface-2);
+}
+
+.shellContentBody .products-thumbEmpty{
+  display:grid;
+  place-items:center;
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  text-align:center;
+}
+
+.shellContentBody .products-titleLink{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.25;
+  font-weight:900;
+  text-decoration:none;
+}
+
+.shellContentBody .products-titleLink:hover,
+.shellContentBody .products-cellLink{
+  color:var(--brand);
+}
+
+.shellContentBody .products-breadcrumbs,
+.shellContentBody .products-sideCell{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.25;
+  font-weight:720;
+}
+
+.shellContentBody .products-sku{
+  display:inline-flex;
+  min-height:24px;
+  align-items:center;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--text);
+  font-size:11px;
+  font-weight:900;
+}
+
+.shellContentBody .products-pager{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+}
+
+.shellContentBody .products-moveOverlay{
+  background:rgba(15,23,42,.42);
+  backdrop-filter:blur(2px);
+}
+
+.shellContentBody .products-moveDialog{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--card);
+  box-shadow:0 28px 80px rgba(15,23,42,.28);
+}
+
+/* Competitor catalog import */
+.shellContentBody .cciCommandHeader,
+.shellContentBody .cciMetrics,
+.shellContentBody .cciLayout{
+  max-width:var(--page-content-width);
+}
+
+.shellContentBody .cciCommandHeader{
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cciCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .cciCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cciCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .cciCommandContext p{
+  margin:6px 0 0;
+  max-width:820px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .cciCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .cciLayout{
+  grid-template-columns:minmax(0, 1fr) 380px;
+  gap:12px;
+}
+
+.shellContentBody :where(.cciRunPanel, .cciTablePanel, .cciInspector){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cciRunPanel,
+.shellContentBody .cciPanelHead,
+.shellContentBody .cciInspectorHead{
+  padding:14px;
+}
+
+.shellContentBody .cciRunPanel{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(240px, .42fr) minmax(0, 1fr) minmax(190px, auto);
+  gap:14px;
+  align-items:end;
+}
+
+.shellContentBody .cciRunPanel h2,
+.shellContentBody .cciTablePanel h2,
+.shellContentBody .cciInspector h2{
+  color:var(--text);
+  font-size:18px;
+  line-height:1.12;
+  font-weight:900;
+}
+
+.shellContentBody .cciRunPanel p{
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:720;
+}
+
+.shellContentBody .cciEyebrow{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+}
+
+.shellContentBody .cciFormGrid{
+  display:grid;
+  grid-template-columns:minmax(180px, .8fr) minmax(260px, 1.4fr) 160px;
+  gap:10px;
+  align-items:end;
+}
+
+.shellContentBody .cciFormGrid input{
+  height:36px;
+  border-radius:9px;
+  background:var(--card);
+}
+
+.shellContentBody .cciQueueFilters{
+  padding:10px 12px;
+}
+
+.shellContentBody .cciQueueFilters button{
+  min-height:32px;
+  border-radius:9px;
+  background:var(--card);
+  box-shadow:none;
+  font-size:12px;
+}
+
+.shellContentBody .cciQueueFilters button.isActive{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:#eef2ff;
+}
+
+.shellContentBody .cciTableHead{
+  padding:10px 12px;
+  background:#f5f6f8;
+  color:var(--muted);
+}
+
+.shellContentBody .cciTableRow{
+  padding:12px;
+  border-top:1px solid var(--line);
+}
+
+.shellContentBody .cciTableRow:hover,
+.shellContentBody .cciTableRow.isActive{
+  background:var(--surface-2);
+}
+
+.shellContentBody .cciEmpty,
+.shellContentBody .cciInspectorEmpty{
+  border-radius:12px;
+  margin:12px;
+  padding:22px;
+}
+
+/* Connectors status: compact SaaS workbench */
+.shellContentBody .dataSourcesCommandHeader{
+  margin:0 auto 12px;
+  max-width:var(--page-content-width);
+  border-radius:12px;
+  box-shadow:none;
+}
+
+.shellContentBody .dataSourcesCommandContext h1{
+  font-size:24px;
+  line-height:1.08;
+}
+
+.shellContentBody .dataSourcesSegmentedTabs{
+  border-radius:10px;
+}
+
+.shellContentBody .cs-commandGrid{
+  grid-template-columns:minmax(0, 1fr) minmax(320px, 360px);
+  gap:12px;
+}
+
+.shellContentBody :where(.cs-healthPanel, .cs-inspectorCard, .cs-providerCard){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cs-healthPanel{
+  padding:16px;
+}
+
+.shellContentBody .cs-healthHero{
+  align-items:flex-start;
+  margin-bottom:12px;
+}
+
+.shellContentBody .cs-eyebrow{
+  color:var(--muted);
+  font-size:10px;
+  letter-spacing:.08em;
+}
+
+.shellContentBody .cs-healthHero h2{
+  margin:4px 0 6px;
+  font-size:26px;
+  line-height:1.08;
+}
+
+.shellContentBody .cs-healthHero p{
+  max-width:680px;
+  font-size:13px;
+  line-height:1.4;
+}
+
+.shellContentBody .cs-healthScore{
+  min-width:120px;
+  border-radius:10px;
+  padding:12px;
+}
+
+.shellContentBody .cs-healthScore strong{
+  font-size:24px;
+}
+
+.shellContentBody .cs-readinessGrid{
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+}
+
+.shellContentBody .cs-readinessCard{
+  border-radius:10px;
+  padding:12px;
+  background:var(--surface-2);
+  box-shadow:none;
+}
+
+.shellContentBody .cs-readinessCard:hover{
+  transform:none;
+  box-shadow:none;
+}
+
+.shellContentBody .cs-readinessCard strong{
+  margin-top:6px;
+  font-size:22px;
+}
+
+.shellContentBody .cs-readinessCard p{
+  font-size:11px;
+  line-height:1.25;
+}
+
+.shellContentBody .cs-inspectorCard{
+  padding:14px;
+}
+
+.shellContentBody .cs-inspectorHead strong{
+  font-size:18px;
+}
+
+.shellContentBody .cs-actionStack{
+  gap:8px;
+}
+
+.shellContentBody .cs-actionItem{
+  border-radius:10px;
+  padding:10px 12px;
+  box-shadow:none;
+}
+
+.shellContentBody button.cs-actionItem:hover,
+.shellContentBody a.cs-actionItem:hover{
+  transform:none;
+  box-shadow:none;
+}
+
+.shellContentBody .cs-providerCard.isSummary{
+  grid-template-columns:minmax(260px, 340px) minmax(0, 1fr);
+}
+
+.shellContentBody .cs-providerHead{
+  padding:14px 16px;
+}
+
+.shellContentBody .cs-providerTitleBlock h3{
+  margin:6px 0 4px;
+  font-size:20px;
+  line-height:1.08;
+}
+
+.shellContentBody .cs-providerTitleBlock p{
+  font-size:12px;
+}
+
+.shellContentBody .cs-providerSection{
+  padding:14px 16px;
+}
+
+.shellContentBody .cs-summaryRows{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+}
+
+.shellContentBody .cs-summaryRows div{
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+  padding:10px;
+}
+
+.shellContentBody .cs-summaryRows span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .cs-summaryRows strong{
+  display:block;
+  margin-top:5px;
+  color:var(--text);
+  font-size:13px;
+  font-weight:900;
+}
+
+/* Competitor sources and mapping */
+.shellContentBody .cm-page{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+}
+
+.shellContentBody .cm-layout{
+  grid-template-columns:300px minmax(0, 1fr);
+  gap:12px;
+}
+
+.shellContentBody :where(.cm-panel, .cm-templateBtn, .cm-sourceCard, .cm-candidateCard, .cm-selectedCard, .cm-reviewPanel, .cm-categoryPanel, .cm-matchCard){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .cm-panel{
+  padding:12px;
+}
+
+.shellContentBody .cm-panelRight{
+  padding:14px;
+}
+
+.shellContentBody .cm-panelTitle,
+.shellContentBody .cm-title,
+.shellContentBody .cm-blockTitle{
+  color:var(--text);
+  font-size:16px;
+  line-height:1.12;
+  font-weight:900;
+}
+
+.shellContentBody .cm-sub,
+.shellContentBody .cm-emptyText{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.4;
+  font-weight:720;
+}
+
+.shellContentBody .cm-templateBtn{
+  min-height:54px;
+  padding:10px;
+}
+
+.shellContentBody .cm-templateBtn[data-active="true"],
+.shellContentBody .cm-candidateCard.isActive,
+.shellContentBody .cm-matchCard.isActive{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:#eef2ff;
+}
+
+.shellContentBody .cm-templateBtnName{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+/* Dictionaries */
+.shellContentBody .dictCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 8px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:56px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .dictCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .dictCommandContext span{
+  display:none;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .dictCommandContext h1{
+  margin:0;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.08;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .dictCommandContext p{
+  display:none;
+  margin:6px 0 0;
+  max-width:760px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .dictCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .dictStatusStrip{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  overflow:hidden;
+}
+
+.shellContentBody .dictStatusStrip > div{
+  min-width:0;
+  padding:12px 14px;
+  border-right:1px solid var(--line);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.shellContentBody .dictStatusStrip > div:last-child{
+  border-right:0;
+}
+
+.shellContentBody .dictStatusStrip span{
+  min-width:0;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.2;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.shellContentBody .dictStatusStrip strong{
+  color:var(--text);
+  font-size:18px;
+  line-height:1;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.shellContentBody .templatesCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 8px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:56px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .templatesCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .templatesCommandContext span{
+  display:none;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .templatesCommandContext h1{
+  margin:0;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.08;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .templatesCommandContext p{
+  display:none;
+  margin:6px 0 0;
+  max-width:780px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .tplInlineTabs{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  min-width:0;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .tplInlineTabs button{
+  min-height:30px;
+  padding:0 10px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+.shellContentBody .tplInlineTabs button.active{
+  background:var(--card);
+  color:var(--text);
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+
+.shellContentBody .dictEditorCommandHeader{
+  max-width:var(--page-content-width);
+  margin:0 auto 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .dictEditorCommandContext{
+  min-width:0;
+}
+
+.shellContentBody .dictEditorCommandContext span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .dictEditorCommandContext h1{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:26px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:0;
+}
+
+.shellContentBody .dictEditorCommandContext p{
+  margin:6px 0 0;
+  max-width:780px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:760;
+}
+
+.shellContentBody .dictEditorCommandControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+.shellContentBody .dictWorkspace.workspaceFrameTwo,
+.shellContentBody .dictWorkspace.workspaceFrameThree{
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+  grid-template-columns:minmax(0, 1fr) 320px;
+  gap:12px;
+}
+
+.shellContentBody :where(.dict-searchCard, .dict-list, .dict-rowCard, .dictInspector, .dict-emptyCard){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .dict-searchCard{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px;
+}
+
+.shellContentBody .dict-tabsWrap{
+  margin:10px 0;
+}
+
+.shellContentBody .dict-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.shellContentBody .dict-tab{
+  min-height:32px;
+  padding:0 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--card);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+}
+
+.shellContentBody .dict-tab.active{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:#eef2ff;
+  color:var(--brand);
+}
+
+.shellContentBody .dict-list{
+  overflow:hidden;
+}
+
+.shellContentBody .dict-listBody{
+  display:block;
+  padding:0;
+}
+
+.shellContentBody .dictTableScroll{
+  width:100%;
+  overflow:auto;
+}
+
+.shellContentBody .dictTable{
+  width:100%;
+  min-width:860px;
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+.shellContentBody .dictTable th,
+.shellContentBody .dictTable td{
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+  text-align:left;
+  vertical-align:middle;
+}
+
+.shellContentBody .dictTable th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .dictTable tbody tr{
+  cursor:pointer;
+}
+
+.shellContentBody .dictTable tbody tr:hover td,
+.shellContentBody .dictTable tbody tr:focus td{
+  background:var(--surface-2);
+}
+
+.shellContentBody .dictTable tbody tr:last-child td{
+  border-bottom:0;
+}
+
+.shellContentBody .dictTableTitle{
+  color:var(--text);
+  font-size:14px;
+  line-height:1.25;
+  font-weight:900;
+}
+
+.shellContentBody .dictTableId{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.2;
+  font-weight:750;
+}
+
+.shellContentBody .dict-rowCard{
+  cursor:pointer;
+  padding:12px;
+}
+
+.shellContentBody .dict-rowCard:hover{
+  border-color:rgba(var(--brand-rgb),.22);
+  background:var(--surface-2);
+}
+
+.shellContentBody .dict-rowTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.shellContentBody .dict-rowTitle{
+  color:var(--text);
+  font-size:14px;
+  line-height:1.22;
+  font-weight:900;
+}
+
+.shellContentBody .dict-rowBadges,
+.shellContentBody .dict-rowMeta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+
+.shellContentBody .dict-badge,
+.shellContentBody .dict-rowMeta span{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:0 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+}
+
+.shellContentBody .dictInspector{
+  padding:12px;
+}
+
+.shellContentBody .dictInspectorBody,
+.shellContentBody .dictInspectorActions,
+.shellContentBody .dict-createValues{
+  display:grid;
+  gap:8px;
+}
+
+.shellContentBody .dict-createValueRow{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:8px;
+}
+
+.shellContentBody .dict-requiredRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .dict-toggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.shellContentBody .dict-toggleTrack{
+  width:38px;
+  height:22px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--card);
+}
+
+/* Simple data source and placeholder pages */
+.shellContentBody .dataSourcesPage > .cs-page,
+.shellContentBody .dataSourcesPage > .sourcesMappingPage,
+.shellContentBody .page-shell > .card{
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+/* Info-models / templates */
+.shellContentBody :where(.templatesCatalogFrame, .templatesEditorFrame){
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  align-items:start;
+  gap:12px;
+}
+
+.shellContentBody .templatesCatalogFrame.workspaceFrame{
+  grid-template-columns:minmax(300px, 360px) minmax(0, 1fr);
+}
+
+.shellContentBody .templatesEditorFrame.workspaceFrameSingle{
+  grid-template-columns:minmax(0, 1fr);
+}
+
+.shellContentBody .templatesEditorFrame.workspaceFrameTwo{
+  grid-template-columns:minmax(0, 1fr) minmax(300px, 340px);
+}
+
+.shellContentBody .templatesEditorFrame.workspaceFrameThree{
+  grid-template-columns:280px minmax(0, 1fr) 300px;
+}
+
+.shellContentBody :where(
+  .tplSidebarCard,
+  .tplEditorSidebarCard,
+  .tplCanvasCard,
+  .tplSectionCard,
+  .tplModelCommandCard,
+  .tplFieldPreview,
+  .tplUsageRow,
+  .tplProductPreview,
+  .tplUsageStat,
+  .tplModelStatusItem
+){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody :where(.tplSidebarCard, .tplEditorSidebarCard, .tplCanvasCard){
+  padding:14px;
+}
+
+.shellContentBody .tplTreePanel{
+  max-height:calc(100vh - 250px);
+}
+
+.shellContentBody .tplTreeNodeTemplate{
+  min-height:44px;
+  border-radius:10px;
+}
+
+.shellContentBody .tplTreeNodeTemplate:hover,
+.shellContentBody .tplTreeNodeTemplate.is-active{
+  background:var(--surface-2);
+  border-color:rgba(var(--brand-rgb),.2);
+}
+
+.shellContentBody .tplTreeTitle,
+.shellContentBody .tplFieldCopy strong,
+.shellContentBody .tplUsageCopy strong,
+.shellContentBody .tplProductPreviewCopy strong,
+.shellContentBody .tplSectionHead h3{
+  color:var(--text);
+  font-size:13px;
+  line-height:1.25;
+  font-weight:900;
+  letter-spacing:0;
+}
+
+.shellContentBody .tplTreeMeta,
+.shellContentBody .tplSummaryTitleBlock p,
+.shellContentBody .tplFieldCopy span,
+.shellContentBody .tplUsageCopy span,
+.shellContentBody .tplProductPreviewCopy span,
+.shellContentBody .tplSectionHead p,
+.shellContentBody .tplModelCommandTop p{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.38;
+  font-weight:700;
+}
+
+.shellContentBody .tplSummaryHeader{
+  grid-template-columns:minmax(0, 1fr) minmax(280px, 360px);
+  gap:12px;
+}
+
+.shellContentBody .tplSummaryTitleBlock h2,
+.shellContentBody .tplModelCommandTop h2{
+  margin:4px 0 0;
+  color:var(--text);
+  font-size:24px;
+  line-height:1.08;
+  letter-spacing:0;
+  font-weight:950;
+}
+
+.shellContentBody .tplSummaryActionPanel,
+.shellContentBody .tplSectionCard{
+  border-radius:12px;
+  background:var(--surface-2);
+}
+
+.shellContentBody .tplSummaryQuickStats,
+.shellContentBody .tplUsageStatsRow,
+.shellContentBody .tplModelStatusBar{
+  gap:8px;
+}
+
+.shellContentBody .tplSummaryQuickStats span,
+.shellContentBody .tplPathChip,
+.shellContentBody .tplModePill,
+.shellContentBody .tplSectionCount{
+  min-height:24px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--card);
+  color:var(--muted);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.shellContentBody :where(.tplCanvasGrid, .tplModelSections, .tplUsageGrid, .tplCanvasStack, .tplEditorSidebarStack){
+  gap:10px;
+}
+
+.shellContentBody .tplModelSections,
+.shellContentBody .tplUsageGrid{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
+.shellContentBody .tplFieldPreview,
+.shellContentBody .tplUsageRow,
+.shellContentBody .tplProductPreview{
+  min-height:52px;
+  padding:10px 12px;
+}
+
+.shellContentBody .tplModelCommandCard{
+  padding:14px;
+  background:var(--card);
+}
+
+/* Category sidebar / catalog */
+.shellContentBody .csb-shell{
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .csb-title{
+  color:var(--text);
+  font-size:15px;
+  line-height:1.1;
+  font-weight:900;
+  letter-spacing:0;
+}
+
+.shellContentBody .csb-hint{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.35;
+}
+
+.shellContentBody .csb-search{
+  min-height:36px;
+  padding:0 10px;
+  border-radius:9px;
+  background:var(--card);
+}
+
+.shellContentBody :where(.csb-body, .csb-tree){
+  min-height:0;
+}
+
+.shellContentBody .csb-tree{
+  gap:2px;
+}
+
+.shellContentBody .csb-treeRow{
+  padding-left:calc(var(--depth) * 12px);
+}
+
+.shellContentBody .csb-treeNode{
+  min-height:34px;
+  gap:8px;
+  padding:5px 8px;
+  border-radius:8px;
+}
+
+.shellContentBody .csb-treeNode:hover,
+.shellContentBody .csb-treeNode.is-active{
+  transform:none;
+  background:var(--surface-2);
+  border-left-color:var(--brand);
+}
+
+.shellContentBody .csb-treeName{
+  color:var(--text);
+  font-size:12px;
+  font-weight:800;
+}
+
+.shellContentBody .catalogWorkspaceFrame{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  gap:12px;
+}
+
+.shellContentBody .catalogWorkspaceFrame.workspaceFrameThree{
+  grid-template-columns:300px minmax(0, 1fr) 300px;
+}
+
+.shellContentBody .catalogWorkspaceFrame.workspaceFrameTwo{
+  grid-template-columns:320px minmax(0, 1fr);
+}
+
+.shellContentBody .catalogTreePanel,
+.shellContentBody .catalogProductsWorkspace,
+.shellContentBody .catalogSecondaryWorkspace,
+.shellContentBody .catalogProductsWorkspace .products-toolbar,
+.shellContentBody .catalogProductsWorkspace .products-tableWrap,
+.shellContentBody .catalogProductsWorkspace .products-pager,
+.shellContentBody .catalogImportSteps > div{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .catalogProductsWorkspace{
+  min-height:calc(100vh - 120px);
+  padding:12px;
+}
+
+.shellContentBody .catalogProductsHead{
+  min-height:0;
+  padding:0 0 10px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .catalogProductsHead h2{
+  font-size:24px;
+  line-height:1.08;
+  letter-spacing:0;
+  font-weight:950;
+}
+
+.shellContentBody .catalogProductsKicker,
+.shellContentBody .catalogProductsMeta span,
+.shellContentBody .catalogProductsTab small,
+.shellContentBody .catalogTab small{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:750;
+}
+
+.shellContentBody .catalogProductsTab,
+.shellContentBody .catalogTab{
+  min-height:34px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+}
+
+.shellContentBody .catalogProductsTab.isActive,
+.shellContentBody .catalogTab.isActive{
+  border-color:rgba(var(--brand-rgb),.22);
+  background:#eef2ff;
+}
+
+.shellContentBody .catalogTreeRow{
+  padding-left:calc(var(--depth) * 12px);
+}
+
+.shellContentBody .catalogTreeContent,
+.shellContentBody .catalogTreeRow{
+  min-height:34px;
+  border-radius:8px;
+}
+
+.shellContentBody .catalogTreeRow:hover,
+.shellContentBody .catalogTreeRow.isActive{
+  background:var(--surface-2);
+}
+
+/* Product workspace and SKU card details */
+.shellContentBody :where(
+  .productWorkspaceTopbar,
+  .productWorkspaceCompactTopbar,
+  .productWorkspaceNav,
+  .productWorkspaceHeroCard,
+  .productWorkspaceSection,
+  .productWorkspaceSummaryCard,
+  .productWorkspaceValidationCard,
+  .productWorkspaceMediaHint,
+  .productWorkspaceMediaCard,
+  .productWorkspaceCreatedGuide,
+  .productWorkspaceNextAction,
+  .productWorkspaceChannelCard,
+  .productWorkspaceTableWrap,
+  .productCompetitorPanel,
+  .productCompetitorSourceCard,
+  .productCompetitorAiQueue,
+  .productCompetitorGroup,
+  .productCompetitorCandidate,
+  .productCompetitorInspector,
+  .productCompetitorManual,
+  .pn-competitorGroupCard,
+  .pn-competitorSkuTable,
+  .pn-competitorSkuNotice,
+  .pn-competitorSkuBulkBar,
+  .pn-mediaModal,
+  .pn-imageLightbox
+){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody :where(.productWorkspacePage, .productWorkspaceLayout){
+  max-width:var(--page-content-width);
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.shellContentBody .productWorkspaceLayout.workspaceFrameThree{
+  grid-template-columns:220px minmax(0, 1fr) 300px;
+  gap:12px;
+}
+
+.shellContentBody .productWorkspaceTopbar,
+.shellContentBody .productWorkspaceCompactTopbar{
+  padding:12px;
+}
+
+.shellContentBody .productWorkspaceHeadingRow h1{
+  color:var(--text);
+  font-size:24px;
+  line-height:1.1;
+  letter-spacing:0;
+  font-weight:950;
+}
+
+.shellContentBody .productWorkspaceEyebrow,
+.shellContentBody .productWorkspaceHeroLabel,
+.shellContentBody .productWorkspaceTextLabel,
+.shellContentBody .productWorkspaceMiniTitle{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.045em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .productWorkspaceNav{
+  position:static;
+  top:auto;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 16px;
+  overflow-x:auto;
+}
+
+.shellContentBody .productWorkspaceNavTitle{
+  flex:0 0 auto;
+  margin:0;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.045em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .productWorkspaceNavItem{
+  flex:0 0 auto;
+  min-width:120px;
+  min-height:42px;
+  padding:8px 10px;
+  border-radius:9px;
+}
+
+.shellContentBody .productWorkspaceNavItem:hover,
+.shellContentBody .productWorkspaceNavItem.isActive{
+  background:var(--surface-2);
+}
+
+.shellContentBody .productWorkspaceHeroCard,
+.shellContentBody .productWorkspaceSection,
+.shellContentBody .productCompetitorPanel{
+  padding:14px;
+}
+
+.shellContentBody .productWorkspaceHeroTitle{
+  color:var(--text);
+  font-size:22px;
+  line-height:1.16;
+  letter-spacing:0;
+  font-weight:950;
+  max-width:100%;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+.shellContentBody .productWorkspaceHeroText,
+.shellContentBody .productWorkspaceRichText,
+.shellContentBody .productWorkspaceEmptyNote,
+.shellContentBody .productCompetitorToolbar p,
+.shellContentBody .productCompetitorManual p{
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.shellContentBody :where(.productWorkspaceHeroStats > div, .productWorkspaceSummaryCard, .productWorkspaceValidationCard, .productWorkspaceChannelCard, .productWorkspaceMediaCard){
+  padding:10px;
+}
+
+.shellContentBody .productWorkspaceTable{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+.shellContentBody .productWorkspaceTable th{
+  background:#f5f6f8;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .productWorkspaceTable th,
+.shellContentBody .productWorkspaceTable td{
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .productWorkspaceMediaGrid,
+.shellContentBody .productCompetitorSourceGrid,
+.shellContentBody .productCompetitorMetrics,
+.shellContentBody .productWorkspaceChannelGrid{
+  gap:10px;
+}
+
+.shellContentBody .productCompetitorCandidate:hover,
+.shellContentBody .productCompetitorCandidate.isActive,
+.shellContentBody .pn-competitorSkuRow:not(.pn-competitorSkuHead):hover,
+.shellContentBody .pn-competitorSkuRow.isActive{
+  background:var(--surface-2);
+  border-color:rgba(var(--brand-rgb),.22);
+}
+
+.shellContentBody .pn-competitorSkuRow{
+  min-height:44px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .pn-competitorSkuHead{
+  background:#f5f6f8;
+  color:var(--muted);
+}
+
+/* Product groups */
+.shellContentBody .pg-page{
+  max-width:var(--page-content-width);
+  margin:0 auto;
+  gap:12px;
+}
+
+.shellContentBody .pg-grid{
+  grid-template-columns:300px minmax(0, 1fr);
+  gap:12px;
+}
+
+.shellContentBody :where(
+  .pg-left,
+  .pg-right,
+  .pg-card,
+  .pg-panel,
+  .pg-groupRoot,
+  .pg-group,
+  .pg-itemRow,
+  .pg-addList,
+  .pg-treeBox,
+  .pg-selectedCatBox,
+  .pg-productsBox,
+  .pg-familyPanel,
+  .pg-familyFactsCard,
+  .pg-paramRow
+){
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .pg-tab{
+  min-height:34px;
+  padding:0 12px;
+  border-radius:9px;
+  background:var(--card);
+  color:var(--muted);
+  font-weight:850;
+}
+
+.shellContentBody .pg-tab.active,
+.shellContentBody .pg-group.active,
+.shellContentBody .pg-groupRootHead.active,
+.shellContentBody .pg-itemRowSelectable.active,
+.shellContentBody .pg-treeNode.active,
+.shellContentBody .pg-treeNodeLine.active{
+  border-color:rgba(var(--brand-rgb),.22);
+  background:#eef2ff;
+  color:var(--brand);
+}
+
+.shellContentBody .pg-groupRootHead,
+.shellContentBody .pg-treeHead,
+.shellContentBody .pg-treeNodeLine,
+.shellContentBody .pg-treeNode{
+  background:var(--card);
+}
+
+.shellContentBody .pg-groupRootHead,
+.shellContentBody .pg-group,
+.shellContentBody .pg-itemRow{
+  min-height:42px;
+}
+
+.shellContentBody .pg-selectionBar,
+.shellContentBody .pg-createdToast{
+  border-radius:12px;
+  background:var(--card);
+  box-shadow:0 18px 44px rgba(15,23,42,.14);
+}
+
+.shellContentBody .pg-pill{
+  border-color:var(--line);
+  background:var(--surface-2);
+  color:var(--muted);
+}
+
+@media(max-width: 900px){
+  .shellSidebarLayout{
+    grid-template-columns:58px minmax(0, 1fr);
+    width:100%;
+    max-width:100vw;
+    overflow-x:hidden;
+  }
+
+  .shellContent{
+    min-width:0;
+    overflow-x:hidden;
+  }
+
+  .shellContentBody{
+    min-width:0;
+    overflow-x:hidden;
+  }
+
+  .shellSidebar{
+    position:sticky;
+    top:0;
+    height:100vh;
+    padding:8px 6px;
+    border-right:1px solid var(--line);
+    border-bottom:0;
+    overflow:hidden;
+  }
+
+  .shellSidebarInner{
+    height:100%;
+    padding:6px 4px;
+    gap:8px;
+  }
+
+  .shellSidebarBrandLink{
+    width:44px;
+    min-height:44px;
+    justify-content:center;
+    padding:0;
+  }
+
+  .shellSidebarBrandText,
+  .shellSidebarSectionTitle,
+  .shellSidebarLink > span:not(.shellSidebarLinkIcon),
+  .shellNavPanelFooter{
+    display:none;
+  }
+
+  .shellLinearNav{
+    max-height:none;
+    overflow:visible;
+    gap:8px;
+    padding:0;
+  }
+
+  .shellSidebarSection,
+  .shellSidebarLinks{
+    display:grid;
+    gap:6px;
+  }
+
+  .shellSidebarLink{
+    width:44px;
+    min-height:44px;
+    justify-content:center;
+    padding:0;
+    border-radius:14px;
+    gap:0;
+  }
+
+  .shellSidebarLinkIcon{
+    width:22px;
+    height:22px;
+  }
+
+  .shellSidebarLinkIcon .shellSvgIcon{
+    width:18px;
+    height:18px;
+  }
+
+  .shellRailFooter{
+    grid-template-columns:1fr;
+    gap:6px;
+    padding-top:8px;
+  }
+
+  .shellThemeToggle,
+  .shellRailUser{
+    width:44px;
+    min-width:44px;
+    min-height:40px;
+  }
+
+  .shellContentBody :where(
+    .page-shell,
+    .dashboard-page,
+    .products-page,
+    .templates-page,
+    .cs-page,
+    .pg-page,
+    .catalog-page,
+    .cm-page,
+    .accessPage,
+    .orgAdminPage,
+    .catalogExchangePage,
+    .catalogWorkspacePage,
+    .productWorkspacePage,
+    .dictionaryPage,
+    .sourcesMappingPage,
+    .connectorsStatusPage,
+    .competitorCatalogImportPage
+    , .cciPage
+    , .profilePage
+    , .dataSourcesPage
+    , .sm-valuesPage
+    , .cx-page
+    , .cx-exchangePage
+    , .pn-page
+    , .page
+  ){
+    min-width:0;
+    max-width:100%;
+    padding:14px 12px 24px;
+    overflow-x:hidden;
+  }
+
+  .sideSheet{
+    top:8px;
+    right:8px;
+    bottom:8px;
+    width:calc(100vw - 16px);
+  }
+
+  .shellContentBody .workspaceIntro,
+  .shellContentBody .sm-valuesHead,
+  .shellContentBody .cs-healthHero,
+  .shellContentBody .cs-providerHead,
+  .shellContentBody .mediaOpsCommandHeader,
+  .shellContentBody .csCommandHeader,
+  .shellContentBody .cxExchangeCommandHeader,
+  .shellContentBody .cxStandaloneCommandHeader,
+  .shellContentBody .competitorSourcesCommandHeader,
+  .shellContentBody .controlCenterCommandHeader,
+  .shellContentBody .profileCommandHeader,
+  .shellContentBody .orgAdminCommandHeader,
+  .shellContentBody .dataSourcesCommandHeader,
+  .shellContentBody .dictCommandHeader,
+  .shellContentBody .templatesCommandHeader,
+  .shellContentBody .dictEditorCommandHeader,
+  .shellContentBody .cciCommandHeader,
+  .shellContentBody .orgAdminCommand{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .shellContentBody .orgAdminCommandControls,
+  .shellContentBody .mediaOpsActions,
+  .shellContentBody .csCommandControls,
+  .shellContentBody .cxExchangeCommandControls,
+  .shellContentBody .cxExchangeSegmentedTabs,
+  .shellContentBody .cxStandaloneCommandControls,
+  .shellContentBody .competitorSourcesCommandControls,
+  .shellContentBody .controlCenterCommandControls,
+  .shellContentBody .profileCommandControls,
+  .shellContentBody .dictCommandControls,
+  .shellContentBody .dictEditorCommandControls,
+  .shellContentBody .cciCommandControls,
+  .shellContentBody .orgAdminSegmentedTabs,
+  .shellContentBody .dataSourcesCommandControls,
+  .shellContentBody .dataSourcesSegmentedTabs{
+    width:100%;
+  }
+
+  .shellContentBody .cxExchangeCommandControls{
+    justify-content:flex-start;
+    flex-wrap:wrap;
+    overflow:visible;
+  }
+
+  .shellContentBody .cxExchangeSegmentedTabs{
+    flex:1 1 100%;
+    min-width:0;
+  }
+
+  .shellContentBody .orgAdminSegmentedTabs button,
+  .shellContentBody .cxExchangeSegmentedTabs button,
+  .shellContentBody .dataSourcesSegmentedTabs button{
+    flex:1 1 0;
+  }
+
+  .shellContentBody .competitorSourcesContextBar{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .dictStatusStrip{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .dictionaryEditorStatusStrip{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .controlCenterStatusStrip{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .cs-overviewStrip{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .orgAdminStatusStrip{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .competitorSourcesContextBar > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .competitorSourcesContextBar > div:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .dictStatusStrip > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .dictionaryEditorStatusStrip > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .controlCenterStatusStrip > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .cs-overviewStrip > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .orgAdminStatusStrip > div{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .dictStatusStrip > div:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .dictionaryEditorStatusStrip > div:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .controlCenterStatusStrip > div:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .cs-overviewStrip > div:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .orgAdminStatusStrip > div:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .workspaceEmptyState,
+  .shellContentBody .mediaOpsWorkspace,
+  .shellContentBody .mediaOpsBoard,
+  .shellContentBody .productWorkspaceLayout.workspaceFrameThree,
+  .shellContentBody .productCommerceGrid,
+  .shellContentBody .productCommerceSpecGrid,
+  .shellContentBody .productCommerceReadinessList,
+  .shellContentBody .templatesCatalogFrame.workspaceFrame,
+  .shellContentBody .templatesEditorFrame.workspaceFrame,
+  .shellContentBody .templatesEditorFrameFocused.workspaceFrameTwo,
+  .shellContentBody .tplSummaryHeader,
+  .shellContentBody .tplSummaryHeaderClean,
+  .shellContentBody .tplSummaryQuickStats,
+  .shellContentBody .tplEmptyModelHero,
+  .shellContentBody .tplEmptyModelGrid,
+  .shellContentBody .tplModelSections,
+  .shellContentBody .tplUsageGrid,
+  .shellContentBody .tplUsageStatsRow,
+  .shellContentBody .tplModelStatusBar,
+  .shellContentBody .tplModelMorePanel,
+  .shellContentBody .tplEditorSourceStrip,
+  .shellContentBody .tplAttrToolbar,
+  .shellContentBody .pn-hero,
+  .shellContentBody .pnWizardShell,
+  .shellContentBody .pnWizardTwoCol,
+  .shellContentBody .sm-valuesWorkbench,
+  .shellContentBody .sm-valuesRouteCard,
+  .shellContentBody .sm-valuesDecisionRow,
+  .shellContentBody .cs-commandGrid,
+  .shellContentBody .cs-readinessGrid,
+  .shellContentBody .profileGrid,
+  .shellContentBody .orgAdminWorkspaceFlat,
+  .shellContentBody .orgAdminWorkSurface,
+  .shellContentBody .controlCenterPriorityGrid,
+  .shellContentBody .controlCenterSecondaryGrid,
+  .shellContentBody .controlCenterQuickActionsGrid,
+  .shellContentBody .controlCenterQueueGrid,
+  .shellContentBody .cciLayout,
+  .shellContentBody .cciFormGrid,
+  .shellContentBody .cm-layout,
+  .shellContentBody .dictWorkspace.workspaceFrameTwo,
+  .shellContentBody .dictWorkspace.workspaceFrameThree{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .cciLayout,
+  .shellContentBody .cciMain,
+  .shellContentBody .cciRunPanel,
+  .shellContentBody .cciTablePanel,
+  .shellContentBody .cciInspector,
+  .shellContentBody .cciFormGrid{
+    min-width:0;
+    width:100%;
+    max-width:100%;
+  }
+
+  .shellContentBody .cciMetrics.metricGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .shellContentBody .cciMetrics .metricCard{
+    min-width:0;
+    min-height:104px;
+    padding:12px;
+  }
+
+  .shellContentBody .cciMetrics .metricCardLabel{
+    overflow-wrap:anywhere;
+    font-size:10px;
+    line-height:1.25;
+  }
+
+  .shellContentBody .cciMetrics .metricCardValue{
+    font-size:28px;
+  }
+
+  .shellContentBody .cciRunPanel{
+    grid-template-columns:minmax(0, 1fr);
+    align-items:stretch;
+  }
+
+  .shellContentBody .productWorkspaceNav{
+    display:block;
+    padding:8px 10px;
+    overflow:hidden;
+  }
+
+  .shellContentBody .productWorkspaceNavTitle{
+    display:none;
+  }
+
+  .shellContentBody .productWorkspaceNavList{
+    display:flex;
+    grid-template-columns:none;
+    gap:8px;
+    width:100%;
+    overflow-x:auto;
+    padding-bottom:2px;
+    scroll-snap-type:x proximity;
+    scrollbar-width:thin;
+  }
+
+  .shellContentBody .productWorkspaceNavItem{
+    flex:0 0 auto;
+    min-width:118px;
+    width:auto;
+    min-height:36px;
+    padding:8px 10px;
+    scroll-snap-align:start;
+  }
+
+  .shellContentBody .productWorkspaceNavItem strong{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .shellContentBody .productWorkspaceNavItem span{
+    display:none;
+  }
+
+  .shellContentBody .sm-valuesFields,
+  .shellContentBody .orgAdminInlineInspector{
+    border-right:0;
+    border-left:0;
+    border-top:1px solid var(--line);
+  }
+
+  .shellContentBody .pnWizardRail{
+    position:relative;
+    top:auto;
+  }
+
+  .shellContentBody .pnWizardPage{
+    padding:10px 8px 18px;
+  }
+
+  .shellContentBody .pnWizardShell,
+  .shellContentBody .pnWizardRail,
+  .shellContentBody .pnWizardMain,
+  .shellContentBody .pnWizardTopbar,
+  .shellContentBody .pnWizardCard{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+  }
+
+  .shellContentBody .pnWizardRail{
+    padding:10px;
+  }
+
+  .shellContentBody .pnWizardSteps{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    overflow:visible;
+    padding-bottom:0;
+  }
+
+  .shellContentBody .pnWizardStep{
+    min-width:0;
+    align-items:flex-start;
+  }
+
+  .shellContentBody .pnWizardStep strong,
+  .shellContentBody .pnWizardStep em{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+  }
+
+  .shellContentBody .products-toolbarTop,
+  .shellContentBody .products-pager{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .shellContentBody .productListTableScroller{
+    overflow:visible;
+    border:0;
+    background:transparent;
+  }
+
+  .shellContentBody .productListTable{
+    display:block;
+    min-width:0;
+    width:100%;
+    border-collapse:separate;
+  }
+
+  .shellContentBody .productListTable thead{
+    display:none;
+  }
+
+  .shellContentBody .productListTable tbody{
+    display:grid;
+    gap:10px;
+    width:100%;
+  }
+
+  .shellContentBody .productListTable tbody tr{
+    position:relative;
+    display:grid;
+    grid-template-columns:minmax(0, 1fr);
+    gap:8px;
+    width:100%;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--card);
+  }
+
+  .shellContentBody .productListTable tbody td{
+    display:block;
+    width:100%;
+    padding:0;
+    border:0;
+    background:transparent;
+  }
+
+  .shellContentBody .productListTable tbody tr:hover td,
+  .shellContentBody .productListTable tbody tr.isFocused td,
+  .shellContentBody .productListTable tbody tr.isSelected td{
+    background:transparent;
+  }
+
+  .shellContentBody .productListTableCheckCol{
+    position:absolute;
+    top:14px;
+    left:12px;
+    width:18px;
+    min-width:18px;
+    z-index:1;
+  }
+
+  .shellContentBody .productListTableCheckCol input{
+    width:16px;
+    height:16px;
+  }
+
+  .shellContentBody .productListTitleCell{
+    align-items:flex-start;
+    gap:10px;
+    padding-left:28px;
+  }
+
+  .shellContentBody .productListThumbWrap,
+  .shellContentBody .productListThumb{
+    width:42px;
+    height:42px;
+  }
+
+  .shellContentBody .productListPrimaryLink{
+    font-size:13px;
+    line-height:1.25;
+  }
+
+  .shellContentBody .productListSku{
+    margin-top:4px;
+    font-size:11px;
+  }
+
+  .shellContentBody .productListCategoryCell,
+  .shellContentBody .productListGroupCell,
+  .shellContentBody .productListReadinessCell{
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--surface-2);
+  }
+
+  .shellContentBody .productListGroupCell{
+    display:none;
+  }
+
+  .shellContentBody .productListChannels{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .shellContentBody .productListActionCol{
+    display:grid !important;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+
+  .shellContentBody .productListRowAction,
+  .shellContentBody .productListOpenLink{
+    justify-content:center;
+    width:100%;
+    min-height:34px;
+    margin:0;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--surface-2);
+  }
+
+  .shellContentBody :where(
+    .productWorkspaceTopbar,
+    .productWorkspaceCompactTopbar,
+    .productCommerceTitleRow,
+    .productCommerceReadiness,
+    .tplSectionHead,
+    .tplProductPreview,
+    .tplUsageRow,
+    .tplFieldPreview,
+    .tplModelCommandTop,
+    .tplEditorSourceTitle
+  ){
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .shellContentBody :where(
+    .productWorkspaceTopbarActions,
+    .productCommerceLead,
+    .tplSummaryActions,
+    .tplModelCommandActions,
+    .tplFieldMeta,
+    .tplUsageStats,
+    .tplTreeActions
+  ){
+    justify-content:flex-start;
+  }
+
+  .shellContentBody :where(
+    .productCommerceCard,
+    .productCommerceGrid,
+    .productCommerceGallery,
+    .productCommerceSummary,
+    .productCommerceReadiness,
+    .productCommerceSpec,
+    .templatesCatalogFrame,
+    .templatesEditorFrame,
+    .tplCanvasStack,
+    .tplCanvasCard,
+    .tplSectionCard,
+    .tplProductPreview,
+    .tplProductPreviewCopy,
+    .tplUsageRow,
+    .tplUsageCopy,
+    .tplFieldPreview,
+    .tplFieldCopy,
+    .tplSummaryActionPanel
+  ){
+    min-width:0;
+    max-width:100%;
+  }
+
+  .shellContentBody .tplEmptyModelWorkspace{
+    padding:16px;
+  }
+
+  .shellContentBody .tplEmptyModelHero{
+    gap:14px;
+  }
+
+  .shellContentBody .tplEmptyModelHero h2{
+    font-size:28px;
+    line-height:1.08;
+    overflow-wrap:anywhere;
+  }
+
+  .shellContentBody .tplEmptyModelHero p{
+    font-size:13px;
+    line-height:1.42;
+  }
+
+  .shellContentBody .tplEmptyModelChecklist,
+  .shellContentBody .tplEmptyModelGrid{
+    width:100%;
+    min-width:0;
+  }
+
+  .shellContentBody .tplEmptyModelGrid button{
+    min-height:auto;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .tplEmptyModelGrid button:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .productCommerceImageStage,
+  .shellContentBody .productCommerceImageStage img,
+  .shellContentBody .productCommerceImagePlaceholder{
+    min-height:260px;
+  }
+
+  .shellContentBody .productCommerceTitleRow h1,
+  .shellContentBody .productWorkspaceHeadingRow h1,
+  .shellContentBody .tplSummaryTitleBlock h2,
+  .shellContentBody .tplModelCommandTop h2,
+  .shellContentBody .tplProductPreviewCopy strong,
+  .shellContentBody .tplUsageCopy strong,
+  .shellContentBody .tplFieldCopy strong{
+    max-width:100%;
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+
+  .shellContentBody .productCommerceTitleRow h1{
+    font-size:32px;
+    line-height:1.04;
+  }
+
+  .shellContentBody .tplProductPreview{
+    width:100%;
+  }
+
+  .shellContentBody .tplTreeNodeTemplate{
+    grid-template-columns:14px minmax(0, 1fr);
+  }
+
+  .shellContentBody .tplTreeActions{
+    grid-column:2;
+    flex-wrap:wrap;
+  }
+}
+
+.shellContentBody .routeLoadingShell{
+  width:100%;
+  max-width:var(--workspace-max);
+  margin:0 auto;
+  padding:18px 22px 32px;
+  color:var(--text);
+}
+
+.shellContentBody .routeLoadingHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  min-height:104px;
+  margin:0 0 12px;
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+}
+
+.shellContentBody .routeLoadingHeader > div{
+  min-width:0;
+}
+
+.shellContentBody .routeLoadingEyebrow{
+  display:block;
+  margin:0 0 8px;
+  color:var(--text-soft);
+  font-size:11px;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.shellContentBody .routeLoadingHeader strong{
+  display:block;
+  color:var(--text);
+  font-size:22px;
+  line-height:1.1;
+  font-weight:900;
+  letter-spacing:0;
+}
+
+.shellContentBody .routeLoadingHeader p{
+  margin:8px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.45;
+  font-weight:700;
+}
+
+.shellContentBody .routeLoadingPulse{
+  width:44px;
+  height:44px;
+  flex:0 0 auto;
+  border:1px solid rgba(var(--brand-rgb),.18);
+  border-radius:12px;
+  background:linear-gradient(135deg, rgba(var(--brand-rgb),.16), rgba(20,184,166,.14));
+  animation:routeLoadingPulse 1.3s ease-in-out infinite alternate;
+}
+
+.shellContentBody .routeLoadingGrid{
+  display:grid;
+  grid-template-columns:280px minmax(0, 1fr);
+  gap:12px;
+}
+
+.shellContentBody .routeLoadingPanel{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--card);
+}
+
+.shellContentBody .routeLoadingSidebar{
+  display:grid;
+  gap:12px;
+  align-content:start;
+  padding:14px;
+}
+
+.shellContentBody .routeLoadingMain{
+  display:grid;
+  gap:12px;
+  padding:14px;
+}
+
+.shellContentBody .routeLoadingLine,
+.shellContentBody .routeLoadingButton,
+.shellContentBody .routeLoadingMetrics span,
+.shellContentBody .routeLoadingRows span{
+  display:block;
+  overflow:hidden;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(var(--text-rgb),.06), rgba(var(--text-rgb),.12), rgba(var(--text-rgb),.06));
+  background-size:220% 100%;
+  animation:routeLoadingShimmer 1.35s linear infinite;
+}
+
+.shellContentBody .routeLoadingLine{
+  width:82%;
+  height:12px;
+}
+
+.shellContentBody .routeLoadingLine.isTitle{
+  width:58%;
+  height:18px;
+  margin-bottom:8px;
+}
+
+.shellContentBody .routeLoadingLine.isShort{
+  width:44%;
+}
+
+.shellContentBody .routeLoadingLine.isWide{
+  width:min(520px, 100%);
+  height:34px;
+  border-radius:10px;
+}
+
+.shellContentBody .routeLoadingMetrics{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.shellContentBody .routeLoadingMetrics span{
+  height:72px;
+  border-radius:12px;
+}
+
+.shellContentBody .routeLoadingToolbar{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 112px 112px;
+  gap:10px;
+  align-items:center;
+}
+
+.shellContentBody .routeLoadingButton{
+  height:34px;
+  border-radius:10px;
+}
+
+.shellContentBody .routeLoadingRows{
+  display:grid;
+  gap:8px;
+}
+
+.shellContentBody .routeLoadingRows span{
+  height:52px;
+  border-radius:10px;
+}
+
+@keyframes routeLoadingShimmer{
+  from{ background-position:120% 0; }
+  to{ background-position:-120% 0; }
+}
+
+@keyframes routeLoadingPulse{
+  from{ opacity:.7; transform:scale(.98); }
+  to{ opacity:1; transform:scale(1); }
+}
+
+@media (width<=980px){
+  .shellContentBody .routeLoadingGrid,
+  .shellContentBody .routeLoadingToolbar,
+  .shellContentBody .routeLoadingMetrics{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .routeLoadingHeader{
+    align-items:flex-start;
+  }
+}
+
+/* Final workspace layout overrides. Keep this block last: it intentionally wins over
+   earlier broad normalization while the product is being migrated screen by screen. */
+.shellContentBody .productListPage,
+.shellContentBody .pg-pageModern,
+.shellContentBody .accessPageModern,
+.shellContentBody .productWorkspacePage{
+  max-width:none;
+  margin:0;
+  padding:0;
+}
+
+.shellContentBody .productWorkspaceTopbar,
+.shellContentBody .productWorkspaceCompactTopbar,
+.shellContentBody .pgCommandHeader,
+.shellContentBody .accessCommandHeader{
+  border:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:var(--panel-bg);
+  box-shadow:none;
+}
+
+.shellContentBody .productWorkspaceLayout.workspaceFrameThree{
+  max-width:none;
+  margin:0;
+  gap:0;
+  grid-template-columns:280px minmax(0, 1fr);
+}
+
+.shellContentBody .productWorkspaceLayout .workspaceFrameSidebar,
+.shellContentBody .pg-pageModern .pg-left,
+.shellContentBody .accessPageModern .accessWorkspace .accessSidebar{
+  border:0;
+  border-right:1px solid var(--line);
+  border-radius:0;
+  background:var(--card);
+  box-shadow:none;
+}
+
+.shellContentBody .productWorkspaceLayout .workspaceFrameSidebar{
+  min-height:calc(100vh - 98px);
+}
+
+.shellContentBody .productWorkspaceMainStack{
+  gap:0;
+}
+
+.shellContentBody .productWorkspaceMainStack > .card,
+.shellContentBody .productWorkspaceMainStack > .productWorkspaceTextBlock,
+.shellContentBody .productWorkspaceMainStack > .productCommerceCard,
+.shellContentBody .pg-pageModern :where(.pg-right,.pg-familyFactsCard,.pg-productsCard,.pg-createdGuide,.pg-ungrouped),
+.shellContentBody .accessPageModern :where(.accessHero,.accessRoleHero,.accessPanel){
+  border:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  box-shadow:none;
+}
+
+.shellContentBody .pg-pageModern .pg-grid,
+.shellContentBody .accessPageModern .accessWorkspace{
+  max-width:none;
+  margin:0;
+  gap:0;
+}
+
+.shellContentBody .pg-pageModern .pg-grid{
+  grid-template-columns:320px minmax(0, 1fr);
+}
+
+.shellContentBody .accessPageModern .accessWorkspace{
+  grid-template-columns:300px minmax(0, 1fr);
+}
+
+.shellContentBody .orgAdminAccessEmbed{
+  display:block;
+  min-width:0;
+  margin:0;
+}
+
+.shellContentBody .orgAdminAccessEmbed .accessPageEmbedded{
+  padding:0;
+  margin:0;
+  max-width:none;
+  background:transparent;
+}
+
+.shellContentBody .orgAdminAccessEmbed .accessSegmentedTabs{
+  margin:0;
+  border-top:1px solid var(--line);
+}
+
+.shellContentBody .orgAdminAccessEmbed .accessWorkspace{
+  min-height:640px;
+  border-top:0;
+}
+
+.shellContentBody .pgSegmentedTabs,
+.shellContentBody .accessSegmentedTabs{
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+
+/* Compact command bars across operational screens. Promo/auth screens are outside shellContentBody. */
+.shellContentBody :where(
+  .controlCenterCommandHeader,
+  .mediaOpsCommandHeader,
+  .dataSourcesCommandHeader,
+  .csCommandHeader,
+  .cxExchangeCommandHeader,
+  .cxStandaloneCommandHeader,
+  .competitorSourcesCommandHeader,
+  .cciCommandHeader
+){
+  align-items:center;
+  gap:12px;
+  min-height:56px;
+  margin-bottom:8px;
+  padding:10px 12px;
+  border-radius:10px;
+  box-shadow:none;
+}
+
+.shellContentBody :where(
+  .controlCenterCommandContext,
+  .mediaOpsCommandContext,
+  .dataSourcesCommandContext,
+  .csCommandContext,
+  .cxExchangeCommandContext,
+  .cxStandaloneCommandContext,
+  .competitorSourcesCommandContext,
+  .cciCommandContext
+) :where(span, p){
+  display:none;
+}
+
+.shellContentBody :where(
+  .controlCenterCommandContext,
+  .mediaOpsCommandContext,
+  .dataSourcesCommandContext,
+  .csCommandContext,
+  .cxExchangeCommandContext,
+  .cxStandaloneCommandContext,
+  .competitorSourcesCommandContext,
+  .cciCommandContext
+) h1{
+  margin:0;
+  font-size:22px;
+  line-height:1.08;
+  letter-spacing:0;
+}
+
+.shellContentBody :where(
+  .controlCenterCommandControls,
+  .mediaOpsActions,
+  .dataSourcesCommandControls,
+  .csCommandControls,
+  .cxExchangeCommandControls,
+  .cxStandaloneCommandControls,
+  .competitorSourcesCommandControls,
+  .cciCommandControls
+){
+  align-items:center;
+}
+
+.shellContentBody .cs-healthHero{
+  padding:12px;
+  border-radius:10px;
+}
+
+.shellContentBody .cs-healthHero h2{
+  font-size:22px;
+  line-height:1.12;
+  letter-spacing:0;
+}
+
+.shellContentBody .cs-healthHero p{
+  max-width:760px;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.shellContentBody .dataSourcesPage{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.shellContentBody .dataSourcesCommandHeader{
+  min-height:52px;
+  margin:0 auto 8px;
+  padding:8px 10px;
+  border-radius:8px;
+}
+
+.shellContentBody .dataSourcesCommandContext span,
+.shellContentBody .dataSourcesCommandContext p{
+  display:none;
+}
+
+.shellContentBody .dataSourcesCommandContext h1{
+  margin:0;
+  font-size:21px;
+  line-height:1.1;
+  letter-spacing:0;
+}
+
+.shellContentBody .dataSourcesSegmentedTabs{
+  border-radius:8px;
+}
+
+.shellContentBody .dataSourcesSegmentedTabs button,
+.shellContentBody .dataSourcesCommandControls .btn{
+  min-height:30px;
+  border-radius:7px;
+  font-size:12px;
+}
+
+.shellContentBody .cs-page{
+  gap:8px;
+}
+
+.shellContentBody .cs-providers{
+  gap:8px;
+}
+
+.shellContentBody .cs-providerCard{
+  border-radius:10px;
+  padding:10px 12px;
+  background:var(--card);
+}
+
+.shellContentBody .cs-providerHead{
+  align-items:center;
+  min-height:42px;
+  padding-bottom:8px;
+  border-bottom:1px solid var(--line);
+}
+
+.shellContentBody .cs-providerTitleBlock h3{
+  font-size:20px;
+  line-height:1.1;
+}
+
+.shellContentBody .cs-providerTitleBlock p{
+  margin-top:3px;
+}
+
+.shellContentBody .cs-providerSection{
+  margin-top:10px;
+}
+
+.shellContentBody .cs-sectionHead{
+  align-items:center;
+  gap:10px;
+}
+
+.shellContentBody .cs-sectionHead strong{
+  display:block;
+  margin-top:2px;
+  color:var(--text);
+  font-size:14px;
+  line-height:1.2;
+  font-weight:900;
+}
+
+.shellContentBody .cs-offerBox{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:center;
+  gap:10px;
+  max-width:420px;
+  margin-top:8px;
+  padding:8px 10px;
+  border-radius:8px;
+}
+
+.shellContentBody .cs-storeEmpty{
+  min-height:86px;
+  margin-top:8px;
+  padding:12px;
+  border:1px dashed var(--line);
+  border-radius:8px;
+  background:var(--surface-1);
+}
+
+.shellContentBody .cs-storeEmpty strong{
+  font-size:14px;
+  line-height:1.2;
+}
+
+.shellContentBody .cs-storeEmpty p{
+  max-width:560px;
+  margin-top:6px;
+  font-size:12px;
+  line-height:1.35;
+}
+
+@media (width<=980px){
+  .shellContentBody .productWorkspaceLayout.workspaceFrameThree,
+  .shellContentBody .pg-pageModern .pg-grid,
+  .shellContentBody .accessPageModern .accessWorkspace{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .productWorkspaceLayout .workspaceFrameSidebar,
+  .shellContentBody .pg-pageModern .pg-left,
+  .shellContentBody .accessPageModern .accessWorkspace .accessSidebar{
+    min-height:auto;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+}
+
+@media (max-width: 700px){
+  .shellContentBody .dataSourcesPage,
+  .shellContentBody .dataSourcesCommandHeader,
+  .shellContentBody .dataSourcesCommandControls,
+  .shellContentBody .cs-page,
+  .shellContentBody .cs-providers,
+  .shellContentBody .cs-providerCard,
+  .shellContentBody .cs-providerCard.isSummary,
+  .shellContentBody .cs-providerSection{
+    min-width:0;
+    width:100%;
+    max-width:100%;
+  }
+
+  .shellContentBody .dataSourcesCommandControls{
+    overflow:hidden;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+
+  .shellContentBody .dataSourcesSegmentedTabs{
+    display:flex;
+    flex:1 0 100%;
+    width:100%;
+    max-width:100%;
+    overflow-x:auto;
+    justify-content:flex-start;
+    padding:4px;
+    scroll-snap-type:x proximity;
+    scrollbar-width:thin;
+  }
+
+  .shellContentBody .dataSourcesSegmentedTabs button{
+    flex:0 0 auto;
+    min-width:max-content;
+    scroll-snap-align:start;
+  }
+
+  .shellContentBody .dataSourcesCommandControls > .btn{
+    flex:1 1 calc(50% - 4px);
+    justify-content:center;
+  }
+
+  .shellContentBody .cs-providerCard.isSummary{
+    grid-template-columns:minmax(0, 1fr);
+  }
+
+  .shellContentBody .cs-providerCard.isSummary .cs-providerHead{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .dictTableScroll{
+    overflow:visible;
+  }
+
+  .shellContentBody .dictTable{
+    display:block;
+    min-width:0;
+    border-collapse:separate;
+  }
+
+  .shellContentBody .dictTable thead{
+    display:none;
+  }
+
+  .shellContentBody .dictTable tbody{
+    display:grid;
+    gap:10px;
+  }
+
+  .shellContentBody .dictTable tr{
+    display:block;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--card);
+    overflow:hidden;
+  }
+
+  .shellContentBody .dictTable td{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+    text-align:right;
+  }
+
+  .shellContentBody .dictTable td:first-child{
+    display:block;
+    text-align:left;
+    padding:14px 12px;
+  }
+
+  .shellContentBody .dictTable td:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .dictTable td:not(:first-child)::before{
+    content:"";
+    color:var(--muted);
+    font-size:10px;
+    line-height:1.2;
+    font-weight:950;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .shellContentBody .dictTable td:nth-child(2)::before{ content:"Группа"; }
+  .shellContentBody .dictTable td:nth-child(3)::before{ content:"Тип"; }
+  .shellContentBody .dictTable td:nth-child(4)::before{ content:"Значения"; }
+  .shellContentBody .dictTable td:nth-child(5)::before{ content:"Категории"; }
+  .shellContentBody .dictTable td:nth-child(6)::before{ content:"Обновлен"; }
+  .shellContentBody .dictTable td:nth-child(7)::before{ content:"Действия"; }
+
+  .shellContentBody .dict-rowActions{
+    justify-content:flex-end;
+    flex-wrap:wrap;
+  }
+
+  .shellContentBody .mediaOpsMetrics.metricGrid{
+    grid-template-columns:minmax(0, 1fr);
+  }
+
+  .shellContentBody .mediaOpsMetrics .metricCard{
+    min-width:0;
+    min-height:0;
+    padding:14px;
+  }
+
+  .shellContentBody .mediaOpsMetrics .metricCardLabel,
+  .shellContentBody .mediaOpsMetrics .metricCardMeta{
+    max-width:100%;
+    overflow-wrap:anywhere;
+    white-space:normal;
+  }
+
+  .shellContentBody .mediaOpsTableCard{
+    padding:12px;
+  }
+
+  .shellContentBody .mediaOpsTableHeader{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .shellContentBody .mediaOpsTableActions{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .mediaOpsTableActions .btn,
+  .shellContentBody .mediaOpsTableActions button{
+    width:100%;
+  }
+
+  .shellContentBody .mediaOpsFilters{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .mediaOpsFilters button{
+    justify-content:space-between;
+    width:100%;
+  }
+
+  .shellContentBody .mediaOpsTable{
+    display:grid;
+    gap:10px;
+    border:0;
+    border-radius:0;
+    overflow:visible;
+  }
+
+  .shellContentBody .mediaOpsTableRow.isHead{
+    display:none;
+  }
+
+  .shellContentBody .mediaOpsTableRow{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:0;
+    min-height:0;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--card);
+    overflow:hidden;
+  }
+
+  .shellContentBody .mediaOpsTableRow > *{
+    min-width:0;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .mediaOpsTableRow > *:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .mediaOpsTableRow > *:not(.mediaOpsSkuCell){
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    text-align:right;
+  }
+
+  .shellContentBody .mediaOpsTableRow > *:not(.mediaOpsSkuCell)::before{
+    color:var(--muted);
+    font-size:10px;
+    line-height:1.2;
+    font-weight:950;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+
+  .shellContentBody .mediaOpsTableRow > span:nth-of-type(1)::before{ content:"Категория"; }
+  .shellContentBody .mediaOpsTableRow > span:nth-of-type(2)::before{ content:"Медиа"; }
+  .shellContentBody .mediaOpsTableRow > span:nth-of-type(3)::before{ content:"Документы"; }
+  .shellContentBody .mediaOpsTableRow > .badge::before{ content:"Статус"; }
+
+  .shellContentBody .mediaOpsTableRow > a.btn{
+    justify-content:center;
+  }
+
+  .shellContentBody .orgAdminCommandControls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    overflow:hidden;
+  }
+
+  .shellContentBody .orgAdminSegmentedTabs{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    flex:1 0 100%;
+    width:100%;
+    max-width:100%;
+    overflow:visible;
+    justify-content:stretch;
+    padding:4px;
+  }
+
+  .shellContentBody .orgAdminSegmentedTabs button{
+    min-width:0;
+    width:100%;
+  }
+
+  .shellContentBody .orgAdminCommandControls > .btn,
+  .shellContentBody .orgAdminCommandControls > button{
+    flex:1 1 100%;
+    justify-content:center;
+  }
+
+  .shellContentBody .orgAdminPersonRow{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr);
+    align-items:start;
+    justify-content:stretch;
+    gap:10px;
+    padding:12px;
+    text-align:left;
+  }
+
+  .shellContentBody .orgAdminPersonIdentity{
+    width:100%;
+    min-width:0;
+    align-items:center;
+  }
+
+  .shellContentBody .orgAdminPersonIdentity > span:last-child{
+    min-width:0;
+  }
+
+  .shellContentBody .orgAdminPersonIdentity strong,
+  .shellContentBody .orgAdminPersonIdentity small{
+    display:block;
+    min-width:0;
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  .shellContentBody .orgAdminPersonMeta{
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:8px;
+    flex-wrap:wrap;
+    color:var(--muted);
+  }
+
+  .shellContentBody .orgAdminPersonMeta > *{
+    min-width:0;
+  }
+}
+
+/* Production mobile density pass for SKU workspace and export flow. */
+@media (max-width: 700px){
+  .shellContentBody .productWorkspaceTopbar,
+  .shellContentBody .productWorkspaceCompactTopbar{
+    gap:10px;
+    padding:14px 14px 12px;
+  }
+
+  .shellContentBody .productWorkspaceTopbarMain{
+    gap:6px;
+  }
+
+  .shellContentBody .productWorkspaceEyebrow{
+    font-size:9px;
+    letter-spacing:.045em;
+  }
+
+  .shellContentBody .productWorkspaceHeadingRow{
+    gap:8px;
+  }
+
+  .shellContentBody .productWorkspaceHeadingRow h1,
+  .shellContentBody .productWorkspaceCompactTopbar .productWorkspaceHeadingRow h1{
+    font-size:30px;
+    line-height:.98;
+    max-width:100%;
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  .shellContentBody .productWorkspaceMetaRow{
+    gap:6px;
+    font-size:13px;
+    line-height:1.25;
+  }
+
+  .shellContentBody .productWorkspaceMetaRow span{
+    display:block;
+    flex:1 1 100%;
+    min-width:0;
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  .shellContentBody .productWorkspaceTopbarActions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    width:100%;
+    gap:8px;
+  }
+
+  .shellContentBody .productWorkspaceTopbarActions .btn,
+  .shellContentBody .productWorkspaceTopbarActions button,
+  .shellContentBody .productWorkspaceTopbarActions a{
+    width:100%;
+    min-height:38px;
+    justify-content:center;
+    padding-inline:10px;
+    font-size:13px;
+  }
+
+  .shellContentBody .productWorkspaceTopbarActions .btn:last-child,
+  .shellContentBody .productWorkspaceTopbarActions a:last-child{
+    grid-column:1 / -1;
+  }
+
+  .shellContentBody .productWorkspaceNav{
+    padding:6px 8px;
+  }
+
+  .shellContentBody .productWorkspaceNavList{
+    gap:6px;
+    padding-bottom:4px;
+  }
+
+  .shellContentBody .productWorkspaceNavItem{
+    min-width:max-content;
+    min-height:34px;
+    padding:7px 12px;
+  }
+
+  .shellContentBody .productWorkspaceNavItem strong{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:nowrap;
+  }
+
+  .shellContentBody .productWorkspaceCreatedGuide{
+    grid-template-columns:1fr;
+    gap:10px;
+    padding:14px;
+  }
+
+  .shellContentBody .productWorkspaceCreatedGuide .btn,
+  .shellContentBody .productWorkspaceCreatedGuide button{
+    width:100%;
+  }
+
+  .shellContentBody .productCompetitorSourceHead{
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .shellContentBody .productCompetitorSourceHead strong,
+  .shellContentBody .productCompetitorSourceBest strong{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  .shellContentBody .cxExchangeCommandHeader{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    min-height:0;
+    padding:12px;
+  }
+
+  .shellContentBody .cxExchangeCommandContext h1{
+    font-size:28px;
+    line-height:1;
+  }
+
+  .shellContentBody .cxExchangeCommandControls{
+    width:100%;
+    justify-content:stretch;
+  }
+
+  .shellContentBody .cxExchangeSegmentedTabs{
+    width:100%;
+  }
+
+  .shellContentBody .cxExchangeSegmentedTabs button{
+    flex:1 1 0;
+  }
+
+  .shellContentBody .cx-scopeModePanel{
+    grid-template-columns:1fr;
+    align-items:stretch;
+    gap:10px;
+    padding:12px;
+  }
+
+  .shellContentBody .cx-scopeModePanel span{
+    max-width:none;
+  }
+
+  .shellContentBody .cx-scopeModeSwitch{
+    width:100%;
+  }
+
+  .shellContentBody .cx-scopeModeSwitch button{
+    flex:1 1 0;
+  }
+
+  .shellContentBody .cx-summaryStrip{
+    grid-template-columns:1fr;
+  }
+
+  .shellContentBody .cx-stripMetric{
+    min-height:0;
+    padding:12px 14px;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .cx-stripMetric:nth-child(2n){
+    border-right:0;
+  }
+
+  .shellContentBody .cx-stripMetric:nth-last-child(-n+2){
+    border-bottom:1px solid var(--line);
+  }
+
+  .shellContentBody .cx-stripMetric:last-child{
+    border-bottom:0;
+  }
+
+  .shellContentBody .cx-stripMetric b{
+    font-size:24px;
+  }
+}
+
+@media (max-width: 700px){
+  .shellContentBody .dataSourcesCommandControls{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    overflow:visible;
+  }
+
+  .shellContentBody .dataSourcesSegmentedTabs{
+    grid-column:1 / -1;
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    width:100%;
+    max-width:100%;
+    overflow:visible;
+  }
+
+  .shellContentBody .dataSourcesSegmentedTabs button{
+    width:100%;
+    min-width:0;
+    justify-content:center;
+  }
+
+  .shellContentBody .dataSourcesCommandControls > .btn{
+    width:100%;
+    min-width:0;
+    justify-content:center;
+  }
+}

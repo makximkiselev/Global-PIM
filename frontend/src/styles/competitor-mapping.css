@@ -13,8 +13,6 @@
   --page-content-width: min(1920px, calc(100vw - 48px));
 }
 
-.sm-pageRoot > .page-header,
-.sm-pageRoot > .page-tabs,
 .sm-pageRoot > .card{
   max-width:var(--page-content-width);
   width:100%;
@@ -24,18 +22,6 @@
 
 .sm-pageTabs{
   margin-bottom:2px;
-}
-
-.sm-pageTabs.page-tabs{
-  justify-content:flex-start;
-  flex-wrap:wrap;
-}
-
-.sm-pageTabs .page-tab{
-  background:rgba(255,255,255,.9);
-  min-height:38px;
-  padding:9px 13px;
-  border-radius:13px;
 }
 
 .sm-shellHead,
@@ -1003,6 +989,193 @@
 }
 
 /* =========================
+   COMPETITOR DISCOVERY
+========================= */
+
+.competitorDiscovery{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  min-width:0;
+}
+
+.competitorDiscoveryHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--card);
+  padding:16px;
+}
+
+.competitorDiscoveryActions,
+.competitorDiscoveryInspectorActions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.competitorDiscoveryMetrics.metricGrid{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+
+.competitorDiscoverySources{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+.competitorDiscoverySource{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--card);
+  padding:12px;
+}
+
+.competitorDiscoverySource > div{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width:0;
+}
+
+.competitorDiscoverySource strong{
+  color:var(--text);
+  font-size:14px;
+  line-height:1.2;
+}
+
+.competitorDiscoverySource span{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+
+.competitorDiscoveryNotice,
+.competitorDiscoveryError{
+  border-radius:14px;
+  padding:12px 14px;
+  font-size:13px;
+  font-weight:750;
+  line-height:1.4;
+}
+
+.competitorDiscoveryNotice{
+  border:1px solid rgba(var(--brand-rgb),.22);
+  background:rgba(var(--brand-rgb),.07);
+  color:var(--text);
+}
+
+.competitorDiscoveryError{
+  border:1px solid rgba(220,38,38,.24);
+  background:#fef2f2;
+  color:#991b1b;
+}
+
+.competitorDiscoveryWorkspace{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(300px,360px);
+  gap:14px;
+  align-items:start;
+}
+
+.competitorDiscoveryTablePanel{
+  min-width:0;
+  overflow:auto;
+}
+
+.competitorDiscoveryTablePanel .dataTable{
+  min-width:760px;
+}
+
+.competitorDiscoveryRowButton{
+  display:flex;
+  width:100%;
+  min-width:0;
+  flex-direction:column;
+  gap:4px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+
+.competitorDiscoveryRowButton strong{
+  color:var(--text);
+  font-size:14px;
+  line-height:1.2;
+}
+
+.competitorDiscoveryRowButton span{
+  max-width:520px;
+  overflow:hidden;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.25;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.competitorDiscoveryInspector.inspectorPanel{
+  min-width:0;
+}
+
+.competitorDiscoveryFacts{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.competitorDiscoveryFacts > div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px solid var(--line);
+  padding-bottom:10px;
+}
+
+.competitorDiscoveryFacts span{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:800;
+}
+
+.competitorDiscoveryFacts strong{
+  min-width:0;
+  text-align:right;
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+
+.competitorDiscoveryFacts .competitorDiscoveryReasons{
+  align-items:flex-start;
+  flex-direction:column;
+}
+
+.competitorDiscoveryReasons em{
+  width:100%;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface-2);
+  color:var(--text);
+  font-size:12px;
+  font-style:normal;
+  padding:8px 10px;
+}
+
+/* =========================
    RESPONSIVE
 ========================= */
 
@@ -1028,4 +1201,79 @@
 
   .cm-title{ font-size:17px; }
   .cm-sub{ font-size:12px; }
+}
+
+@media (max-width: 700px){
+  .competitorDiscoveryHeader{
+    flex-direction:column;
+    gap:12px;
+    padding:14px;
+  }
+
+  .competitorDiscoveryActions{
+    width:100%;
+  }
+
+  .competitorDiscoveryActions .btn,
+  .competitorDiscoveryActions button{
+    flex:1 1 0;
+    min-width:0;
+  }
+
+  .competitorDiscoveryMetrics.metricGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .competitorDiscoverySources{
+    grid-template-columns:1fr;
+  }
+
+  .competitorDiscoverySource{
+    min-height:0;
+  }
+
+  .competitorDiscoveryWorkspace{
+    grid-template-columns:1fr;
+  }
+
+  .competitorDiscoveryTablePanel{
+    overflow:visible;
+  }
+
+  .competitorDiscoveryTablePanel .dataTable{
+    min-width:0;
+  }
+
+  .competitorDiscoveryTablePanel .dataTableHead{
+    display:none;
+  }
+
+  .competitorDiscoveryTablePanel .dataTableRow{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    min-height:0;
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px;
+    margin-bottom:10px;
+  }
+
+  .competitorDiscoveryTablePanel .dataTableRow > div{
+    min-width:0;
+  }
+
+  .competitorDiscoveryTablePanel .dataTableEmpty{
+    border:1px dashed var(--line);
+    border-radius:14px;
+    padding:16px;
+    color:var(--muted);
+    line-height:1.45;
+  }
+
+  .competitorDiscoveryRowButton span{
+    max-width:none;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
 }

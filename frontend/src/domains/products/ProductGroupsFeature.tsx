@@ -499,6 +499,10 @@ export default function ProductGroupsFeature() {
   const assignCreateDuplicate = !!assignCreateNorm && groupNameSet.has(assignCreateNorm);
   const sharedFactsPreview = (familyFacts?.shared_facts || []).slice(0, 8);
   const variantOverridesPreview = (familyFacts?.variant_overrides || []).slice(0, 8);
+  const groupedSkuCount = useMemo(
+    () => (groups || []).reduce((sum, group) => sum + Number(group.count || 0), 0),
+    [groups],
+  );
   const selectedGroupProductIds = useMemo(
     () => (groupDetails?.items || []).map((item) => String(item.id || "").trim()).filter(Boolean),
     [groupDetails?.items],
@@ -730,7 +734,10 @@ export default function ProductGroupsFeature() {
 
     return (
       <div key={node.id} className="pg-treeRowWrap">
-        <div className={`pg-treeNodeLine ${addCategoryId === node.id ? "active" : ""}`} style={{ paddingLeft: 8 + level * 14 }}>
+        <div
+          className={`pg-treeNodeLine ${addCategoryId === node.id ? "active" : ""}`}
+          style={{ ["--tree-level" as never]: level }}
+        >
           <button
             type="button"
             className={`pg-treeCaret ${hasChildren ? "" : "empty"}`}
@@ -865,15 +872,16 @@ export default function ProductGroupsFeature() {
   }
 
   return (
-    <div className="pg-page page-shell">
-      <div className="page-header">
-        <div className="page-header-main">
-          <div className="page-title">Группы товаров</div>
-          <div className="page-subtitle">Объединяйте товары в группы и управляйте вариантами.</div>
+    <div className="pg-page page-shell pg-pageModern">
+      <div className="pgCommandHeader">
+        <div className="pgCommandTitleBlock">
+          <div className="pgCommandEyebrow">Каталог / Семейства SKU</div>
+          <h1>Группы товаров</h1>
+          <p>Собирайте варианты одной линейки, проверяйте общие факты и отличия перед наполнением и экспортом.</p>
         </div>
-        <div className="page-header-actions">
+        <div className="pgCommandActions">
           <Link className="btn" to={orgPath("/catalog")}>
-            ← В каталог
+            К каталогу
           </Link>
           <button className="btn" type="button" onClick={refreshCurrentTab} disabled={groupsLoading || ungroupedLoading}>
             {groupsLoading || ungroupedLoading ? "Обновляю…" : "Обновить"}
@@ -881,12 +889,37 @@ export default function ProductGroupsFeature() {
         </div>
       </div>
 
-      <div className="page-tabs">
-        <button className={`page-tab ${tab === TAB_GROUPS ? "active" : ""}`} onClick={() => setTab(TAB_GROUPS)}>
-          Группы товаров
+      <div className="pgCommandContextBar" aria-label="Контекст групп товаров">
+        <div className="pgCommandContextItem">
+          <span>Группы</span>
+          <strong>{groups.length}</strong>
+          <p>{groupsLoading ? "Загружаются" : "семейств SKU"}</p>
+        </div>
+        <div className="pgCommandContextItem">
+          <span>Сгруппировано</span>
+          <strong>{groupedSkuCount}</strong>
+          <p>SKU в семействах</p>
+        </div>
+        <div className="pgCommandContextItem">
+          <span>Без группы</span>
+          <strong>{ungrouped.length}</strong>
+          <p>{ungroupedLoading ? "Загружается" : "нужно разобрать"}</p>
+        </div>
+        <div className="pgCommandContextItem isWide">
+          <span>Открытая группа</span>
+          <strong>{groupDetails?.group?.name || "Не выбрана"}</strong>
+          <p>{groupDetails ? `${groupDetails.items.length} SKU, ${variantSelected.length || groupDetails.group.variant_param_ids?.length || 0} осей вариантов` : "Выберите группу слева"}</p>
+        </div>
+      </div>
+
+      <div className="pgSegmentedTabs" role="tablist" aria-label="Режим работы с группами товаров">
+        <button className={`pgSegmentedTab ${tab === TAB_GROUPS ? "active" : ""}`} onClick={() => setTab(TAB_GROUPS)} role="tab" aria-selected={tab === TAB_GROUPS}>
+          <span>Группы</span>
+          <strong>{groups.length}</strong>
         </button>
-        <button className={`page-tab ${tab === TAB_UNGROUPED ? "active" : ""}`} onClick={() => setTab(TAB_UNGROUPED)}>
-          Товары без группы
+        <button className={`pgSegmentedTab ${tab === TAB_UNGROUPED ? "active" : ""}`} onClick={() => setTab(TAB_UNGROUPED)} role="tab" aria-selected={tab === TAB_UNGROUPED}>
+          <span>Без группы</span>
+          <strong>{filteredUngrouped.length}</strong>
         </button>
       </div>
 
@@ -995,8 +1028,25 @@ export default function ProductGroupsFeature() {
 
           <div className="pg-rightStack">
             {!selectedGroupId ? (
-              <div className="card pg-right">
-                <div className="muted">Выберите группу, чтобы увидеть товары.</div>
+              <div className="card pg-right pg-emptySelection">
+                <div>
+                  <span className="pg-sectionLabel">Следующее действие</span>
+                  <strong>Выберите группу SKU</strong>
+                  <p>
+                    Раскройте раздел слева и выберите конкретную линейку. Здесь появятся товары группы,
+                    общие факты, отличающиеся параметры и действия для выгрузки.
+                  </p>
+                </div>
+                <div className="pg-emptySelectionActions">
+                  <button
+                    className="btn primary"
+                    type="button"
+                    onClick={() => setGroupsTreeExpanded(Object.fromEntries(groupsByRoot.map((bucket) => [bucket.key, true])))}
+                  >
+                    Развернуть группы
+                  </button>
+                  <Link className="btn" to={orgPath("/catalog")}>Открыть каталог</Link>
+                </div>
               </div>
             ) : (
               <>
@@ -1332,12 +1382,12 @@ export default function ProductGroupsFeature() {
       ) : null}
 
       {addModalOpen ? (
-        <div className="pg-modalBackdrop" onClick={() => setAddModalOpen(false)}>
-          <div className="pg-modal pg-modalWide" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setAddModalOpen(false)}>
+          <div className="pg-modal pg-modalWide" role="dialog" aria-modal="true" aria-labelledby="group-add-products-title" aria-describedby="group-add-products-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">Добавить товары в группу</div>
-                <div className="muted">Поиск по категориям и товарам без группы.</div>
+                <div className="card-title" id="group-add-products-title">Добавить товары в группу</div>
+                <div className="muted" id="group-add-products-subtitle">Поиск по категориям и товарам без группы.</div>
               </div>
               <button className="btn" type="button" onClick={() => setAddModalOpen(false)}>
                 Закрыть
@@ -1349,12 +1399,12 @@ export default function ProductGroupsFeature() {
       ) : null}
 
       {variantModalOpen ? (
-        <div className="pg-modalBackdrop" onClick={() => setVariantModalOpen(false)}>
-          <div className="pg-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setVariantModalOpen(false)}>
+          <div className="pg-modal" role="dialog" aria-modal="true" aria-labelledby="group-variant-params-title" aria-describedby="group-variant-params-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">Параметры вариантов группы</div>
-                <div className="muted">Берутся из мастер-шаблонов, сервисные поля скрыты.</div>
+                <div className="card-title" id="group-variant-params-title">Параметры вариантов группы</div>
+                <div className="muted" id="group-variant-params-subtitle">Берутся из мастер-шаблонов, сервисные поля скрыты.</div>
               </div>
               <button className="btn" type="button" onClick={() => setVariantModalOpen(false)}>
                 Закрыть

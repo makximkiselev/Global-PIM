@@ -760,6 +760,127 @@ def list_organization_members(organization_id: str) -> List[Dict[str, Any]]:
     return _with_pg_retry(_run)
 
 
+def update_organization_member(
+    organization_id: str,
+    member_id: str,
+    org_role_code: str,
+    status: str = "active",
+) -> Dict[str, Any]:
+    if not ensure_control_plane_foundation():
+        raise ValueError("CONTROL_PLANE_UNAVAILABLE")
+    org_id = _normalize_text(organization_id)
+    row_id = _normalize_text(member_id)
+    role_code = _normalize_text(org_role_code)
+    next_status = _normalize_text(status) or "active"
+    if not org_id:
+        raise ValueError("ORGANIZATION_REQUIRED")
+    if not row_id:
+        raise ValueError("MEMBER_REQUIRED")
+    if role_code not in {"org_owner", "org_admin", "org_editor", "org_viewer"}:
+        raise ValueError("ORG_ROLE_INVALID")
+    if next_status not in {"active", "disabled"}:
+        raise ValueError("MEMBER_STATUS_INVALID")
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, org_role_code, status
+                FROM organization_members
+                WHERE id = %s AND organization_id = %s
+                """,
+                (row_id, org_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("MEMBER_NOT_FOUND")
+            previous_role = _normalize_text(row[2])
+            if previous_role == "org_owner" and (role_code != "org_owner" or next_status != "active"):
+                cur.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM organization_members
+                    WHERE organization_id = %s
+                      AND id <> %s
+                      AND org_role_code = 'org_owner'
+                      AND status = 'active'
+                    """,
+                    (org_id, row_id),
+                )
+                if int((cur.fetchone() or [0])[0] or 0) <= 0:
+                    raise ValueError("LAST_OWNER_REQUIRED")
+            cur.execute(
+                """
+                UPDATE organization_members
+                SET org_role_code = %s,
+                    status = %s,
+                    updated_at = NOW()
+                WHERE id = %s AND organization_id = %s
+                RETURNING id
+                """,
+                (role_code, next_status, row_id, org_id),
+            )
+        members = list_organization_members(org_id)
+        member = next((item for item in members if item["id"] == row_id), None)
+        if member is None:
+            raise ValueError("MEMBER_NOT_FOUND")
+        return member
+
+    return _with_pg_retry(_run)
+
+
+def delete_organization_member(organization_id: str, member_id: str) -> Dict[str, Any]:
+    if not ensure_control_plane_foundation():
+        raise ValueError("CONTROL_PLANE_UNAVAILABLE")
+    org_id = _normalize_text(organization_id)
+    row_id = _normalize_text(member_id)
+    if not org_id:
+        raise ValueError("ORGANIZATION_REQUIRED")
+    if not row_id:
+        raise ValueError("MEMBER_REQUIRED")
+
+    def _run() -> Dict[str, Any]:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, org_role_code
+                FROM organization_members
+                WHERE id = %s AND organization_id = %s
+                """,
+                (row_id, org_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("MEMBER_NOT_FOUND")
+            role_code = _normalize_text(row[2])
+            if role_code == "org_owner":
+                cur.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM organization_members
+                    WHERE organization_id = %s
+                      AND id <> %s
+                      AND org_role_code = 'org_owner'
+                      AND status = 'active'
+                    """,
+                    (org_id, row_id),
+                )
+                if int((cur.fetchone() or [0])[0] or 0) <= 0:
+                    raise ValueError("LAST_OWNER_REQUIRED")
+            cur.execute(
+                """
+                DELETE FROM organization_members
+                WHERE id = %s AND organization_id = %s
+                """,
+                (row_id, org_id),
+            )
+        return {"id": row_id, "organization_id": org_id}
+
+    return _with_pg_retry(_run)
+
+
 def list_organization_invites(organization_id: str) -> List[Dict[str, Any]]:
     if not ensure_control_plane_foundation():
         raise ValueError("CONTROL_PLANE_UNAVAILABLE")

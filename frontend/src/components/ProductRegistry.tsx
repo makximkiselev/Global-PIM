@@ -68,6 +68,7 @@ type Props = {
   variant?: "full" | "catalogClean";
   scopeCategoryId?: string;
   scopeTitle?: string;
+  scopeIncludeDescendants?: boolean;
   paramPrefix?: string;
   showHeader?: boolean;
   prefetchCategoryIds?: string[];
@@ -79,6 +80,7 @@ export default function ProductRegistry({
   variant = "full",
   scopeCategoryId = "",
   scopeTitle = "Товары",
+  scopeIncludeDescendants = false,
   paramPrefix = "",
   showHeader = true,
   prefetchCategoryIds = [],
@@ -100,6 +102,7 @@ export default function ProductRegistry({
   const [moveLoading, setMoveLoading] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [deleteProductId, setDeleteProductId] = useState("");
+  const [deleteProductTarget, setDeleteProductTarget] = useState<ProductItem | null>(null);
 
   const query = searchParams.get(`${paramPrefix}q`) || "";
   const parentCategoryId = scopeCategoryId ? "" : searchParams.get(`${paramPrefix}parent`) || "";
@@ -164,6 +167,7 @@ export default function ProductRegistry({
     if (query) params.set("q", query);
     if (scopeCategoryId || overrides?.category) {
       params.set("category", overrides?.category || scopeCategoryId);
+      if (!scopeIncludeDescendants) params.set("exact", "1");
     } else {
       if (parentCategoryId) params.set("parent", parentCategoryId);
       if (subCategoryId) params.set("sub", subCategoryId);
@@ -207,6 +211,40 @@ export default function ProductRegistry({
       productsRegistryCache.set(requestKey, { ts: Date.now(), data });
       applyPayload(data);
     } catch (e) {
+      if (isCatalogClean && scopeCategoryId) {
+        try {
+          const fallbackParams = new URLSearchParams();
+          fallbackParams.set("category_ids", scopeCategoryId);
+          fallbackParams.set("include_descendants", scopeIncludeDescendants ? "1" : "0");
+          fallbackParams.set("limit", "200");
+          if (query) fallbackParams.set("q", query);
+          const [catalogNodes, fallbackProducts] = await Promise.all([
+            api<{ nodes: CatalogNode[] }>("/catalog/nodes"),
+            api<{ items: ProductItem[] }>(`/catalog/products/search?${fallbackParams.toString()}`),
+          ]);
+          let rows = Array.isArray(fallbackProducts.items) ? fallbackProducts.items : [];
+          if (groupFilter === "__ungrouped__") rows = rows.filter((row) => !String(row.group_id || "").trim());
+          else if (groupFilter) rows = rows.filter((row) => String(row.group_id || "").trim() === groupFilter);
+          if (viewFilter === "no_photo") rows = rows.filter((row) => !String(row.preview_url || "").trim());
+          if (viewFilter === "no_group") rows = rows.filter((row) => !String(row.group_id || "").trim());
+          const fallbackData: ProductsPageDataResp = {
+            ok: true,
+            products: rows.slice((currentPage - 1) * DEFAULT_PAGE_SIZE, currentPage * DEFAULT_PAGE_SIZE),
+            total: rows.length,
+            page: currentPage,
+            page_size: DEFAULT_PAGE_SIZE,
+            nodes: Array.isArray(catalogNodes.nodes) ? catalogNodes.nodes : [],
+            groups: [],
+            templates: [],
+          };
+          productsRegistryCache.set(requestKey, { ts: Date.now(), data: fallbackData });
+          applyPayload(fallbackData);
+          setLoadError("");
+          return;
+        } catch {
+          // Fall through to the primary error below.
+        }
+      }
       if (!cached) {
         setLoadError((e as Error).message || "Не удалось загрузить список товаров");
       }
@@ -239,10 +277,10 @@ export default function ProductRegistry({
 
   useEffect(() => {
     void load();
-  }, [query, scopeCategoryId, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, viewFilter, currentPage, isCatalogClean]);
+  }, [query, scopeCategoryId, scopeIncludeDescendants, parentCategoryId, subCategoryId, groupFilter, templateFilter, marketFilter, ozonFilter, viewFilter, currentPage, isCatalogClean]);
 
   useEffect(() => {
-    if (!scopeCategoryId || !prefetchCategoryIds.length) return;
+    if (!scopeCategoryId || !scopeIncludeDescendants || !prefetchCategoryIds.length) return;
     const ids = prefetchCategoryIds.filter((id) => id && id !== scopeCategoryId).slice(0, 8);
     if (!ids.length) return;
     let cancelled = false;
@@ -407,13 +445,12 @@ export default function ProductRegistry({
   async function deleteProduct(product: ProductItem) {
     const productId = String(product.id || "").trim();
     if (!productId) return;
-    const title = String(product.title || product.name || productId);
-    if (!window.confirm(`Удалить товар "${title}" безвозвратно?`)) return;
     setDeleteProductId(productId);
     setLoadError("");
     try {
       await api(`/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
       productsRegistryCache.clear();
+      setDeleteProductTarget(null);
       await load();
       await onProductMoved?.();
     } catch (error) {
@@ -426,21 +463,22 @@ export default function ProductRegistry({
   return (
     <div className={`products-registry ${mode === "embedded" ? "isEmbedded" : ""} ${isCatalogClean ? "isCatalogClean" : ""}`}>
       {showHeader ? (
-        <div className="page-header">
-          <div className="page-header-main">
-            <div className="page-title">{scopeTitle}</div>
-            <div className="page-subtitle">Список товаров и статусы подготовки к выгрузке.</div>
+        <header className="productsRegistryCommandHeader">
+          <div className="productsRegistryCommandContext">
+            <span>Каталог / товары</span>
+            <h1>{scopeTitle}</h1>
+            <p>Список SKU, фильтры, группы и готовность к выгрузке.</p>
           </div>
-          <div className="page-header-actions">
+          <div className="productsRegistryCommandActions">
             <Link className="btn primary" to={orgPath("/products/new")}>Добавить товар</Link>
             <button className="btn" type="button" onClick={() => void load()} disabled={loading}>
               {loading ? "Обновляю..." : "Обновить"}
             </button>
           </div>
-        </div>
+        </header>
       ) : null}
 
-      {loadError ? <div className="card" style={{ color: "#b42318", fontWeight: 700 }}>{loadError}</div> : null}
+      {loadError ? <div className="card productsRegistryError">{loadError}</div> : null}
 
       <div className="card products-toolbar">
         <div className="products-toolbarTop">
@@ -543,7 +581,7 @@ export default function ProductRegistry({
                 <th className="products-colSku">SKU GT</th>
                 <th>Товар</th>
                 <th className="products-colGroup">Группа</th>
-                <th className="products-colAction">Действие</th>
+                <th className="products-colAction"></th>
               </tr>
             ) : (
               <>
@@ -606,17 +644,17 @@ export default function ProductRegistry({
                         <Link to={orgPath(`/products/${encodeURIComponent(p.id)}`)} className="btn sm products-openBtn">
                           Открыть
                         </Link>
-                        <button className="btn sm products-openBtn" type="button" onClick={() => openMoveDialog(p)}>
-                          Переместить
-                        </button>
-                        <button
-                          className="btn sm products-openBtn"
-                          type="button"
-                          onClick={() => void deleteProduct(p)}
-                          disabled={deleteProductId === p.id}
-                        >
-                          {deleteProductId === p.id ? "Удаляю..." : "Удалить"}
-                        </button>
+                        <span className="products-secondaryActions">
+                          <button type="button" onClick={() => openMoveDialog(p)}>Переместить</button>
+                          <button
+                            className="isDanger"
+                            type="button"
+                            onClick={() => setDeleteProductTarget(p)}
+                            disabled={deleteProductId === p.id}
+                          >
+                            {deleteProductId === p.id ? "Удаляю..." : "Удалить"}
+                          </button>
+                        </span>
                       </div>
                     </td>
                   ) : (
@@ -709,6 +747,26 @@ export default function ProductRegistry({
               </button>
               <button className="btn primary" type="button" onClick={submitMoveProduct} disabled={moveLoading || !moveCategoryId}>
                 {moveLoading ? "Перемещаю..." : "Переместить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isCatalogClean && deleteProductTarget ? (
+        <div className="products-moveOverlay" onMouseDown={() => !deleteProductId && setDeleteProductTarget(null)}>
+          <div className="products-moveDialog" onMouseDown={(event) => event.stopPropagation()}>
+            <div>
+              <div className="products-moveKicker">Удаление SKU</div>
+              <h3>{String(deleteProductTarget.title || deleteProductTarget.name || deleteProductTarget.id)}</h3>
+              <p>Товар уйдет из каталога, групп, рабочих привязок и очереди выгрузки.</p>
+            </div>
+            <div className="products-moveActions">
+              <button className="btn" type="button" onClick={() => setDeleteProductTarget(null)} disabled={!!deleteProductId}>
+                Отмена
+              </button>
+              <button className="btn danger" type="button" onClick={() => void deleteProduct(deleteProductTarget)} disabled={!!deleteProductId}>
+                {deleteProductId ? "Удаляю..." : "Удалить товар"}
               </button>
             </div>
           </div>

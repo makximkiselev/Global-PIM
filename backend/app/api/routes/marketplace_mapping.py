@@ -1044,7 +1044,7 @@ def _record_mapping_review_issue(
         "changed_count": int(changed_count or 0),
         "title": title,
         "text": text,
-        "to": f"/sources-mapping?tab=params&category={catalog_category_id}",
+        "to": f"/sources?tab=params&category={catalog_category_id}",
         "updated_at": _now_iso(),
     }
     _save_mapping_review_issues(doc)
@@ -1084,7 +1084,7 @@ def _audit_ozon_category_binding(catalog_category_id: str, provider_category_id:
         "provider_category_id": provider_id,
         "title": "Ozon-категория требует перевыбора",
         "text": "В привязке сохранена старая категория без типа Ozon. Нужно выбрать категорию Ozon заново, чтобы загрузить характеристики.",
-        "to": f"/sources-mapping?tab=sources&category={cid}",
+        "to": f"/sources?tab=sources&category={cid}",
     }
 
 
@@ -4277,7 +4277,31 @@ def mapping_attribute_details(catalog_category_id: str) -> Dict[str, Any]:
     direct_mapping = _direct_mapping_for_catalog(cid, mappings)
     cat_mapping = _effective_mapping_for_catalog(cid, mappings, parent_by_id)
     if not cat_mapping:
-        raise HTTPException(status_code=400, detail="CATEGORY_NOT_DIRECTLY_MAPPED")
+        return {
+            "ok": True,
+            "blocker_code": "CATEGORY_NOT_DIRECTLY_MAPPED",
+            "blocker_message": "Сначала сопоставьте категорию с площадками.",
+            "category": {"id": cid, "name": cat.get("name"), "path": cat.get("path")},
+            "mapping": {},
+            "mapping_meta": {
+                "direct": direct_mapping,
+                "effective": {},
+                "sources": {},
+                "inherited": False,
+            },
+            "providers": {
+                "yandex_market": {"category_id": None, "category_name": None, "params": [], "count": 0, "cached": False},
+                "ozon": {"category_id": None, "category_name": None, "params": [], "count": 0, "cached": False},
+            },
+            "rows": [],
+            "suggested_rows": [],
+            "suggested_rows_count": 0,
+            "updated_at": None,
+            "template_id": None,
+            "master_template": None,
+            "sources": {},
+            "catalog_attr_options": _catalog_attr_options_for_category(cid),
+        }
     mapping_sources = _effective_mapping_sources_for_catalog(cid, mappings, parent_by_id)
     inherited_mapping = any(source and source != cid for source in mapping_sources.values())
 

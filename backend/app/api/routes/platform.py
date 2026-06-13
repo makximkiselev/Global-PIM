@@ -20,10 +20,12 @@ from app.core.control_plane import (
     can_access_organization,
     create_organization_invite,
     create_organization_with_owner,
+    delete_organization_member,
     get_organization_provisioning_status,
     list_organization_invites,
     list_organization_members,
     list_organizations_overview,
+    update_organization_member,
 )
 from app.core.tenant_context import tenant_context_payload
 
@@ -53,6 +55,11 @@ class InviteAcceptReq(BaseModel):
     password: str | None = None
 
 
+class MemberUpdateReq(BaseModel):
+    org_role_code: str
+    status: str = "active"
+
+
 def _resolve_requested_organization(auth, organization_id: str | None = None) -> str:
     payload = session_payload(auth.user, auth.roles, session=auth.session)
     available = payload.get("organizations") or []
@@ -64,6 +71,16 @@ def _resolve_requested_organization(auth, organization_id: str | None = None) ->
     if not any(str(row.get("id") or "").strip() == target_id for row in available):
         raise HTTPException(status_code=403, detail="ORGANIZATION_FORBIDDEN")
     return target_id
+
+
+def _assert_org_admin(auth, organization_id: str) -> None:
+    user_id = str((auth.user or {}).get("id") or "").strip()
+    members = list_organization_members(organization_id)
+    current = next((row for row in members if str(row.get("user_id") or "").strip() == user_id), None)
+    if not current or str(current.get("status") or "").strip() != "active":
+        raise HTTPException(status_code=403, detail="ORGANIZATION_ADMIN_REQUIRED")
+    if str(current.get("org_role_code") or "").strip() not in {"org_owner", "org_admin"}:
+        raise HTTPException(status_code=403, detail="ORGANIZATION_ADMIN_REQUIRED")
 
 
 @router.get("/organizations")
@@ -86,6 +103,12 @@ def workspace_bootstrap(request: Request, organization_id: str | None = None, au
     selected_organization = next((row for row in organizations if row["id"] == target_id), None)
     if selected_organization is None:
         raise HTTPException(status_code=404, detail="ORGANIZATION_NOT_FOUND")
+    current_membership = next(
+        (row.get("membership_role") for row in (payload.get("organizations") or []) if str(row.get("id") or "").strip() == target_id),
+        None,
+    )
+    if current_membership:
+        selected_organization["membership_role"] = current_membership
     return {
         "ok": True,
         "organizations": organizations,
@@ -171,6 +194,7 @@ def register(payload: RegisterReq, response: Response):
 @router.post("/organizations/{organization_id}/invites")
 def create_invite(organization_id: str, payload: InviteCreateReq, auth=Depends(require_auth)):
     target_id = _resolve_requested_organization(auth, organization_id)
+    _assert_org_admin(auth, target_id)
     try:
         invite = create_organization_invite(
             organization_id=target_id,
@@ -183,6 +207,44 @@ def create_invite(organization_id: str, payload: InviteCreateReq, auth=Depends(r
         status = 404 if detail == "ORGANIZATION_NOT_FOUND" else 400
         raise HTTPException(status_code=status, detail=detail)
     return {"ok": True, "invite": invite}
+
+
+@router.patch("/organizations/{organization_id}/members/{member_id}")
+def update_member(organization_id: str, member_id: str, payload: MemberUpdateReq, auth=Depends(require_auth)):
+    target_id = _resolve_requested_organization(auth, organization_id)
+    _assert_org_admin(auth, target_id)
+    try:
+        member = update_organization_member(
+            organization_id=target_id,
+            member_id=member_id,
+            org_role_code=payload.org_role_code,
+            status=payload.status,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status = 404 if detail == "MEMBER_NOT_FOUND" else 400
+        raise HTTPException(status_code=status, detail=detail)
+    return {"ok": True, "member": member}
+
+
+@router.delete("/organizations/{organization_id}/members/{member_id}")
+def delete_member(organization_id: str, member_id: str, auth=Depends(require_auth)):
+    target_id = _resolve_requested_organization(auth, organization_id)
+    _assert_org_admin(auth, target_id)
+    current_user_id = str((auth.user or {}).get("id") or "").strip()
+    members = list_organization_members(target_id)
+    target_member = next((row for row in members if str(row.get("id") or "").strip() == str(member_id or "").strip()), None)
+    if not target_member:
+        raise HTTPException(status_code=404, detail="MEMBER_NOT_FOUND")
+    if str(target_member.get("user_id") or "").strip() == current_user_id:
+        raise HTTPException(status_code=400, detail="CANNOT_DELETE_SELF")
+    try:
+        deleted = delete_organization_member(target_id, member_id)
+    except ValueError as exc:
+        detail = str(exc)
+        status = 404 if detail == "MEMBER_NOT_FOUND" else 400
+        raise HTTPException(status_code=status, detail=detail)
+    return {"ok": True, "deleted": deleted}
 
 
 @router.post("/invites/accept")

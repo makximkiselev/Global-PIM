@@ -136,7 +136,7 @@ export default function CompetitorDiscoveryPanel() {
       void pollRun(response.run.id);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Не удалось запустить поиск";
-      setError(message.includes("504") || message.includes("Gateway") ? "Поиск занял слишком много времени. Запусти меньший batch или переведи crawl в фоновые задачи." : message);
+      setError(message.includes("504") || message.includes("Gateway") ? "Поиск занял слишком много времени. Запустите меньшую выборку или переведите обход сайта в фоновую задачу." : message);
     } finally {
       setRunning(false);
     }

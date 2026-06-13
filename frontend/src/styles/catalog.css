@@ -563,12 +563,12 @@
 }
 .catalog-page .tree-item.compact.active,
 .templates-page .tree-item.compact.active{
-  border-color: rgba(255,107,61,.20);
-  background: rgba(255,107,61,.08);
+  border-color: rgba(var(--brand-rgb),.20);
+  background: rgba(var(--brand-rgb),.08);
   box-shadow:none;
 }
 .catalog-page .tree-item.compact.active{
-  border-color: rgba(255,107,61,.20);
+  border-color: rgba(var(--brand-rgb),.20);
   background: rgba(255,248,244,.98);
 }
 
@@ -935,7 +935,7 @@
   margin:1px 0;
 }
 
-.catalog-page .cat2-dropLine.is-over{ background:rgba(255,107,61,.22); }
+.catalog-page .cat2-dropLine.is-over{ background:rgba(var(--brand-rgb),.22); }
 
 .catalog-page .cat2-dropInside{
   position:absolute;
@@ -945,7 +945,7 @@
 }
 
 .catalog-page .cat2-dropInside.is-over{
-  outline:2px solid rgba(255,107,61,.3);
+  outline:2px solid rgba(var(--brand-rgb),.3);
   outline-offset:-2px;
 }
 
@@ -970,7 +970,7 @@
 
 .catalog-page .cat2-treeNode.is-active{
   background:rgba(255,248,244,.98);
-  border-color:rgba(255,107,61,.20);
+  border-color:rgba(var(--brand-rgb),.20);
 }
 
 .catalog-page .cat2-drag{

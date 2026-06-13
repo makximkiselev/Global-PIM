@@ -55,7 +55,7 @@ type AdminTab = "users" | "roles";
 const ROLE_CODE_LABELS: Record<string, string> = {
   owner: "Владелец",
   admin: "Администратор",
-  editor: "Контент-менеджер",
+  editor: "Редактор",
   viewer: "Наблюдатель",
 };
 
@@ -79,8 +79,30 @@ function fmt(s?: string | null) {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("ru-RU");
 }
 
-export default function AdminAccessFeature() {
-  const { canAction } = useAuth();
+function EditIcon() {
+  return (
+    <svg className="uiIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 20h4.5L19 9.5 14.5 5 4 15.5V20Z" />
+      <path d="M13.5 6 18 10.5" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg className="uiIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 7h14" />
+      <path d="M9 7V5h6v2" />
+      <path d="M8 10v8" />
+      <path d="M12 10v8" />
+      <path d="M16 10v8" />
+      <path d="M7 7l1 13h8l1-13" />
+    </svg>
+  );
+}
+
+export default function AdminAccessFeature({ embedded = false }: { embedded?: boolean } = {}) {
+  const { canAction, user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -93,6 +115,7 @@ export default function AdminAccessFeature() {
   const [editingUser, setEditingUser] = useState<UserRow>(EMPTY_USER);
   const [userPassword, setUserPassword] = useState("");
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false);
   const [createUserDraft, setCreateUserDraft] = useState(EMPTY_CREATE_USER);
   const [createUserPassword, setCreateUserPassword] = useState("");
   const [expandedRoleGroups, setExpandedRoleGroups] = useState<string[]>([]);
@@ -107,6 +130,20 @@ export default function AdminAccessFeature() {
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showDeleteRoleModal, setShowDeleteRoleModal] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const modalOpen = showCreateUserModal || showRoleModal || showDeleteUserModal || showDeleteRoleModal;
+    if (!modalOpen) return undefined;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || saving) return;
+      setShowCreateUserModal(false);
+      setShowRoleModal(false);
+      setShowDeleteUserModal(false);
+      setShowDeleteRoleModal(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [saving, showCreateUserModal, showDeleteRoleModal, showDeleteUserModal, showRoleModal]);
 
   function updateSelectionParams(patch: Partial<{ tab: AdminTab; user: string; role: string }>) {
     const next = new URLSearchParams(searchParams);
@@ -236,6 +273,7 @@ export default function AdminAccessFeature() {
     () => loginEvents.filter((event) => !editingUser.id || event.user_id === editingUser.id || event.login === editingUser.login).slice(0, 12),
     [loginEvents, editingUser.id, editingUser.login],
   );
+  const isEditingSelf = !!editingUser.id && !!currentUser?.id && editingUser.id === currentUser.id;
 
   useEffect(() => {
     if (tab !== "users" || !usersByRole.length) return;
@@ -393,17 +431,43 @@ export default function AdminAccessFeature() {
     }
   }
 
+  async function deleteUser() {
+    if (!editingUser.id) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api(`/auth/admin/users/${encodeURIComponent(editingUser.id)}`, { method: "DELETE" });
+      setShowDeleteUserModal(false);
+      setEditingUser(EMPTY_USER);
+      updateSelectionParams({ user: "" });
+      await load();
+    } catch (e) {
+      setError((e as Error).message || "Ошибка удаления пользователя");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="page-shell accessPage">
-      <div className="page-header">
-        <div className="page-header-main">
-          <div className="page-title">Роли и права</div>
-          <div className="page-subtitle">Настройте, кто может входить в систему и какие рабочие действия доступны каждой роли.</div>
+    <div className={`${embedded ? "" : "page-shell "}accessPage accessPageModern${embedded ? " accessPageEmbedded" : ""}`}>
+      {!embedded ? (
+        <div className="accessCommandHeader">
+          <div className="accessCommandTitleBlock">
+            <div className="accessCommandEyebrow">Система / Доступ</div>
+            <h1>Роли и права</h1>
+            <p>Управляйте входом, ролями и рабочими действиями пользователей внутри текущей организации.</p>
+          </div>
         </div>
-      </div>
-      <div className="page-tabs">
-        <button className={`page-tab${tab === "users" ? " active" : ""}`} onClick={() => setTab("users")}>Пользователи</button>
-        <button className={`page-tab${tab === "roles" ? " active" : ""}`} onClick={() => setTab("roles")}>Роли</button>
+      ) : null}
+      <div className="accessSegmentedTabs" role="tablist" aria-label="Раздел доступа">
+        <button className={`accessSegmentedTab${tab === "users" ? " active" : ""}`} onClick={() => setTab("users")} role="tab" aria-selected={tab === "users"}>
+          <span>Пользователи</span>
+          <strong>{users.length}</strong>
+        </button>
+        <button className={`accessSegmentedTab${tab === "roles" ? " active" : ""}`} onClick={() => setTab("roles")} role="tab" aria-selected={tab === "roles"}>
+          <span>Роли</span>
+          <strong>{roles.length}</strong>
+        </button>
       </div>
       {error ? <div className="authError page-inlineError">{error}</div> : null}
       <div className="accessWorkspace">
@@ -485,7 +549,19 @@ export default function AdminAccessFeature() {
                 <div className="accessHeroSub">{editingUser.email || editingUser.login || "Email не задан"}</div>
               </div>
               <div className="accessHeroMeta">
-                <button className="btn primary accessHeroSaveBtn" onClick={saveUser} disabled={!canAction("users.manage") || saving || loading}>Сохранить</button>
+                <div className="accessHeroActions">
+                  <button className="btn primary accessHeroSaveBtn" onClick={saveUser} disabled={!canAction("users.manage") || saving || loading}>Сохранить</button>
+                  {editingUser.id ? (
+                    <button
+                      className="btn danger"
+                      onClick={() => setShowDeleteUserModal(true)}
+                      disabled={!canAction("users.manage") || saving || loading || isEditingSelf}
+                      title={isEditingSelf ? "Нельзя удалить текущего пользователя" : "Удалить пользователя"}
+                    >
+                      Удалить
+                    </button>
+                  ) : null}
+                </div>
                 <div className={`accessStatusChip${editingUser.is_active ? " isActive" : ""}`}>{editingUser.is_active ? "Активен" : "Отключен"}</div>
                 {selectedUserRoleNames.length ? (
                   <div className="accessRolePills">
@@ -587,7 +663,7 @@ export default function AdminAccessFeature() {
                       onClick={() => setShowRoleModal(true)}
                       disabled={!canAction("roles.manage")}
                     >
-                      ✎
+                      <EditIcon />
                     </button>
                     <button
                       className="accessIconBtn accessIconBtnDanger"
@@ -597,7 +673,7 @@ export default function AdminAccessFeature() {
                       onClick={() => setShowDeleteRoleModal(true)}
                       disabled={!canAction("roles.manage") || !editingRole.id || !!editingRole.is_system}
                     >
-                      🗑
+                      <TrashIcon />
                     </button>
                   </div>
                   <div className="accessRoleMetaInline">
@@ -692,12 +768,12 @@ export default function AdminAccessFeature() {
       </div>
 
       {showCreateUserModal ? (
-        <div className="modalBackdrop" onClick={() => !saving && setShowCreateUserModal(false)}>
-          <div className="modalCard modalCardCompact" onClick={(e) => e.stopPropagation()}>
+        <div className="modalBackdrop" role="presentation" onClick={() => !saving && setShowCreateUserModal(false)}>
+          <div className="modalCard modalCardCompact" role="dialog" aria-modal="true" aria-labelledby="access-create-user-title" aria-describedby="access-create-user-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div className="modalTitle">Новый пользователь</div>
-                <div className="modalSubtitle">Создай пользователя и сразу назначь ему роль.</div>
+                <div className="modalTitle" id="access-create-user-title">Новый пользователь</div>
+                <div className="modalSubtitle" id="access-create-user-subtitle">Создай пользователя и сразу назначь ему роль.</div>
               </div>
               <button className="btn" onClick={() => setShowCreateUserModal(false)} disabled={saving}>Закрыть</button>
             </div>
@@ -729,7 +805,7 @@ export default function AdminAccessFeature() {
               </label>
             </div>
 
-            <div className="card accessPanel accessPanelWide" style={{ marginTop: 16 }}>
+            <div className="card accessPanel accessPanelWide accessPanelSpaced">
               <div className="accessPermissionTitle">Роли</div>
               <div className="accessRoleGrid">
                 {roleOptions.map((role) => (
@@ -745,7 +821,7 @@ export default function AdminAccessFeature() {
               </div>
             </div>
 
-            <div className="accessActions" style={{ marginTop: 16 }}>
+            <div className="accessActions accessModalActions">
               <button className="btn" onClick={() => setShowCreateUserModal(false)} disabled={saving}>Отмена</button>
               <button
                 className="btn primary"
@@ -760,12 +836,12 @@ export default function AdminAccessFeature() {
       ) : null}
 
       {showRoleModal ? (
-        <div className="modalBackdrop" onClick={() => !saving && setShowRoleModal(false)}>
-          <div className="modalCard modalCardCompact" onClick={(e) => e.stopPropagation()}>
+        <div className="modalBackdrop" role="presentation" onClick={() => !saving && setShowRoleModal(false)}>
+          <div className="modalCard modalCardCompact" role="dialog" aria-modal="true" aria-labelledby="access-role-title" aria-describedby="access-role-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div className="modalTitle">{editingRole.id ? "Редактирование роли" : "Новая роль"}</div>
-                <div className="modalSubtitle">Измени базовые поля роли в отдельном компактном окне.</div>
+                <div className="modalTitle" id="access-role-title">{editingRole.id ? "Редактирование роли" : "Новая роль"}</div>
+                <div className="modalSubtitle" id="access-role-subtitle">Измени базовые поля роли в отдельном компактном окне.</div>
               </div>
               <Button onClick={() => setShowRoleModal(false)} disabled={saving}>Закрыть</Button>
             </div>
@@ -776,7 +852,7 @@ export default function AdminAccessFeature() {
               <label className="accessField"><span>Описание</span><Textarea rows={6} value={editingRole.description || ""} onChange={(e) => setEditingRole((cur) => ({ ...cur, description: e.target.value }))} /></label>
             </div>
 
-            <div className="accessActions" style={{ marginTop: 16 }}>
+            <div className="accessActions accessModalActions">
               <Button onClick={() => setShowRoleModal(false)} disabled={saving}>Отмена</Button>
               <Button variant="primary" onClick={async () => { await saveRole(); setShowRoleModal(false); }} disabled={!canAction("roles.manage") || saving || loading}>
                 Сохранить
@@ -786,13 +862,38 @@ export default function AdminAccessFeature() {
         </div>
       ) : null}
 
-      {showDeleteRoleModal ? (
-        <div className="modalBackdrop" onClick={() => !saving && setShowDeleteRoleModal(false)}>
-          <div className="modalCard modalCardCompact" onClick={(e) => e.stopPropagation()}>
+      {showDeleteUserModal ? (
+        <div className="modalBackdrop" role="presentation" onClick={() => !saving && setShowDeleteUserModal(false)}>
+          <div className="modalCard modalCardCompact" role="dialog" aria-modal="true" aria-labelledby="access-delete-user-title" aria-describedby="access-delete-user-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <div>
-                <div className="modalTitle">Удалить роль</div>
-                <div className="modalSubtitle">Роль будет удалена только если она не системная и не назначена пользователям.</div>
+                <div className="modalTitle" id="access-delete-user-title">Удалить пользователя</div>
+                <div className="modalSubtitle" id="access-delete-user-subtitle">Пользователь потеряет доступ к этой организации. Текущего пользователя и последнего владельца удалить нельзя.</div>
+              </div>
+              <button className="btn" onClick={() => setShowDeleteUserModal(false)} disabled={saving}>Закрыть</button>
+            </div>
+
+            <div className="accessEmpty">
+              Будет удален пользователь <strong>{userDisplayName(editingUser)}</strong> ({editingUser.email || editingUser.login || "без email"}).
+            </div>
+
+            <div className="accessActions accessModalActions">
+              <button className="btn" onClick={() => setShowDeleteUserModal(false)} disabled={saving}>Отмена</button>
+              <button className="btn danger" onClick={deleteUser} disabled={!canAction("users.manage") || saving || !editingUser.id || isEditingSelf}>
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showDeleteRoleModal ? (
+        <div className="modalBackdrop" role="presentation" onClick={() => !saving && setShowDeleteRoleModal(false)}>
+          <div className="modalCard modalCardCompact" role="dialog" aria-modal="true" aria-labelledby="access-delete-role-title" aria-describedby="access-delete-role-subtitle" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <div className="modalTitle" id="access-delete-role-title">Удалить роль</div>
+                <div className="modalSubtitle" id="access-delete-role-subtitle">Роль будет удалена только если она не системная и не назначена пользователям.</div>
               </div>
               <button className="btn" onClick={() => setShowDeleteRoleModal(false)} disabled={saving}>Закрыть</button>
             </div>
@@ -801,7 +902,7 @@ export default function AdminAccessFeature() {
               Будет удалена роль <strong>{editingRole.name || editingRole.code}</strong>.
             </div>
 
-            <div className="accessActions" style={{ marginTop: 16 }}>
+            <div className="accessActions accessModalActions">
               <button className="btn" onClick={() => setShowDeleteRoleModal(false)} disabled={saving}>Отмена</button>
               <button className="btn danger" onClick={deleteRole} disabled={!canAction("roles.manage") || saving || !editingRole.id || !!editingRole.is_system}>
                 Удалить

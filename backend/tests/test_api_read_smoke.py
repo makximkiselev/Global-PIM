@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core import auth as auth_core
 from app.api.routes import catalog as catalog_routes
-from app.api.routes import comfyui as comfyui_routes
 from app.api.routes import connectors_status as connectors_status_routes
 from app.api.routes import info_models as info_models_routes
 from app.api.routes import marketplace_mapping as marketplace_mapping_routes
@@ -264,7 +263,7 @@ class ApiReadSmokeTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["items"][0]["type"], "category_needs_reselect")
-        self.assertEqual(body["items"][0]["to"], "/sources-mapping?tab=sources&category=cat-1")
+        self.assertEqual(body["items"][0]["to"], "/sources?tab=sources&category=cat-1")
 
     def test_mapping_link_allows_ozon_api_validated_category_missing_from_tree(self) -> None:
         saved: dict[str, dict[str, str]] = {}
@@ -299,15 +298,9 @@ class ApiReadSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(saved["cat-1"]["ozon"], "type:17028924:115947064")
 
-    def test_comfyui_status_without_url_is_not_connection_failure(self) -> None:
-        with (
-            patch.dict(os.environ, {"COMFYUI_BASE_URL": "", "COMFYUI_API_KEY": ""}, clear=False),
-            patch.object(comfyui_routes, "ENV_PATH", self.test_root / "missing.env"),
-        ):
-            response = self.client.get("/api/ai/comfyui/status")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"ok": False, "configured": False, "status": "not_configured"})
+    def test_legacy_comfyui_endpoint_is_not_registered(self) -> None:
+        response = self.client.get("/api/ai/comfyui/status")
+        self.assertEqual(response.status_code, 404)
 
     def test_marketplace_mapping_attribute_bootstrap_endpoint(self) -> None:
         payload = {

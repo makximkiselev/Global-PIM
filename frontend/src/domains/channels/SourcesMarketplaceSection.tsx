@@ -14,6 +14,9 @@ type SourcesMarketplaceSectionProps = {
   forcedImportTab?: ImportTab;
   hideMainTabs?: boolean;
   hideImportTabs?: boolean;
+  hideCompetitors?: boolean;
+  showOnlyCompetitors?: boolean;
+  focusedProductId?: string;
   selectedCategoryId?: string;
   onSelectedCategoryChange?: (categoryId: string, categoryName: string) => void;
   useCatalogTreeForFeatures?: boolean;
@@ -973,6 +976,9 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     forcedImportTab,
     hideMainTabs = false,
     hideImportTabs = false,
+    hideCompetitors = false,
+    showOnlyCompetitors = false,
+    focusedProductId = "",
     selectedCategoryId: controlledSelectedCategoryId = "",
     onSelectedCategoryChange,
     useCatalogTreeForFeatures = false,
@@ -982,6 +988,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   } = props;
   const [mainTab, setMainTab] = useState<MainTab>(forcedMainTab || "import");
   const [importTab, setImportTab] = useState<ImportTab>(forcedImportTab || "categories");
+  const shouldLoadCompetitorDiscovery = !hideCompetitors || showOnlyCompetitors;
 
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -1063,6 +1070,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   const [competitorDiscoveryError, setCompetitorDiscoveryError] = useState("");
   const [competitorDiscoveryRun, setCompetitorDiscoveryRun] = useState<CompetitorDiscoveryRun | null>(null);
   const [competitorSampleProductId, setCompetitorSampleProductId] = useState("");
+  const [competitorSkuQuery, setCompetitorSkuQuery] = useState("");
   const [competitorModeratingId, setCompetitorModeratingId] = useState("");
   const [mappingIssues, setMappingIssues] = useState<MappingIssue[]>([]);
   const [treeExpanded, setTreeExpanded] = useState<Record<string, boolean>>({});
@@ -1980,6 +1988,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         : "нет";
     const hasMappedProviders = mappingLabel === "связано";
     const hasWarnProviders = mappingLabel === "частично";
+    const displayMappingLabel = mappingLabel === "нет" ? "—" : mappingLabel;
     return (
       <div key={node.id}>
         <div className="csb-treeRow" style={{ ["--depth" as any]: level }}>
@@ -2004,8 +2013,11 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             >
               <span className="csb-treeName">{node.name}</span>
             </button>
-            <span className={`csb-treeCount mm-treeMappingCount ${hasMappedProviders ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""}`}>
-              {mappingLabel}
+            <span
+              className={`csb-treeCount mm-treeMappingCount ${hasMappedProviders ? "is-mapped" : ""} ${hasWarnProviders ? "is-warn" : ""} ${hasMappingIssue ? "is-issue" : ""} ${mappingLabel === "нет" ? "is-empty" : ""}`}
+              title={mappingLabel === "нет" ? "Не сопоставлено" : mappingLabel}
+            >
+              {displayMappingLabel}
             </span>
           </div>
         </div>
@@ -2559,15 +2571,16 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   }
 
   function syncCompetitorSampleProduct(data: CompetitorCategoryDiscoveryResp | null) {
+    const focusedId = String(focusedProductId || "").trim();
     const currentId = String(competitorSampleProductId || "").trim();
     const sampleProducts = data?.category?.sample_products || [];
     const sampleIds = new Set(sampleProducts.map((item) => String(item.id || "").trim()).filter(Boolean));
-    const candidateProductIds = (data?.sources || [])
-      .flatMap((source) => source.candidate_items || [])
-      .map((candidate) => String(candidate.product_id || "").trim())
-      .filter(Boolean);
-    if (currentId && sampleIds.has(currentId) && candidateProductIds.includes(currentId)) return;
-    const nextId = candidateProductIds.find((id) => sampleIds.has(id)) || sampleProducts[0]?.id || "";
+    if (focusedId && sampleIds.has(focusedId)) {
+      if (focusedId !== currentId) setCompetitorSampleProductId(focusedId);
+      return;
+    }
+    if (currentId && sampleIds.has(currentId)) return;
+    const nextId = sampleProducts[0]?.id || "";
     if (nextId && nextId !== currentId) setCompetitorSampleProductId(nextId);
   }
 
@@ -2630,7 +2643,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
 
   useEffect(() => {
     const categoryId = selectedCatalogNode?.id || "";
-    if (!categoryId || mainTab !== "import" || importTab !== "categories") {
+    if (!shouldLoadCompetitorDiscovery || !categoryId || mainTab !== "import" || importTab !== "categories") {
       setCompetitorDiscovery(null);
       setCompetitorDiscoveryError("");
       return;
@@ -2656,7 +2669,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     return () => {
       cancelled = true;
     };
-  }, [selectedCatalogNode?.id, mainTab, importTab]);
+  }, [selectedCatalogNode?.id, mainTab, importTab, shouldLoadCompetitorDiscovery]);
 
   const selectedCatalogMappedDescendants = useMemo(() => {
     if (!selectedCatalogNode) return [];
@@ -2864,8 +2877,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       {!embedded ? (
         <div className="mm-header">
           <div className="mm-headerMain">
-            <div className="mm-h1">Маппинг источников</div>
-            <div className="mm-sub">Категории маркетплейсов и сопоставление параметров с каталогом PIM.</div>
+            <div className="mm-h1">Сопоставление источников</div>
+            <div className="mm-sub">Категории маркетплейсов и сопоставление параметров с рабочим каталогом.</div>
           </div>
 
           <div className="mm-headerActions">
@@ -2885,8 +2898,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       ) : null}
 
       {err && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ color: "#b42318", fontWeight: 700 }}>{err}</div>
+        <div className="card mm-errorCard">
+          <div className="mm-errorText">{err}</div>
         </div>
       )}
 
@@ -2911,7 +2924,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               {!embedded ? <div className="mm-summaryCard">
                 <div className="mm-summaryHead">
                   <div className="mm-summaryTitleBlock">
-                    <div className="mm-title">Сводка</div>
+                    <div className="mm-title">Контекст</div>
                     <div className="muted">Покрытие дерева категорий и состояние подключенных площадок.</div>
                   </div>
                   <button className="btn mm-miniBtn mm-syncBtn" type="button" onClick={runBackgroundSync} disabled={loading || syncing}>
@@ -3013,8 +3026,49 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                       <>
                         <div className={`mm-detailContent ${renderCategoryDetailExtra ? "hasExtra" : ""}`}>
                           <div className="mm-detailMain">
+                            <div className={`mm-categoryActionPanel ${showOnlyCompetitors ? "isCompetitorMode" : ""}`}>
+                              <div>
+                                <span>{showOnlyCompetitors ? "Категория для подбора" : "Выбранная категория"}</span>
+                                <strong>{selectedCatalogNode.name}</strong>
+                                {showOnlyCompetitors ? (
+                                  <p>
+                                    Выберите SKU из ветки, запустите подбор и подтвердите точные карточки re-store/store77.
+                                    Подтвержденные карточки станут источниками параметров, описания и медиа.
+                                  </p>
+                                ) : (
+                                  <p>
+                                    {displayProviders.filter((prov) => categoryBindingMeta(selectedCatalogNode.id, prov.code).effectiveId).length}/{displayProviders.length} площадок связаны.
+                                    {" "}Сначала привяжите категории площадок, затем переходите к конкурентам и параметрам.
+                                  </p>
+                                )}
+                              </div>
+                              <div className="mm-categoryActionBtns">
+                                {showOnlyCompetitors ? (
+                                  <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selectedCatalogNode.id)}`)}>
+                                    К площадкам
+                                  </Link>
+                                ) : null}
+                                {!showOnlyCompetitors && displayProviders.every((prov) => categoryBindingMeta(selectedCatalogNode.id, prov.code).effectiveId) ? (
+                                  <Link className="btn btn-primary" to={orgPath(`/sources?tab=competitors&category=${encodeURIComponent(selectedCatalogNode.id)}`)}>
+                                    К конкурентам
+                                  </Link>
+                                ) : null}
+                                {showOnlyCompetitors ? (
+                                  <Link className="btn btn-primary" to={orgPath(`/sources?tab=params&category=${encodeURIComponent(selectedCatalogNode.id)}`)}>
+                                    К параметрам
+                                  </Link>
+                                ) : null}
+                              </div>
+                            </div>
                             <div className="mm-providerStack">
-                              {displayProviders.map((prov) => {
+                              {!showOnlyCompetitors ? (
+                                <div className="mm-providerTableHead" aria-hidden="true">
+                                  <span>Площадка</span>
+                                  <span>Категория площадки</span>
+                                  <span>Действие</span>
+                                </div>
+                              ) : null}
+                              {!showOnlyCompetitors ? displayProviders.map((prov) => {
                                 const stateInfo = bindingStates?.[selectedCatalogNode.id]?.[prov.code];
                                 const bindingMeta = categoryBindingMeta(selectedCatalogNode.id, prov.code);
                                 const directId = bindingMeta.directId;
@@ -3171,8 +3225,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                     </div>
                                   </div>
                                 );
-                              })}
-                              {(() => {
+                              }) : null}
+                              {!hideCompetitors ? (() => {
                                 const competitorMeta = competitorSourceMeta(selectedCatalogNode.id);
                                 const discoverySources = competitorDiscovery?.sources || [];
                                 const competitorCandidatesTotal = discoverySources.reduce((sum, source) => sum + Number(source.candidates_count || 0), 0);
@@ -3181,6 +3235,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                 const sampleProducts = competitorDiscovery?.category?.sample_products || [];
                                 const selectedSampleProduct = sampleProducts.find((item) => item.id === competitorSampleProductId) || sampleProducts[0] || null;
                                 const selectedSampleProductId = String(selectedSampleProduct?.id || "").trim();
+                                const competitorSkuQueryNorm = qnorm(competitorSkuQuery);
+                                const matchedSampleProducts = competitorSkuQueryNorm
+                                  ? sampleProducts.filter((product) => {
+                                      const haystack = qnorm(`${product.sku_gt || ""} ${product.title || ""} ${product.id || ""}`);
+                                      return haystack.includes(competitorSkuQueryNorm);
+                                    })
+                                  : sampleProducts;
+                                const visibleSampleProducts = selectedSampleProduct
+                                  ? [
+                                      selectedSampleProduct,
+                                      ...matchedSampleProducts.filter((product) => product.id !== selectedSampleProduct.id),
+                                    ].slice(0, competitorSkuQueryNorm ? 24 : 6)
+                                  : matchedSampleProducts.slice(0, competitorSkuQueryNorm ? 24 : 6);
                                 const productCandidates = discoverySources.flatMap((source) =>
                                   (source.candidate_items || [])
                                     .filter((candidate) => !selectedSampleProductId || String(candidate.product_id || "").trim() === selectedSampleProductId)
@@ -3253,12 +3320,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   : competitorNeedsReviewTotal || competitorCandidatesTotal
                                     ? `${competitorNeedsReviewTotal || competitorCandidatesTotal} кандидатов на проверке`
                                     : "карточки еще не подобраны";
+                                const selectedSkuCode = selectedSampleProduct?.sku_gt || selectedSampleProduct?.id || "SKU не выбран";
+                                const selectedSkuTitle = selectedSampleProduct?.title || selectedSampleLabel;
                                 const runFinished = competitorDiscoveryRun && !["queued", "running"].includes(competitorDiscoveryRun.status);
                                 const runCreated = Number(competitorDiscoveryRun?.created_count || 0) + Number(competitorDiscoveryRun?.updated_count || 0);
                                 const runHasErrors = Number(competitorDiscoveryRun?.errors_count || 0) > 0;
                                 return (
                                   <div className={`mm-providerDetailCard mm-competitorSourceCard ${competitorMeta.configured ? "is-ready" : "is-missing"}`}>
-                                    <div className="mm-competitorHeader">
+                                    <div className="mm-competitorHeader mm-competitorHeaderQueue">
                                       <div className="mm-competitorHeaderMain">
                                         <div className="mm-competitorTitleRow">
                                           <div className="mm-lineProvider">Конкурентные карточки</div>
@@ -3267,7 +3336,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           </div>
                                         </div>
                                         <div className="mm-providerHint">
-                                          Здесь выбирается точная карточка товара у re-store/store77. Из нее потом забираем параметры, описание и медиа для выбранного SKU.
+                                          Подтвердите точные карточки конкурентов: из них заполняются параметры, описание и медиа SKU.
                                         </div>
                                       </div>
                                       <div className="mm-competitorActions">
@@ -3288,145 +3357,183 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                       </div>
                                     </div>
                                       <div className="mm-lineContent">
-                                      <div className="mm-competitorProcessNote">
-                                        <span>Логика шага</span>
-                                        <strong>Выбрать SKU → подобрать карточки → подтвердить точные совпадения</strong>
-                                        <em>Работаем с товарами всей выбранной ветки, не только с прямыми SKU категории.</em>
-                                      </div>
-                                      <div className="mm-competitorWorkbench">
-                                        <div className="mm-competitorSkuPanel">
-                                          <div>
-                                            <div className="mm-competitorPanelLabel">Проверяемый SKU</div>
-                                            <strong>{selectedSampleLabel}</strong>
-                                            <p>
-                                              Сначала выберите SKU из ветки категории. Подбор ищет не раздел сайта, а конкретную карточку товара у конкурента.
-                                            </p>
-                                          </div>
-                                          <select
-                                            id={`competitor-sku-${selectedCatalogNode.id}`}
-                                            value={selectedSampleProduct?.id || ""}
-                                            onChange={(event) => setCompetitorSampleProductId(event.target.value)}
-                                            disabled={!sampleProducts.length || competitorDiscoveryRunning}
-                                          >
-                                            {sampleProducts.length ? sampleProducts.map((product) => (
-                                              <option key={product.id} value={product.id}>
-                                                {product.sku_gt ? `${product.sku_gt} · ` : ""}{product.title || product.id}
-                                              </option>
-                                            )) : (
-                                              <option value="">
-                                                {competitorDiscoveryLoading ? "Загружаю SKU..." : "В выбранной ветке пока нет SKU"}
-                                              </option>
-                                            )}
-                                          </select>
-                                        </div>
-                                        <div className="mm-competitorSourceStrip">
-                                          {competitorSourceRows.map((site) => (
-                                            <div key={site.code} className={`mm-competitorSourceItem ${site.className}`}>
-                                              <strong>{site.title}</strong>
-                                              <span>{site.label}</span>
+                                        <div className="mm-competitorWorkspace2026 mm-competitorQueueWorkspace">
+                                          <div className="mm-competitorQueueSummary" aria-label="Сводка конкурентного сопоставления">
+                                            <div>
+                                              <span>SKU в ветке</span>
+                                              <strong>{branchProductCount || "0"}</strong>
                                             </div>
-                                          ))}
-                                        </div>
-                                        <div className="mm-competitorSourceDiagnostics">
-                                          {sourceDiagnostics.map((site) => (
-                                            <div key={`diag-${site.code}`} className={`mm-competitorSourceDiagnostic ${site.tone}`}>
-                                              <strong>{site.title}</strong>
-                                              <span>{site.text}</span>
+                                            <div>
+                                              <span>На проверке</span>
+                                              <strong>{competitorNeedsReviewTotal || competitorCandidatesTotal}</strong>
                                             </div>
-                                          ))}
-                                        </div>
-                                        <div className="mm-competitorMiniStats">
-                                          <span>{competitorStatusText}</span>
-                                          <span>
-                                            {competitorDiscoveryLoading
-                                              ? "загружаю SKU ветки"
-                                              : branchProductCount
-                                                ? `до ${branchProductCount} SKU в выборке скана`
-                                                : "нет SKU для скана"}
-                                          </span>
-                                          <span>
-                                            {competitorDiscoveryRunning
-                                              ? "скан выполняется"
-                                              : runFinished
-                                                ? `${runCreated} найдено/обновлено`
-                                                : "скан еще не запускали"}
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      {competitorDiscoveryRun ? (
-                                        <div className={`mm-competitorRunNotice ${runHasErrors ? "hasError" : runFinished ? "isDone" : "isRunning"}`}>
-                                          <strong>
-                                            {competitorDiscoveryRun.status === "queued"
-                                              ? "Запуск поставлен в очередь"
-                                              : competitorDiscoveryRun.status === "running"
-                                                ? "Сканирование выполняется"
-                                                : runHasErrors
-                                                  ? "Сканирование завершилось с предупреждениями"
-                                                  : "Сканирование завершено"}
-                                          </strong>
-                                          <span>
-                                            Проверено SKU: {competitorDiscoveryRun.scanned_products_count || 0}. Создано/обновлено кандидатов: {runCreated}.
-                                            {runHasErrors ? " Часть источников не ответила, можно повторить запуск." : ""}
-                                          </span>
-                                        </div>
-                                      ) : null}
-
-                                      {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Ищем карточки конкурентов для выбранного SKU...</div> : null}
-                                      {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
-
-                                      <div className="mm-competitorSuggestionsHead">
-                                        <strong>Кандидаты для выбранного SKU</strong>
-                                        <span>Подтвердите только точное совпадение по модели, памяти, цвету и SIM/eSIM. Остальные варианты этой группы будут отклонены.</span>
-                                      </div>
-                                      <div className="mm-competitorCandidateList">
-                                        {productCandidates.map(({ source, candidate }) => (
-                                          <div
-                                            key={`${source.id}-${candidate.id}`}
-                                            className="mm-competitorCandidate"
-                                          >
-                                            <span>
-                                              <b>{source.name}</b>
-                                              <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
-                                              <em>{compactCompetitorUrl(candidate.url || "")}</em>
-                                            </span>
-                                            <div className="mm-competitorCandidateActions">
-                                              <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</small>
-                                              <a href={candidate.url || "#"} target="_blank" rel="noreferrer">Открыть</a>
-                                              <button
-                                                type="button"
-                                                className="btn btn-primary mm-miniBtn"
-                                                onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve")}
-                                                disabled={competitorModeratingId === candidate.id}
-                                              >
-                                                Подтвердить
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="btn mm-miniBtn mm-ghostBtn"
-                                                onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject")}
-                                                disabled={competitorModeratingId === candidate.id}
-                                              >
-                                                Отклонить
-                                              </button>
+                                            <div>
+                                              <span>Подтверждено</span>
+                                              <strong>{competitorConfirmedTotal}</strong>
+                                            </div>
+                                            <div>
+                                              <span>Статус</span>
+                                              <strong>{competitorDiscoveryRunning ? "Скан" : competitorDiscoveryLoading ? "Загрузка" : competitorStatusText}</strong>
                                             </div>
                                           </div>
-                                        ))}
-                                        {productCandidates.length === 0 ? (
-                                          <div className="mm-lineEmpty">
-                                            Для выбранного SKU нет карточек на модерации. Нажмите «Подобрать карточки» или откройте SKU и добавьте точную ссылку вручную.
+
+                                          <div className="mm-competitorQueueLayout">
+                                            <div className="mm-competitorControlPane mm-competitorSkuQueuePane">
+                                              <div className="mm-competitorSkuCard">
+                                                <div className="mm-competitorPanelLabel">SKU для подбора</div>
+                                                <strong>{selectedSkuCode}</strong>
+                                                <p>{selectedSkuTitle}</p>
+                                                <div className="mm-competitorSkuPicker">
+                                                  <input
+                                                    id={`competitor-sku-${selectedCatalogNode.id}`}
+                                                    value={competitorSkuQuery}
+                                                    onChange={(event) => setCompetitorSkuQuery(event.target.value)}
+                                                    disabled={!sampleProducts.length || competitorDiscoveryRunning}
+                                                    placeholder={competitorDiscoveryLoading ? "Загружаю SKU..." : "Найти SKU в ветке"}
+                                                  />
+                                                  <div className="mm-competitorSkuList" role="listbox" aria-label="SKU выбранной ветки">
+                                                    {visibleSampleProducts.length ? visibleSampleProducts.map((product) => {
+                                                      const active = product.id === selectedSampleProduct?.id;
+                                                      return (
+                                                        <button
+                                                          key={product.id}
+                                                          type="button"
+                                                          className={active ? "isActive" : ""}
+                                                          onClick={() => setCompetitorSampleProductId(product.id)}
+                                                          disabled={competitorDiscoveryRunning}
+                                                        >
+                                                          <span>{product.sku_gt || product.id}</span>
+                                                          <strong>{product.title || product.id}</strong>
+                                                        </button>
+                                                      );
+                                                    }) : (
+                                                      <div className="mm-competitorSkuEmpty">
+                                                        {sampleProducts.length ? "По этому запросу SKU не найдены" : "В выбранной ветке пока нет SKU"}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  {!competitorSkuQueryNorm && sampleProducts.length > visibleSampleProducts.length ? (
+                                                    <div className="mm-competitorSkuListHint">
+                                                      Показаны первые {visibleSampleProducts.length} SKU из {sampleProducts.length}. Для точного выбора используйте поиск по SKU или названию.
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                              <div className="mm-competitorSourceQueue">
+                                                <div className="mm-competitorPaneHead">
+                                                  <strong>Источники</strong>
+                                                  <span>Карточки конкурентов</span>
+                                                </div>
+                                                {competitorSourceRows.map((site) => (
+                                                  <div key={site.code} className={`mm-competitorSourceItem mm-competitorSourceRow ${site.className}`}>
+                                                    <div>
+                                                      <strong>{site.title}</strong>
+                                                      <span>{sourceDiagnostics.find((item) => item.code === site.code)?.text || site.label}</span>
+                                                    </div>
+                                                    <b>{site.label}</b>
+                                                  </div>
+                                                ))}
+                                              </div>
+
+                                              {competitorDiscoveryRun ? (
+                                                <div className={`mm-competitorRunNotice ${runHasErrors ? "hasError" : runFinished ? "isDone" : "isRunning"}`}>
+                                                  <strong>
+                                                    {competitorDiscoveryRun.status === "queued"
+                                                      ? "Запуск поставлен в очередь"
+                                                      : competitorDiscoveryRun.status === "running"
+                                                        ? "Сканирование выполняется"
+                                                        : runHasErrors
+                                                          ? "Сканирование завершилось с предупреждениями"
+                                                          : "Сканирование завершено"}
+                                                  </strong>
+                                                  <span>
+                                                    Проверено SKU: {competitorDiscoveryRun.scanned_products_count || 0}. Создано/обновлено кандидатов: {runCreated}.
+                                                    {runHasErrors ? " Часть источников не ответила, можно повторить запуск." : ""}
+                                                  </span>
+                                                </div>
+                                              ) : null}
+
+                                              {competitorDiscoveryLoading ? <div className="mm-lineEmpty">Ищем карточки конкурентов для выбранного SKU...</div> : null}
+                                              {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
+                                            </div>
+
+                                            <div className="mm-competitorCandidatePane mm-competitorCandidateQueuePane">
+                                              <div className="mm-competitorSuggestionsHead">
+                                                <div>
+                                                  <strong>Очередь кандидатов</strong>
+                                                  <span>{productCandidates.length ? `${productCandidates.length} карточки ждут решения` : "Нет карточек на проверке"}</span>
+                                                </div>
+                                                <span>Проверяйте модель, память, цвет и SIM.</span>
+                                              </div>
+                                              <div className="mm-competitorCandidateList mm-competitorCandidateTable">
+                                                {productCandidates.length ? (
+                                                  <div className="mm-competitorCandidateHeader">
+                                                    <span>Карточка</span>
+                                                    <span>Матч</span>
+                                                    <span>Действия</span>
+                                                  </div>
+                                                ) : null}
+                                                {productCandidates.map(({ source, candidate }) => (
+                                                  <div
+                                                    key={`${source.id}-${candidate.id}`}
+                                                    className="mm-competitorCandidate mm-competitorCandidateRow"
+                                                  >
+                                                    <div className="mm-competitorCandidateMain">
+                                                      <b>{source.name}</b>
+                                                      <strong>{candidate.title || candidate.url || "Карточка конкурента"}</strong>
+                                                      <em>{compactCompetitorUrl(candidate.url || "")}</em>
+                                                    </div>
+                                                    <small>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</small>
+                                                    <div className="mm-competitorCandidateActions">
+                                                      <a href={candidate.url || "#"} target="_blank" rel="noreferrer">Открыть</a>
+                                                      <button
+                                                        type="button"
+                                                        className="btn btn-primary mm-miniBtn"
+                                                        onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "approve")}
+                                                        disabled={competitorModeratingId === candidate.id}
+                                                      >
+                                                        Подтвердить
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        className="btn mm-miniBtn mm-ghostBtn"
+                                                        onClick={() => void moderateCompetitorCandidate(selectedCatalogNode.id, candidate.id, "reject")}
+                                                        disabled={competitorModeratingId === candidate.id}
+                                                      >
+                                                        Отклонить
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                                {productCandidates.length === 0 ? (
+                                                  <div className="mm-competitorQueueEmpty">
+                                                    <strong>Кандидатов для выбранного SKU нет</strong>
+                                                    <span>
+                                                      Запустите подбор или откройте SKU и добавьте точную ссылку вручную. После подтверждения карточки данные конкурента пойдут в параметры, описание и медиа.
+                                                    </span>
+                                                    <button
+                                                      type="button"
+                                                      className="btn btn-primary mm-miniBtn"
+                                                      onClick={() => void runCompetitorCategoryDiscovery(selectedCatalogNode.id, selectedSampleProduct?.id)}
+                                                      disabled={competitorDiscoveryRunning || competitorDiscoveryLoading || !selectedSampleProduct}
+                                                    >
+                                                      Подобрать карточки
+                                                    </button>
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                              {competitorMeta.inheritedFrom ? (
+                                                <button type="button" className="mm-aggLink" onClick={() => revealCatalogNode(competitorMeta.inheritedFrom)}>
+                                                  Наследуется от категории: {splitPath(pathById.get(competitorMeta.inheritedFrom) || competitorMeta.inheritedFrom).node}
+                                                </button>
+                                              ) : null}
+                                            </div>
                                           </div>
-                                        ) : null}
+                                        </div>
                                       </div>
-                                      {competitorMeta.inheritedFrom ? (
-                                        <button type="button" className="mm-aggLink" onClick={() => revealCatalogNode(competitorMeta.inheritedFrom)}>
-                                          Наследуется от категории: {splitPath(pathById.get(competitorMeta.inheritedFrom) || competitorMeta.inheritedFrom).node}
-                                        </button>
-                                      ) : null}
                                     </div>
-                                  </div>
                                 );
-                              })()}
+                              })() : null}
                             </div>
                           </div>
 
@@ -3451,8 +3558,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             <div className={embedded ? "mm-card mm-cardFeaturesEmbedded" : "card mm-card"}>
               {!embedded ? (
                 <>
-                  <div className="mm-title" style={{ marginBottom: 6 }}>Параметры</div>
-                  <div className="muted" style={{ marginBottom: 12 }}>
+                  <div className="mm-title mm-sectionTitle">Параметры</div>
+                  <div className="muted mm-sectionLead">
                     Слева выберите сопоставленную категорию. Справа перетаскивайте параметры площадок в строки мастер-шаблона и подтверждайте чекбоксом.
                   </div>
                 </>
@@ -3599,12 +3706,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                     <div className="muted mm-attrStateBlock">Нет данных по категории.</div>
                   ) : !attrDetails.template_id ? (
                     <div className="mm-emptyWorkspace">
-                      <div className="mm-emptyTitle">Сначала соберите инфо-модель</div>
+                      <div className="mm-emptyTitle">Сначала соберите модель категории</div>
                       <div className="mm-emptyText">
-                        Сопоставление параметров открывается после draft-модели. Перейдите в поля товара категории, соберите draft из источников и утвердите рабочую структуру.
+                        Сопоставление параметров открывается после подготовки модели. Соберите структуру из источников, проверьте поля и сохраните рабочую модель категории.
                       </div>
                       <Link className="btn btn-primary" to={orgPath(`/templates/${encodeURIComponent(activeAttrCategoryId)}`)}>
-                        Открыть инфо-модель
+                        Открыть модель категории
                       </Link>
                     </div>
                   ) : (
@@ -3656,7 +3763,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               </div>
                             </div>
 
-                            <div className="mm-tabs mm-attrTemplateTabs" style={{ marginBottom: 12 }}>
+                            <div className="mm-tabs mm-attrTemplateTabs">
                               <button
                                 type="button"
                                 className={`mm-tab ${attrTemplateTab === "all" ? "active" : ""}`}
@@ -3685,13 +3792,13 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             {attrDraftAutoBuilt && !attrHasServerSaved ? (
                               <div className="mm-draftNotice">
                                 <div className="mm-draftNoticeHead">
-                                  <div className="mm-draftNoticeTitle">Черновик собран автоматически</div>
+                                  <div className="mm-draftNoticeTitle">Предложения собраны автоматически</div>
                                   <button className="btn mm-miniBtn" type="button" onClick={clearAttrDraft} disabled={!attrDraftExists || attrSaving}>
                                     Очистить
                                   </button>
                                 </div>
-                                <div className="muted" style={{ lineHeight: 1.45 }}>
-                                  Категория собрана из уже сохраненных совпадений и структуры источников. Проверь строки и сохрани итоговый шаблон.
+                                <div className="muted mm-draftNoticeText">
+                                  Система использовала сохраненные совпадения и структуру источников. Проверьте строки перед сохранением модели категории.
                                 </div>
                               </div>
                             ) : null}
@@ -3699,8 +3806,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             <div className="mm-attrWorkbenchMain">
                               <div className="mm-workbenchHead mm-workbenchHeadCompact">
                                 <div>
-                                  <div className="mm-workbenchTitle">Инфомодель PIM</div>
-                                  <div className="mm-workbenchSub">Слева смысл параметра PIM, справа привязки ко всем источникам выбранной категории.</div>
+                                  <div className="mm-workbenchTitle">Модель параметров категории</div>
+                                  <div className="mm-workbenchSub">Слева параметр каталога, справа привязки ко всем источникам выбранной категории.</div>
                                 </div>
                               </div>
 
@@ -3708,7 +3815,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             <div className="mm-attrToolbarMain">
                               <input
                                 className="pn-input mm-attrSearch"
-                                placeholder="Поиск по параметрам PIM и связанным полям источников..."
+                                placeholder="Поиск по параметрам каталога и связанным полям источников..."
                                 value={attrRowQuery}
                                 onChange={(e) => setAttrRowQuery(e.target.value)}
                               />
@@ -3756,7 +3863,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               className="mm-attrTable"
                               style={{ gridTemplateColumns: `250px repeat(${tableProvidersForUi.length}, minmax(220px, 1fr)) 76px` }}
                             >
-                          <div className="mm-attrTh">Параметр PIM</div>
+                          <div className="mm-attrTh">Параметр каталога</div>
                           {tableProvidersForUi.map((providerCode) => (
                             <div key={`th-${providerCode}`} className="mm-attrTh">{sourceProviderLabel(providerCode)}</div>
                           ))}
@@ -3940,7 +4047,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                             <div className="mm-attrEmpty">
                               {attrRowsStats.total
                                 ? "По текущему фильтру параметры не найдены."
-                                : "Пока нет параметров. Добавь параметр PIM и свяжи его с полями площадок и конкурентов."}
+                                : "Пока нет параметров. Добавьте параметр каталога и свяжите его с полями площадок и конкурентов."}
                             </div>
                           )}
                             </div>
@@ -3957,7 +4064,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                               <div className="mm-featureMappingHead">
                                 <div>
                                   <div className="mm-workbenchTitle">Источники конкурентов</div>
-                                  <div className="mm-workbenchSub">Те же строки PIM, но для конкурентных площадок этой категории.</div>
+                                  <div className="mm-workbenchSub">Те же параметры каталога, но для конкурентных источников этой категории.</div>
                                 </div>
                                 <button
                                   type="button"
@@ -4117,22 +4224,22 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         </>
       ) : (
         <div className="card mm-card">
-          <div className="mm-title" style={{ marginBottom: 8 }}>Экспорт</div>
+          <div className="mm-title mm-exportTitle">Экспорт</div>
           <div className="muted">Следующий шаг: подготовка и публикация контента по сопоставленным категориям и параметрам.</div>
         </div>
       )}
 
       {modalOpen && (
-        <div className="pg-modalBackdrop" onClick={() => setModalOpen(false)}>
-          <div className="pg-modal pg-modalWide mm-categoryPickerModal" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setModalOpen(false)}>
+          <div className="pg-modal pg-modalWide mm-categoryPickerModal" role="dialog" aria-modal="true" aria-labelledby="marketplace-category-picker-title" aria-describedby={modalCatalogPath ? "marketplace-category-picker-subtitle" : undefined} onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">
+                <div className="card-title" id="marketplace-category-picker-title">
                   Выбор категории площадки - {displayProviders.find((x) => x.code === modalProvider)?.title || modalProvider}
                 </div>
                 {!!modalCatalogPath ? (
-                  <div className="muted" style={{ marginTop: 4 }}>
-                    Для ветки PIM: {splitPath(modalCatalogPath).node}
+                  <div className="muted mm-modalSubtitle" id="marketplace-category-picker-subtitle">
+                    Для ветки каталога: {splitPath(modalCatalogPath).node}
                   </div>
                 ) : null}
               </div>
@@ -4143,7 +4250,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               {!!modalCatalogPath && (
                 <div className="pg-addActions mm-categoryPickerContext">
                   <div>
-                    <div className="mm-categoryPickerLabel">Категория PIM</div>
+                    <div className="mm-categoryPickerLabel">Категория каталога</div>
                     <div className="mm-categoryPickerTitle">{splitPath(modalCatalogPath).node}</div>
                     <div className="mm-categoryPickerPath">{splitPath(modalCatalogPath).crumbs || "Корень каталога"}</div>
                   </div>
@@ -4156,7 +4263,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
               </div>
 
               {modalProvider && !(providerCategories[modalProvider] || []).length ? (
-                <div className="mm-emptyMap" style={{ marginTop: 10 }}>
+                <div className="mm-emptyMap mm-emptyMapSpaced">
                   <div className="mm-emptyTitle">Дерево категорий площадки не загружено</div>
                   <div className="muted">Для этого провайдера пока нет локального справочника категорий. Существующие связи сохраняются, но выбрать новую категорию сейчас нельзя.</div>
                 </div>
@@ -4206,7 +4313,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                       />
                     </label>
                     {manualOzonProviderCategoryId ? (
-                      <div className="mm-manualProviderPreview">Будет проверено через API: {manualOzonProviderCategoryId}</div>
+                      <div className="mm-manualProviderPreview">Будет проверено по API площадки: {manualOzonProviderCategoryId}</div>
                     ) : null}
                   </div>
                 </div>
@@ -4257,12 +4364,12 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       )}
 
       {clearModalOpen && (
-        <div className="pg-modalBackdrop" onClick={() => setClearModalOpen(false)}>
-          <div className="pg-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pg-modalBackdrop" role="presentation" onClick={() => setClearModalOpen(false)}>
+          <div className="pg-modal" role="dialog" aria-modal="true" aria-labelledby="marketplace-clear-bindings-title" aria-describedby="marketplace-clear-bindings-subtitle" onClick={(e) => e.stopPropagation()}>
             <div className="pg-modalHead">
               <div>
-                <div className="card-title">Очистить дочерние привязки</div>
-                <div className="muted" style={{ marginTop: 4 }}>
+                <div className="card-title" id="marketplace-clear-bindings-title">Очистить дочерние привязки</div>
+                <div className="muted mm-modalSubtitle" id="marketplace-clear-bindings-subtitle">
                   Все прямые привязки дочерних категорий для {PROVIDER_SLOTS[clearModalProvider] || clearModalProvider} будут удалены.
                 </div>
               </div>
@@ -4270,14 +4377,14 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
             </div>
 
             <div className="pg-modalBody">
-              <div className="mm-emptyMap" style={{ marginTop: 0 }}>
+              <div className="mm-emptyMap mm-emptyMapFlush">
                 <div className="mm-emptyTitle">Внимание</div>
                 <div className="muted">
                   После очистки можно будет задать одну общую привязку на выбранной родительской категории. Дочерние категории потеряют собственные связи для этой площадки.
                 </div>
               </div>
 
-              <label className="mm-check" style={{ marginTop: 14 }}>
+              <label className="mm-check mm-checkSpaced">
                 <input
                   type="checkbox"
                   checked={clearModalPreserveTemplates}
@@ -4287,7 +4394,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                 <span>Сохранить мастер-шаблоны отвязанных категорий</span>
               </label>
 
-              <div className="mm-breadcrumbs" style={{ marginTop: 10 }}>
+              <div className="mm-breadcrumbs mm-modalFootnote">
                 Чекбокс включен по умолчанию. Система сохранит шаблоны отвязанных категорий и их можно будет использовать дальше.
               </div>
             </div>

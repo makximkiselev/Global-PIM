@@ -11,12 +11,66 @@
   gap:12px;
 }
 
+.productsRegistryCommandHeader{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px 0 12px;
+  border-bottom:1px solid var(--line);
+}
+
+.productsRegistryCommandContext{
+  min-width:0;
+}
+
+.productsRegistryCommandContext span{
+  display:block;
+  margin-bottom:4px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.02em;
+}
+
+.productsRegistryCommandContext h1{
+  margin:0;
+  color:var(--text);
+  font-size:28px;
+  line-height:1.08;
+  font-weight:950;
+}
+
+.productsRegistryCommandContext p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+  font-weight:720;
+}
+
+.productsRegistryCommandActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
 .products-page > .card{
   width:100%;
 }
 
 .products-registry > .card{
   width:100%;
+}
+
+.productsRegistryError{
+  color:#b42318;
+  font-weight:800;
+  line-height:1.35;
+  border-color:rgba(220,38,38,.20);
+  background:rgba(254,242,242,.92);
 }
 
 .products-toolbar{
@@ -57,8 +111,8 @@
 }
 
 .products-filterSearch.isPending{
-  border-color:rgba(255,107,61,.28);
-  box-shadow:0 0 0 4px rgba(255,107,61,.08);
+  border-color:rgba(var(--brand-rgb),.28);
+  box-shadow:0 0 0 4px rgba(var(--brand-rgb),.08);
 }
 
 .products-toolbarMeta{
@@ -133,13 +187,13 @@
 }
 
 .products-quickChip:hover{
-  border-color:rgba(255,107,61,.18);
+  border-color:rgba(var(--brand-rgb),.18);
   color:var(--text);
 }
 
 .products-quickChip.isActive{
-  border-color:rgba(255,107,61,.22);
-  background:rgba(255,107,61,.10);
+  border-color:rgba(var(--brand-rgb),.22);
+  background:rgba(var(--brand-rgb),.10);
   color:var(--text);
 }
 
@@ -179,32 +233,84 @@
 }
 
 .products-registry.isCatalogClean .products-table{
-  min-width:920px;
+  min-width:760px;
 }
 
 .products-registry.isCatalogClean .products-mainCell{
-  min-width:420px;
+  min-width:320px;
 }
 
 .products-registry.isCatalogClean .products-colAction{
-  width:220px;
-  min-width:220px;
+  position:sticky;
+  right:0;
+  z-index:2;
+  width:176px;
+  min-width:176px;
   text-align:right;
+  background:rgba(var(--card-rgb),.98);
+  box-shadow:-12px 0 18px rgba(15,23,42,.04);
+}
+
+.products-registry.isCatalogClean thead .products-colAction{
+  z-index:4;
+  background:rgba(var(--bg-rgb),.96);
 }
 
 .products-registry.isCatalogClean .products-openBtn{
   min-height:30px;
-  padding:0 11px;
-  border-radius:10px;
+  min-width:92px;
+  padding:0 10px;
+  border-radius:8px;
+  white-space:nowrap;
 }
 
 .products-rowActions{
-  min-height:46px;
+  min-height:50px;
   display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  justify-content:center;
+  gap:6px;
+}
+
+.products-secondaryActions{
+  display:inline-flex;
   align-items:center;
   justify-content:flex-end;
   gap:7px;
-  flex-wrap:wrap;
+  white-space:nowrap;
+}
+
+.products-secondaryActions button{
+  appearance:none;
+  min-height:24px;
+  border:1px solid var(--line);
+  border-radius:7px;
+  background:rgba(var(--surface-rgb),.36);
+  color:var(--muted);
+  padding:0 7px;
+  font:inherit;
+  font-size:11px;
+  line-height:1.2;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.products-secondaryActions button:hover{
+  border-color:rgba(var(--brand-rgb),.24);
+  background:rgba(var(--brand-rgb),.07);
+  color:var(--brand);
+}
+
+.products-secondaryActions button.isDanger:hover{
+  border-color:rgba(220,38,38,.24);
+  background:rgba(220,38,38,.06);
+  color:#dc2626;
+}
+
+.products-secondaryActions button:disabled{
+  cursor:default;
+  opacity:.55;
 }
 
 .products-moveOverlay{
@@ -243,7 +349,7 @@
   color:var(--text);
   font-size:22px;
   line-height:1.12;
-  letter-spacing:-.03em;
+  letter-spacing:0;
   font-weight:1000;
 }
 

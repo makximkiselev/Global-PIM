@@ -12,7 +12,7 @@ export const PAGE_DEFAULT_PATHS: Record<string, string> = {
   infographics: "/images/infographics",
   stats_card_quality: "/stats/card-quality",
   stats_marketplace_quality: "/stats/marketplace-quality",
-  admin_access: "/admin/access",
+  admin_access: "/admin/organizations",
 };
 
 export function firstAllowedPath(pageCodes: string[]): string {

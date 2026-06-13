@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useOrgPath } from "../../app/orgRoutes";
 import { api } from "../../lib/api";
 import Alert from "../../components/ui/Alert";
@@ -7,7 +7,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Field from "../../components/ui/Field";
 import Modal from "../../components/ui/Modal";
-import PageHeader from "../../components/ui/PageHeader";
 import Select from "../../components/ui/Select";
 import TextInput from "../../components/ui/TextInput";
 import Textarea from "../../components/ui/Textarea";
@@ -100,6 +99,26 @@ function storeAccessLabel(store: ImportStore) {
   return "ожидает проверки";
 }
 
+function accessReadinessValue(checkedCount: number, enabledCount: number, totalCount: number) {
+  if (totalCount === 0) return "нет магазинов";
+  const baseCount = enabledCount || totalCount;
+  return `${checkedCount}/${baseCount} проверено`;
+}
+
+function accessReadinessText(enabledCount: number, totalCount: number) {
+  if (totalCount === 0) return "добавьте магазин";
+  if (enabledCount === 0) return "включите магазин";
+  return "магазины и доступы";
+}
+
+function pluralRu(count: number, one: string, few: string, many: string) {
+  const mod10 = Math.abs(count) % 10;
+  const mod100 = Math.abs(count) % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
 function toStoreProviderCode(provider: string): StoreProviderCode {
   if (provider === "ozon") return "ozon";
   if (provider === "insales") return "insales";
@@ -108,6 +127,7 @@ function toStoreProviderCode(provider: string): StoreProviderCode {
 
 export default function ConnectorsStatus({ embedded = false, view = "overview" }: { embedded?: boolean; view?: ConnectorsView } = {}) {
   const orgPath = useOrgPath();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [runningProvider, setRunningProvider] = useState("");
@@ -128,6 +148,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   const [storeToken, setStoreToken] = useState("");
   const [storeAuthMode, setStoreAuthMode] = useState<"auto" | "api-key" | "oauth" | "bearer">("auto");
   const [checkingStoreId, setCheckingStoreId] = useState("");
+  const requestedProvider = String(searchParams.get("provider") || "").trim();
 
   async function load() {
     setLoading(true);
@@ -310,6 +331,24 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
     }
   }
 
+  async function updateStoreExport(provider: string, storeId: string, exportEnabled: boolean) {
+    setSaving(true);
+    setError("");
+    try {
+      const r = await api<StatusResp>(`/connectors/status/import-stores/${encodeURIComponent(provider)}/${encodeURIComponent(storeId)}/export`, {
+        method: "PATCH",
+        body: JSON.stringify({ export_enabled: exportEnabled }),
+      });
+      setProviders(r.providers || []);
+      setScheduleOptions(r.schedule_options || []);
+    } catch (e) {
+      setError((e as Error).message || "Ошибка сохранения настройки выгрузки");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const allMethods = providers.flatMap((p) => p.methods || []);
   const stores = providers.flatMap((p) => (p.import_stores || []).map((store) => ({ ...store, provider: p.title, providerCode: p.code })));
   const enabledStores = stores.filter((store) => store.enabled);
@@ -338,9 +377,9 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   const readinessCards = [
     {
       title: "Доступы",
-      value: `${checkedStores.length}/${enabledStores.length || stores.length}`,
+      value: accessReadinessValue(checkedStores.length, enabledStores.length, stores.length),
       state: checkedStores.length === enabledStores.length && enabledStores.length > 0 ? "isReady" : "isBlocked",
-      text: "магазины и доступы",
+      text: accessReadinessText(enabledStores.length, stores.length),
     },
     {
       title: "Категории",
@@ -352,7 +391,7 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
       title: "Параметры",
       value: `${attrMethods.filter((m) => m.status === "ok").length}/${attrMethods.length || 0}`,
       state: attrMethods.every((m) => m.status === "ok") && attrMethods.length ? "isReady" : "isBlocked",
-      text: "инфо-модели и сопоставления",
+      text: "параметры и сопоставления",
     },
     {
       title: "Товары",
@@ -365,15 +404,18 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
   return (
     <div className="cs-page page-shell">
       {!embedded ? (
-        <PageHeader
-          title="Источники и подключения"
-          subtitle="Короткая панель готовности: какие источники работают, что блокирует модели, товары и экспорт."
-          actions={
+        <header className="csCommandHeader">
+          <div className="csCommandContext">
+            <span>Данные / подключения</span>
+            <h1>Источники и подключения</h1>
+            <p>Проверяйте готовность площадок, магазинов, категорий, параметров и процессов экспорта.</p>
+          </div>
+          <div className="csCommandControls">
             <Button onClick={load} disabled={loading || !!runningProvider || saving}>
               {loading ? "Обновляю..." : "Обновить все"}
             </Button>
-          }
-        />
+          </div>
+        </header>
       ) : null}
 
       {error ? <Alert tone="error">{error}</Alert> : null}
@@ -389,6 +431,24 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
             <div className="cs-healthScore">
               <strong>{readyMethods}/{allMethods.length || 0}</strong>
               <span>методов готовы</span>
+            </div>
+          </div>
+          <div className="cs-overviewStrip" aria-label="Состояние контуров подключения">
+            <div>
+              <span>Методы</span>
+              <strong>{readyMethods}/{allMethods.length || 0}</strong>
+            </div>
+            <div>
+              <span>Блокеры</span>
+              <strong>{criticalCount}</strong>
+            </div>
+            <div>
+              <span>Магазины</span>
+              <strong>{enabledStores.length}/{stores.length}</strong>
+            </div>
+            <div>
+              <span>Проверено доступов</span>
+              <strong>{checkedStores.length}</strong>
             </div>
           </div>
           <div className="cs-readinessGrid">
@@ -451,7 +511,10 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                 <div className="cs-providerTitleBlock">
                   <span className={`cs-statusPill ${health}`}>{healthLabel(health)}</span>
                   <h3>{provider.title}</h3>
-                  <p>{provider.methods.length} процесса, {providerStores.length} магазина импорта</p>
+                  <p>
+                    {provider.methods.length} {pluralRu(provider.methods.length, "процесс", "процесса", "процессов")},{" "}
+                    {providerStores.length} {pluralRu(providerStores.length, "магазин", "магазина", "магазинов")} импорта
+                  </p>
                 </div>
                 <Button
                   variant="primary"
@@ -483,11 +546,13 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                   <div className="cs-sectionHead">
                     <div>
                       <span className="cs-eyebrow">Доступы магазинов</span>
-                      <strong>Магазины импорта</strong>
+                      <strong>{requestedProvider === provider.code ? "Настройте этот магазин" : "Магазины импорта и выгрузки"}</strong>
                     </div>
-                    <Button onClick={() => openCreateStore(provider.code)} disabled={saving || !!runningProvider}>
-                      Добавить магазин
-                    </Button>
+                    {providerStores.length ? (
+                      <Button onClick={() => openCreateStore(provider.code)} disabled={saving || !!runningProvider}>
+                        Добавить магазин
+                      </Button>
+                    ) : null}
                   </div>
                   {provider.code === "yandex_market" ? (
                     <div className="cs-offerBox">
@@ -495,17 +560,27 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                       <strong>SKU GT</strong>
                     </div>
                   ) : null}
-                  <div className="cs-storeList">
+                  <div className="cs-storeList" role="table" aria-label={`Магазины ${provider.title}`}>
+                    {providerStores.length ? (
+                      <div className="cs-storeListHead" role="row">
+                        <span>Магазин</span>
+                        <span>Доступ</span>
+                        <span>Реквизиты</span>
+                        <span>Экспорт</span>
+                        <span>Действия</span>
+                      </div>
+                    ) : null}
                     {providerStores.length ? providerStores.map((store) => (
-                      <article key={store.id} className="cs-storeCard">
+                      <article key={store.id} className={`cs-storeCard ${requestedProvider === provider.code ? "isRequested" : ""}`} role="row">
                         <div className="cs-storeTop">
                           <strong>{store.title}</strong>
                           <span className={`cs-storeBadge ${store.enabled ? "isEnabled" : "isDisabled"}`}>
-                            {store.enabled ? "Включен" : "Выключен"}
+                            {store.enabled ? "Импорт" : "Пауза"}
                           </span>
-                          <span className={`cs-storeBadge ${store.export_enabled !== false ? "isEnabled" : "isDisabled"}`}>
-                            {store.export_enabled !== false ? "Экспорт" : "Без экспорта"}
-                          </span>
+                        </div>
+                        <div className={`cs-storeAccess ${store.last_check_status === "ok" ? "isOk" : store.last_check_status === "error" ? "isError" : ""}`}>
+                          {storeAccessLabel(store)}
+                          {store.last_check_at ? <span>{fmtDate(store.last_check_at)}</span> : null}
                         </div>
                         <dl className="cs-storeMeta">
                           {provider.code === "yandex_market" ? (
@@ -526,12 +601,18 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                             </>
                           )}
                         </dl>
-                        <div className={`cs-storeAccess ${store.last_check_status === "ok" ? "isOk" : store.last_check_status === "error" ? "isError" : ""}`}>
-                          {storeAccessLabel(store)}
-                          {store.last_check_at ? <span>{fmtDate(store.last_check_at)}</span> : null}
-                        </div>
-                        {store.last_check_error ? <p className="cs-storeError">{store.last_check_error}</p> : null}
-                        {store.notes ? <p className="cs-storeNotes">{store.notes}</p> : null}
+                        <label className="cs-storeToggle">
+                          <input
+                            type="checkbox"
+                            checked={store.export_enabled !== false}
+                            disabled={saving || !!runningProvider}
+                            onChange={(event) => updateStoreExport(provider.code, store.id, event.target.checked)}
+                          />
+                          <span>
+                            <strong>Экспорт</strong>
+                            <em>{store.export_enabled !== false ? "включен" : "выключен"}</em>
+                          </span>
+                        </label>
                         <div className="cs-storeActions">
                           <Button onClick={() => checkStore(provider.code, store.id)} disabled={saving || !!runningProvider || checkingStoreId === store.id}>
                             {checkingStoreId === store.id ? "Проверяю" : "Проверить"}
@@ -539,9 +620,17 @@ export default function ConnectorsStatus({ embedded = false, view = "overview" }
                           <Button onClick={() => openEditStore(provider.code, store)} disabled={saving || !!runningProvider}>Изменить</Button>
                           <Button onClick={() => deleteStore(provider.code, store.id)} disabled={saving || !!runningProvider}>Удалить</Button>
                         </div>
+                        {store.last_check_error ? <p className="cs-storeError">{store.last_check_error}</p> : null}
+                        {store.notes ? <p className="cs-storeNotes">{store.notes}</p> : null}
                       </article>
                     )) : (
-                      <div className="cs-emptyAccess">Магазинов импорта пока нет.</div>
+                      <div className={`cs-emptyAccess cs-storeEmpty ${requestedProvider === provider.code ? "isRequested" : ""}`}>
+                        <strong>Магазинов пока нет</strong>
+                        <span>Добавьте кабинет {provider.title}, чтобы он появился в импорте и в выборе целей экспорта.</span>
+                        <Button onClick={() => openCreateStore(provider.code)} disabled={saving || !!runningProvider}>
+                          Добавить магазин
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
