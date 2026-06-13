@@ -2795,7 +2795,10 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         }
       }
       setCompetitorIndexNotice("Индекс конкурентов готов. Запускаю сопоставление SKU по найденным карточкам.");
-      await runCompetitorCategoryDiscovery(cid, productId, { forceCategoryScope: true });
+      const runSources = savedLinks
+        .map((item) => item.site)
+        .filter((site): site is CompetitorSiteKey => (COMPETITOR_PROVIDER_CODES as string[]).includes(site));
+      await runCompetitorCategoryDiscovery(cid, productId, { forceCategoryScope: true, sources: runSources });
     } finally {
       setCompetitorIndexing(false);
     }
@@ -2881,11 +2884,15 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
   async function runCompetitorCategoryDiscovery(
     categoryId: string,
     productId?: string,
-    options: { forceCategoryScope?: boolean } = {},
+    options: { forceCategoryScope?: boolean; sources?: CompetitorSiteKey[] } = {},
   ) {
     const current = competitorDiscovery || await loadCompetitorDiscovery(categoryId);
     const selectedProductId = options.forceCategoryScope ? "" : String(productId || competitorSampleProductId || "").trim();
-    const sourceRows = current?.sources || [];
+    const requestedSources = (options.sources?.length ? options.sources : COMPETITOR_PROVIDER_CODES)
+      .filter((source, index, arr): source is CompetitorSiteKey => (
+        (COMPETITOR_PROVIDER_CODES as string[]).includes(source) && arr.indexOf(source) === index
+      ));
+    const sourceRows = (current?.sources || []).filter((source) => requestedSources.includes(source.id as CompetitorSiteKey));
     const hasUnconfirmedCompetitorSource = (pid: string) => {
       const normalizedProductId = String(pid || "").trim();
       if (!normalizedProductId || !sourceRows.length) return true;
@@ -2913,7 +2920,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
         body: JSON.stringify({
           background: false,
           category_id: categoryId,
-          sources: COMPETITOR_PROVIDER_CODES,
+          sources: requestedSources,
           product_ids: productIds,
           limit: Math.max(1, productIds.length || (options.forceCategoryScope ? 250 : 30)),
         }),
