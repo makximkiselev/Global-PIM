@@ -2205,6 +2205,44 @@
     white-space:normal;
   }
 
+  .shellContentBody .cx-targetMeta{
+    display:grid;
+    grid-template-columns:1fr;
+    align-items:start;
+    gap:4px;
+  }
+
+  .shellContentBody .cx-targetMeta strong{
+    text-align:left;
+  }
+
+  .shellContentBody .cx-storeRow{
+    display:grid;
+    grid-template-columns:1fr;
+    align-items:start;
+    gap:8px;
+  }
+
+  .shellContentBody .cx-storeRowMain{
+    width:100%;
+  }
+
+  .shellContentBody .cx-storeRowMain strong,
+  .shellContentBody .cx-storeRowMain em{
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  .shellContentBody .cx-storeRowChoice{
+    justify-self:start;
+    max-width:100%;
+  }
+
+  .shellContentBody .cx-storeRowChoice em{
+    white-space:normal;
+    line-height:1.2;
+  }
+
   .shellContentBody .cx-sourceBoard,
   .shellContentBody .cx-targetsBoard{
     grid-template-columns:1fr;
