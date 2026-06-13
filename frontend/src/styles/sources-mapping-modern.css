@@ -5463,25 +5463,17 @@
 
 .sourcesCommandWorkbench .mm-competitorTableLayout{
   display:grid;
-  grid-template-columns:minmax(0, 1fr) minmax(360px, 420px);
+  grid-template-columns:minmax(0, 1fr);
   align-items:start;
   min-height:0;
   flex:1;
 }
 
-.sourcesCommandWorkbench .mm-competitorTableLayout.isInspectorHidden{
-  grid-template-columns:minmax(0, 1fr);
-}
-
 .sourcesCommandWorkbench .mm-competitorMatchTableWrap{
   min-width:0;
   overflow:auto;
-  border-right:1px solid var(--line);
-  background:var(--card);
-}
-
-.sourcesCommandWorkbench .mm-competitorTableLayout.isInspectorHidden .mm-competitorMatchTableWrap{
   border-right:0;
+  background:var(--card);
 }
 
 .sourcesCommandWorkbench .mm-competitorMatchTable{
@@ -5585,18 +5577,33 @@
   color:#b42318;
 }
 
+.sourcesCommandWorkbench .mm-competitorInspectorBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:80;
+  border:0;
+  background:rgba(15, 23, 42, .42);
+  backdrop-filter:saturate(110%) blur(1px);
+  cursor:default;
+}
+
 .sourcesCommandWorkbench .mm-competitorInspectorDrawer{
-  position:sticky;
-  top:72px;
-  align-self:start;
+  position:fixed;
+  top:12px;
+  right:12px;
+  bottom:12px;
+  z-index:81;
   display:flex;
   flex-direction:column;
   gap:10px;
-  min-width:0;
-  max-height:calc(100vh - 88px);
+  width:min(472px, calc(100vw - 24px));
+  max-height:none;
   overflow:auto;
-  padding:12px;
+  padding:14px;
+  border:1px solid rgba(15,23,42,.12);
+  border-radius:18px;
   background:#fbfbfc;
+  box-shadow:0 24px 80px rgba(15,23,42,.24);
 }
 
 .sourcesCommandWorkbench .mm-competitorInspectorHead,
@@ -5605,6 +5612,17 @@
   border-radius:12px;
   background:var(--card);
   padding:12px;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorHead .btn{
+  flex:0 0 auto;
 }
 
 .sourcesCommandWorkbench .mm-competitorInspectorHead span,

@@ -3523,7 +3523,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                           ) : null}
                                           {competitorDiscoveryError ? <div className="mm-mappingIssueNotice"><span>{competitorDiscoveryError}</span></div> : null}
 
-                                          <div className={`mm-competitorTableLayout${selectedSampleProduct ? "" : " isInspectorHidden"}`}>
+                                          <div className="mm-competitorTableLayout">
                                             <div className="mm-competitorMatchTableWrap">
                                               <div
                                                 className="mm-competitorMatchTable"
@@ -3571,11 +3571,27 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                             </div>
 
                                             {selectedSampleProduct ? (
+                                            <>
+                                            <button
+                                              type="button"
+                                              className="mm-competitorInspectorBackdrop"
+                                              aria-label="Закрыть инспектор"
+                                              onClick={() => setCompetitorSampleProductId("")}
+                                            />
                                             <aside className="mm-competitorInspectorDrawer" aria-label="Инспектор конкурентных карточек">
                                               <div className="mm-competitorInspectorHead">
-                                                <span>SKU</span>
-                                                <strong>{selectedSkuCode}</strong>
-                                                <p>{selectedSkuTitle}</p>
+                                                <div>
+                                                  <span>SKU</span>
+                                                  <strong>{selectedSkuCode}</strong>
+                                                  <p>{selectedSkuTitle}</p>
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  className="btn mm-miniBtn mm-ghostBtn"
+                                                  onClick={() => setCompetitorSampleProductId("")}
+                                                >
+                                                  Закрыть
+                                                </button>
                                               </div>
                                               <button
                                                 type="button"
@@ -3663,6 +3679,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 </button>
                                               ) : null}
                                             </aside>
+                                            </>
                                             ) : null}
                                           </div>
                                         </div>
