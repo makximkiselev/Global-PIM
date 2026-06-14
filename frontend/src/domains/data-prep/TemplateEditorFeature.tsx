@@ -133,6 +133,9 @@ const SOURCE_LABEL: Record<string, string> = {
   big_geek: "Big Geek",
 };
 
+const DEFAULT_MARKETPLACE_SOURCE_COLUMNS = ["yandex_market", "ozon"];
+const DEFAULT_COMPETITOR_SOURCE_COLUMNS = ["restore", "store77", "biggeek"];
+
 const FIELD_LAYER_OPTIONS = [
   { value: "features", label: "Характеристика" },
   { value: "content", label: "Контент" },
@@ -678,6 +681,12 @@ export default function TemplateEditor() {
   }, [draftCandidates]);
   const draftSourceColumns = useMemo(() => {
     const byProvider = new Map<string, { provider: string; kind: "marketplace" | "competitor" | "other"; label: string }>();
+    for (const provider of DEFAULT_MARKETPLACE_SOURCE_COLUMNS) {
+      byProvider.set(provider, { provider, kind: "marketplace", label: sourceLabel(provider) });
+    }
+    for (const provider of DEFAULT_COMPETITOR_SOURCE_COLUMNS) {
+      byProvider.set(provider, { provider, kind: "competitor", label: sourceLabel(provider) });
+    }
     for (const candidate of draftCandidates) {
       for (const source of candidate.sources || []) {
         const kind = sourceGroupKind(source);

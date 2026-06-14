@@ -1436,11 +1436,11 @@
 
 .tplDraftMatrixScroller {
   width: 100%;
-  max-height: min(72vh, 860px);
+  max-height: min(76vh, 900px);
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(var(--card-rgb), 0.78);
+  border-radius: 10px;
+  background: rgba(var(--card-rgb), 0.92);
 }
 
 .tplDraftMatrix table {
@@ -1454,21 +1454,21 @@
 .tplDraftMatrix th,
 .tplDraftMatrix td {
   min-width: 220px;
-  max-width: 320px;
+  max-width: 260px;
   vertical-align: top;
-  border-right: 1px solid rgba(var(--line-rgb), 0.68);
-  border-bottom: 1px solid rgba(var(--line-rgb), 0.68);
-  background: rgba(var(--surface-rgb), 0.66);
+  border-right: 1px solid rgba(var(--line-rgb), 0.5);
+  border-bottom: 1px solid rgba(var(--line-rgb), 0.5);
+  background: rgba(var(--surface-rgb), 0.78);
 }
 
 .tplDraftMatrix th {
   position: sticky;
   top: 0;
   z-index: 4;
-  padding: 10px 12px;
+  padding: 9px 10px;
   background: rgba(var(--surface-rgb), 0.96);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 930;
   letter-spacing: 0.06em;
   text-align: left;
@@ -1480,7 +1480,7 @@
 }
 
 .tplDraftMatrix .tplDraftMatrixProviderHead th {
-  top: 39px;
+  top: 36px;
   color: var(--text-soft);
   background: rgba(var(--card-rgb), 0.98);
 }
@@ -1490,9 +1490,21 @@
   position: sticky;
   left: 0;
   z-index: 3;
-  min-width: 360px;
-  max-width: 420px;
-  box-shadow: 10px 0 18px rgba(15, 23, 42, 0.04);
+  min-width: 300px;
+  max-width: 300px;
+  box-shadow: 8px 0 14px rgba(15, 23, 42, 0.035);
+}
+
+.tplDraftMatrix th:nth-child(2),
+.tplDraftMatrix td:nth-child(2) {
+  min-width: 170px;
+  max-width: 170px;
+}
+
+.tplDraftMatrix th:nth-child(3),
+.tplDraftMatrix td:nth-child(3) {
+  min-width: 180px;
+  max-width: 180px;
 }
 
 .tplDraftMatrix th:first-child {
@@ -1503,17 +1515,20 @@
 .tplDraftMatrixControlCell,
 .tplDraftMatrixSourceCell,
 .tplDraftMatrixActions {
-  padding: 12px;
+  padding: 10px;
 }
 
 .tplDraftMatrixNameCell {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   background: rgba(var(--surface-rgb), 0.9) !important;
 }
 
 .tplDraftMatrixNameCell .input {
-  min-height: 38px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 13px;
   font-weight: 900;
 }
 
@@ -1523,13 +1538,13 @@
   gap: 6px;
   align-items: center;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 850;
 }
 
 .tplDraftMatrixNameMeta span {
   width: fit-content;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border: 1px solid rgba(var(--line-rgb), 0.64);
   border-radius: 999px;
   background: rgba(var(--card-rgb), 0.72);
@@ -1543,15 +1558,16 @@
 
 .tplDraftMatrixControlCell {
   display: grid;
-  gap: 8px;
+  gap: 7px;
+  align-content: start;
 }
 
 .tplDraftMatrixControlCell select,
 .tplDraftMatrixSourceCell select {
   width: 100%;
-  min-height: 36px;
+  min-height: 34px;
   border: 1px solid rgba(var(--line-rgb), 0.78);
-  border-radius: 10px;
+  border-radius: 9px;
   background: rgba(var(--card-rgb), 0.86);
   color: var(--text);
   font-size: 12px;
@@ -1562,14 +1578,15 @@
 
 .tplDraftMatrixControlCell span {
   color: var(--text-soft);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.3;
   font-weight: 760;
 }
 
 .tplDraftMatrixSourceCell {
   display: grid;
-  gap: 8px;
+  gap: 7px;
+  align-content: start;
 }
 
 .tplDraftMatrixSourceCell.is-empty {
@@ -1578,13 +1595,13 @@
 
 .tplDraftMatrixSourceMeta {
   display: grid;
-  gap: 4px;
-  min-height: 48px;
+  gap: 3px;
+  min-height: 0;
 }
 
 .tplDraftMatrixSourceMeta strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.25;
   font-weight: 900;
   overflow-wrap: anywhere;
@@ -1593,7 +1610,7 @@
 .tplDraftMatrixSourceMeta span,
 .tplDraftMatrixSourceMeta em {
   color: var(--text-soft);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.3;
   font-style: normal;
   font-weight: 760;
@@ -1604,16 +1621,16 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 170px !important;
-  max-width: 190px !important;
+  min-width: 150px !important;
+  max-width: 160px !important;
 }
 
 .tplDraftMatrixActions .btn.sm {
   width: 100%;
-  min-height: 34px;
-  padding: 7px 9px;
-  border-radius: 10px;
-  font-size: 12px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  font-size: 11px;
   box-shadow: none;
 }
 
