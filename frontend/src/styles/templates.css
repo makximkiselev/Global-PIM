@@ -1487,6 +1487,23 @@
   background: rgba(var(--card-rgb), 0.98);
 }
 
+.tplDraftMatrixHeadCount {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 7px;
+  padding: 0 5px;
+  border: 1px solid rgba(var(--line-rgb), 0.72);
+  border-radius: 999px;
+  background: rgba(var(--surface-rgb), 0.86);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .tplDraftMatrix th:first-child,
 .tplDraftMatrix td:first-child {
   position: sticky;

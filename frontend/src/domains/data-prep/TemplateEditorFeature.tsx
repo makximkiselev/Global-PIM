@@ -690,6 +690,13 @@ export default function TemplateEditor() {
     }
     return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
   }, [draftCandidates, master]);
+  const sourceCoverageByProvider = useMemo(() => {
+    const map = new Map<string, { provider: string; fields: number; required: number; examples: number }>();
+    for (const row of sourceCoverage) {
+      map.set(row.provider, row);
+    }
+    return map;
+  }, [sourceCoverage]);
   const activeMarketplaceProviders = useMemo(() => {
     const sources = master?.sources && typeof master.sources === "object" ? master.sources : {};
     return new Set(
@@ -726,9 +733,13 @@ export default function TemplateEditor() {
     return Array.from(byProvider.values()).sort((a, b) => {
       const kindRank = a.kind.localeCompare(b.kind);
       if (kindRank !== 0) return kindRank;
+      if (a.kind === "competitor" || a.kind === "marketplace") {
+        const coverageRank = Number(sourceCoverageByProvider.get(b.provider)?.fields || 0) - Number(sourceCoverageByProvider.get(a.provider)?.fields || 0);
+        if (coverageRank !== 0) return coverageRank;
+      }
       return a.label.localeCompare(b.label, "ru");
     });
-  }, [activeMarketplaceProviders, draftCandidates]);
+  }, [activeMarketplaceProviders, draftCandidates, sourceCoverageByProvider]);
   const marketplaceSourceColumns = draftSourceColumns.filter((column) => column.kind === "marketplace");
   const competitorSourceColumns = draftSourceColumns.filter((column) => column.kind === "competitor");
   const sourceOptionsByProvider = useMemo(() => {
@@ -752,16 +763,6 @@ export default function TemplateEditor() {
     }
     return map;
   }, [draftCandidates]);
-  const usedSourceKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const candidate of draftCandidates) {
-      for (const column of draftSourceColumns) {
-        const key = selectedSourceKeyForProvider(candidate, column.provider);
-        if (key) keys.add(key);
-      }
-    }
-    return keys;
-  }, [draftCandidates, draftSourceColumns]);
   const draftAudit = useMemo(() => {
     let competitorOnly = 0;
     let marketplaceOnly = 0;
@@ -842,11 +843,9 @@ export default function TemplateEditor() {
   function renderDraftSourceCell(candidate: InfoModelCandidate, provider: string) {
     const selectedKey = selectedSourceKeyForProvider(candidate, provider);
     const candidateSource = (candidate.sources || []).find((source) => sourceProvider(source) === provider && sourceIdentity(source) === selectedKey);
-    const options = (sourceOptionsByProvider.get(provider) || []).filter((source) => {
-      const key = sourceIdentity(source);
-      return key === selectedKey || !usedSourceKeys.has(key);
-    });
+    const options = sourceOptionsByProvider.get(provider) || [];
     const selectedSource = candidateSource || options.find((source) => sourceIdentity(source) === selectedKey);
+    const providerHasAnyFields = Number(sourceCoverageByProvider.get(provider)?.fields || 0) > 0;
     return (
       <td className={`tplDraftMatrixSourceCell${selectedSource ? "" : " is-empty"}`} key={`${candidate.id}-${provider}`}>
         <select
@@ -873,7 +872,7 @@ export default function TemplateEditor() {
           </div>
         ) : (
           <div className="tplDraftMatrixSourceMeta">
-            <span>Нет параметра из этого источника</span>
+            <span>{providerHasAnyFields ? "Нет такого параметра" : "Нет характеристик"}</span>
           </div>
         )}
       </td>
@@ -1628,8 +1627,18 @@ export default function TemplateEditor() {
                                 <th rowSpan={2}>Действия</th>
                               </tr>
                               <tr className="tplDraftMatrixProviderHead">
-                                {marketplaceSourceColumns.map((column) => <th key={column.provider}>{column.label}</th>)}
-                                {competitorSourceColumns.map((column) => <th key={column.provider}>{column.label}</th>)}
+                                {marketplaceSourceColumns.map((column) => (
+                                  <th key={column.provider}>
+                                    {column.label}
+                                    <span className="tplDraftMatrixHeadCount">{sourceCoverageByProvider.get(column.provider)?.fields || 0}</span>
+                                  </th>
+                                ))}
+                                {competitorSourceColumns.map((column) => (
+                                  <th key={column.provider}>
+                                    {column.label}
+                                    <span className="tplDraftMatrixHeadCount">{sourceCoverageByProvider.get(column.provider)?.fields || 0}</span>
+                                  </th>
+                                ))}
                               </tr>
                             </thead>
                             <tbody>
