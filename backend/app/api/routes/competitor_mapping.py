@@ -330,11 +330,18 @@ async def _extract_competitor_content_with_retry(url: str, *, attempts: int = 2)
 
 def _competitor_extract_timeout_seconds(source_id: str) -> int:
     source_key = str(source_id or "").strip()
+    if source_key == "store77":
+        return 120
     if source_key == "restore":
         return 80
-    if source_key == "store77":
-        return 60
     return 45
+
+
+def _competitor_extract_attempts(source_id: str) -> int:
+    source_key = str(source_id or "").strip()
+    if source_key == "store77":
+        return 2
+    return 2
 
 
 ALLOWED_SITES: Dict[str, set[str]] = {
@@ -5862,7 +5869,7 @@ async def _enrich_product_from_confirmed_competitors(product_id: str, *, job_id:
         url = str(link.get("url") or "").strip()
         try:
             async with asyncio.timeout(_competitor_extract_timeout_seconds(source_id)):
-                result = await _extract_competitor_content_with_retry(url, attempts=3 if source_id == "store77" else 2)
+                result = await _extract_competitor_content_with_retry(url, attempts=_competitor_extract_attempts(source_id))
             specs = result.get("specs") if isinstance(result.get("specs"), dict) else {}
             return source_id, {
                 "ok": True,
@@ -5890,7 +5897,9 @@ async def _enrich_product_from_confirmed_competitors(product_id: str, *, job_id:
                 "retryable": str(exc or "").upper() in {"TIMEOUT", "FETCH_ERROR", "EXTRACT_FAILED"},
             }
 
-    extracted_pairs = await asyncio.gather(*[_one(link) for link in confirmed_links])
+    extracted_pairs: List[Tuple[str, Dict[str, Any]]] = []
+    for link in confirmed_links:
+        extracted_pairs.append(await _one(link))
     extracted = {source_id: result for source_id, result in extracted_pairs if source_id}
     successful = {source_id: result for source_id, result in extracted.items() if result.get("ok")}
     extracted_specs_count = sum(len(result.get("specs") or {}) for result in successful.values() if isinstance(result.get("specs"), dict))
@@ -6094,7 +6103,7 @@ async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
     })
     upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
     try:
-        async with asyncio.timeout(240):
+        async with asyncio.timeout(300):
             result = await _enrich_product_from_confirmed_competitors(product_id, job_id=job_id)
         if not bool(result.get("ok", True)):
             errors = result.get("errors") if isinstance(result.get("errors"), list) else []
