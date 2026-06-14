@@ -2085,7 +2085,7 @@ def _upsert_template_from_attr_mapping(
     template_meta = template_record.get("meta") if isinstance(template_record.get("meta"), dict) else {}
     connectors = ConnectorsStateReadAdapter()
     active_marketplace_sources = {
-        "yandex_market": bool(connectors.first_enabled_import_store("yandex_market")),
+        "yandex_market": bool(effective_yandex_category_id or yandex_params),
         "ozon": bool(connectors.first_enabled_import_store("ozon")),
     }
 

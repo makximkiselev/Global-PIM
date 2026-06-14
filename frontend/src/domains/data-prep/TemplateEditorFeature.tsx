@@ -674,7 +674,11 @@ export default function TemplateEditor() {
         if (kind === "marketplace") {
           const rawSource = master?.sources?.[provider];
           const templateSource = rawSource && typeof rawSource === "object" ? (rawSource as TemplateSourceInfo) : null;
-          if (!templateSource?.enabled) continue;
+          const isUsableMarketplaceSource =
+            provider === "yandex_market"
+              ? Boolean(templateSource?.enabled || templateSource?.category_id || Number(templateSource?.params_count || 0) > 0 || Number(templateSource?.mapped_rows || 0) > 0)
+              : Boolean(templateSource?.enabled);
+          if (!isUsableMarketplaceSource) continue;
         }
         const key = provider || source.kind || "source";
         const current = byProvider.get(key) || { provider: key, fields: 0, required: 0, examples: 0 };
@@ -692,6 +696,9 @@ export default function TemplateEditor() {
       DEFAULT_MARKETPLACE_SOURCE_COLUMNS.filter((provider) => {
         const raw = sources[provider];
         const source = raw && typeof raw === "object" ? (raw as TemplateSourceInfo) : null;
+        if (provider === "yandex_market") {
+          return Boolean(source?.enabled || source?.category_id || Number(source?.params_count || 0) > 0 || Number(source?.mapped_rows || 0) > 0);
+        }
         return Boolean(source?.enabled);
       }),
     );

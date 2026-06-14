@@ -172,6 +172,40 @@ def _catalog_path(nodes: List[Dict[str, Any]], category_id: str) -> List[Dict[st
     return chain
 
 
+def _catalog_parent_map(nodes: List[Dict[str, Any]]) -> Dict[str, str]:
+    parent_by_id: Dict[str, str] = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = str(node.get("id") or "").strip()
+        parent_id = str(node.get("parent_id") or "").strip()
+        if node_id and parent_id:
+            parent_by_id[node_id] = parent_id
+    return parent_by_id
+
+
+def _effective_provider_category_id(
+    catalog_category_id: str,
+    provider: str,
+    mappings: Dict[str, Dict[str, str]],
+    parent_by_id: Dict[str, str],
+) -> str:
+    category_id = str(catalog_category_id or "").strip()
+    provider_key = str(provider or "").strip()
+    if not category_id or not provider_key:
+        return ""
+    seen: set[str] = set()
+    current = category_id
+    while current and current not in seen:
+        seen.add(current)
+        row = mappings.get(current) if isinstance(mappings.get(current), dict) else {}
+        value = str(row.get(provider_key) or "").strip()
+        if value:
+            return value
+        current = parent_by_id.get(current, "")
+    return ""
+
+
 def _feature_skeleton_attrs(attrs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
@@ -524,9 +558,9 @@ def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any
                     provider_mapped_rows[provider] += 1
 
         cat_map = load_category_mappings()
-        category_mapping = (cat_map.get(category_id) or {}) if isinstance(cat_map.get(category_id), dict) else {}
-        yandex_category_id = str(category_mapping.get("yandex_market") or "").strip()
-        ozon_category_id = str(category_mapping.get("ozon") or "").strip()
+        parent_by_id = _catalog_parent_map(_load_catalog_nodes())
+        yandex_category_id = _effective_provider_category_id(category_id, "yandex_market", cat_map, parent_by_id)
+        ozon_category_id = _effective_provider_category_id(category_id, "ozon", cat_map, parent_by_id)
 
         def _provider_cat_name(tree_path: Path, provider_category_id: str) -> str:
             lookup_id = str(provider_category_id or "").strip()
@@ -583,14 +617,14 @@ def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any
 
         connectors = ConnectorsStateReadAdapter()
         active_marketplace_sources = {
-            "yandex_market": bool(connectors.first_enabled_import_store("yandex_market")),
+            "yandex_market": bool(yandex_category_id or provider_mapped_rows["yandex_market"]),
             "ozon": bool(connectors.first_enabled_import_store("ozon")),
         }
 
         next_sources: Dict[str, Any] = {
             key: value
             for key, value in (dict(sources) if isinstance(sources, dict) else {}).items()
-            if key not in active_marketplace_sources or active_marketplace_sources.get(key)
+            if key != "ozon" or active_marketplace_sources["ozon"]
         }
         if active_marketplace_sources["yandex_market"] and (yandex_category_id or provider_mapped_rows["yandex_market"]):
             y_stats = _yandex_stats(yandex_category_id)
@@ -817,7 +851,7 @@ def template_editor_bootstrap(category_id: str) -> Dict[str, Any]:
     owner_path_item = next((item for item in path if str(item.get("id") or "").strip() == owner_category_id), None)
 
     if isinstance(owner_tpl, dict):
-        master = _template_master_payload(owner_tpl, owner_attrs, include_sources=False)
+        master = _template_master_payload(owner_tpl, owner_attrs, include_sources=True)
     else:
         master = {
             "version": 2,
