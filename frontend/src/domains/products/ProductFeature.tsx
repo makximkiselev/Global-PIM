@@ -596,6 +596,8 @@ export default function ProductFeature() {
     setSearchParams(next, { replace: true });
   }
   const [selectedImageIndexes, setSelectedImageIndexes] = useState<number[]>([]);
+  const [imageDragIndex, setImageDragIndex] = useState<number | null>(null);
+  const [imageDragOverIndex, setImageDragOverIndex] = useState<number | null>(null);
   const variantsSectionRef = useRef<HTMLDivElement | null>(null);
 
   const nodesById = useMemo(() => new Map(catalogNodes.map((n) => [n.id, n])), [catalogNodes]);
@@ -1206,6 +1208,62 @@ export default function ProductFeature() {
     const nextImages = (content.media_images || []).map((item, idx) => (idx === index ? { ...item, selected } : item));
     const nextContent = normalizeContent({ ...content, media_images: nextImages, media: nextImages });
     await persistContent(nextContent);
+  }
+
+  async function setSelectedImagesExportSelected(selected: boolean) {
+    const selectedSet = new Set(selectedImageIndexes);
+    if (!selectedSet.size) return;
+    const nextImages = (content.media_images || []).map((item, idx) => (selectedSet.has(idx) ? { ...item, selected } : item));
+    const nextContent = normalizeContent({ ...content, media_images: nextImages, media: nextImages });
+    await persistContent(nextContent);
+  }
+
+  function movedImageIndex(index: number, fromIndex: number, toIndex: number): number {
+    if (index === fromIndex) return toIndex;
+    if (fromIndex < toIndex && index > fromIndex && index <= toIndex) return index - 1;
+    if (fromIndex > toIndex && index >= toIndex && index < fromIndex) return index + 1;
+    return index;
+  }
+
+  async function reorderImage(fromIndex: number, toIndex: number) {
+    const images = [...(content.media_images || [])];
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= images.length || toIndex >= images.length) return;
+    const [item] = images.splice(fromIndex, 1);
+    images.splice(toIndex, 0, item);
+    const ordered = images.map((image, idx) => ({ ...image, export_order: idx + 1 }));
+    const nextContent = normalizeContent({ ...content, media_images: ordered, media: ordered });
+    await persistContent(nextContent);
+    setSelectedImageIndexes((current) => current.map((itemIdx) => movedImageIndex(itemIdx, fromIndex, toIndex)).sort((a, b) => a - b));
+    setHeroImageIndex((current) => movedImageIndex(current, fromIndex, toIndex));
+    setImageModalIndex((current) => (current == null ? current : movedImageIndex(current, fromIndex, toIndex)));
+  }
+
+  function handleImageDragStart(event: DragEvent<HTMLElement>, index: number) {
+    setImageDragIndex(index);
+    setImageDragOverIndex(index);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  }
+
+  function handleImageDragOver(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setImageDragOverIndex(index);
+  }
+
+  async function handleImageDrop(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    const raw = event.dataTransfer.getData("text/plain");
+    const fromIndex = imageDragIndex ?? Number(raw);
+    setImageDragIndex(null);
+    setImageDragOverIndex(null);
+    if (!Number.isFinite(fromIndex)) return;
+    await reorderImage(fromIndex, index);
+  }
+
+  function handleImageDragEnd() {
+    setImageDragIndex(null);
+    setImageDragOverIndex(null);
   }
 
   async function moveImage(index: number, direction: -1 | 1) {
@@ -1927,6 +1985,22 @@ export default function ProductFeature() {
                         {selectedImageIndexes.length ? `Выбрано: ${selectedImageIndexes.length}` : "Ничего не выбрано"}
                       </span>
                       <button
+                        className="pn-editBtn"
+                        type="button"
+                        disabled={!selectedImageIndexes.length}
+                        onClick={() => void setSelectedImagesExportSelected(true)}
+                      >
+                        Выгружать выбранные
+                      </button>
+                      <button
+                        className="pn-editBtn"
+                        type="button"
+                        disabled={!selectedImageIndexes.length}
+                        onClick={() => void setSelectedImagesExportSelected(false)}
+                      >
+                        Не выгружать
+                      </button>
+                      <button
                         className="pn-cancelBtn"
                         type="button"
                         disabled={!selectedImageIndexes.length}
@@ -1947,7 +2021,23 @@ export default function ProductFeature() {
                 {(content.media_images || []).map((m, idx) => {
                   const visibleCaption = mediaDisplayCaption(m, idx);
                   return (
-                    <div key={`media-image-${idx}`} className={`pn-imageCard${selectedImageIndexes.includes(idx) ? " isSelected" : ""}`}>
+                    <div
+                      key={`media-image-${idx}`}
+                      className={`pn-imageCard${selectedImageIndexes.includes(idx) ? " isSelected" : ""}${imageDragIndex === idx ? " isDragging" : ""}${imageDragOverIndex === idx && imageDragIndex !== idx ? " isDragTarget" : ""}`}
+                      onDragOver={(event) => handleImageDragOver(event, idx)}
+                      onDrop={(event) => void handleImageDrop(event, idx)}
+                    >
+                      <button
+                        className="pn-imageDragHandle"
+                        type="button"
+                        draggable
+                        aria-label={`Перетащить ${visibleCaption || `изображение ${idx + 1}`}`}
+                        title="Перетащить"
+                        onDragStart={(event) => handleImageDragStart(event, idx)}
+                        onDragEnd={handleImageDragEnd}
+                      >
+                        ⋮⋮
+                      </button>
                       <label className="pn-imageCardCheck">
                         <input
                           type="checkbox"

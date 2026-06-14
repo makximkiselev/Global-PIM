@@ -1406,6 +1406,39 @@
   box-shadow:0 12px 28px rgba(59,130,246,.10);
 }
 
+.pn-imageCard.isDragging{
+  opacity:.48;
+}
+
+.pn-imageCard.isDragTarget{
+  border-color:rgba(37,99,235,.72);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12), 0 12px 28px rgba(37,99,235,.10);
+}
+
+.pn-imageDragHandle{
+  position:absolute;
+  top:10px;
+  left:44px;
+  width:28px;
+  height:24px;
+  border:1px solid rgba(148,163,184,.26);
+  border-radius:999px;
+  background:rgba(255,255,255,.96);
+  color:#64748b;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:13px;
+  line-height:1;
+  letter-spacing:0;
+  cursor:grab;
+  z-index:2;
+}
+
+.pn-imageDragHandle:active{
+  cursor:grabbing;
+}
+
 .pn-imageCardCheck{
   position:absolute;
   top:10px;
