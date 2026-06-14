@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 import re
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
 
@@ -106,7 +106,7 @@ def extract_biggeek_variants_from_soup(page_url: str, soup: BeautifulSoup) -> Li
     base_path = page_parsed.path.rstrip("/")
     for anchor in soup.find_all("a", href=True):
         href = str(anchor.get("href") or "").strip()
-        parsed = urlparse(href if href.startswith("http") else f"{base_url}{href if href.startswith('#') else ''}")
+        parsed = urlparse(urljoin(f"{base_url}/", href))
         if not parsed.fragment:
             continue
         if parsed.path and parsed.path.rstrip("/") not in {"", base_path}:
@@ -130,17 +130,65 @@ def extract_biggeek_variants_from_soup(page_url: str, soup: BeautifulSoup) -> Li
     return list(variants.values())[:40]
 
 
+def _clean_biggeek_spec_name(value: Any) -> str:
+    text = _text(value)
+    text = re.sub(r"\s*\?\s*$", "", text).strip()
+    return text
+
+
+def extract_biggeek_specs_from_soup(soup: BeautifulSoup) -> Dict[str, str]:
+    specs: Dict[str, str] = {}
+    roots = [
+        root
+        for root in (
+            soup.select_one("#product-characteristics"),
+            soup.select_one(".product-characteristics"),
+        )
+        if isinstance(root, Tag)
+    ]
+    if not roots:
+        roots = [soup]
+
+    for root in roots:
+        for row in root.select(".tabs-content__txt-row"):
+            if not isinstance(row, Tag):
+                continue
+            value_node = row.select_one(".value[data-option-name], .value")
+            descr_node = row.select_one(".descr[data-option-name], .descr")
+            if not value_node:
+                continue
+            key = _clean_biggeek_spec_name(value_node.get("data-option-name"))
+            if not key and descr_node:
+                key = _clean_biggeek_spec_name(descr_node.get("data-option-name"))
+            if not key and descr_node:
+                for noisy in descr_node.select(".feature-description, .feature-description-btn, svg"):
+                    noisy.decompose()
+                key = _clean_biggeek_spec_name(descr_node.get_text(" ", strip=True))
+            value = _text(value_node.get("data-option-value"))
+            if not value:
+                value = _text(value_node.get_text(" ", strip=True))
+            if key and value and len(key) <= 120 and key.lower() != "характеристики":
+                specs.setdefault(key, value)
+
+    return dict(list(specs.items())[:120])
+
+
 def enrich_biggeek_content_for_variant(url: str, content: Dict[str, Any], soup: BeautifulSoup) -> Dict[str, Any]:
+    next_content = dict(content)
+    specs = dict(next_content.get("specs") if isinstance(next_content.get("specs"), dict) else {})
+    for key, value in extract_biggeek_specs_from_soup(soup).items():
+        if _text(key) and _text(value):
+            specs.setdefault(_text(key), _text(value))
     parsed = urlparse(str(url or ""))
     slug = parsed.fragment
     if not slug:
-        return content
+        next_content["specs"] = specs
+        return next_content
     variants = extract_biggeek_variants_from_soup(url, soup)
     variant = next((item for item in variants if str(item.get("key") or "") == slug), None)
     if not variant:
-        return content
-    next_content = dict(content)
-    specs = dict(next_content.get("specs") if isinstance(next_content.get("specs"), dict) else {})
+        next_content["specs"] = specs
+        return next_content
     for key, value in (variant.get("specs") if isinstance(variant.get("specs"), dict) else {}).items():
         if _text(key) and _text(value):
             specs.setdefault(_text(key), _text(value))

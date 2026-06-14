@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.routes import catalog_exchange, competitor_catalog_import, competitor_mapping, marketplace_mapping, ozon_market, product_groups, products, templates, yandex_market
 from app.api.routes.catalog_exchange import CatalogExportRunReq, CatalogImportRunReq
+from app.core.competitors import extract_competitor_fields
+from app.core.competitors.biggeek import extract_biggeek_specs_from_soup
 from app.core.competitors.store77 import infer_store77_specs_from_title_or_url
 from app.core.products import parameter_flow
 from app.core.products import service as products_service
@@ -1043,6 +1045,106 @@ class OperatingWorkflowTests(unittest.TestCase):
         self.assertEqual({item["variant_key"] for item in variants}, {"esim", "nano-sim_i_esim"})
         self.assertTrue(all(item["is_variant"] for item in variants))
         self.assertTrue(any("nano SIM" in item["title"] for item in variants))
+
+    def test_biggeek_characteristics_are_extracted_from_product_tabs(self) -> None:
+        from bs4 import BeautifulSoup
+
+        html = """
+        <div id="product-characteristics" class="product-characteristics tabs-content">
+          <div class="tabs-content__txt-row" data-group-name="Общие характеристики">
+            <div class="descr" data-option-name="Модель">Модель</div>
+            <div class="value" data-option-name="Модель" data-option-value="iPhone 17 Pro Max">iPhone 17 Pro Max</div>
+          </div>
+          <div class="tabs-content__txt-row" data-group-name="Память и процессор">
+            <div class="descr" data-option-name="Процессор">Процессор</div>
+            <div class="value" data-option-name="Процессор" data-option-value="Apple A19 Pro">Apple A19 Pro</div>
+          </div>
+          <div class="tabs-content__txt-row" data-group-name="Память и процессор">
+            <div class="descr" data-option-name="Объем встроенной памяти">Объем встроенной памяти</div>
+            <div class="value" data-option-name="Объем встроенной памяти" data-option-value="1 ТБ">1 ТБ</div>
+          </div>
+          <div class="tabs-content__txt-row" data-group-name="Общие характеристики">
+            <div class="descr" data-option-name="Цвет">Цвет</div>
+            <div class="value" data-option-name="Цвет" data-option-value="Оранжевый">Оранжевый</div>
+          </div>
+        </div>
+        """
+        specs = extract_biggeek_specs_from_soup(BeautifulSoup(html, "html.parser"))
+
+        self.assertEqual(specs["Модель"], "iPhone 17 Pro Max")
+        self.assertEqual(specs["Процессор"], "Apple A19 Pro")
+        self.assertEqual(specs["Объем встроенной памяти"], "1 ТБ")
+        self.assertEqual(specs["Цвет"], "Оранжевый")
+
+    def test_biggeek_catalog_import_keeps_product_tab_characteristics(self) -> None:
+        html = """
+        <html>
+          <head>
+            <script type="application/ld+json">
+              {"@type":"Product","name":"Смартфон Apple iPhone 17 Pro Max 1 ТБ Cosmic Orange","image":["https://biggeek.ru/i.jpg"],"offers":{"price":"199990","priceCurrency":"RUB"}}
+            </script>
+          </head>
+          <body>
+            <h1>Смартфон Apple iPhone 17 Pro Max 1 ТБ Cosmic Orange</h1>
+            <div id="product-characteristics" class="product-characteristics tabs-content">
+              <div class="tabs-content__txt-row" data-group-name="Память и процессор">
+                <div class="descr" data-option-name="Процессор">Процессор</div>
+                <div class="value" data-option-name="Процессор" data-option-value="Apple A19 Pro">Apple A19 Pro</div>
+              </div>
+              <div class="tabs-content__txt-row" data-group-name="Общие характеристики">
+                <div class="descr" data-option-name="Цвет">Цвет</div>
+                <div class="value" data-option-name="Цвет" data-option-value="Оранжевый">Оранжевый</div>
+              </div>
+            </div>
+          </body>
+        </html>
+        """
+        product = competitor_catalog_import._extract_product(
+            "https://biggeek.ru/products/smartfon-apple-iphone-17-pro-max-1-tb-cosmic-orange",
+            html,
+        )
+
+        self.assertIsNotNone(product)
+        self.assertEqual((product or {})["specs"]["Процессор"], "Apple A19 Pro")
+        self.assertEqual((product or {})["specs"]["Цвет"], "Оранжевый")
+        self.assertEqual((product or {})["spec_count"], 2)
+
+    def test_biggeek_content_enrichment_keeps_product_tab_characteristics(self) -> None:
+        html = """
+        <html>
+          <head>
+            <script type="application/ld+json">
+              {"@type":"Product","name":"Смартфон Apple iPhone 17 Pro Max 1 ТБ Cosmic Orange","image":["https://biggeek.ru/i.jpg"]}
+            </script>
+          </head>
+          <body>
+            <div id="product-characteristics" class="product-characteristics tabs-content">
+              <div class="tabs-content__txt-row" data-group-name="Память и процессор">
+                <div class="descr" data-option-name="Процессор">Процессор</div>
+                <div class="value" data-option-name="Процессор" data-option-value="Apple A19 Pro">Apple A19 Pro</div>
+              </div>
+              <div class="tabs-content__txt-row" data-group-name="Общие характеристики">
+                <div class="descr" data-option-name="Цвет">Цвет</div>
+                <div class="value" data-option-name="Цвет" data-option-value="Оранжевый">Оранжевый</div>
+              </div>
+            </div>
+          </body>
+        </html>
+        """
+
+        async def fake_fetch_html(url: str, timeout_ms: int = 45000) -> str:
+            return html
+
+        with patch.object(extract_competitor_fields, "fetch_html", side_effect=fake_fetch_html):
+            content = asyncio.run(
+                extract_competitor_fields.extract_competitor_content(
+                    "https://biggeek.ru/products/smartfon-apple-iphone-17-pro-max-1-tb-cosmic-orange"
+                )
+            )
+
+        self.assertEqual(content["site"], "biggeek")
+        self.assertEqual(content["specs"]["Процессор"], "Apple A19 Pro")
+        self.assertEqual(content["specs"]["Цвет"], "Оранжевый")
 
     def test_catalog_import_uses_confirmed_partner_links_before_export(self) -> None:
         req = CatalogImportRunReq.model_validate(

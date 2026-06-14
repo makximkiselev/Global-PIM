@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.competitors.biggeek import extract_biggeek_variants_from_soup
+from app.core.competitors.biggeek import extract_biggeek_specs_from_soup, extract_biggeek_variants_from_soup
 from app.core.competitors.browser_fetch import fetch_html as fetch_browser_html
 from app.core.json_store import read_doc, with_lock, write_doc
 from app.core.tenant_context import current_tenant_organization_id, reset_current_tenant_organization_id, set_current_tenant_organization_id
@@ -529,6 +529,7 @@ def _extract_price(product_node: dict[str, Any], soup: BeautifulSoup) -> dict[st
 
 def _extract_specs(soup: BeautifulSoup) -> dict[str, str]:
     specs: dict[str, str] = {}
+    specs.update(extract_biggeek_specs_from_soup(soup))
     for row in soup.select("tr"):
         cells = row.find_all(["th", "td"])
         if len(cells) < 2:
