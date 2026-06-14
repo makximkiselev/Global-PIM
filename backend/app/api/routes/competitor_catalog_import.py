@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.competitors.biggeek import extract_biggeek_variants_from_soup
 from app.core.competitors.browser_fetch import fetch_html as fetch_browser_html
 from app.core.json_store import read_doc, with_lock, write_doc
 from app.core.tenant_context import current_tenant_organization_id, reset_current_tenant_organization_id, set_current_tenant_organization_id
@@ -512,25 +513,7 @@ def _variant_label_from_url(url: str) -> str:
 
 
 def _extract_biggeek_variants(page_url: str, soup: BeautifulSoup) -> list[dict[str, Any]]:
-    if not _is_biggeek_product_url(page_url):
-        return []
-    page_parsed = urlparse(page_url)
-    base_path = page_parsed.path.rstrip("/")
-    variants: dict[str, dict[str, Any]] = {}
-    for anchor in soup.find_all("a", href=True):
-        url = _normalize_url_with_fragment(anchor.get("href"), page_url)
-        if not url or not _is_biggeek_product_url(url):
-            continue
-        parsed = urlparse(url)
-        if parsed.path.rstrip("/") != base_path or not parsed.fragment:
-            continue
-        label = _text(anchor.get_text(" ", strip=True)) or _variant_label_from_url(url)
-        variants[parsed.fragment] = {
-            "key": parsed.fragment,
-            "label": label or parsed.fragment,
-            "url": url,
-        }
-    return list(variants.values())[:40]
+    return extract_biggeek_variants_from_soup(page_url, soup)
 
 
 def _extract_price(product_node: dict[str, Any], soup: BeautifulSoup) -> dict[str, Any]:
@@ -837,6 +820,8 @@ def _expand_product_variants(product: dict[str, Any]) -> list[dict[str, Any]]:
         if not url or not key:
             continue
         title = _variant_title(str(product.get("title") or ""), variant)
+        variant_specs = variant.get("specs") if isinstance(variant.get("specs"), dict) else {}
+        product_specs = product.get("specs") if isinstance(product.get("specs"), dict) else {}
         out.append(
             {
                 **product,
@@ -844,9 +829,14 @@ def _expand_product_variants(product: dict[str, Any]) -> list[dict[str, Any]]:
                 "url": url,
                 "base_url": product.get("base_url") or _normalize_url(str(product.get("url") or "")),
                 "title": title[:300],
+                "price": str(variant.get("price") or product.get("price") or "").strip(),
+                "specs": {**product_specs, **variant_specs},
+                "spec_count": len({**product_specs, **variant_specs}),
                 "is_variant": True,
                 "variant_key": key,
                 "variant_label": _text(variant.get("label")) or _variant_label_from_url(url),
+                "variant_axis": _text(variant.get("axis")),
+                "variation_id": _text(variant.get("variation_id")),
                 "source_type": "competitor_site_variant",
                 "updated_at": _now_iso(),
             }

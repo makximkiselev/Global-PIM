@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
+from .biggeek import enrich_biggeek_content_for_variant
 from .browser_fetch import fetch_html, fetch_restore_fields_meta, fetch_restore_specs_dom
 from .restore_specs import (
     extract_restore_specs_from_html,
@@ -235,6 +236,7 @@ async def extract_competitor_content(url: str) -> Dict[str, Any]:
 
     if site == "biggeek":
         content = _extract_generic_content_from_html(html, url)
+        content = enrich_biggeek_content_for_variant(url, content, BeautifulSoup(html, "html.parser"))
         return {"site": site, **content}
 
     return {"site": site, "images": [], "specs": {}, "description": ""}
