@@ -469,8 +469,66 @@ def _feature_items(product: Dict[str, Any]) -> Iterable[Tuple[str, str]]:
             yield name, value
 
 
+def _competitor_spec_items(product: Dict[str, Any]) -> Iterable[Tuple[str, str, str, str]]:
+    content = product.get("content") if isinstance(product.get("content"), dict) else {}
+    seen: set[Tuple[str, str, str]] = set()
+
+    def emit(provider: Any, name: Any, value: Any, url: Any = "") -> Iterable[Tuple[str, str, str, str]]:
+        provider_s = _text(provider) or "competitor"
+        name_s = _text(name)
+        value_s = _text(value)
+        url_s = _text(url)
+        if not name_s or not value_s or _is_provider_payload_field(name_s):
+            return
+        key = (provider_s, _slugify(name_s), value_s)
+        if key in seen:
+            return
+        seen.add(key)
+        yield provider_s, name_s, value_s, url_s
+
+    raw_competitor_specs = content.get("raw_competitor_specs") if isinstance(content.get("raw_competitor_specs"), dict) else {}
+    for provider, specs in raw_competitor_specs.items():
+        if not isinstance(specs, dict):
+            continue
+        for raw_name, payload in specs.items():
+            if isinstance(payload, dict):
+                value = payload.get("resolved_value") or payload.get("canonical_value") or payload.get("raw_value")
+                url = payload.get("source_url")
+            else:
+                value = payload
+                url = ""
+            yield from emit(provider, raw_name, value, url)
+
+    source_evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
+    competitors = source_evidence.get("competitors") if isinstance(source_evidence.get("competitors"), dict) else {}
+    for provider, payload in competitors.items():
+        if not isinstance(payload, dict):
+            continue
+        url = payload.get("url")
+        for bucket_name in ("raw_specs", "matched_specs", "unmatched_specs"):
+            bucket = payload.get(bucket_name) if isinstance(payload.get(bucket_name), dict) else {}
+            for raw_name, raw_value in bucket.items():
+                yield from emit(provider, raw_name, raw_value, url)
+
+    features = content.get("features") if isinstance(content.get("features"), list) else []
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        name = _text(feature.get("name") or feature.get("code"))
+        if not name:
+            continue
+        source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
+        for group_key in ("competitor", "competitors"):
+            group = source_values.get(group_key) if isinstance(source_values.get(group_key), dict) else {}
+            for provider, payload in group.items():
+                if not isinstance(payload, dict):
+                    continue
+                value = payload.get("resolved_value") or payload.get("canonical_value") or payload.get("raw_value") or payload.get("value")
+                yield from emit(provider, name, value, payload.get("url"))
+
+
 def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
-    products = [p for p in query_products_full() if isinstance(p, dict) and _text(p.get("category_id")) == category_id]
+    products = [p for p in query_products_full(category_ids=[category_id]) if isinstance(p, dict)]
     by_code: OrderedDict[str, Dict[str, Any]] = OrderedDict()
     for product in products:
         for name, value in _feature_items(product):
@@ -522,59 +580,49 @@ def _product_candidates(category_id: str) -> List[Dict[str, Any]]:
 
 
 def _competitor_unmatched_candidates(category_id: str) -> List[Dict[str, Any]]:
-    products = [p for p in query_products_full() if isinstance(p, dict) and _text(p.get("category_id")) == category_id]
+    products = [p for p in query_products_full(category_ids=[category_id]) if isinstance(p, dict)]
     by_code: OrderedDict[str, Dict[str, Any]] = OrderedDict()
     source_indexes: Dict[str, Dict[Tuple[str, str], Dict[str, Any]]] = {}
     for product in products:
-        content = product.get("content") if isinstance(product.get("content"), dict) else {}
-        evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
-        competitors = evidence.get("competitors") if isinstance(evidence.get("competitors"), dict) else {}
-        for provider, payload in competitors.items():
-            if not isinstance(payload, dict):
-                continue
-            unmatched = payload.get("unmatched_specs")
-            items = unmatched.items() if isinstance(unmatched, dict) else []
-            for raw_name, raw_value in items:
-                name = _text(raw_name)
-                value = _text(raw_value)
-                if not name:
-                    continue
-                canonical_name, code = _canonical_attribute_identity(name)
-                row = by_code.get(code)
-                if not row:
-                    row = {
-                        "id": new_id(),
-                        "name": canonical_name,
-                        "code": code,
-                        "group": "Данные конкурентов",
-                        "required": False,
-                        "examples": [],
-                        "sources": [],
-                        "_count": 0,
-                    }
-                    _apply_field_layer(row, canonical_name, code)
-                    by_code[code] = row
-                    source_indexes[code] = {}
-                row["_count"] += 1
-                if value and value not in row["examples"]:
-                    row["examples"].append(value)
-                source_key = (_text(provider) or "competitor", name)
-                source = source_indexes.setdefault(code, {}).get(source_key)
-                if not source:
-                    source = {
-                        "kind": "competitor",
-                        "provider": _text(provider) or "competitor",
-                        "source_name": _text(provider) or "Конкурент",
-                        "field_name": name,
-                        "field_title": name,
-                        "examples": [],
-                        "count": 0,
-                    }
-                    source_indexes[code][source_key] = source
-                    row["sources"].append(source)
-                source["count"] = int(source.get("count") or 0) + 1
-                if value and value not in source["examples"]:
-                    source["examples"].append(value)
+        for provider, name, value, url in _competitor_spec_items(product):
+            canonical_name, code = _canonical_attribute_identity(name)
+            row = by_code.get(code)
+            if not row:
+                row = {
+                    "id": new_id(),
+                    "name": canonical_name,
+                    "code": code,
+                    "group": "Данные конкурентов",
+                    "required": False,
+                    "examples": [],
+                    "sources": [],
+                    "_count": 0,
+                }
+                _apply_field_layer(row, canonical_name, code)
+                by_code[code] = row
+                source_indexes[code] = {}
+            row["_count"] += 1
+            if value and value not in row["examples"]:
+                row["examples"].append(value)
+            source_key = (provider, name)
+            source = source_indexes.setdefault(code, {}).get(source_key)
+            if not source:
+                source = {
+                    "kind": "competitor",
+                    "provider": provider,
+                    "source_name": provider,
+                    "field_name": name,
+                    "field_title": name,
+                    "examples": [],
+                    "count": 0,
+                }
+                if url:
+                    source["url"] = url
+                source_indexes[code][source_key] = source
+                row["sources"].append(source)
+            source["count"] = int(source.get("count") or 0) + 1
+            if value and value not in source["examples"]:
+                source["examples"].append(value)
 
     product_count = max(len(products), 1)
     out: List[Dict[str, Any]] = []
