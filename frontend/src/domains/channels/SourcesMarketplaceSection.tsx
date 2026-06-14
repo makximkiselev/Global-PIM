@@ -2754,7 +2754,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     const sources = data?.sources || [];
     if (!normalizedProductId || !sources.length) return false;
     return sources.every((source) => (
-      normalizeCompetitorProductStatus(source.product_statuses?.[normalizedProductId]?.status) === "confirmed"
+      normalizeCompetitorProductStatus(source.product_statuses?.[normalizedProductId]?.status) !== "review"
     ));
   }
 
@@ -2858,6 +2858,31 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
       }
     } catch (e) {
       setCompetitorDiscoveryError((e as Error).message || "Не удалось добавить ссылку конкурента");
+    } finally {
+      setCompetitorManualSubmitting("");
+    }
+  }
+
+  async function rejectAllCompetitorSourceCandidates(productId: string, sourceId: string) {
+    const pid = String(productId || "").trim();
+    const source = String(sourceId || "").trim();
+    const categoryId = String(selectedCatalogNode?.id || "").trim();
+    if (!pid || !source || !categoryId) return;
+    const manualKey = `${pid}:${source}`;
+    setCompetitorManualSubmitting(manualKey);
+    setCompetitorDiscoveryError("");
+    try {
+      await api(`/competitor-mapping/discovery/products/${encodeURIComponent(pid)}/sources/${encodeURIComponent(source)}/reject-all`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "Отклонены все кандидаты из сопоставления категории" }),
+      });
+      setCompetitorManualPromptKey(manualKey);
+      const fresh = await loadCompetitorDiscovery(categoryId, { preferFocusedProduct: false });
+      setCompetitorSampleProductId(pid);
+      return fresh;
+    } catch (e) {
+      setCompetitorDiscoveryError((e as Error).message || "Не удалось отклонить кандидатов источника");
+      return null;
     } finally {
       setCompetitorManualSubmitting("");
     }
@@ -3114,16 +3139,29 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
     setCompetitorModeratingId(id);
     setCompetitorDiscoveryError("");
     try {
+      const candidateSourceContext = competitorDiscovery?.sources
+        ?.flatMap((source) => {
+          const sourceId = String(source.id || "");
+          const productStatus = pid ? source.product_statuses?.[pid] : null;
+          const productCandidates = (productStatus?.candidate_items || (source.candidate_items || []).filter((candidate) => String(candidate.product_id || "").trim() === pid));
+          return productCandidates.map((candidate) => ({ sourceId, candidateCount: productCandidates.length, candidate }));
+        })
+        .find((item) => item.candidate.id === id);
       await api(`/competitor-mapping/discovery/candidates/${encodeURIComponent(id)}/moderate`, {
         method: "POST",
         body: JSON.stringify(action === "approve" ? { action } : { action, reason: "Отклонено из сопоставления категории" }),
       });
-      if (action === "reject") {
-        const candidateSource = competitorDiscovery?.sources
-          ?.flatMap((source) => (source.candidate_items || []).map((candidate) => ({ sourceId: String(source.id || ""), candidate })))
-          .find((item) => item.candidate.id === id)?.sourceId || "";
-        if (pid && candidateSource) {
-          setCompetitorManualPromptKey(`${pid}:${candidateSource}`);
+      if (action === "approve") {
+        const approvedSource = candidateSourceContext?.sourceId || "";
+        if (pid && approvedSource) {
+          setCompetitorManualPromptKey((current) => (current === `${pid}:${approvedSource}` ? "" : current));
+        }
+      } else {
+        const candidateSource = candidateSourceContext?.sourceId || "";
+        const candidateCount = Number(candidateSourceContext?.candidateCount || 0);
+        if (pid && candidateSource && candidateCount <= 1) {
+          const manualKey = `${pid}:${candidateSource}`;
+          setCompetitorManualPromptKey(manualKey);
           setCompetitorSampleProductId(pid);
         }
       }
@@ -3841,7 +3879,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                   || null;
                                 const selectedSampleProductComplete = selectedSampleProduct
                                   ? sourceColumns.length > 0 && sourceColumns.every((source) => (
-                                    normalizeCompetitorProductStatus(selectedSampleProduct.statuses[source.code]?.status) === "confirmed"
+                                    normalizeCompetitorProductStatus(selectedSampleProduct.statuses[source.code]?.status) !== "review"
                                   ))
                                   : true;
                                 const actionSampleProduct = selectedSampleProduct || filteredCompetitorRows[0] || competitorRows[0] || null;
@@ -4209,6 +4247,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                 const status = normalizeCompetitorProductStatus(statusPayload.status);
                                                 const manualKey = `${selectedSampleProductId}:${source.code}`;
                                                 const needsManualLink = status === "rejected" || competitorManualPromptKey === manualKey;
+                                                const sourceCandidates = statusPayload.candidate_items || [];
+                                                const sourceBusy = competitorManualSubmitting === manualKey;
                                                 return (
                                                   <section key={source.code} className={`mm-competitorInspectorSource ${needsManualLink ? "needs-manual-link" : ""}`}>
                                                     <div className="mm-competitorInspectorSourceHead">
@@ -4216,7 +4256,19 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                         <span>{source.title}</span>
                                                         <strong>{competitorStatusLabel(status)}</strong>
                                                       </div>
-                                                      <b className={`mm-competitorStatusPill is-${status}`}>{competitorStatusLabel(status)}</b>
+                                                      <div className="mm-competitorInspectorSourceTools">
+                                                        <b className={`mm-competitorStatusPill is-${status}`}>{competitorStatusLabel(status)}</b>
+                                                        {sourceCandidates.length ? (
+                                                          <button
+                                                            type="button"
+                                                            className="btn mm-miniBtn mm-ghostBtn"
+                                                            onClick={() => void rejectAllCompetitorSourceCandidates(selectedSampleProductId, source.code)}
+                                                            disabled={!selectedSampleProductId || sourceBusy}
+                                                          >
+                                                            {sourceBusy ? "Отклоняю..." : "Отклонить все"}
+                                                          </button>
+                                                        ) : null}
+                                                      </div>
                                                     </div>
                                                     {(statusPayload.link_items || []).map((link) => (
                                                       <a key={`${source.code}-${link.url}`} className="mm-competitorConfirmedLink" href={link.url || "#"} target="_blank" rel="noreferrer">
@@ -4224,7 +4276,7 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                         <strong>{compactCompetitorUrl(link.url || "")}</strong>
                                                       </a>
                                                     ))}
-                                                    {(statusPayload.candidate_items || []).map((candidate) => (
+                                                    {sourceCandidates.map((candidate) => (
                                                       <div key={candidate.id} className="mm-competitorInspectorCandidate">
                                                         <div>
                                                           <span>{Math.round(Number(candidate.confidence_score || 0) * 100)}%</span>
@@ -4253,8 +4305,8 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                     ))}
                                                     {needsManualLink ? (
                                                       <div className="mm-competitorManualRequired">
-                                                        <strong>Нужна корректная ссылка</strong>
-                                                        <span>Кандидат отклонен. Вставьте ссылку на точную карточку товара у этого конкурента.</span>
+                                                        <strong>Источник разобран</strong>
+                                                        <span>Можно вставить точную ссылку вручную или оставить товар без источника у этого конкурента.</span>
                                                       </div>
                                                     ) : null}
                                                     <div className="mm-competitorManualLinkBox">
@@ -4264,16 +4316,28 @@ export default function SourcesMarketplaceSection(props: SourcesMarketplaceSecti
                                                         value={competitorManualUrls[manualKey] || ""}
                                                         onChange={(event) => setCompetitorManualUrls((prev) => ({ ...prev, [manualKey]: event.target.value }))}
                                                         placeholder={`https://${source.domain || source.title}/...`}
-                                                        disabled={!selectedSampleProductId || competitorManualSubmitting === manualKey}
+                                                        disabled={!selectedSampleProductId || sourceBusy}
                                                       />
-                                                      <button
-                                                        type="button"
-                                                        className="btn mm-miniBtn"
-                                                        onClick={() => void addManualCompetitorLink(selectedSampleProductId, source.code)}
-                                                        disabled={!selectedSampleProductId || !String(competitorManualUrls[manualKey] || "").trim() || competitorManualSubmitting === manualKey}
-                                                      >
-                                                        {competitorManualSubmitting === manualKey ? "Сохраняю..." : "Добавить ссылку"}
-                                                      </button>
+                                                      <div className="mm-competitorManualActions">
+                                                        <button
+                                                          type="button"
+                                                          className="btn mm-miniBtn"
+                                                          onClick={() => void addManualCompetitorLink(selectedSampleProductId, source.code)}
+                                                          disabled={!selectedSampleProductId || !String(competitorManualUrls[manualKey] || "").trim() || sourceBusy}
+                                                        >
+                                                          {sourceBusy ? "Сохраняю..." : "Добавить ссылку"}
+                                                        </button>
+                                                        {needsManualLink ? (
+                                                          <button
+                                                            type="button"
+                                                            className="btn mm-miniBtn mm-ghostBtn"
+                                                            onClick={() => void rejectAllCompetitorSourceCandidates(selectedSampleProductId, source.code)}
+                                                            disabled={!selectedSampleProductId || sourceBusy}
+                                                          >
+                                                            Нет источника
+                                                          </button>
+                                                        ) : null}
+                                                      </div>
                                                     </div>
                                                   </section>
                                                 );

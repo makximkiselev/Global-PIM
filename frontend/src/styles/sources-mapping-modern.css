@@ -6003,6 +6003,19 @@
   gap:10px;
 }
 
+.sourcesCommandWorkbench .mm-competitorInspectorSourceTools{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:6px;
+}
+
+.sourcesCommandWorkbench .mm-competitorInspectorSourceTools .btn{
+  min-height:28px;
+  padding:0 8px;
+  border-radius:8px;
+}
+
 .sourcesCommandWorkbench .mm-competitorInspectorSourceHead strong{
   display:block;
   margin-top:3px;
@@ -6088,6 +6101,17 @@
   font:inherit;
   font-size:12px;
   font-weight:720;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualActions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:6px;
+}
+
+.sourcesCommandWorkbench .mm-competitorManualActions .btn{
+  min-height:34px;
 }
 
 .sourcesCommandWorkbench .mm-competitorInspectorSource.needs-manual-link .mm-competitorManualLinkBox input{

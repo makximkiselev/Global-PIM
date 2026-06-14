@@ -2057,6 +2057,58 @@ def _approve_competitor_candidate(
     return confirmed_link
 
 
+def _reject_competitor_source_candidates(
+    candidates: Dict[str, Any],
+    product_id: str,
+    source_id: str,
+    *,
+    reviewed_at: str,
+    reason: str,
+    create_no_source_marker: bool = False,
+) -> List[Dict[str, Any]]:
+    normalized_product_id = str(product_id or "").strip()
+    normalized_source_id = str(source_id or "").strip()
+    if not normalized_product_id or normalized_source_id not in ALLOWED_SITES:
+        return []
+    rejected: List[Dict[str, Any]] = []
+    for candidate_id, candidate in list(candidates.items()):
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("product_id") or "").strip() != normalized_product_id:
+            continue
+        if str(candidate.get("source_id") or "").strip() != normalized_source_id:
+            continue
+        if str(candidate.get("status") or "").strip() != "needs_review":
+            continue
+        candidate["status"] = "rejected"
+        candidate["reviewed_at"] = reviewed_at
+        candidate["rejection_reason"] = reason
+        candidate["confidence_reasons"] = list(candidate.get("confidence_reasons") or []) + [reason]
+        candidates[candidate_id] = candidate
+        _persist_competitor_channel_candidate(candidate)
+        rejected.append(dict(candidate))
+
+    if create_no_source_marker:
+        marker_id = f"{normalized_product_id}:{normalized_source_id}:no_source"
+        marker = {
+            "id": marker_id,
+            "product_id": normalized_product_id,
+            "source_id": normalized_source_id,
+            "url": f"no-source://{normalized_source_id}/{normalized_product_id}",
+            "title": "Нет источника у конкурента",
+            "status": "rejected",
+            "confidence_score": 0,
+            "confidence_reasons": [reason],
+            "reviewed_at": reviewed_at,
+            "rejection_reason": reason,
+            "source": "manual_no_source",
+        }
+        candidates[marker_id] = marker
+        _persist_competitor_channel_candidate(marker)
+        rejected.append(dict(marker))
+    return rejected
+
+
 def _persist_product_competitor_link(link: Dict[str, Any]) -> None:
     product_id = str(link.get("product_id") or "").strip()
     source_id = str(link.get("source_id") or "").strip()
@@ -5732,7 +5784,13 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any], background_ta
     reviewed_at = now_iso()
     enrich_job: Dict[str, Any] = {}
     if action == "approve":
-        confirmed_link = _approve_competitor_candidate(candidates, links, candidate_id, reviewed_at=reviewed_at)
+        confirmed_link = _approve_competitor_candidate(
+            candidates,
+            links,
+            candidate_id,
+            reviewed_at=reviewed_at,
+            reject_same_source_pending=True,
+        )
         if isinstance(confirmed_link, dict):
             _persist_product_competitor_link(confirmed_link)
         candidate = candidates.get(candidate_id, candidate)
@@ -5746,6 +5804,46 @@ def moderate_candidate(candidate_id: str, payload: Dict[str, Any], background_ta
         _persist_competitor_channel_candidate(candidate)
     _save_competitor_mapping_runs_only(db)
     return {"ok": True, "candidate": candidate, "links": links, "enrich_job": enrich_job or None}
+
+
+@router.post("/discovery/products/{product_id}/sources/{source_id}/reject-all")
+def reject_product_source_candidates(product_id: str, source_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized_product_id = str(product_id or "").strip()
+    normalized_source_id = str(source_id or "").strip()
+    if not normalized_product_id:
+        raise HTTPException(status_code=400, detail="product_id required")
+    if normalized_source_id not in ALLOWED_SITES:
+        raise HTTPException(status_code=400, detail="Unknown competitor source")
+
+    db = load_competitor_mapping_db()
+    discovery = _ensure_discovery_doc(db)
+    candidates = discovery["candidates"]
+    links = discovery["links"]
+    _merge_relational_discovery_items(candidates, links, product_ids={normalized_product_id})
+
+    link_key = f"{normalized_product_id}:{normalized_source_id}"
+    existing_link = links.get(link_key)
+    if isinstance(existing_link, dict) and str(existing_link.get("status") or "").strip() == "confirmed":
+        return {"ok": True, "rejected_count": 0, "link": existing_link, "already_confirmed": True}
+
+    reviewed_at = now_iso()
+    reason = str(payload.get("reason") or "Отклонены все кандидаты источника").strip()
+    rejected = _reject_competitor_source_candidates(
+        candidates,
+        normalized_product_id,
+        normalized_source_id,
+        reviewed_at=reviewed_at,
+        reason=reason,
+        create_no_source_marker=True,
+    )
+    _save_competitor_mapping_runs_only(db)
+    return {
+        "ok": True,
+        "product_id": normalized_product_id,
+        "source_id": normalized_source_id,
+        "rejected_count": len(rejected),
+        "rejected": rejected[:20],
+    }
 
 
 @router.post("/discovery/products/{product_id}/links")
