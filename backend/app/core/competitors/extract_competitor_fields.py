@@ -190,7 +190,7 @@ async def extract_competitor_content(url: str) -> Dict[str, Any]:
     if not site:
         raise RuntimeError("UNSUPPORTED_SITE")
 
-    html = await fetch_html(url)
+    html = await fetch_html(url, timeout_ms=30000 if site == "restore" else 45000)
     if not html:
         raise RuntimeError("EMPTY_HTML")
 
@@ -206,21 +206,27 @@ async def extract_competitor_content(url: str) -> Dict[str, Any]:
 
     if site == "restore":
         images, specs, desc = extract_restore_product_content_from_html(html, base_url=url)
-        dom_base = await fetch_restore_specs_dom(url)
-        if dom_base:
-            specs = {**specs, **dom_base}
-        base = url.rstrip("/")
-        spec_url = base if base.endswith("/spec") else f"{base}/spec/"
-        extra: Dict[str, str] = {}
-        spec_html = await fetch_html(spec_url)
-        if spec_html and not spec_html.startswith("__ERROR__:") and not spec_html.startswith("__STATUS__:"):
-            extra = extract_restore_specs_from_html(spec_html) or {}
-            if extra:
-                specs = {**specs, **extra}
-        if not extra:
-            dom_specs = await fetch_restore_specs_dom(spec_url)
-            if dom_specs:
-                specs = {**specs, **dom_specs}
+        # Product pages usually contain enough rendered specs after fetch_html's
+        # re-store wait. Only use extra browser passes when the first pass is
+        # clearly incomplete, otherwise a single competitor can exhaust the
+        # whole enrichment job timeout.
+        if len(specs) < 25:
+            dom_base = await fetch_restore_specs_dom(url, timeout_ms=25000)
+            if dom_base:
+                specs = {**specs, **dom_base}
+        if len(specs) < 25:
+            base = url.rstrip("/")
+            spec_url = base if base.endswith("/spec") else f"{base}/spec/"
+            extra: Dict[str, str] = {}
+            spec_html = await fetch_html(spec_url, timeout_ms=25000)
+            if spec_html and not spec_html.startswith("__ERROR__:") and not spec_html.startswith("__STATUS__:"):
+                extra = extract_restore_specs_from_html(spec_html) or {}
+                if extra:
+                    specs = {**specs, **extra}
+            if not extra:
+                dom_specs = await fetch_restore_specs_dom(spec_url, timeout_ms=25000)
+                if dom_specs:
+                    specs = {**specs, **dom_specs}
         return {"site": site, "images": images, "specs": specs, "description": desc}
 
     if site == "store77":

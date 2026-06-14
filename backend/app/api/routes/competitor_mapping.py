@@ -328,6 +328,15 @@ async def _extract_competitor_content_with_retry(url: str, *, attempts: int = 2)
     raise last_error or RuntimeError("EXTRACT_FAILED")
 
 
+def _competitor_extract_timeout_seconds(source_id: str) -> int:
+    source_key = str(source_id or "").strip()
+    if source_key == "restore":
+        return 80
+    if source_key == "store77":
+        return 60
+    return 45
+
+
 ALLOWED_SITES: Dict[str, set[str]] = {
     "restore": {"re-store.ru"},
     "store77": {"store77.net"},
@@ -2504,14 +2513,9 @@ async def _merge_competitor_content_into_product(
             for normalized in _feature_lookup_keys(key):
                 if normalized:
                     feature_by_key[normalized] = feature
-    raw_feature_by_key: Dict[str, Dict[str, Any]] = {}
-    for feature in features:
-        code = str(feature.get("code") or "").strip()
-        if code.startswith("raw_"):
-            raw_feature_by_key[code] = feature
-
     source_evidence = content.get("source_evidence") if isinstance(content.get("source_evidence"), dict) else {}
     competitors_evidence = source_evidence.get("competitors") if isinstance(source_evidence.get("competitors"), dict) else {}
+    raw_competitor_specs = content.get("raw_competitor_specs") if isinstance(content.get("raw_competitor_specs"), dict) else {}
 
     matched_count = 0
     unmatched_count = 0
@@ -2593,35 +2597,17 @@ async def _merge_competitor_content_into_product(
             raw_text_inner = str(raw_value or "").strip()
             if not raw_name or not raw_text_inner or _is_protected_product_content_field(raw_name):
                 return
+            raw_specs_count += 1
             raw_specs[raw_name] = raw_text_inner
-            raw_code = _raw_competitor_feature_code(source_id, raw_name)
-            feature = raw_feature_by_key.get(raw_code)
-            if not feature:
-                feature = _raw_competitor_feature(
-                    source_id=source_id,
-                    source_url=source_url,
-                    spec_name=raw_name,
-                    raw_value=raw_text_inner,
-                )
-                features.append(feature)
-                raw_feature_by_key[raw_code] = feature
-                raw_specs_count += 1
-                return
-            feature["name"] = str(feature.get("name") or raw_name).strip() or raw_name
-            if not str(feature.get("value") or "").strip():
-                feature["value"] = raw_text_inner
-            feature["field_layer"] = str(feature.get("field_layer") or "raw_competitor")
-            feature["fill_source"] = str(feature.get("fill_source") or "competitor_raw")
-            feature_source_values = feature.get("source_values") if isinstance(feature.get("source_values"), dict) else {}
-            competitor_values = feature_source_values.get("competitor") if isinstance(feature_source_values.get("competitor"), dict) else {}
-            competitor_values[source_id] = {
+            source_specs = raw_competitor_specs.get(source_id) if isinstance(raw_competitor_specs.get(source_id), dict) else {}
+            source_specs[raw_name] = {
                 "raw_value": raw_text_inner,
                 "resolved_value": raw_text_inner,
-                "canonical_value": str(feature.get("value") or raw_text_inner).strip(),
+                "canonical_value": raw_text_inner,
                 "source_url": source_url,
+                "updated_at": now_iso(),
             }
-            feature_source_values["competitor"] = competitor_values
-            feature["source_values"] = feature_source_values
+            raw_competitor_specs[source_id] = source_specs
 
         for spec_name, raw_value in specs.items():
             normalized_name = _source_value_key(spec_name)
@@ -2808,6 +2794,8 @@ async def _merge_competitor_content_into_product(
         content.pop("media", None)
     if source_values:
         content["source_values"] = source_values
+    if raw_competitor_specs:
+        content["raw_competitor_specs"] = raw_competitor_specs
     source_evidence["competitors"] = competitors_evidence
     content["source_evidence"] = source_evidence
     product["content"] = content
@@ -5873,7 +5861,8 @@ async def _enrich_product_from_confirmed_competitors(product_id: str, *, job_id:
         source_id = str(link.get("source_id") or "").strip()
         url = str(link.get("url") or "").strip()
         try:
-            result = await _extract_competitor_content_with_retry(url, attempts=3 if source_id == "store77" else 2)
+            async with asyncio.timeout(_competitor_extract_timeout_seconds(source_id)):
+                result = await _extract_competitor_content_with_retry(url, attempts=3 if source_id == "store77" else 2)
             specs = result.get("specs") if isinstance(result.get("specs"), dict) else {}
             return source_id, {
                 "ok": True,
@@ -5883,6 +5872,14 @@ async def _enrich_product_from_confirmed_competitors(product_id: str, *, job_id:
                 "specs": specs,
                 "description": str(result.get("description") or "").strip(),
                 "attempts": int(result.get("attempts") or 1),
+            }
+        except asyncio.TimeoutError:
+            return source_id, {
+                "ok": False,
+                "site": source_id,
+                "url": url,
+                "error": "TIMEOUT",
+                "retryable": True,
             }
         except Exception as exc:
             return source_id, {
@@ -6097,8 +6094,12 @@ async def _run_product_enrich_job(job_id: str, product_id: str) -> None:
     })
     upsert_pim_workflow_run(job, workflow=_COMPETITOR_PRODUCT_ENRICH_WORKFLOW)
     try:
-        async with asyncio.timeout(110):
+        async with asyncio.timeout(240):
             result = await _enrich_product_from_confirmed_competitors(product_id, job_id=job_id)
+        if not bool(result.get("ok", True)):
+            errors = result.get("errors") if isinstance(result.get("errors"), list) else []
+            first_error = errors[0].get("error") if errors and isinstance(errors[0], dict) else "NO_SOURCE_ENRICHED"
+            raise RuntimeError(str(first_error or "NO_SOURCE_ENRICHED"))
         product = result.get("product") if isinstance(result.get("product"), dict) else {}
         content = product.get("content") if isinstance(product.get("content"), dict) else {}
         media_images = content.get("media_images") if isinstance(content.get("media_images"), list) else []

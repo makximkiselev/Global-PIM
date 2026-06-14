@@ -11,7 +11,9 @@ from app.storage.relational_pim_store import (
     bulk_upsert_product_items,
     delete_product_items,
     find_product_by_sku_gt,
+    load_catalog_nodes,
     load_category_template_resolution_map,
+    load_template_editor_payload,
     load_product_groups_doc,
     load_products_by_category,
     load_products_by_group,
@@ -21,6 +23,7 @@ from app.storage.relational_pim_store import (
     save_product_groups_doc,
     upsert_product_item,
 )
+from app.core.master_templates import base_field_by_code, base_field_by_name
 from app.core.tenant_context import current_tenant_organization_id
 from app.core.products.variants_repo import (
     bulk_create_variants as repo_bulk_create_variants,
@@ -175,6 +178,30 @@ def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
         if resolved_id:
             template_ids.append(resolved_id)
 
+    templates_available = bool(db.get("templates") if isinstance(db.get("templates"), dict) else {})
+
+    if not template_ids and templates_available:
+        nodes = load_catalog_nodes()
+        by_id = {str(node.get("id") or "").strip(): node for node in nodes if isinstance(node, dict)}
+        path_ids: List[str] = []
+        seen: Set[str] = set()
+        cur = by_id.get(cid)
+        while cur:
+            node_id = _norm(cur.get("id"))
+            if not node_id or node_id in seen:
+                break
+            seen.add(node_id)
+            path_ids.append(node_id)
+            parent_id = _norm(cur.get("parent_id"))
+            cur = by_id.get(parent_id) if parent_id else None
+        path_ids.reverse()
+        if path_ids:
+            payload = load_template_editor_payload(path_ids, organization_id)
+            tpl = payload.get("template") if isinstance(payload.get("template"), dict) else {}
+            template_id = _norm(tpl.get("id"))
+            if template_id:
+                template_ids.append(template_id)
+
     attrs_by_template = db.get("attributes") if isinstance(db.get("attributes"), dict) else {}
     out: List[Dict[str, Any]] = []
     seen: Set[str] = set()
@@ -188,6 +215,86 @@ def _template_attributes_for_category(category_id: str) -> List[Dict[str, Any]]:
             seen.add(code)
             out.append(dict(attr))
     return out
+
+
+def _canonical_feature_identity(feature: Dict[str, Any]) -> Dict[str, str]:
+    code = _norm(feature.get("code"))
+    name = _norm(feature.get("name") or code)
+    field_layer = _norm(feature.get("field_layer")) or _norm((feature.get("options") if isinstance(feature.get("options"), dict) else {}).get("field_layer"))
+    if code.startswith("raw_") or field_layer == "raw_competitor":
+        return {"key": f"raw:{code or name}", "code": code, "name": name}
+
+    base = base_field_by_code(code) if code else None
+    if not base:
+        base = base_field_by_name(name) if name else None
+    if base:
+        base_code = _norm(base.get("code"))
+        base_name = _norm(base.get("name"))
+        return {"key": f"base:{base_code}", "code": base_code, "name": base_name}
+
+    key = _norm_lower(code or name)
+    return {"key": f"feature:{key}", "code": code, "name": name}
+
+
+def _merge_source_values(target: Dict[str, Any], incoming: Dict[str, Any]) -> None:
+    incoming_sources = incoming.get("source_values") if isinstance(incoming.get("source_values"), dict) else {}
+    if not incoming_sources:
+        return
+    target_sources = target.get("source_values") if isinstance(target.get("source_values"), dict) else {}
+    for source_key, source_value in incoming_sources.items():
+        if isinstance(source_value, dict) and isinstance(target_sources.get(source_key), dict):
+            target_sources[source_key] = {**target_sources[source_key], **source_value}
+        else:
+            target_sources[source_key] = source_value
+    target["source_values"] = target_sources
+
+
+def _dedupe_product_features(features: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for raw_feature in features:
+        if not isinstance(raw_feature, dict):
+            continue
+        feature = dict(raw_feature)
+        identity = _canonical_feature_identity(feature)
+        key = identity["key"]
+        if key.startswith("raw:"):
+            continue
+        if identity.get("code"):
+            feature["code"] = identity["code"]
+        if identity.get("name"):
+            feature["name"] = identity["name"]
+        existing = by_key.get(key)
+        if not existing:
+            by_key[key] = feature
+            out.append(feature)
+            continue
+        if not _norm(existing.get("value")) and _norm(feature.get("value")):
+            existing["value"] = _norm(feature.get("value"))
+        _merge_source_values(existing, feature)
+        for meta_key in ("type", "required", "scope", "param_group", "field_layer", "fill_source", "locked"):
+            if meta_key not in existing or existing.get(meta_key) in (None, ""):
+                if feature.get(meta_key) not in (None, ""):
+                    existing[meta_key] = feature.get(meta_key)
+    return out
+
+
+def _fill_system_feature_value(product: Dict[str, Any], content: Dict[str, Any], feature: Dict[str, Any]) -> None:
+    if not isinstance(feature, dict) or _norm(feature.get("value")):
+        return
+    code_key = _norm_lower(feature.get("code") or feature.get("name"))
+    options = feature.get("options") if isinstance(feature.get("options"), dict) else {}
+    system_key = _norm(options.get("system_key"))
+    if code_key == "бренд" or code_key == "brand" or system_key == "brand":
+        feature["value"] = _infer_brand_from_title(product.get("title"))
+    elif code_key == "sku_gt" or system_key == "sku_gt":
+        feature["value"] = _norm(product.get("sku_gt"))
+    elif code_key == "sku_pim" or system_key == "sku_pim":
+        feature["value"] = _norm(product.get("sku_pim"))
+    elif code_key in {"наименование_товара", "title"} or system_key == "title":
+        feature["value"] = _norm(product.get("title"))
+    elif system_key == "description":
+        feature["value"] = _norm(content.get("description"))
 
 
 def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
@@ -209,6 +316,7 @@ def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
     templates = db.get("templates") if isinstance(db.get("templates"), dict) else {}
     attrs_by_template = db.get("attributes") if isinstance(db.get("attributes"), dict) else {}
     category_to_templates = db.get("category_to_templates") if isinstance(db.get("category_to_templates"), dict) else {}
+    templates_available = bool(templates)
 
     template_ids = [
         _norm(tid)
@@ -220,6 +328,28 @@ def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
         resolved_id = _norm(resolution.get("template_id"))
         if resolved_id:
             template_ids.append(resolved_id)
+
+    if not template_ids and templates_available:
+        nodes = load_catalog_nodes()
+        by_id = {str(node.get("id") or "").strip(): node for node in nodes if isinstance(node, dict)}
+        path_ids: List[str] = []
+        seen: Set[str] = set()
+        cur = by_id.get(cid)
+        while cur:
+            node_id = _norm(cur.get("id"))
+            if not node_id or node_id in seen:
+                break
+            seen.add(node_id)
+            path_ids.append(node_id)
+            parent_id = _norm(cur.get("parent_id"))
+            cur = by_id.get(parent_id) if parent_id else None
+        path_ids.reverse()
+        if path_ids:
+            payload = load_template_editor_payload(path_ids, organization_id)
+            tpl = payload.get("template") if isinstance(payload.get("template"), dict) else {}
+            template_id = _norm(tpl.get("id"))
+            if template_id:
+                template_ids.append(template_id)
 
     template_ids = [tid for tid in template_ids if isinstance(templates.get(tid), dict)]
     if not template_ids:
@@ -258,27 +388,15 @@ def _info_model_context_for_category(category_id: str) -> Dict[str, Any]:
 def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, Any]:
     content = _content_payload(product.get("content"))
     existing_features = content.get("features") if isinstance(content.get("features"), list) else []
-    if existing_features:
-        for feature in existing_features:
-            if not isinstance(feature, dict) or _norm(feature.get("value")):
-                continue
-            code_key = _norm_lower(feature.get("code") or feature.get("name"))
-            if code_key == "бренд" or code_key == "brand":
-                feature["value"] = _infer_brand_from_title(product.get("title"))
-            elif code_key == "sku_gt":
-                feature["value"] = _norm(product.get("sku_gt"))
-            elif code_key == "sku_pim":
-                feature["value"] = _norm(product.get("sku_pim"))
-            elif code_key in {"наименование_товара", "title"}:
-                feature["value"] = _norm(product.get("title"))
-            feature_options = feature.get("options") if isinstance(feature.get("options"), dict) else {}
-            if bool(feature.get("locked")) or _norm(feature.get("field_layer")) == "system" or _norm(feature_options.get("field_layer")) == "system":
-                feature["locked"] = True
-        product["content"] = content
-        return product
+    features: List[Dict[str, Any]] = _dedupe_product_features([dict(item) for item in existing_features if isinstance(item, dict)])
+    for feature in features:
+        _fill_system_feature_value(product, content, feature)
+        feature_options = feature.get("options") if isinstance(feature.get("options"), dict) else {}
+        if bool(feature.get("locked")) or _norm(feature.get("field_layer")) == "system" or _norm(feature_options.get("field_layer")) == "system":
+            feature["locked"] = True
 
     attrs = _template_attributes_for_category(_norm(product.get("category_id")))
-    features: List[Dict[str, Any]] = []
+    existing_keys = {_canonical_feature_identity(feature)["key"] for feature in features}
     for attr in attrs:
         code = _norm(attr.get("code") or attr.get("name"))
         name = _norm(attr.get("name") or code)
@@ -298,24 +416,27 @@ def seed_product_features_from_category(product: Dict[str, Any]) -> Dict[str, An
         elif system_key == "description":
             value = _norm(content.get("description"))
 
-        features.append(
-            {
-                "code": code,
-                "name": name,
-                "value": value,
-                "type": _norm(attr.get("type")) or "text",
-                "required": bool(attr.get("required", False)),
-                "scope": _norm(attr.get("scope")),
-                "param_group": _norm(options.get("param_group")),
-                "field_layer": _norm(options.get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
-                "fill_source": _norm(options.get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
-                "locked": bool(attr.get("locked")),
-                "source_values": {},
-            }
-        )
+        next_feature = {
+            "code": code,
+            "name": name,
+            "value": value,
+            "type": _norm(attr.get("type")) or "text",
+            "required": bool(attr.get("required", False)),
+            "scope": _norm(attr.get("scope")),
+            "param_group": _norm(options.get("param_group")),
+            "field_layer": _norm(options.get("field_layer")) or ("system" if bool(attr.get("locked")) else "features"),
+            "fill_source": _norm(options.get("fill_source")) or ("system" if bool(attr.get("locked")) else "manual"),
+            "locked": bool(attr.get("locked")),
+            "source_values": {},
+        }
+        identity = _canonical_feature_identity(next_feature)
+        if identity["key"] in existing_keys:
+            continue
+        features.append(next_feature)
+        existing_keys.add(identity["key"])
 
     if features:
-        content["features"] = features
+        content["features"] = _dedupe_product_features(features)
     product["content"] = content
     return product
 
