@@ -196,7 +196,11 @@ def _field_layer_from_name(name: str, code: str | None = None) -> Dict[str, Any]
         return {"field_layer": "rich_content", "group": "Rich-content", "fill_source": "rich_content_editor", "locked": False}
     if any(token in haystack for token in ("pdf", "документ", "dokument", "сертификат", "sertifikat", "инструкция", "instrukciya", "manual")):
         return {"field_layer": "documents", "group": "Документы", "fill_source": "product_documents", "locked": False}
-    if any(token in haystack for token in ("изображение", "izobrazhenie", "фото", "foto", "фотограф", "fotograf", "картин", "kartin", "видео", "video", "медиа", "media", "image", "images", "picture", "pictures", "thumbnail", "gallery", "photo", "photos")):
+    if any(token in haystack for token in ("видеопроцессор", "video processor", "video_processor", "videoprocessor", "gpu", "graphics processor")):
+        return {"field_layer": "features", "group": "Характеристики", "fill_source": "manual", "locked": False}
+    if any(token in haystack for token in ("изображение", "izobrazhenie", "фото", "foto", "фотограф", "fotograf", "картин", "kartin", "медиа", "media", "image", "images", "picture", "pictures", "thumbnail", "gallery", "photo", "photos")):
+        return {"field_layer": "media", "group": "Медиа", "fill_source": "product_media", "locked": False}
+    if any(token in _norm_match_text(name).split() for token in ("видео", "video")) or _slugify(name) in {"video", "videos"}:
         return {"field_layer": "media", "group": "Медиа", "fill_source": "product_media", "locked": False}
     if any(token in haystack for token in ("описание", "opisanie", "аннотац", "annotac", "хештег", "heshtag", "hashtag", "hashtags", "ключев", "klyuchev", "seo", "search", "поиск", "poisk")):
         return {"field_layer": "content", "group": "Контентные поля", "fill_source": "content_manager", "locked": False}
@@ -732,8 +736,82 @@ def _merge_candidate(base: Dict[str, Any], next_item: Dict[str, Any]) -> Dict[st
             base["examples"].append(value)
     for source in next_item.get("sources") if isinstance(next_item.get("sources"), list) else []:
         if isinstance(source, dict):
-            base.setdefault("sources", []).append(source)
+            source_key = (
+                _text(source.get("kind")),
+                _text(source.get("provider")),
+                _text(source.get("field_name")),
+                _text(source.get("field_title")),
+            )
+            existing_sources = base.get("sources") if isinstance(base.get("sources"), list) else []
+            existing_keys = {
+                (
+                    _text(existing.get("kind")),
+                    _text(existing.get("provider")),
+                    _text(existing.get("field_name")),
+                    _text(existing.get("field_title")),
+                )
+                for existing in existing_sources if isinstance(existing, dict)
+            }
+            if source_key not in existing_keys:
+                base.setdefault("sources", []).append(source)
     return base
+
+
+def _merge_existing_draft_candidates(existing_candidates: List[Dict[str, Any]], next_candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_code: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+    for existing in existing_candidates:
+        if not isinstance(existing, dict):
+            continue
+        code = _text(existing.get("code"))
+        if code:
+            by_code[code] = existing
+    for candidate in next_candidates:
+        if not isinstance(candidate, dict):
+            continue
+        code = _text(candidate.get("code"))
+        if not code:
+            continue
+        existing = by_code.get(code)
+        if existing:
+            status = _text(existing.get("status"))
+            global_match = existing.get("global_match") if isinstance(existing.get("global_match"), dict) else None
+            suggested_action = _text(existing.get("suggested_action"))
+            field_layer = _text(existing.get("field_layer"))
+            fill_source = _text(existing.get("fill_source"))
+            locked = bool(existing.get("locked"))
+            merged = _merge_candidate(existing, candidate)
+            if status:
+                merged["status"] = status
+            if global_match:
+                merged["global_match"] = global_match
+            if suggested_action:
+                merged["suggested_action"] = suggested_action
+            if field_layer:
+                merged["field_layer"] = field_layer
+            if fill_source:
+                merged["fill_source"] = fill_source
+            if locked:
+                merged["locked"] = True
+            by_code[code] = merged
+        else:
+            by_code[code] = candidate
+    return list(by_code.values())
+
+
+def _candidate_matches_selected_sources(candidate: Dict[str, Any], selected_sources: List[str]) -> Dict[str, Any] | None:
+    if "products" in selected_sources:
+        return candidate
+    sources = candidate.get("sources") if isinstance(candidate.get("sources"), list) else []
+    filtered_sources = [
+        source
+        for source in sources
+        if isinstance(source, dict) and _text(source.get("kind")) != "product" and _text(source.get("provider")) != "existing_products"
+    ]
+    if not filtered_sources:
+        return None
+    next_candidate = dict(candidate)
+    next_candidate["sources"] = filtered_sources
+    return next_candidate
 
 
 def _ancestor_ids(category_id: str) -> List[str]:
@@ -854,7 +932,7 @@ def create_draft_from_sources(category_id: str, payload: Dict[str, Any] | None =
     cid = _text(category_id)
     if not cid:
         raise ValueError("CATEGORY_REQUIRED")
-    selected_sources = payload.get("sources") if isinstance(payload, dict) and isinstance(payload.get("sources"), list) else ["products"]
+    selected_sources = payload.get("sources") if isinstance(payload, dict) and isinstance(payload.get("sources"), list) else ["marketplaces", "competitors"]
     db = load_templates_db()
     template = _ensure_template(db, cid, f"Draft: {cid}")
     info_model = _info_model_meta(template)
@@ -875,6 +953,13 @@ def create_draft_from_sources(category_id: str, payload: Dict[str, Any] | None =
             existing = existing_by_code.get(code)
             existing_by_code[code] = _merge_candidate(existing, candidate) if existing else candidate
         candidates = list(existing_by_code.values())
+    raw_existing_candidates = info_model.get("candidates") if isinstance(info_model.get("candidates"), list) else []
+    existing_candidates = [
+        candidate
+        for candidate in (_candidate_matches_selected_sources(item, selected_sources) for item in raw_existing_candidates if isinstance(item, dict))
+        if isinstance(candidate, dict)
+    ]
+    candidates = _merge_existing_draft_candidates(existing_candidates, candidates) if existing_candidates else candidates
     candidates = _finalize_candidate_evidence(_attach_global_attribute_suggestions(candidates))
     info_model.update(
         {
@@ -900,7 +985,7 @@ def update_draft_candidate(template_id: str, candidate_id: str, patch: Dict[str,
     candidates = info_model.get("candidates") if isinstance(info_model.get("candidates"), list) else []
     for candidate in candidates:
         if isinstance(candidate, dict) and _text(candidate.get("id")) == candidate_id:
-            for key in ("name", "code", "type", "group", "required", "status"):
+            for key in ("name", "code", "type", "group", "required", "status", "field_layer", "fill_source", "locked"):
                 if key in patch:
                     candidate[key] = patch[key]
             if "global_match" in patch:

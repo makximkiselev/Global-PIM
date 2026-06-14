@@ -118,14 +118,32 @@ const TYPE_HELP_TEXT = [
 
 const REQUIRED_HELP_TEXT = "Если параметр отмечен как обязательный — товар без него сохранить нельзя.";
 const SOURCE_LABEL: Record<string, string> = {
-  products: "Товары каталога",
-  existing_products: "Товары каталога",
+  products: "Текущие поля товаров",
+  existing_products: "Текущие поля товаров",
   marketplaces: "Площадки",
   yandex_market: "Я.Маркет",
   ozon: "Ozon",
   product: "Товарные данные",
   marketplace: "Площадка",
 };
+
+const FIELD_LAYER_OPTIONS = [
+  { value: "features", label: "Характеристика" },
+  { value: "content", label: "Контент" },
+  { value: "media", label: "Медиа" },
+  { value: "documents", label: "Документы" },
+  { value: "rich_content", label: "Rich-content" },
+  { value: "system", label: "Системное" },
+];
+
+const FILL_SOURCE_OPTIONS = [
+  { value: "manual", label: "Параметры товара" },
+  { value: "content_manager", label: "Контент-менеджер" },
+  { value: "product_media", label: "Медиа товара" },
+  { value: "product_documents", label: "Документы товара" },
+  { value: "rich_content_editor", label: "Редактор rich-content" },
+  { value: "system", label: "Система" },
+];
 
 const CANDIDATE_STATUS_LABEL: Record<InfoModelCandidate["status"], string> = {
   accepted: "Добавлено",
@@ -892,7 +910,7 @@ export default function TemplateEditor() {
     try {
       const response = await api<{ template: TemplateT; info_model: InfoModelSummary; candidates: InfoModelCandidate[] }>("/info-models/draft-from-sources", {
         method: "POST",
-        body: JSON.stringify({ category_id: categoryId, sources: ["products", "marketplaces", "competitors"] }),
+        body: JSON.stringify({ category_id: categoryId, sources: ["marketplaces", "competitors"] }),
       });
       setOwnerTpl(response.template);
       setTpl(response.template);
@@ -1369,8 +1387,8 @@ export default function TemplateEditor() {
                     <div className="tplDraftHeader">
                       <div>
                         <div className="tplSectionEyebrow">Предложения полей</div>
-                        <h3>Поля из площадок и товаров</h3>
-                        <p>Проверьте, какие поля действительно нужны в модели категории. Сервисные поля, дубли и слабые совпадения можно не добавлять.</p>
+                        <h3>Поля из площадок и конкурентов</h3>
+                        <p>Собираем модель с нуля из требований площадок и подтвержденных конкурентных источников. Текущие поля товаров не используются как источник модели.</p>
                         <div className="tplDraftCountersLine">
                           <span>{acceptedCandidates} добавлено в модель</span>
                           <span>{reviewCandidates} на проверке</span>
@@ -1413,6 +1431,11 @@ export default function TemplateEditor() {
                         <option value="source">По источникам</option>
                         <option value="name">По названию</option>
                       </select>
+                    </div>
+                    <div className="tplDraftTableHead" aria-hidden="true">
+                      <span>Параметр и источники</span>
+                      <span>Классификация</span>
+                      <span>Решение</span>
                     </div>
                     <div className="tplDraftList">
                       {visibleDraftCandidates.length ? (
@@ -1468,10 +1491,33 @@ export default function TemplateEditor() {
                               ) : null}
                             </div>
                             <div className="tplDraftDecision">
-                              <span>Рекомендация</span>
+                              <span>Классификация</span>
+                              <label className="tplDraftSelect">
+                                <small>Тип поля</small>
+                                <select
+                                  value={String(candidate.field_layer || "features")}
+                                  onChange={(event) => updateDraftCandidate(candidate.id, { field_layer: event.target.value })}
+                                  disabled={draftBusy}
+                                >
+                                  {FIELD_LAYER_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="tplDraftSelect">
+                                <small>Заполняется из</small>
+                                <select
+                                  value={String(candidate.fill_source || "manual")}
+                                  onChange={(event) => updateDraftCandidate(candidate.id, { fill_source: event.target.value })}
+                                  disabled={draftBusy}
+                                >
+                                  {FILL_SOURCE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
                               <strong>{draftRecommendation(candidate)}</strong>
                               <small>{draftSourceSummaryText(candidate)}</small>
-                              <small>{fieldLayerFillLabel(candidate)}</small>
                               {candidate.examples?.length ? <em>{candidate.examples.slice(0, 3).join(", ")}</em> : null}
                             </div>
                             <div className="tplDraftActions">

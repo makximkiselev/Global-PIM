@@ -1422,20 +1422,52 @@
 
 .tplDraftList {
   display: grid;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(var(--card-rgb), 0.72);
+}
+
+.tplDraftTableHead {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(260px, 340px) minmax(172px, auto);
+  gap: 0;
+  padding: 0 16px;
+  min-height: 38px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: rgba(var(--surface-rgb), 0.84);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 930;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .tplDraftRow {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(220px, 320px) minmax(172px, auto);
-  gap: 12px;
+  grid-template-columns: minmax(420px, 1fr) minmax(260px, 340px) minmax(172px, auto);
+  gap: 0;
   align-items: start;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface-soft);
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(var(--surface-rgb), 0.58);
   min-width: 0;
+}
+
+.tplDraftRow > * {
+  min-height: 100%;
+  padding: 14px 16px;
+}
+
+.tplDraftRow > * + * {
+  border-left: 1px solid rgba(var(--line-rgb), 0.72);
 }
 
 .tplDraftRow.is-accepted {
@@ -1612,12 +1644,11 @@
 .tplDraftDecision {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   align-content: start;
-  padding: 10px 12px;
-  border: 1px solid rgba(var(--line-rgb), 0.68);
-  border-radius: 14px;
-  background: rgba(var(--card-rgb), 0.68);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .tplDraftDecision span {
@@ -1642,6 +1673,33 @@
   font-style: normal;
   font-weight: 780;
   overflow-wrap: anywhere;
+}
+
+.tplDraftSelect {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tplDraftSelect small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tplDraftSelect select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(var(--line-rgb), 0.78);
+  border-radius: 10px;
+  background: rgba(var(--card-rgb), 0.82);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 820;
+  outline: 0;
+  padding: 0 10px;
 }
 
 .tplDraftActions {

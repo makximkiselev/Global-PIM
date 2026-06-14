@@ -6,6 +6,7 @@ export type InfoModelCandidateSource = {
   source_name: string;
   field_name: string;
   field_title?: string;
+  url?: string;
   examples?: string[];
   count?: number;
 };
