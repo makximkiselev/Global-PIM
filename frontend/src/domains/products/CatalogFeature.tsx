@@ -279,7 +279,7 @@ function CatalogProductPreview({
               Добавить SKU
             </Link>
             <Link className="btn" to={orgPath(`/catalog/exchange?tab=import&category=${encodeURIComponent(selectedId)}`)}>
-              Импорт Excel
+              Импорт каталога
             </Link>
           </div>
         }
@@ -686,6 +686,9 @@ export default function CatalogFeature() {
   const openProductsHref = selected
     ? `/products?parent=${encodeURIComponent(selected.id)}`
     : "/products";
+  const importCatalogHref = selected
+    ? `/catalog/exchange?tab=import&category=${encodeURIComponent(selected.id)}`
+    : "/catalog/exchange?tab=import";
 
   async function downloadBulkTemplate() {
     if (!bulkCategoryId) return;
@@ -751,7 +754,7 @@ export default function CatalogFeature() {
         </div>
         <div className="catalogCommandActions">
           <Link className="btn" to={orgPath("/catalog/groups")}>Группы</Link>
-          <Button onClick={() => setBulkOpen(true)}>Импорт Excel</Button>
+          <Link className="btn" to={orgPath(importCatalogHref)}>Импорт каталога</Link>
           {selected ? (
             <Link className="btn" to={orgPath(`/sources?tab=sources&category=${encodeURIComponent(selected.id)}`)}>
               Сопоставления
