@@ -669,7 +669,14 @@ export default function TemplateEditor() {
     const byProvider = new Map<string, { provider: string; fields: number; required: number; examples: number }>();
     for (const candidate of draftCandidates) {
       for (const source of candidate.sources || []) {
-        const key = source.provider || source.kind || "source";
+        const kind = sourceGroupKind(source);
+        const provider = sourceProvider(source);
+        if (kind === "marketplace") {
+          const rawSource = master?.sources?.[provider];
+          const templateSource = rawSource && typeof rawSource === "object" ? (rawSource as TemplateSourceInfo) : null;
+          if (!templateSource?.enabled) continue;
+        }
+        const key = provider || source.kind || "source";
         const current = byProvider.get(key) || { provider: key, fields: 0, required: 0, examples: 0 };
         current.fields += 1;
         current.required += candidate.required ? 1 : 0;
@@ -678,10 +685,21 @@ export default function TemplateEditor() {
       }
     }
     return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
-  }, [draftCandidates]);
+  }, [draftCandidates, master]);
+  const activeMarketplaceProviders = useMemo(() => {
+    const sources = master?.sources && typeof master.sources === "object" ? master.sources : {};
+    return new Set(
+      DEFAULT_MARKETPLACE_SOURCE_COLUMNS.filter((provider) => {
+        const raw = sources[provider];
+        const source = raw && typeof raw === "object" ? (raw as TemplateSourceInfo) : null;
+        return Boolean(source?.enabled);
+      }),
+    );
+  }, [master]);
   const draftSourceColumns = useMemo(() => {
     const byProvider = new Map<string, { provider: string; kind: "marketplace" | "competitor" | "other"; label: string }>();
     for (const provider of DEFAULT_MARKETPLACE_SOURCE_COLUMNS) {
+      if (!activeMarketplaceProviders.has(provider)) continue;
       byProvider.set(provider, { provider, kind: "marketplace", label: sourceLabel(provider) });
     }
     for (const provider of DEFAULT_COMPETITOR_SOURCE_COLUMNS) {
@@ -692,6 +710,7 @@ export default function TemplateEditor() {
         const kind = sourceGroupKind(source);
         if (kind === "other") continue;
         const provider = sourceProvider(source);
+        if (kind === "marketplace" && !activeMarketplaceProviders.has(provider)) continue;
         if (!byProvider.has(provider)) {
           byProvider.set(provider, { provider, kind, label: sourceLabel(provider) });
         }
@@ -702,7 +721,7 @@ export default function TemplateEditor() {
       if (kindRank !== 0) return kindRank;
       return a.label.localeCompare(b.label, "ru");
     });
-  }, [draftCandidates]);
+  }, [activeMarketplaceProviders, draftCandidates]);
   const marketplaceSourceColumns = draftSourceColumns.filter((column) => column.kind === "marketplace");
   const competitorSourceColumns = draftSourceColumns.filter((column) => column.kind === "competitor");
   const sourceOptionsByProvider = useMemo(() => {

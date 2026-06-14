@@ -2083,8 +2083,14 @@ def _upsert_template_from_attr_mapping(
 
     split = split_template_attrs(attrs)
     template_meta = template_record.get("meta") if isinstance(template_record.get("meta"), dict) else {}
+    connectors = ConnectorsStateReadAdapter()
+    active_marketplace_sources = {
+        "yandex_market": bool(connectors.first_enabled_import_store("yandex_market")),
+        "ozon": bool(connectors.first_enabled_import_store("ozon")),
+    }
+
     sources_meta: Dict[str, Any] = {}
-    if effective_yandex_category_id or yandex_params:
+    if active_marketplace_sources["yandex_market"] and (effective_yandex_category_id or yandex_params):
         sources_meta["yandex_market"] = {
             "enabled": True,
             "mode": "structure_source",
@@ -2102,7 +2108,7 @@ def _upsert_template_from_attr_mapping(
     ozon_params = _load_ozon_params(effective_ozon_category_id)
     ozon_required_count = len([x for x in ozon_params if bool(x.get("required") or False)])
     effective_ozon_category_name = _provider_category_name("ozon", effective_ozon_category_id)
-    if effective_ozon_category_id or ozon_params:
+    if active_marketplace_sources["ozon"] and (effective_ozon_category_id or ozon_params):
         sources_meta["ozon"] = {
             "enabled": True,
             "mode": "structure_source",

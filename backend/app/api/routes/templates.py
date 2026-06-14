@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
+from app.core.connectors_state import ConnectorsStateReadAdapter
 from app.core.json_store import read_doc, with_lock
 from app.storage.json_store import (
     ensure_global_attribute,
@@ -580,8 +581,18 @@ def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any
                     required_count = len([x for x in attrs if isinstance(x, dict) and bool(x.get("is_required") or x.get("required") or False)])
             return {"params_count": attrs_count, "required_params_count": required_count}
 
-        next_sources: Dict[str, Any] = dict(sources) if isinstance(sources, dict) else {}
-        if yandex_category_id or provider_mapped_rows["yandex_market"]:
+        connectors = ConnectorsStateReadAdapter()
+        active_marketplace_sources = {
+            "yandex_market": bool(connectors.first_enabled_import_store("yandex_market")),
+            "ozon": bool(connectors.first_enabled_import_store("ozon")),
+        }
+
+        next_sources: Dict[str, Any] = {
+            key: value
+            for key, value in (dict(sources) if isinstance(sources, dict) else {}).items()
+            if key not in active_marketplace_sources or active_marketplace_sources.get(key)
+        }
+        if active_marketplace_sources["yandex_market"] and (yandex_category_id or provider_mapped_rows["yandex_market"]):
             y_stats = _yandex_stats(yandex_category_id)
             next_sources["yandex_market"] = {
                 "enabled": True,
@@ -592,7 +603,7 @@ def _template_master_payload(template: Dict[str, Any], attrs: List[Dict[str, Any
                 "required_params_count": y_stats["required_params_count"],
                 "mapped_rows": provider_mapped_rows["yandex_market"],
             }
-        if ozon_category_id or provider_mapped_rows["ozon"]:
+        if active_marketplace_sources["ozon"] and (ozon_category_id or provider_mapped_rows["ozon"]):
             o_stats = _ozon_stats(ozon_category_id)
             next_sources["ozon"] = {
                 "enabled": True,
