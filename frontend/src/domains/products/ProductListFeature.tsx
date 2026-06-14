@@ -17,6 +17,7 @@ import TextInput from "../../components/ui/TextInput";
 import Select from "../../components/ui/Select";
 import SideSheet from "../../components/ui/SideSheet";
 import { api } from "../../lib/api";
+import { toRenderableMediaUrl } from "../../lib/media";
 
 type ProductItem = {
   id: string;
@@ -589,6 +590,7 @@ function ProductListTable({
               : rows.map((product) => {
                   const title = String(product.title || product.name || "").trim() || product.id;
                   const sku = String(product.sku_gt || "").trim() || "Без SKU";
+                  const previewUrl = toRenderableMediaUrl(String(product.preview_url || "").trim());
                   const templateName = String(product.effective_template_name || "").trim();
                   const category = compactCategoryPath(product.category_path);
                   const group = displayGroupName(product);
@@ -612,8 +614,8 @@ function ProductListTable({
                       <td>
                         <div className="productListTitleCell">
                           <div className="productListThumbWrap">
-                            {product.preview_url ? (
-                              <img className="productListThumb" src={product.preview_url} alt="" loading="lazy" />
+                            {previewUrl ? (
+                              <img className="productListThumb" src={previewUrl} alt="" loading="lazy" />
                             ) : (
                               <div className="productListThumb productListThumbEmpty" aria-hidden="true">
                                 SKU

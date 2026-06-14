@@ -1027,8 +1027,6 @@ async def _resolve_importable_media_urls(urls: List[str], cache: Optional[Dict[s
             resolved = ""
             if isinstance(result, tuple):
                 _, resolved = result
-            if not resolved:
-                resolved = raw_url
             if cache is not None:
                 cache[raw_url] = resolved
             out[index] = resolved
