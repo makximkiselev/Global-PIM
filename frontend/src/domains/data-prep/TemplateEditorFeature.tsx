@@ -102,6 +102,7 @@ const TYPE_LABEL: Record<AttrType, string> = {
   date: "Дата",
   json: "JSON",
 };
+const TYPE_OPTIONS: AttrType[] = ["text", "number", "select", "bool", "date", "json"];
 const SCOPE_LABEL: Record<ScopeT, string> = {
   common: "Товар",
   variant: "SKU",
@@ -125,6 +126,11 @@ const SOURCE_LABEL: Record<string, string> = {
   ozon: "Ozon",
   product: "Товарные данные",
   marketplace: "Площадка",
+  restore: "re-store",
+  "re-store": "re-store",
+  store77: "store77",
+  biggeek: "Big Geek",
+  big_geek: "Big Geek",
 };
 
 const FIELD_LAYER_OPTIONS = [
@@ -294,6 +300,39 @@ function candidateSources(candidate: InfoModelCandidate) {
     .filter(Boolean);
 }
 
+function sourceIdentity(source: InfoModelCandidate["sources"][number]) {
+  return [
+    String(source.kind || "").trim(),
+    String(source.provider || "").trim(),
+    String(source.field_name || "").trim(),
+    String(source.field_title || "").trim(),
+  ].join("::");
+}
+
+function sourceProvider(source: InfoModelCandidate["sources"][number]) {
+  return String(source.provider || source.kind || "source").trim() || "source";
+}
+
+function sourceCellLabel(source?: InfoModelCandidate["sources"][number]) {
+  if (!source) return "";
+  const rawFieldName = String(source.field_name || "").trim();
+  const fieldTitle = String(source.field_title || "").trim();
+  const name = fieldTitle || rawFieldName || sourceLabel(source.provider || source.kind || "");
+  const code = rawFieldName && rawFieldName !== fieldTitle ? rawFieldName : "";
+  return [name, code].filter(Boolean).join(" · ");
+}
+
+function sourceExampleText(source?: InfoModelCandidate["sources"][number], fallback: string[] = []) {
+  const examples = (source?.examples?.length ? source.examples : fallback).map((item) => String(item || "").trim()).filter(Boolean);
+  return examples.slice(0, 3).join(", ");
+}
+
+function sourceGroupKind(source: InfoModelCandidate["sources"][number]): "marketplace" | "competitor" | "other" {
+  if (source.kind === "marketplace") return "marketplace";
+  if (source.kind === "competitor") return "competitor";
+  return "other";
+}
+
 function sourceKindLabel(kind: string) {
   if (kind === "product") return "Товары";
   if (kind === "marketplace") return "Площадки";
@@ -386,6 +425,13 @@ function isSemanticDuplicateCandidate(candidate: InfoModelCandidate) {
 
 function isLayerCandidate(candidate: InfoModelCandidate, layer: string) {
   return String(candidate.field_layer || "features").trim() === layer;
+}
+
+function selectedSourceKeyForProvider(candidate: InfoModelCandidate, provider: string) {
+  const explicit = candidate.mapped_source_keys?.[provider];
+  if (explicit !== undefined) return explicit;
+  const firstSource = (candidate.sources || []).find((source) => sourceProvider(source) === provider);
+  return firstSource ? sourceIdentity(firstSource) : "";
 }
 
 export default function TemplateEditor() {
@@ -630,6 +676,57 @@ export default function TemplateEditor() {
     }
     return Array.from(byProvider.values()).sort((a, b) => b.fields - a.fields);
   }, [draftCandidates]);
+  const draftSourceColumns = useMemo(() => {
+    const byProvider = new Map<string, { provider: string; kind: "marketplace" | "competitor" | "other"; label: string }>();
+    for (const candidate of draftCandidates) {
+      for (const source of candidate.sources || []) {
+        const kind = sourceGroupKind(source);
+        if (kind === "other") continue;
+        const provider = sourceProvider(source);
+        if (!byProvider.has(provider)) {
+          byProvider.set(provider, { provider, kind, label: sourceLabel(provider) });
+        }
+      }
+    }
+    return Array.from(byProvider.values()).sort((a, b) => {
+      const kindRank = a.kind.localeCompare(b.kind);
+      if (kindRank !== 0) return kindRank;
+      return a.label.localeCompare(b.label, "ru");
+    });
+  }, [draftCandidates]);
+  const marketplaceSourceColumns = draftSourceColumns.filter((column) => column.kind === "marketplace");
+  const competitorSourceColumns = draftSourceColumns.filter((column) => column.kind === "competitor");
+  const sourceOptionsByProvider = useMemo(() => {
+    const map = new Map<string, InfoModelCandidate["sources"]>();
+    const seen = new Set<string>();
+    for (const candidate of draftCandidates) {
+      for (const source of candidate.sources || []) {
+        const kind = sourceGroupKind(source);
+        if (kind === "other") continue;
+        const provider = sourceProvider(source);
+        const key = sourceIdentity(source);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const next = map.get(provider) || [];
+        next.push(source);
+        map.set(provider, next);
+      }
+    }
+    for (const [provider, sources] of map.entries()) {
+      map.set(provider, sources.slice().sort((a, b) => sourceCellLabel(a).localeCompare(sourceCellLabel(b), "ru")));
+    }
+    return map;
+  }, [draftCandidates]);
+  const usedSourceKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const candidate of draftCandidates) {
+      for (const column of draftSourceColumns) {
+        const key = selectedSourceKeyForProvider(candidate, column.provider);
+        if (key) keys.add(key);
+      }
+    }
+    return keys;
+  }, [draftCandidates, draftSourceColumns]);
   const draftAudit = useMemo(() => {
     let competitorOnly = 0;
     let marketplaceOnly = 0;
@@ -696,6 +793,56 @@ export default function TemplateEditor() {
     } finally {
       setDraftBusy(false);
     }
+  }
+
+  function updateDraftSourceMapping(candidate: InfoModelCandidate, provider: string, sourceKey: string) {
+    updateDraftCandidate(candidate.id, {
+      mapped_source_keys: {
+        ...(candidate.mapped_source_keys || {}),
+        [provider]: sourceKey,
+      },
+    });
+  }
+
+  function renderDraftSourceCell(candidate: InfoModelCandidate, provider: string) {
+    const selectedKey = selectedSourceKeyForProvider(candidate, provider);
+    const candidateSource = (candidate.sources || []).find((source) => sourceProvider(source) === provider && sourceIdentity(source) === selectedKey);
+    const options = (sourceOptionsByProvider.get(provider) || []).filter((source) => {
+      const key = sourceIdentity(source);
+      return key === selectedKey || !usedSourceKeys.has(key);
+    });
+    const selectedSource = candidateSource || options.find((source) => sourceIdentity(source) === selectedKey);
+    return (
+      <td className={`tplDraftMatrixSourceCell${selectedSource ? "" : " is-empty"}`} key={`${candidate.id}-${provider}`}>
+        <select
+          value={selectedKey}
+          onChange={(event) => updateDraftSourceMapping(candidate, provider, event.target.value)}
+          disabled={draftBusy}
+          aria-label={`${candidate.name}: ${sourceLabel(provider)}`}
+        >
+          <option value="">Не привязано</option>
+          {options.map((source) => {
+            const key = sourceIdentity(source);
+            return (
+              <option key={key} value={key}>
+                {sourceCellLabel(source)}
+              </option>
+            );
+          })}
+        </select>
+        {selectedSource ? (
+          <div className="tplDraftMatrixSourceMeta">
+            <strong>{sourceCellLabel(selectedSource)}</strong>
+            {sourceExampleText(selectedSource, candidate.examples) ? <span>{sourceExampleText(selectedSource, candidate.examples)}</span> : null}
+            {selectedSource.count ? <em>{selectedSource.count} совп.</em> : null}
+          </div>
+        ) : (
+          <div className="tplDraftMatrixSourceMeta">
+            <span>Нет параметра из этого источника</span>
+          </div>
+        )}
+      </td>
+    );
   }
 
   async function openDictPicker(idx: number) {
@@ -1432,122 +1579,126 @@ export default function TemplateEditor() {
                         <option value="name">По названию</option>
                       </select>
                     </div>
-                    <div className="tplDraftTableHead" aria-hidden="true">
-                      <span>Параметр и источники</span>
-                      <span>Классификация</span>
-                      <span>Решение</span>
-                    </div>
-                    <div className="tplDraftList">
+                    <div className="tplDraftMatrix">
                       {visibleDraftCandidates.length ? (
-                        visibleDraftCandidates.map((candidate) => (
-                          <div className={`tplDraftRow is-${candidate.status}`} key={candidate.id}>
-                            <div className="tplDraftMain">
-                              <div className="tplDraftTitleLine">
-                                <strong>{candidate.name}</strong>
-                                <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
-                              </div>
-                              <div className="tplDraftMetaLine">
-                                <span>{fieldLayerLabel(candidate.field_layer)}</span>
-                                <span>{typeLabel(candidate.type)}</span>
-                                <span>{matchQualityLabel(candidate.confidence)}</span>
-                                {candidate.required ? <span className="is-required">обязательное</span> : null}
-                                {candidate.locked ? <span className="is-required">только чтение</span> : null}
-                              </div>
-                              {candidate.global_match ? (
-                                <div className={`tplDraftReuse ${isWeakGlobalCandidate(candidate) ? "is-weak" : ""}`}>
-                                  <b>Уже есть в справочнике</b>
-                                  <span>
-                                    {candidate.global_match.title || candidate.global_match.code} · {globalMatchReasonLabel(candidate.global_match.reason)}
-                                    {typeof candidate.global_match.score === "number" ? ` ${Math.round(candidate.global_match.score * 100)}%` : ""}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="tplDraftReuse is-new">
-                                  <b>Новое поле</b>
-                                  <span>Глобального параметра пока нет</span>
-                                </div>
-                              )}
-                              <div className="tplDraftEvidence">
-                                {sourceKindStats(candidate).map((item) => (
-                                  <span key={`${candidate.id}-${item.label}`}>
-                                    <b>{item.count}</b>
-                                    {item.label}
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="tplDraftSources">
-                                {candidateSources(candidate).slice(0, 3).map((source) => (
-                                  <small key={source}>{source}</small>
-                                ))}
-                              </div>
-                              {candidate.review_flags?.length ? (
-                                <div className="tplDraftFlags">
-                                  {candidate.review_flags.slice(0, 2).map((flag) => (
-                                    <small className={`is-${flag.level || "info"}`} key={`${candidate.id}-${flag.code || flag.message}`}>
-                                      {flag.message}
-                                    </small>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="tplDraftDecision">
-                              <span>Классификация</span>
-                              <label className="tplDraftSelect">
-                                <small>Тип поля</small>
-                                <select
-                                  value={String(candidate.field_layer || "features")}
-                                  onChange={(event) => updateDraftCandidate(candidate.id, { field_layer: event.target.value })}
-                                  disabled={draftBusy}
-                                >
-                                  {FIELD_LAYER_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="tplDraftSelect">
-                                <small>Заполняется из</small>
-                                <select
-                                  value={String(candidate.fill_source || "manual")}
-                                  onChange={(event) => updateDraftCandidate(candidate.id, { fill_source: event.target.value })}
-                                  disabled={draftBusy}
-                                >
-                                  {FILL_SOURCE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                              <strong>{draftRecommendation(candidate)}</strong>
-                              <small>{draftSourceSummaryText(candidate)}</small>
-                              {candidate.examples?.length ? <em>{candidate.examples.slice(0, 3).join(", ")}</em> : null}
-                            </div>
-                            <div className="tplDraftActions">
-                              {candidate.status !== "accepted" ? (
-                                <Button className="sm" onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
-                                  {draftPrimaryActionLabel(candidate)}
-                                </Button>
-                              ) : null}
-                              {candidate.status !== "accepted" && candidate.global_match ? (
-                                <Button
-                                  className="sm"
-                                  onClick={() =>
-                                    updateDraftCandidate(candidate.id, {
-                                      global_match: null,
-                                      suggested_action: "create_attribute",
-                                    } as Partial<InfoModelCandidate> & { global_match: null })
-                                  }
-                                  disabled={draftBusy}
-                                >
-                                  Создать новое
-                                </Button>
-                              ) : null}
-                              {candidate.status !== "rejected" ? (
-                                <Button className="sm" onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
-                                  Не добавлять
-                                </Button>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))
+                        <div className="tplDraftMatrixScroller">
+                          <table>
+                            <thead>
+                              <tr className="tplDraftMatrixGroupHead">
+                                <th rowSpan={2}>Название в PIM</th>
+                                <th rowSpan={2}>Тип поля</th>
+                                <th rowSpan={2}>Заполняется из</th>
+                                {marketplaceSourceColumns.length ? <th colSpan={marketplaceSourceColumns.length}>Площадки</th> : null}
+                                {competitorSourceColumns.length ? <th colSpan={competitorSourceColumns.length}>Магазины</th> : null}
+                                <th rowSpan={2}>Действия</th>
+                              </tr>
+                              <tr className="tplDraftMatrixProviderHead">
+                                {marketplaceSourceColumns.map((column) => <th key={column.provider}>{column.label}</th>)}
+                                {competitorSourceColumns.map((column) => <th key={column.provider}>{column.label}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {visibleDraftCandidates.map((candidate) => (
+                                <tr className={`tplDraftMatrixRow is-${candidate.status}`} key={candidate.id}>
+                                  <td className="tplDraftMatrixNameCell">
+                                    <TextInput
+                                      value={candidate.name}
+                                      onChange={(event) => updateDraftCandidate(candidate.id, { name: event.target.value })}
+                                      disabled={draftBusy}
+                                      aria-label="Название параметра в PIM"
+                                    />
+                                    <div className="tplDraftMatrixNameMeta">
+                                      <Badge tone={candidateTone(candidate)}>{CANDIDATE_STATUS_LABEL[candidate.status]}</Badge>
+                                      <span>{matchQualityLabel(candidate.confidence)}</span>
+                                      {candidate.required ? <span className="is-required">обязательное</span> : null}
+                                    </div>
+                                    {candidate.global_match ? (
+                                      <div className={`tplDraftReuse ${isWeakGlobalCandidate(candidate) ? "is-weak" : ""}`}>
+                                        <b>Справочник</b>
+                                        <span>
+                                          {candidate.global_match.title || candidate.global_match.code}
+                                          {typeof candidate.global_match.score === "number" ? ` · ${Math.round(candidate.global_match.score * 100)}%` : ""}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                    {candidate.review_flags?.length ? (
+                                      <div className="tplDraftFlags">
+                                        {candidate.review_flags.slice(0, 1).map((flag) => (
+                                          <small className={`is-${flag.level || "info"}`} key={`${candidate.id}-${flag.code || flag.message}`}>
+                                            {flag.message}
+                                          </small>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td className="tplDraftMatrixControlCell">
+                                    <select
+                                      value={String(candidate.type || "text")}
+                                      onChange={(event) => updateDraftCandidate(candidate.id, { type: event.target.value })}
+                                      disabled={draftBusy}
+                                      aria-label={`${candidate.name}: тип поля`}
+                                    >
+                                      {TYPE_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>{typeLabel(option)}</option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={String(candidate.field_layer || "features")}
+                                      onChange={(event) => updateDraftCandidate(candidate.id, { field_layer: event.target.value })}
+                                      disabled={draftBusy}
+                                      aria-label={`${candidate.name}: раздел поля`}
+                                    >
+                                      {FIELD_LAYER_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="tplDraftMatrixControlCell">
+                                    <select
+                                      value={String(candidate.fill_source || "manual")}
+                                      onChange={(event) => updateDraftCandidate(candidate.id, { fill_source: event.target.value })}
+                                      disabled={draftBusy}
+                                      aria-label={`${candidate.name}: источник заполнения`}
+                                    >
+                                      {FILL_SOURCE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                    <span>{fieldLayerFillLabel(candidate)}</span>
+                                  </td>
+                                  {marketplaceSourceColumns.map((column) => renderDraftSourceCell(candidate, column.provider))}
+                                  {competitorSourceColumns.map((column) => renderDraftSourceCell(candidate, column.provider))}
+                                  <td className="tplDraftMatrixActions">
+                                    {candidate.status !== "accepted" ? (
+                                      <Button className="sm" onClick={() => updateDraftCandidate(candidate.id, { status: "accepted" })} disabled={draftBusy}>
+                                        {draftPrimaryActionLabel(candidate)}
+                                      </Button>
+                                    ) : null}
+                                    {candidate.status !== "accepted" && candidate.global_match ? (
+                                      <Button
+                                        className="sm"
+                                        onClick={() =>
+                                          updateDraftCandidate(candidate.id, {
+                                            global_match: null,
+                                            suggested_action: "create_attribute",
+                                          } as Partial<InfoModelCandidate> & { global_match: null })
+                                        }
+                                        disabled={draftBusy}
+                                      >
+                                        Создать новое
+                                      </Button>
+                                    ) : null}
+                                    {candidate.status !== "rejected" ? (
+                                      <Button className="sm" onClick={() => updateDraftCandidate(candidate.id, { status: "rejected" })} disabled={draftBusy}>
+                                        Не добавлять
+                                      </Button>
+                                    ) : null}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       ) : (
                         <EmptyState
                           title={draftCandidates.length ? "В этом фильтре пусто" : "Источники не дали параметров"}

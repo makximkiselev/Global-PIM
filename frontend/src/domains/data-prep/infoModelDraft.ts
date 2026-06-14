@@ -25,6 +25,7 @@ export type InfoModelCandidate = {
   status: "accepted" | "needs_review" | "rejected";
   examples: string[];
   sources: InfoModelCandidateSource[];
+  mapped_source_keys?: Record<string, string>;
   source_summary?: {
     sources_count?: number;
     by_kind?: Record<string, number>;

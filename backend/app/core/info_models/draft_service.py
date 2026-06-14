@@ -778,6 +778,7 @@ def _merge_existing_draft_candidates(existing_candidates: List[Dict[str, Any]], 
             suggested_action = _text(existing.get("suggested_action"))
             field_layer = _text(existing.get("field_layer"))
             fill_source = _text(existing.get("fill_source"))
+            mapped_source_keys = existing.get("mapped_source_keys") if isinstance(existing.get("mapped_source_keys"), dict) else {}
             locked = bool(existing.get("locked"))
             merged = _merge_candidate(existing, candidate)
             if status:
@@ -790,6 +791,8 @@ def _merge_existing_draft_candidates(existing_candidates: List[Dict[str, Any]], 
                 merged["field_layer"] = field_layer
             if fill_source:
                 merged["fill_source"] = fill_source
+            if mapped_source_keys:
+                merged["mapped_source_keys"] = mapped_source_keys
             if locked:
                 merged["locked"] = True
             by_code[code] = merged
@@ -985,7 +988,7 @@ def update_draft_candidate(template_id: str, candidate_id: str, patch: Dict[str,
     candidates = info_model.get("candidates") if isinstance(info_model.get("candidates"), list) else []
     for candidate in candidates:
         if isinstance(candidate, dict) and _text(candidate.get("id")) == candidate_id:
-            for key in ("name", "code", "type", "group", "required", "status", "field_layer", "fill_source", "locked"):
+            for key in ("name", "code", "type", "group", "required", "status", "field_layer", "fill_source", "locked", "mapped_source_keys"):
                 if key in patch:
                     candidate[key] = patch[key]
             if "global_match" in patch:
@@ -1055,6 +1058,7 @@ def approve_draft(template_id: str) -> Dict[str, Any]:
                 "field_layer": _text(candidate.get("field_layer")) or "features",
                 "fill_source": _text(candidate.get("fill_source")) or "manual",
                 "source_candidates": [source_candidate_id] if source_candidate_id else [],
+                "mapped_source_keys": candidate.get("mapped_source_keys") if isinstance(candidate.get("mapped_source_keys"), dict) else {},
                 "attribute_id": attribute_id or None,
                 "dict_id": dict_id or None,
                 "global_code": canonical_code,

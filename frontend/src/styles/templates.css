@@ -1430,6 +1430,201 @@
   background: rgba(var(--card-rgb), 0.72);
 }
 
+.tplDraftMatrix {
+  min-width: 0;
+}
+
+.tplDraftMatrixScroller {
+  width: 100%;
+  max-height: min(72vh, 860px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(var(--card-rgb), 0.78);
+}
+
+.tplDraftMatrix table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text);
+}
+
+.tplDraftMatrix th,
+.tplDraftMatrix td {
+  min-width: 220px;
+  max-width: 320px;
+  vertical-align: top;
+  border-right: 1px solid rgba(var(--line-rgb), 0.68);
+  border-bottom: 1px solid rgba(var(--line-rgb), 0.68);
+  background: rgba(var(--surface-rgb), 0.66);
+}
+
+.tplDraftMatrix th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 10px 12px;
+  background: rgba(var(--surface-rgb), 0.96);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 930;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.tplDraftMatrix .tplDraftMatrixGroupHead th {
+  top: 0;
+}
+
+.tplDraftMatrix .tplDraftMatrixProviderHead th {
+  top: 39px;
+  color: var(--text-soft);
+  background: rgba(var(--card-rgb), 0.98);
+}
+
+.tplDraftMatrix th:first-child,
+.tplDraftMatrix td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 360px;
+  max-width: 420px;
+  box-shadow: 10px 0 18px rgba(15, 23, 42, 0.04);
+}
+
+.tplDraftMatrix th:first-child {
+  z-index: 6;
+}
+
+.tplDraftMatrixNameCell,
+.tplDraftMatrixControlCell,
+.tplDraftMatrixSourceCell,
+.tplDraftMatrixActions {
+  padding: 12px;
+}
+
+.tplDraftMatrixNameCell {
+  display: grid;
+  gap: 8px;
+  background: rgba(var(--surface-rgb), 0.9) !important;
+}
+
+.tplDraftMatrixNameCell .input {
+  min-height: 38px;
+  font-weight: 900;
+}
+
+.tplDraftMatrixNameMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.tplDraftMatrixNameMeta span {
+  width: fit-content;
+  padding: 3px 7px;
+  border: 1px solid rgba(var(--line-rgb), 0.64);
+  border-radius: 999px;
+  background: rgba(var(--card-rgb), 0.72);
+}
+
+.tplDraftMatrixNameMeta .is-required {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+}
+
+.tplDraftMatrixControlCell {
+  display: grid;
+  gap: 8px;
+}
+
+.tplDraftMatrixControlCell select,
+.tplDraftMatrixSourceCell select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid rgba(var(--line-rgb), 0.78);
+  border-radius: 10px;
+  background: rgba(var(--card-rgb), 0.86);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 820;
+  outline: 0;
+  padding: 0 9px;
+}
+
+.tplDraftMatrixControlCell span {
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 760;
+}
+
+.tplDraftMatrixSourceCell {
+  display: grid;
+  gap: 8px;
+}
+
+.tplDraftMatrixSourceCell.is-empty {
+  background: rgba(var(--surface-rgb), 0.38);
+}
+
+.tplDraftMatrixSourceMeta {
+  display: grid;
+  gap: 4px;
+  min-height: 48px;
+}
+
+.tplDraftMatrixSourceMeta strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.tplDraftMatrixSourceMeta span,
+.tplDraftMatrixSourceMeta em {
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.3;
+  font-style: normal;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.tplDraftMatrixActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 170px !important;
+  max-width: 190px !important;
+}
+
+.tplDraftMatrixActions .btn.sm {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.tplDraftMatrixRow.is-accepted td {
+  background: rgba(16, 185, 129, 0.07);
+}
+
+.tplDraftMatrixRow.is-rejected td {
+  opacity: 0.72;
+}
+
 .tplDraftTableHead {
   display: grid;
   grid-template-columns: minmax(420px, 1fr) minmax(260px, 340px) minmax(172px, auto);
