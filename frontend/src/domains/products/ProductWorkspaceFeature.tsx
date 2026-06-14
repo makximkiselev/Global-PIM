@@ -1867,7 +1867,7 @@ function ProductWorkspaceFeature() {
     const orderedMedia = nextMedia.map((item, index) => ({
       ...item,
       order: index,
-      export_order: item.export_order ?? index,
+      export_order: index,
     }));
     const nextContent: ProductContent = {
       ...(product.content || {}),
@@ -1879,9 +1879,9 @@ function ProductWorkspaceFeature() {
     setMediaSaving(true);
     setMediaNotice("");
     try {
-      const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}`, {
+      const response = await api<{ product: ProductData }>(`/products/${encodeURIComponent(product.id)}/media-images`, {
         method: "PATCH",
-        body: JSON.stringify({ content: nextContent }),
+        body: JSON.stringify({ media_images: orderedMedia }),
       });
       setProduct(response.product || optimisticProduct);
       setMediaNotice("Порядок и выбор медиа сохранены.");

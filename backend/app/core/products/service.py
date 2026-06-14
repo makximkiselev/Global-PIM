@@ -21,6 +21,7 @@ from app.storage.relational_pim_store import (
     load_templates_db_doc,
     query_products_full,
     save_product_groups_doc,
+    update_product_media_images,
     upsert_product_item,
 )
 from app.core.master_templates import base_field_by_code, base_field_by_name
@@ -684,6 +685,25 @@ def patch_product_service(product_id: str, patch: Dict[str, Any]) -> Dict[str, A
 
     saved = upsert_product_item(target)
     return {"product": saved or target}
+
+
+def patch_product_media_images_service(product_id: str, media_images: List[Dict[str, Any]]) -> Dict[str, Any]:
+    normalized_media: List[Dict[str, Any]] = []
+    for index, item in enumerate(media_images or []):
+        if not isinstance(item, dict):
+            continue
+        url = _norm(item.get("url"))
+        if not url:
+            continue
+        normalized = dict(item)
+        normalized["url"] = url
+        normalized["order"] = index
+        normalized["export_order"] = index
+        normalized_media.append(normalized)
+    saved = update_product_media_images(product_id, normalized_media)
+    if not saved:
+        raise JsonStoreError("PRODUCT_NOT_FOUND")
+    return {"product": saved}
 
 
 def list_products_by_category_service(category_id: str) -> Dict[str, Any]:

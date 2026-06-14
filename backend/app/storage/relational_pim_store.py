@@ -5216,6 +5216,52 @@ def upsert_product_item(item: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
+def update_product_media_images(product_id: str, media_images: List[Dict[str, Any]]) -> Dict[str, Any]:
+    _ensure_tables()
+    _bootstrap_products_from_legacy()
+    org_id = _resolve_organization_id(None)
+    safe_product_id = str(product_id or "").strip()
+    if not safe_product_id:
+        return {}
+    safe_media = [item for item in (media_images or []) if isinstance(item, dict)]
+    preview_url = _preview_url_for_content({"media_images": safe_media})
+
+    def _run() -> bool:
+        conn, _, _ = _pg_connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE products_rel
+                SET
+                  content_json = jsonb_set(
+                    jsonb_set(COALESCE(content_json, '{}'::jsonb), '{media_images}', %s::jsonb, true),
+                    '{media}',
+                    %s::jsonb,
+                    true
+                  ),
+                  updated_at = NOW()
+                WHERE organization_id = %s AND id = %s
+                """,
+                [json.dumps(safe_media), json.dumps(safe_media), org_id, safe_product_id],
+            )
+            updated = int(cur.rowcount or 0) > 0
+            if updated:
+                cur.execute(
+                    """
+                    UPDATE catalog_product_registry_rel
+                    SET preview_url = %s, updated_at = NOW()
+                    WHERE organization_id = %s AND id = %s
+                    """,
+                    [preview_url or None, org_id, safe_product_id],
+                )
+            return updated
+
+    if not _with_pg_retry(_run):
+        return {}
+    items = query_products_full(ids=[safe_product_id], limit=1)
+    return items[0] if items else {}
+
+
 def bulk_upsert_product_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     _ensure_tables()
     _bootstrap_products_from_legacy()

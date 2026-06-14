@@ -17,6 +17,7 @@ from app.core.products.service import (
     get_product_service,
     get_products_bulk_service,
     patch_product_service,  # ✅ вместо update_product
+    patch_product_media_images_service,
     list_products_by_category_service,
     find_product_by_sku_service,
     allocate_sku_pairs_service,
@@ -146,6 +147,10 @@ class PatchProductReq(BaseModel):
     feature_params: Optional[List[str]] = None
     exports_enabled: Optional[Dict[str, bool]] = None
     content: Optional[Dict[str, Any]] = None
+
+
+class PatchProductMediaImagesReq(BaseModel):
+    media_images: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 def _http_from_store_error(code: str) -> HTTPException:
@@ -415,6 +420,14 @@ def products_patch(product_id: str, req: PatchProductReq):
     try:
         patch = {k: v for k, v in req.model_dump().items() if v is not None}
         return patch_product_service(product_id, patch)  # ✅ сервис возвращает {"product": ...}
+    except JsonStoreError as e:
+        raise _http_from_store_error(str(e))
+
+
+@router.patch("/{product_id}/media-images")
+def products_patch_media_images(product_id: str, req: PatchProductMediaImagesReq):
+    try:
+        return patch_product_media_images_service(product_id, req.media_images)
     except JsonStoreError as e:
         raise _http_from_store_error(str(e))
 
