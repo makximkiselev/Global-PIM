@@ -28,6 +28,7 @@ from app.storage.relational_pim_store import (
     save_product_marketplace_status,
     load_product_marketplace_status_map,
     load_category_mappings,
+    query_products_full,
     save_attribute_mapping_doc,
     save_attribute_value_refs_doc,
     save_category_mappings,
@@ -38,6 +39,7 @@ from app.core.products.service import (
     create_product_service,
     allocate_sku_pairs_service,
     delete_products_bulk_service,
+    patch_product_service,
 )
 from app.api.routes.products import (
     YANDEX_OFFER_CARDS_PATH,
@@ -1477,11 +1479,73 @@ async def import_products_xlsx(
     if nodes_changed:
         _save_nodes(nodes)
 
-    auto_needed = [p for p in prepared if not (p.get("sku_pim") and p.get("sku_gt"))]
+    existing_products = query_products_full()
+    by_sku_gt: Dict[str, Dict[str, Any]] = {}
+    by_sku_pim: Dict[str, Dict[str, Any]] = {}
+    for product in existing_products:
+        if not isinstance(product, dict):
+            continue
+        sku_gt_key = str(product.get("sku_gt") or "").strip()
+        sku_pim_key = str(product.get("sku_pim") or "").strip()
+        if sku_gt_key and sku_gt_key not in by_sku_gt:
+            by_sku_gt[sku_gt_key] = product
+        if sku_pim_key and sku_pim_key not in by_sku_pim:
+            by_sku_pim[sku_pim_key] = product
+
+    auto_needed = [
+        p
+        for p in prepared
+        if not (p.get("sku_pim") and p.get("sku_gt"))
+        and not (p.get("sku_gt") and p.get("sku_gt") in by_sku_gt)
+        and not (p.get("sku_pim") and p.get("sku_pim") in by_sku_pim)
+    ]
     sku_items = allocate_sku_pairs_service(len(auto_needed)).get("items") or []
     sku_iter = iter(sku_items)
     created_items = []
+    updated_items = []
+    skipped_items = []
     for row in prepared:
+        existing = None
+        row_sku_gt = str(row.get("sku_gt") or "").strip()
+        row_sku_pim = str(row.get("sku_pim") or "").strip()
+        if row_sku_gt:
+            existing = by_sku_gt.get(row_sku_gt)
+        if not existing and row_sku_pim:
+            existing = by_sku_pim.get(row_sku_pim)
+
+        if existing:
+            patch: Dict[str, Any] = {}
+            if str(existing.get("category_id") or "").strip() != str(row.get("category_id") or "").strip():
+                patch["category_id"] = row["category_id"]
+            if str(existing.get("title") or "").strip() != str(row.get("title") or "").strip():
+                patch["title"] = row["title"]
+            if row_sku_pim and not str(existing.get("sku_pim") or "").strip():
+                patch["sku_pim"] = row_sku_pim
+            if row_sku_gt and not str(existing.get("sku_gt") or "").strip():
+                patch["sku_gt"] = row_sku_gt
+
+            product_id = str(existing.get("id") or "").strip()
+            if patch and product_id:
+                patched = patch_product_service(product_id, patch).get("product") or existing
+                updated_items.append(
+                    {
+                        "id": patched.get("id"),
+                        "title": patched.get("title"),
+                        "category_id": patched.get("category_id"),
+                        "sku_gt": patched.get("sku_gt"),
+                    }
+                )
+            else:
+                skipped_items.append(
+                    {
+                        "id": existing.get("id"),
+                        "title": existing.get("title"),
+                        "category_id": existing.get("category_id"),
+                        "sku_gt": existing.get("sku_gt"),
+                    }
+                )
+            continue
+
         sku = {}
         if not (row.get("sku_pim") and row.get("sku_gt")):
             sku = next(sku_iter, {})
@@ -1497,12 +1561,22 @@ async def import_products_xlsx(
         }
         p = create_product_service(payload)
         created_items.append({"id": p.get("id"), "title": p.get("title"), "category_id": p.get("category_id")})
+        created_sku_gt = str(p.get("sku_gt") or "").strip()
+        created_sku_pim = str(p.get("sku_pim") or "").strip()
+        if created_sku_gt:
+            by_sku_gt[created_sku_gt] = p
+        if created_sku_pim:
+            by_sku_pim[created_sku_pim] = p
 
     return {
         "ok": True,
         "created": len(created_items),
+        "updated": len(updated_items),
+        "skipped": len(skipped_items),
         "created_categories": created_nodes_count,
         "items": created_items,
+        "updated_items": updated_items,
+        "skipped_items": skipped_items,
     }
 
 

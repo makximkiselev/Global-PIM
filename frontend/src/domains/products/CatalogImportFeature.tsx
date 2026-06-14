@@ -98,6 +98,8 @@ type DiscoveryRunResp = {
 type CatalogTreeUploadResp = {
   ok: boolean;
   created: number;
+  updated?: number;
+  skipped?: number;
   created_categories?: number;
   items?: Array<{ id?: string; title?: string; category_id?: string }>;
 };
@@ -348,7 +350,7 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
       }
       const data = (await response.json()) as CatalogTreeUploadResp;
       setCatalogUploadNotice(
-        `Каталог загружен: создано SKU ${data.created || 0}, новых категорий ${data.created_categories || 0}.`,
+        `Каталог загружен: новых SKU ${data.created || 0}, обновлено ${data.updated || 0}, без изменений ${data.skipped || 0}, новых категорий ${data.created_categories || 0}.`,
       );
       setCatalogFile(null);
       await refreshCatalogScope();
