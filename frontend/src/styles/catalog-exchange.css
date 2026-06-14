@@ -36,6 +36,17 @@
   gap:12px;
 }
 
+.cx-importNotice{
+  margin-top:12px;
+  border:1px solid rgba(34,197,94,.28);
+  border-radius:12px;
+  background:rgba(34,197,94,.08);
+  color:var(--text);
+  padding:10px 12px;
+  font-size:13px;
+  font-weight:700;
+}
+
 .cx-targetsBoard{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(260px,1fr));

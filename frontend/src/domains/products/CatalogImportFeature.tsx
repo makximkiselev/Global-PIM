@@ -95,6 +95,13 @@ type DiscoveryRunResp = {
   run: DiscoveryRun;
 };
 
+type CatalogTreeUploadResp = {
+  ok: boolean;
+  created: number;
+  created_categories?: number;
+  items?: Array<{ id?: string; title?: string; category_id?: string }>;
+};
+
 type MetricItem = {
   label: string;
   value: number | string;
@@ -216,6 +223,9 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   const [discoveryRun, setDiscoveryRun] = useState<DiscoveryRun | null>(null);
   const [discoveryRunning, setDiscoveryRunning] = useState(false);
   const [discoveryNotice, setDiscoveryNotice] = useState("");
+  const [catalogFile, setCatalogFile] = useState<File | null>(null);
+  const [catalogUploading, setCatalogUploading] = useState(false);
+  const [catalogUploadNotice, setCatalogUploadNotice] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -228,6 +238,15 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
     };
     void load();
   }, []);
+
+  async function refreshCatalogScope() {
+    const [n, counts] = await Promise.all([
+      api<{ nodes: ExchangeNode[] }>("/catalog/nodes"),
+      api<{ counts: Record<string, number> }>("/catalog/products/counts"),
+    ]);
+    setNodes(n.nodes || []);
+    setProductCountsByCategory(counts.counts || {});
+  }
 
   useEffect(() => {
     if (bootstrappedFromUrl || !nodes.length) return;
@@ -307,6 +326,38 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
   }, [useCompetitors, useYandex]);
   const hasImportScope = selectedNodeIds.length > 0 || selectedProductIds.length > 0;
   const importDisabled = loading || !hasImportScope || (!useYandex && !useCompetitors);
+
+  async function uploadCatalogTree() {
+    if (!catalogFile) {
+      setErr("Выберите Excel-файл каталога.");
+      return;
+    }
+    setCatalogUploading(true);
+    setErr("");
+    setCatalogUploadNotice("");
+    try {
+      const form = new FormData();
+      form.append("file", catalogFile);
+      const response = await fetch("/api/catalog/products/import.xlsx", {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as CatalogTreeUploadResp;
+      setCatalogUploadNotice(
+        `Каталог загружен: создано SKU ${data.created || 0}, новых категорий ${data.created_categories || 0}.`,
+      );
+      setCatalogFile(null);
+      await refreshCatalogScope();
+    } catch (e) {
+      setErr((e as Error).message || "Ошибка загрузки каталога");
+    } finally {
+      setCatalogUploading(false);
+    }
+  }
 
   async function startImport() {
     if (!hasImportScope) {
@@ -556,6 +607,39 @@ export default function CatalogImportFeature({ embedded = false }: { embedded?: 
         )}
         main={(
           <div className="cx-workspaceMain">
+            <DataToolbar
+              title="Импорт дерева и SKU из Excel"
+              subtitle="Файл сам задает структуру каталога: все колонки до SKU считаются уровнями категорий, затем идут SKU и наименование товара."
+              className="cx-workspaceToolbar"
+              actions={(
+                <div className="cx-toolbarActions">
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    onChange={(event) => setCatalogFile(event.target.files?.[0] || null)}
+                    className="pn-input"
+                  />
+                  <Button variant="primary" onClick={() => void uploadCatalogTree()} disabled={!catalogFile || catalogUploading}>
+                    {catalogUploading ? "Загружаю…" : "Загрузить каталог"}
+                  </Button>
+                </div>
+              )}
+            >
+              <div className="cx-sourceBoard">
+                <div className="cx-sourceToggle isActive">
+                  <span className="cx-sourceTitle">Дерево категорий</span>
+                  <span className="cx-sourceRole">до колонки SKU</span>
+                  <span className="cx-sourceMeta">Можно создавать сколько угодно уровней: раздел, бренд, линейка, модель и дальше.</span>
+                </div>
+                <div className="cx-sourceToggle isActive">
+                  <span className="cx-sourceTitle">Товары</span>
+                  <span className="cx-sourceRole">SKU + наименование</span>
+                  <span className="cx-sourceMeta">Если PIM/GT SKU не заполнены, система выдаст внутренние номера автоматически.</span>
+                </div>
+              </div>
+              {catalogUploadNotice ? <div className="cx-importNotice">{catalogUploadNotice}</div> : null}
+            </DataToolbar>
+
             <DataToolbar
               title="Источники заполнения"
               subtitle="Маркет идет первым, конкуренты закрывают пробелы и конфликты. Область можно ограничить категорией или конкретными SKU."

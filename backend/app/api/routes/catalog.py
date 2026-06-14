@@ -1305,25 +1305,59 @@ async def import_products_xlsx(
         data_rows = rows[1:]
 
     header_l = [h.lower() for h in header]
-    idx_title = (
-        header_l.index("title")
-        if "title" in header_l
-        else header_l.index("название")
-        if "название" in header_l
-        else -1
+
+    def _find_col(names: Set[str]) -> int:
+        for idx, value in enumerate(header_l):
+            normalized = " ".join(str(value or "").replace("_", " ").split()).lower()
+            if normalized in names:
+                return idx
+        return -1
+
+    idx_title = _find_col(
+        {
+            "title",
+            "name",
+            "название",
+            "название товара",
+            "наименование",
+            "наименование товара",
+            "товар",
+        }
     )
     idx_cat = header_l.index("category_id") if "category_id" in header_l else -1
-    idx_sku_pim = header_l.index("sku_pim") if "sku_pim" in header_l else -1
-    idx_sku_gt = header_l.index("sku_gt") if "sku_gt" in header_l else -1
+    idx_sku_pim = _find_col({"sku pim", "id pim", "pim sku"})
+    idx_sku_gt = _find_col({"sku", "sku gt", "gt sku", "id gt", "артикул", "код товара"})
 
     cat_cols = [i for i, h in enumerate(header_l) if h.startswith("category_")]
+    if not cat_cols and idx_sku_gt > 0:
+        ignored_before_sku = {
+            "sku pim",
+            "id pim",
+            "pim sku",
+            "category id",
+            "title",
+            "name",
+            "название",
+            "название товара",
+            "наименование",
+            "наименование товара",
+            "товар",
+        }
+        for i, h in enumerate(header_l[:idx_sku_gt]):
+            normalized = " ".join(str(h or "").replace("_", " ").split()).lower()
+            if normalized and normalized not in ignored_before_sku:
+                cat_cols.append(i)
 
     if idx_title < 0:
-        raise HTTPException(status_code=400, detail="title column is required")
+        raise HTTPException(status_code=400, detail="title/name column is required")
+    if not category_id and not cat_cols and idx_cat < 0:
+        raise HTTPException(status_code=400, detail="category columns before SKU or category_id are required")
 
     nodes = _load_nodes()
     by_id = {n.get("id"): n for n in nodes}
     path_cache: Dict[str, List[str]] = {}
+    nodes_changed = False
+    created_nodes_count = 0
 
     def _path_names(node_id: str) -> List[str]:
         if node_id in path_cache:
@@ -1344,6 +1378,57 @@ async def import_products_xlsx(
             continue
         path_map[tuple([n.lower() for n in names])] = nid
 
+    def _child_by_name(parent_id: Optional[str], name: str) -> Optional[Dict[str, Any]]:
+        wanted = name.strip().lower()
+        for node in nodes:
+            if (node.get("parent_id") or None) == (parent_id or None) and str(node.get("name") or "").strip().lower() == wanted:
+                return node
+        return None
+
+    def _ensure_category_path(names: List[str], base_parent_id: Optional[str] = None) -> str:
+        nonlocal created_nodes_count, nodes_changed
+        clean_names = [str(name or "").strip() for name in names if str(name or "").strip()]
+        if not clean_names:
+            return ""
+
+        if not base_parent_id:
+            key = tuple(name.lower() for name in clean_names)
+            existing_id = path_map.get(key)
+            if existing_id:
+                return existing_id
+
+        parent_id = base_parent_id or None
+        current_path: List[str] = _path_names(parent_id) if parent_id else []
+        current_id = parent_id or ""
+        for name in clean_names:
+            existing = _child_by_name(parent_id, name)
+            if existing:
+                current_id = str(existing.get("id") or "")
+                parent_id = current_id
+                current_path.append(str(existing.get("name") or name).strip())
+                continue
+            siblings_count = len([node for node in nodes if (node.get("parent_id") or None) == (parent_id or None)])
+            current_id = str(uuid.uuid4())
+            node = {
+                "id": current_id,
+                "parent_id": parent_id,
+                "name": name,
+                "position": siblings_count,
+                "template_id": None,
+                "products_count": 0,
+            }
+            nodes.append(node)
+            by_id[current_id] = node
+            current_path.append(name)
+            path_cache[current_id] = list(current_path)
+            path_map[tuple(part.lower() for part in current_path)] = current_id
+            parent_id = current_id
+            created_nodes_count += 1
+            nodes_changed = True
+        return current_id
+
+    selected_node = by_id.get(str(category_id or "").strip()) if category_id else None
+
     prepared: List[Dict[str, Any]] = []
     for r in data_rows:
         if not r:
@@ -1360,11 +1445,14 @@ async def import_products_xlsx(
                 val = str(r[i] or "").strip()
                 if val:
                     names.append(val)
+            base_parent_id: Optional[str] = None
+            if selected_node and names and str(selected_node.get("name") or "").strip().lower() != names[0].strip().lower():
+                base_parent_id = str(selected_node.get("id") or "")
             key = tuple([n.lower() for n in names if n])
             if key:
-                cid = path_map.get(key, "")
+                cid = "" if base_parent_id else path_map.get(key, "")
                 if not cid:
-                    raise HTTPException(status_code=400, detail=f"category_path not found: {' / '.join(names)}")
+                    cid = _ensure_category_path(names, base_parent_id=base_parent_id)
 
         if not cid and idx_cat >= 0:
             cid = str((r[idx_cat] if idx_cat < len(r) else "") or "").strip()
@@ -1385,6 +1473,9 @@ async def import_products_xlsx(
 
     if not prepared:
         return {"ok": True, "created": 0, "items": []}
+
+    if nodes_changed:
+        _save_nodes(nodes)
 
     auto_needed = [p for p in prepared if not (p.get("sku_pim") and p.get("sku_gt"))]
     sku_items = allocate_sku_pairs_service(len(auto_needed)).get("items") or []
@@ -1407,7 +1498,12 @@ async def import_products_xlsx(
         p = create_product_service(payload)
         created_items.append({"id": p.get("id"), "title": p.get("title"), "category_id": p.get("category_id")})
 
-    return {"ok": True, "created": len(created_items), "items": created_items}
+    return {
+        "ok": True,
+        "created": len(created_items),
+        "created_categories": created_nodes_count,
+        "items": created_items,
+    }
 
 
 @router.post("/catalog/products")
