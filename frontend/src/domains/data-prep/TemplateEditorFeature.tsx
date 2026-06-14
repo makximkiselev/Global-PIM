@@ -1652,7 +1652,7 @@ export default function TemplateEditor() {
                                     {candidate.review_flags?.length ? (
                                       <div className="tplDraftFlags">
                                         {candidate.review_flags.slice(0, 1).map((flag) => (
-                                          <small className={`is-${flag.level || "info"}`} key={`${candidate.id}-${flag.code || flag.message}`}>
+                                          <small className={`is-${flag.level || "info"}`} key={`${candidate.id}-${flag.code || flag.message}`} title={flag.message}>
                                             {flag.message}
                                           </small>
                                         ))}
