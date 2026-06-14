@@ -936,12 +936,27 @@
   font-size:12px;
 }
 
+.productWorkspaceMediaBulkExportButton{
+  min-height:30px;
+  padding:6px 10px;
+  font-size:12px;
+}
+
 .productWorkspaceMediaCard{
   position:relative;
   overflow:hidden;
   border:1px solid rgba(var(--line-rgb), .7);
   border-radius:18px;
   background:rgba(var(--surface-rgb), .8);
+}
+
+.productWorkspaceMediaCard.isDragging{
+  opacity:.48;
+}
+
+.productWorkspaceMediaCard.isDragTarget{
+  border-color:rgba(var(--accent-rgb), .88);
+  box-shadow:0 0 0 3px rgba(var(--accent-rgb), .16), var(--shadow-sm);
 }
 
 .productWorkspaceMediaCard.isSelected{
@@ -973,6 +988,35 @@
   height:16px;
   margin:0;
   accent-color:var(--accent);
+}
+
+.productWorkspaceMediaDragHandle{
+  position:absolute;
+  top:10px;
+  left:48px;
+  z-index:2;
+  display:grid;
+  place-items:center;
+  width:32px;
+  height:30px;
+  border:1px solid rgba(var(--line-rgb), .72);
+  border-radius:10px;
+  background:rgba(var(--surface-rgb), .94);
+  color:var(--muted);
+  box-shadow:0 8px 20px rgba(15, 23, 42, .12);
+  cursor:grab;
+  font-size:13px;
+  line-height:1;
+  letter-spacing:0;
+}
+
+.productWorkspaceMediaDragHandle:active{
+  cursor:grabbing;
+}
+
+.productWorkspaceMediaDragHandle:disabled{
+  cursor:not-allowed;
+  opacity:.55;
 }
 
 .productWorkspaceMediaCard img{

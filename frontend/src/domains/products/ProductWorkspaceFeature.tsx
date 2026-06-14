@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { DragEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useOrgPath } from "../../app/orgRoutes";
 import Alert from "../../components/ui/Alert";
@@ -1582,6 +1582,8 @@ function ProductWorkspaceFeature() {
   const [mediaSaving, setMediaSaving] = useState(false);
   const [mediaNotice, setMediaNotice] = useState("");
   const [selectedMediaIndexes, setSelectedMediaIndexes] = useState<number[]>([]);
+  const [mediaDragIndex, setMediaDragIndex] = useState<number | null>(null);
+  const [mediaDragOverIndex, setMediaDragOverIndex] = useState<number | null>(null);
   const [documentsSaving, setDocumentsSaving] = useState(false);
   const [documentsNotice, setDocumentsNotice] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1929,6 +1931,67 @@ function ProductWorkspaceFeature() {
   function toggleMediaForExport(index: number, selected: boolean) {
     const nextMedia = media.map((item, itemIndex) => (itemIndex === index ? { ...item, selected } : item));
     void saveMediaImages(nextMedia);
+  }
+
+  function toggleSelectedMediaForExport(selected: boolean) {
+    const selectedSet = new Set(selectedMediaIndexes);
+    if (!selectedSet.size) return;
+    const nextMedia = media.map((item, itemIndex) => (selectedSet.has(itemIndex) ? { ...item, selected } : item));
+    void saveMediaImages(nextMedia);
+  }
+
+  function movedMediaIndex(index: number, fromIndex: number, toIndex: number): number {
+    if (index === fromIndex) return toIndex;
+    if (fromIndex < toIndex && index > fromIndex && index <= toIndex) return index - 1;
+    if (fromIndex > toIndex && index >= toIndex && index < fromIndex) return index + 1;
+    return index;
+  }
+
+  function reorderMediaForExport(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= media.length || toIndex >= media.length) return;
+    const nextMedia = [...media];
+    const [item] = nextMedia.splice(fromIndex, 1);
+    nextMedia.splice(toIndex, 0, item);
+    const orderedMedia = nextMedia.map((mediaItem, orderIndex) => ({
+      ...mediaItem,
+      order: orderIndex,
+      export_order: orderIndex,
+    }));
+    setSelectedMediaIndexes((current) => current.map((index) => movedMediaIndex(index, fromIndex, toIndex)).sort((a, b) => a - b));
+    void saveMediaImages(orderedMedia);
+  }
+
+  function handleMediaDragStart(event: DragEvent<HTMLElement>, index: number) {
+    if (mediaSaving) {
+      event.preventDefault();
+      return;
+    }
+    setMediaDragIndex(index);
+    setMediaDragOverIndex(index);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  }
+
+  function handleMediaDragOver(event: DragEvent<HTMLElement>, index: number) {
+    if (mediaSaving) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setMediaDragOverIndex(index);
+  }
+
+  function handleMediaDrop(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    const raw = event.dataTransfer.getData("text/plain");
+    const fromIndex = mediaDragIndex ?? Number(raw);
+    setMediaDragIndex(null);
+    setMediaDragOverIndex(null);
+    if (!Number.isFinite(fromIndex)) return;
+    reorderMediaForExport(fromIndex, index);
+  }
+
+  function handleMediaDragEnd() {
+    setMediaDragIndex(null);
+    setMediaDragOverIndex(null);
   }
 
   function moveMediaForExport(index: number, direction: -1 | 1) {
@@ -2707,6 +2770,24 @@ function ProductWorkspaceFeature() {
                           <span>Выбрать все</span>
                         </label>
                         {selectedMediaIndexes.length ? (
+                          <>
+                            <Button
+                              className="productWorkspaceMediaBulkExportButton"
+                              disabled={mediaSaving}
+                              onClick={() => toggleSelectedMediaForExport(true)}
+                            >
+                              Выгружать выбранные
+                            </Button>
+                            <Button
+                              className="productWorkspaceMediaBulkExportButton"
+                              disabled={mediaSaving}
+                              onClick={() => toggleSelectedMediaForExport(false)}
+                            >
+                              Не выгружать
+                            </Button>
+                          </>
+                        ) : null}
+                        {selectedMediaIndexes.length ? (
                           <Button
                             className="productWorkspaceMediaBulkDeleteButton"
                             variant="danger"
@@ -2733,8 +2814,22 @@ function ProductWorkspaceFeature() {
                       {media.map((item, index) => (
                         <article
                           key={item.url}
-                          className={`productWorkspaceMediaCard${item.selected === false ? " isDisabled" : ""}${selectedMediaIndexes.includes(index) ? " isSelected" : ""}`}
+                          className={`productWorkspaceMediaCard${item.selected === false ? " isDisabled" : ""}${selectedMediaIndexes.includes(index) ? " isSelected" : ""}${mediaDragIndex === index ? " isDragging" : ""}${mediaDragOverIndex === index && mediaDragIndex !== index ? " isDragTarget" : ""}`}
+                          onDragOver={(event) => handleMediaDragOver(event, index)}
+                          onDrop={(event) => handleMediaDrop(event, index)}
                         >
+                          <button
+                            className="productWorkspaceMediaDragHandle"
+                            type="button"
+                            draggable={!mediaSaving}
+                            disabled={mediaSaving}
+                            aria-label={`Перетащить ${mediaDisplayCaption(item, index) || `фото ${index + 1}`}`}
+                            title="Перетащить"
+                            onDragStart={(event) => handleMediaDragStart(event, index)}
+                            onDragEnd={handleMediaDragEnd}
+                          >
+                            ⋮⋮
+                          </button>
                           <label className="productWorkspaceMediaCardCheck">
                             <input
                               type="checkbox"
